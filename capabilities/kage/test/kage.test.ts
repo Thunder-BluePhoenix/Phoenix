@@ -61,7 +61,7 @@ describe("kage capability", () => {
     await ready();
     const view = h!.manager.get("kage");
     expect(view.permissions.map((p) => p.permission)).toEqual(["meeting_recording", "network"]);
-    expect(view.secrets).toEqual(["api_key"]);
+    expect(view.secrets).toEqual([expect.objectContaining({ name: "api_key", set: true })]);
     expect(JSON.stringify(view)).not.toContain(MOCK_KAGE_KEY);
     expect(() =>
       h!.manager.configure("kage", {

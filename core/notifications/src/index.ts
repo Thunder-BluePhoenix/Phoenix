@@ -90,6 +90,20 @@ export class NotificationService {
     this.unsubscribe();
   }
 
+  count(): number {
+    return (this.o.db.prepare("SELECT COUNT(*) AS n FROM notifications").get() as { n: number }).n;
+  }
+
+  /** Retention: deletes notifications created before `iso`; no argument deletes all. */
+  deleteBefore(iso?: string): number {
+    return Number(
+      (iso
+        ? this.o.db.prepare("DELETE FROM notifications WHERE created_at < ?").run(iso)
+        : this.o.db.prepare("DELETE FROM notifications").run()
+      ).changes,
+    );
+  }
+
   preferences(): NotificationPreferences {
     return {
       ...DEFAULT_PREFERENCES,

@@ -37,7 +37,7 @@ describe("meetings API", () => {
     const { api, secrets, runtime } = await setup();
     expect(await secrets.get("capability.kage.api_key")).toBe(MOCK_KAGE_KEY);
     const view = (await api("GET", "/api/capabilities/kage")).json;
-    expect(view.secrets).toEqual(["api_key"]);
+    expect(view.secrets).toEqual([expect.objectContaining({ name: "api_key", set: true })]);
     const row = runtime.db.prepare("SELECT * FROM credentials").all();
     expect(JSON.stringify(row)).not.toContain(MOCK_KAGE_KEY);
     expect(JSON.stringify((await api("GET", "/api/audit?capability=kage")).json)).not.toContain(

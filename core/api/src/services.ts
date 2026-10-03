@@ -54,6 +54,14 @@ export interface CoreServices {
   capabilities?: CapabilityService;
   notifications?: NotificationsService;
   meetings?: MeetingStore;
+  privacy?: {
+    inventory(): unknown;
+    retention(): unknown;
+    setRetention(input: unknown): unknown;
+    deleteAll(kind: unknown, confirm: unknown): unknown;
+  };
+  petSettings?(): unknown;
+  setPetSettings?(input: unknown): unknown;
   /** Persists the user's sleep preference. */
   setSleeping(sleeping: boolean): void;
   health(): Record<string, unknown>;

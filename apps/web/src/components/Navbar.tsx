@@ -3,6 +3,7 @@
 import { visualFor } from "@phoenix/pet-states";
 import { forwardRef } from "react";
 import type { ConnectionStatus, PetState } from "../core/types";
+import { usePetSettings } from "../core/hooks";
 import { FawkesAvatar, type FawkesAvatarHandle } from "./FawkesAvatar";
 import { NotificationCenter } from "./NotificationCenter";
 
@@ -28,17 +29,18 @@ export const Navbar = forwardRef<FawkesAvatarHandle, NavbarProps>(function Navba
   ref,
 ) {
   const connectionText = CONNECTION_TEXT[connection];
+  const { data: petSettings } = usePetSettings();
   return (
     <header className="navbar">
       <a className="brand" href="#/" aria-label="Phoenix home">
         <span aria-hidden="true">🐦‍🔥</span> <span className="brand-name">Phoenix</span>
       </a>
       <nav aria-label="Main" className="nav-links">
-        <a href="#/" aria-current={route === "/" ? "page" : undefined}>
-          Home
-        </a>
         <a href="#/meetings" aria-current={route.startsWith("/meetings") ? "page" : undefined}>
           Meetings
+        </a>
+        <a href="#/settings" aria-current={route === "/settings" ? "page" : undefined}>
+          Settings
         </a>
       </nav>
       <div className="navbar-fawkes">
@@ -64,6 +66,7 @@ export const Navbar = forwardRef<FawkesAvatarHandle, NavbarProps>(function Navba
           state={state}
           expanded={panelOpen}
           controls={panelId}
+          reducedMotion={petSettings.reduced_motion}
           onActivate={onToggleFawkes}
         />
       </div>

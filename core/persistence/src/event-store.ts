@@ -95,6 +95,16 @@ export class EventStore {
     return (this.db.prepare("SELECT COUNT(*) AS n FROM events").get() as { n: number }).n;
   }
 
+  /** Retention: drops events received before `iso`. Pass no argument to delete everything. */
+  deleteBefore(iso?: string): number {
+    return Number(
+      (iso
+        ? this.db.prepare("DELETE FROM events WHERE received_at < ?").run(iso)
+        : this.db.prepare("DELETE FROM events").run()
+      ).changes,
+    );
+  }
+
   /** Deletes the oldest events beyond the history limit. */
   prune(): number {
     return Number(

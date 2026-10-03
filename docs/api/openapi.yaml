@@ -183,6 +183,29 @@ paths:
               },
           }
         "404": { $ref: "#/components/responses/Error" }
+  /api/pet/settings:
+    get:
+      summary: Fawkes appearance settings, shared by every Fawkes view
+      responses:
+        "200": { description: '{ reduced_motion: "auto" | "on" | "off" }' }
+    post:
+      summary: Update Fawkes appearance settings
+      requestBody:
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required: [reduced_motion],
+                    properties: { reduced_motion: { enum: [auto, "on", "off"] } },
+                  },
+              },
+          }
+      responses:
+        "200": { description: Settings }
+        "400": { $ref: "#/components/responses/Error" }
   /api/events:
     get:
       summary: Recent durable events, newest first
@@ -466,6 +489,58 @@ paths:
       responses:
         "200": { description: Meeting }
         "404": { $ref: "#/components/responses/Error" }
+  /api/privacy:
+    get:
+      summary: What Phoenix stores (counts, retention, location), stored credential names, telemetry and AI statements
+      responses:
+        "200": { description: Privacy inventory }
+  /api/privacy/retention:
+    post:
+      summary: "Days to keep each data class (events, notifications, meetings); null keeps until deleted. Applied immediately and hourly."
+      requestBody:
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    properties:
+                      {
+                        events: { type: [integer, "null"], minimum: 1, maximum: 3650 },
+                        notifications: { type: [integer, "null"], minimum: 1, maximum: 3650 },
+                        meetings: { type: [integer, "null"], minimum: 1, maximum: 3650 },
+                      },
+                  },
+              },
+          }
+      responses:
+        "200": { description: Retention }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/privacy/delete:
+    post:
+      summary: Delete every record of one data class (audited). The audit log itself is not deletable here.
+      requestBody:
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required: [data, confirm],
+                    properties:
+                      {
+                        data: { enum: [events, notifications, meetings] },
+                        confirm: { const: true },
+                      },
+                  },
+              },
+          }
+      responses:
+        "200": { description: "{ deleted: number }" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /api/notifications:
     get:
       summary: Recent notifications, newest first, with the unread count

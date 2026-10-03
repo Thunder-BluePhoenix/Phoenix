@@ -268,3 +268,61 @@ export function useHashRoute(): string {
   }, []);
   return hash.replace(/^#/, "") || "/";
 }
+
+export interface PetSettings {
+  reduced_motion: "auto" | "on" | "off";
+}
+
+const petSettingsChanged = new EventTarget();
+
+/** Fawkes appearance settings, shared by every component that shows Fawkes. */
+export function usePetSettings() {
+  const res = useLiveResource<PetSettings>(
+    "/api/pet/settings",
+    (j) => j,
+    { reduced_motion: "auto" },
+    () => false,
+  );
+  const { reload } = res;
+  useEffect(() => {
+    const on = () => void reload();
+    petSettingsChanged.addEventListener("change", on);
+    return () => petSettingsChanged.removeEventListener("change", on);
+  }, [reload]);
+  return res;
+}
+
+export const announcePetSettings = () => petSettingsChanged.dispatchEvent(new Event("change"));
+
+export interface PrivacyInventory {
+  location: string;
+  data: { id: string; description: string; count: number; retention_days: number | null }[];
+  audit_log: { description: string; count: number };
+  credentials: { capability: string; name: string; stored_in: string }[];
+  telemetry: string;
+  external_ai: string;
+}
+
+export function usePrivacy() {
+  return useLiveResource<PrivacyInventory | null>(
+    "/api/privacy",
+    (j) => j,
+    null,
+    () => false,
+  );
+}
+
+export interface NotificationPreferences {
+  enabled: boolean;
+  min_severity: "warning" | "error";
+  muted_sources: string[];
+}
+
+export function useNotificationPreferences() {
+  return useLiveResource<NotificationPreferences | null>(
+    "/api/notifications/preferences",
+    (j) => j,
+    null,
+    () => false,
+  );
+}

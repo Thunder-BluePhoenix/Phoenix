@@ -51,6 +51,8 @@ export interface CapabilityManifest {
   data_categories?: string[];
   healthcheck?: { interval_ms?: number; timeout_ms?: number };
   config_schema?: Record<string, unknown>;
+  /** Credentials the user provides; stored in OS secret storage (ctx.secret(name)). */
+  secrets?: { name: string; description: string }[];
   state_rules?: { match: string; group?: string; effect: Record<string, unknown> }[];
   ui_extensions?: Record<string, unknown>[];
 }

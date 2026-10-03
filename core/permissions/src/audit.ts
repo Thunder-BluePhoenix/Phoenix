@@ -46,6 +46,10 @@ export class AuditLog {
   }
 
   /** Newest first. */
+  count(): number {
+    return (this.db.prepare("SELECT COUNT(*) AS n FROM audit_log").get() as { n: number }).n;
+  }
+
   list(query: AuditQuery = {}): AuditEntry[] {
     const limit = Math.min(Math.max(query.limit ?? 100, 1), 1000);
     const rows = (

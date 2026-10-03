@@ -30,7 +30,7 @@ pnpm check        # typecheck + lint + tests
 pnpm start        # build the web app and start Phoenix Core
 ```
 
-Open <http://127.0.0.1:4870>. Fawkes lives in the top bar; click it for the Pet Panel.
+Open <http://127.0.0.1:4870>. Fawkes lives in the top bar; click it for the Pet Panel. Set up capabilities (Git repositories, your Kage server and API key) under **Settings**.
 
 For UI development with hot reload, run `pnpm dev:core` in one terminal and `pnpm dev:web` in another, then open <http://localhost:5173> (the Vite dev server proxies the API and picks up the core's session token).
 
@@ -39,6 +39,10 @@ Tools and scripts can call the API with the session token core writes to `.phoen
 ```sh
 curl -H "Authorization: Bearer $(cat .phoenix/dev/session.token)" http://127.0.0.1:4870/api/pet/state
 ```
+
+## Privacy
+
+Phoenix is local-first. Everything it stores lives in its data directory on your computer (`.phoenix/<env>/`); credentials such as API keys live in your OS keychain. **Phoenix sends no telemetry**, and it has no AI features yet, so nothing goes to AI providers. **Settings → Privacy and data** shows what is stored, sets how long each kind is kept, and deletes it. The audit log of permissions, approvals and deletions is kept for accountability.
 
 ## Documentation
 

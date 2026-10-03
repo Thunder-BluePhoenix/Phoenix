@@ -405,6 +405,21 @@ export class CapabilityManager {
     return this.view(entry);
   }
 
+  private secretViews(e: Entry): CapabilityView["secrets"] {
+    const stored = new Set(this.secretNames(e.manifest.id));
+    const declared = e.manifest.secrets ?? [];
+    return [
+      ...declared.map((d) => ({
+        name: d.name,
+        description: d.description,
+        set: stored.has(d.name),
+      })),
+      ...[...stored]
+        .filter((n) => !declared.some((d) => d.name === n))
+        .map((name) => ({ name, set: true })),
+    ];
+  }
+
   private secretNames(id: string): string[] {
     return (
       this.o.db
@@ -811,7 +826,8 @@ export class CapabilityManager {
       events: e.manifest.events,
       data_categories: e.manifest.data_categories ?? [],
       config: e.config,
-      secrets: this.secretNames(e.manifest.id),
+      ...(e.manifest.config_schema ? { config_schema: e.manifest.config_schema } : {}),
+      secrets: this.secretViews(e),
       ...(e.lastError ? { lastError: e.lastError } : {}),
       ...(e.disabledReason ? { disabledReason: e.disabledReason } : {}),
     };

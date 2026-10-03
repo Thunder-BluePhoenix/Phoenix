@@ -4,6 +4,7 @@ import { useCallback, useId, useRef, useState } from "react";
 import type { FawkesAvatarHandle } from "./components/FawkesAvatar";
 import { MeetingDetail, MeetingsPage } from "./components/Meetings";
 import { Navbar } from "./components/Navbar";
+import { SettingsPage } from "./components/Settings";
 import { PetPanel } from "./components/PetPanel";
 import { useConnection, useDisplayedState, useTasks } from "./core/context";
 import { useHashRoute } from "./core/hooks";
@@ -40,7 +41,9 @@ export function App() {
       />
       {panelOpen && <PetPanel id={panelId} state={state} tasks={tasks} onClose={closePanel} />}
       <main id="main" className="content">
-        {connection !== "unauthenticated" && route === "/meetings" ? (
+        {connection !== "unauthenticated" && route === "/settings" ? (
+          <SettingsPage state={state} />
+        ) : connection !== "unauthenticated" && route === "/meetings" ? (
           <MeetingsPage state={state} />
         ) : connection !== "unauthenticated" && meetingId ? (
           <MeetingDetail key={meetingId} id={decodeURIComponent(meetingId)} state={state} />

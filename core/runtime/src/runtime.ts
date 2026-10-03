@@ -19,9 +19,15 @@ import {
   type Database,
   type SecretStore,
 } from "@phoenix/persistence";
-import { createEvent, PROTOCOL_VERSION } from "@phoenix/protocol";
+import { createEvent, ErrorCode, PhoenixError, PROTOCOL_VERSION } from "@phoenix/protocol";
 import { StateEngine } from "@phoenix/state-engine";
 import { syncMeetings } from "./meetings";
+import { PrivacyService } from "./privacy";
+
+export interface PetSettings {
+  /** "auto" follows the OS reduced-motion setting. */
+  reduced_motion: "auto" | "on" | "off";
+}
 
 export const PHOENIX_VERSION = "0.1.0-dev";
 export const SESSION_TOKEN_FILE = "session.token";
@@ -59,7 +65,9 @@ export class PhoenixRuntime implements CoreServices {
   readonly capabilities: CapabilityManager;
   readonly notifications: NotificationService;
   readonly meetings: MeetingStore;
+  readonly privacy: PrivacyService;
   readonly token: string;
+  private pruner: NodeJS.Timeout | null = null;
   private readonly stopMeetingSync: () => void;
   private api: ApiServer | null = null;
   private ticker: NodeJS.Timeout | null = null;
@@ -113,6 +121,16 @@ export class PhoenixRuntime implements CoreServices {
       logger: this.logger,
     });
 
+    this.privacy = new PrivacyService({
+      dataDir: this.config.dataDir,
+      settings: this.settings,
+      events: this.events,
+      notifications: this.notifications,
+      meetings: this.meetings,
+      capabilities: this.capabilities,
+      audit: this.permissions.audit,
+    });
+
     this.bus.subscribe("state-engine", "*", (event) => {
       this.state.handle(event);
     });
@@ -156,6 +174,9 @@ export class PhoenixRuntime implements CoreServices {
 
     this.ticker = setInterval(() => this.state.tick(), this.options.tickMs ?? 1_000);
     this.ticker.unref();
+    this.privacy.prune();
+    this.pruner = setInterval(() => this.privacy.prune(), 3_600_000);
+    this.pruner.unref();
     await this.capabilities.restore();
 
     this.bus.publish(
@@ -172,6 +193,27 @@ export class PhoenixRuntime implements CoreServices {
       dataDir: this.config.dataDir,
     });
     return { host: address.address, port: address.port };
+  }
+
+  /** Fawkes appearance, shared by every Fawkes view (web, desktop). */
+  petSettings(): PetSettings {
+    return {
+      reduced_motion: "auto",
+      ...this.settings.get<Partial<PetSettings>>("pet.settings", {}),
+    };
+  }
+
+  setPetSettings(input: unknown): PetSettings {
+    const motion = (input as { reduced_motion?: unknown } | null)?.reduced_motion;
+    if (motion !== "auto" && motion !== "on" && motion !== "off") {
+      throw new PhoenixError(
+        ErrorCode.INVALID_REQUEST,
+        '"reduced_motion" must be "auto", "on" or "off"',
+      );
+    }
+    const next: PetSettings = { ...this.petSettings(), reduced_motion: motion };
+    this.settings.set("pet.settings", next);
+    return next;
   }
 
   setSleeping(sleeping: boolean): void {
@@ -203,6 +245,7 @@ export class PhoenixRuntime implements CoreServices {
   stop(): Promise<void> {
     this.stopping ??= (async () => {
       if (this.ticker) clearInterval(this.ticker);
+      if (this.pruner) clearInterval(this.pruner);
       await this.api?.close();
       await this.capabilities.close();
       this.stopMeetingSync();

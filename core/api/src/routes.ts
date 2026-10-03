@@ -20,6 +20,10 @@ export function buildRoutes(s: CoreServices): Route[] {
     if (!s.meetings) throw notFound("Meetings");
     return s.meetings;
   };
+  const privacy = () => {
+    if (!s.privacy) throw notFound("Privacy");
+    return s.privacy;
+  };
   const found = <T>(value: T | null, what: string): T => {
     if (value === null) throw notFound(what);
     return value;
@@ -44,6 +48,14 @@ export function buildRoutes(s: CoreServices): Route[] {
     }),
 
     // ── Events ──────────────────────────────────────────────────────────────
+    route("GET", "/api/pet/settings", () => {
+      if (!s.petSettings) throw notFound("Pet settings");
+      return s.petSettings();
+    }),
+    route("POST", "/api/pet/settings", async ({ body }) => {
+      if (!s.setPetSettings) throw notFound("Pet settings");
+      return s.setPetSettings(expectObject(await body()));
+    }),
     route("GET", "/api/events", ({ url }) => {
       const afterSeq = intParam(url, "after_seq");
       const items = s.events.recent({
@@ -165,6 +177,16 @@ export function buildRoutes(s: CoreServices): Route[] {
       }
       if (!meetings().delete(params.id!)) throw notFound("Meeting");
       return { deleted: params.id };
+    }),
+
+    // ── Privacy ─────────────────────────────────────────────────────────────
+    route("GET", "/api/privacy", () => privacy().inventory()),
+    route("POST", "/api/privacy/retention", async ({ body }) =>
+      privacy().setRetention(expectObject(await body())),
+    ),
+    route("POST", "/api/privacy/delete", async ({ body }) => {
+      const b = expectObject(await body());
+      return privacy().deleteAll(b.data, b.confirm);
     }),
 
     // ── Notifications ───────────────────────────────────────────────────────

@@ -10,6 +10,8 @@ export interface FawkesAvatarProps {
   expanded?: boolean;
   controls?: string;
   onActivate?: () => void;
+  /** "auto" follows the OS reduced-motion setting. */
+  reducedMotion?: "auto" | "on" | "off";
 }
 
 export interface FawkesAvatarHandle {
@@ -18,7 +20,7 @@ export interface FawkesAvatarHandle {
 
 /** React wrapper around the framework-free pet runtime (pet/runtime). */
 export const FawkesAvatar = forwardRef<FawkesAvatarHandle, FawkesAvatarProps>(function FawkesAvatar(
-  { state, size = 32, expanded, controls, onActivate },
+  { state, size = 32, expanded, controls, onActivate, reducedMotion = "auto" },
   ref,
 ) {
   const host = useRef<HTMLSpanElement>(null);
@@ -42,6 +44,10 @@ export const FawkesAvatar = forwardRef<FawkesAvatarHandle, FawkesAvatarProps>(fu
   useEffect(() => {
     pet.current?.update(state);
   }, [state]);
+
+  useEffect(() => {
+    pet.current?.setReducedMotion(reducedMotion === "auto" ? "auto" : reducedMotion === "on");
+  }, [reducedMotion, size]);
 
   useEffect(() => {
     const el = pet.current?.element;

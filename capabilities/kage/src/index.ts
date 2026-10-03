@@ -237,6 +237,12 @@ export function createKageCapability() {
       permissions: ["meeting_recording", "network"],
       data_categories: ["meeting titles and participants", "transcripts", "summaries"],
       healthcheck: { interval_ms: 15_000 },
+      secrets: [
+        {
+          name: "api_key",
+          description: "Your Kage API key (Kage dashboard → account, or GET /auth/me)",
+        },
+      ],
       commands: [
         {
           name: "meeting.start",

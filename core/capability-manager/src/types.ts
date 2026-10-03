@@ -70,8 +70,9 @@ export interface CapabilityView {
   events: string[];
   data_categories: string[];
   config: Record<string, unknown>;
-  /** Names of credentials stored for this capability (never the values). */
-  secrets: string[];
+  config_schema?: Record<string, unknown>;
+  /** Declared and stored credentials (never the values). */
+  secrets: { name: string; description?: string; set: boolean }[];
   lastError?: string;
   disabledReason?: string;
 }

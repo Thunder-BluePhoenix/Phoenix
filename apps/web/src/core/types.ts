@@ -76,6 +76,9 @@ export interface CapabilityView {
   permissions: { permission: string; description: string; granted: boolean }[];
   commands: { name: string; description: string; side_effect: string }[];
   data_categories: string[];
+  config?: Record<string, unknown>;
+  config_schema?: JsonSchema;
+  secrets?: { name: string; description?: string; set: boolean }[];
   lastError?: string;
   disabledReason?: string;
 }
@@ -114,4 +117,15 @@ export interface Summary {
   decisions?: string[];
   action_items?: ActionItem[];
   follow_up_questions?: string[];
+}
+
+/** The subset of JSON Schema the settings form understands. */
+export interface JsonSchema {
+  type?: string;
+  description?: string;
+  properties?: Record<string, JsonSchema>;
+  items?: JsonSchema;
+  minimum?: number;
+  maximum?: number;
+  pattern?: string;
 }

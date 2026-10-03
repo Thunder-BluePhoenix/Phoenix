@@ -97,7 +97,7 @@ function ApprovalCard({ confirmation: c }: { confirmation: Confirmation }) {
   );
 }
 
-function QuickActions({ state }: { state: PetState }) {
+export function QuickActions({ state }: { state: PetState }) {
   const { run, busy, error } = useAction();
   const { data: killEngaged, reload } = useKillSwitch();
   const [confirmStop, setConfirmStop] = useState(false);

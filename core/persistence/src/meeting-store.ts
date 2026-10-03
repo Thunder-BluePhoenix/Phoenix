@@ -183,6 +183,28 @@ export class MeetingStore {
     return Number(r.changes) > 0;
   }
 
+  count(): number {
+    return (
+      this.db.prepare("SELECT COUNT(*) AS n FROM meetings WHERE deleted_at IS NULL").get() as {
+        n: number;
+      }
+    ).n;
+  }
+
+  /** Retention: deletes (with tombstones) meetings from before `iso`; no argument deletes all. */
+  deleteBefore(iso?: string): number {
+    const ids = (
+      iso
+        ? this.db
+            .prepare(
+              "SELECT id FROM meetings WHERE deleted_at IS NULL AND COALESCE(started_at, updated_at) < ?",
+            )
+            .all(iso)
+        : this.db.prepare("SELECT id FROM meetings WHERE deleted_at IS NULL").all()
+    ) as { id: string }[];
+    return ids.filter((r) => this.delete(r.id)).length;
+  }
+
   private row(id: string): Row | undefined {
     return this.db.prepare("SELECT * FROM meetings WHERE id = ?").get(id) as Row | undefined;
   }
