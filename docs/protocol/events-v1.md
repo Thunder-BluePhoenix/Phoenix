@@ -79,6 +79,11 @@ Unknown extra fields are allowed and must be ignored by consumers that do not un
 | `ACTION_REQUIRES_CONFIRMATION` | Approval required              |
 | `SECURITY_POLICY_BLOCKED`      | Security policy blocked action |
 
+## Changelog
+
+- **1.1** — added error codes `INVALID_REQUEST`, `UNAUTHENTICATED`, `INTERNAL_ERROR`; permission categories and side-effect classes (`protocol/src/permissions.ts`). Fully backwards compatible with 1.0.
+- **1.0** — initial envelope.
+
 ## Fawkes states
 
 See [ADR-0019](../adr/ADR-0019-canonical-fawkes-states-and-priority.md) and `protocol/src/fawkes-state.ts`.

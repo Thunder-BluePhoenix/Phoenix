@@ -116,6 +116,19 @@ describe("deduplication and persistence", () => {
     expect(restarted.publish(e).ok).toBe(false);
   });
 
+  it("tells handlers the history seq and whether the event is ephemeral", async () => {
+    const { bus } = setup();
+    const infos: unknown[] = [];
+    bus.subscribe("s", "*", (_e, info) => void infos.push(info));
+    bus.publish(ev());
+    bus.publish(ev("pet.state.changed"), { ephemeral: true });
+    await bus.drain();
+    expect(infos).toEqual([
+      { seq: 1, ephemeral: false },
+      { seq: null, ephemeral: true },
+    ]);
+  });
+
   it("persists durable events but not ephemeral ones", () => {
     const { bus, store } = setup();
     const durable = bus.publish(ev());
