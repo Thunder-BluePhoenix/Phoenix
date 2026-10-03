@@ -73,4 +73,6 @@ Phoenix calls the capability's loopback endpoint with header `X-Phoenix-Capabili
 | `POST /phoenix/lifecycle` `{ "action": "enable" \| "disable", "config"? }` | any 2xx                                                            |
 | `POST /commands/{name}` `{ "input", "operation_id" }`                      | `{ "result" }`                                                     |
 
-The capability registers with `POST /api/capabilities/register` (session token from `<dataDir>/session.token`) and receives its capability token. After a core restart it must register again.
+The capability registers with `POST /api/capabilities/register` `{ manifest, endpoint, callback_secret }` (session token from `<dataDir>/session.token`) and receives its capability token.
+
+Credentials are per direction: core calls the capability with the `callback_secret` the capability chose (≥ 32 characters), and the capability sends events with the token core issued. Because the capability knows its secret before registering, core can call back immediately — for example to resume a capability the user had enabled. If `callback_secret` is omitted, the issued token is used both ways. After a core restart the capability must register again (the SDK does this automatically).

@@ -59,6 +59,7 @@ const KILL_SWITCH_KEY = "security.kill_switch";
 interface Pending {
   confirmation: Confirmation;
   resolve: (approved: boolean, by: string) => void;
+  abort: (error: PhoenixError) => void;
   timer: NodeJS.Timeout;
 }
 
@@ -239,6 +240,13 @@ export class PermissionGateway {
 
   // ── Confirmations ─────────────────────────────────────────────────────────
 
+  /** Shutdown: rejects pending confirmations without touching storage. */
+  close(): void {
+    for (const p of [...this.pending.values()]) {
+      p.abort(new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Phoenix Core is shutting down"));
+    }
+  }
+
   pendingConfirmations(): Confirmation[] {
     return [...this.pending.values()].map((p) => p.confirmation);
   }
@@ -319,6 +327,11 @@ export class PermissionGateway {
         confirmation,
         timer,
         resolve: (approved, by) => finish(approved, by),
+        abort: (error) => {
+          if (!this.pending.delete(id)) return;
+          clearTimeout(timer);
+          reject(error);
+        },
       });
     });
   }

@@ -1,0 +1,28 @@
+{
+  "name": "@phoenix/sdk-testing",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "phoenix-simulate": "./src/cli.ts"
+  },
+  "dependencies": {
+    "@phoenix/capability-manager": "workspace:*",
+    "@phoenix/event-bus": "workspace:*",
+    "@phoenix/permissions": "workspace:*",
+    "@phoenix/persistence": "workspace:*",
+    "@phoenix/protocol": "workspace:*",
+    "@phoenix/sdk": "workspace:*",
+    "@phoenix/sdk-events": "workspace:*",
+    "@phoenix/state-engine": "workspace:*"
+  },
+  "devDependencies": {
+    "@phoenix/config": "workspace:*",
+    "@phoenix/logging": "workspace:*",
+    "@phoenix/runtime": "workspace:*"
+  }
+}

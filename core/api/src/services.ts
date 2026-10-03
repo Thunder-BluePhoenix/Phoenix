@@ -20,6 +20,7 @@ export interface CapabilityService {
   registerExternal(
     manifest: unknown,
     endpoint: string,
+    callbackSecret?: string,
   ): Promise<{ capability: unknown; token: string }>;
   ingest(
     id: string,

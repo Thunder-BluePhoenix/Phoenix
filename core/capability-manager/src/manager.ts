@@ -82,6 +82,7 @@ export class CapabilityManager {
   private readonly healthIntervalMs: number;
   private readonly healthTimeoutMs: number;
   private readonly unsubscribe: () => void;
+  private closed = false;
 
   constructor(private readonly o: CapabilityManagerOptions) {
     this.logger = (o.logger ?? silentLogger).child("capabilities");
@@ -133,15 +134,31 @@ export class CapabilityManager {
   }
 
   /**
-   * Registers (or re-registers) an external capability process. Returns the
-   * per-capability token it must use to submit events (ADR-0016).
+   * Registers (or re-registers) an external capability process.
+   *
+   * Credentials are per direction (ADR-0016):
+   * - the returned `token` authenticates capability → core calls (events);
+   * - `callbackSecret`, chosen by the capability, authenticates core → capability
+   *   calls. Because the capability knows it before registering, core can call
+   *   back immediately (e.g. to resume it) without racing the registration reply.
+   *   When omitted, the issued token is used in both directions.
    */
   async registerExternal(
     manifestInput: unknown,
     endpoint: string,
+    callbackSecret?: string,
   ): Promise<{ capability: CapabilityView; token: string }> {
     const manifest = this.validate(manifestInput);
     assertLoopbackEndpoint(endpoint);
+    if (
+      callbackSecret !== undefined &&
+      (typeof callbackSecret !== "string" || callbackSecret.length < 32)
+    ) {
+      throw new PhoenixError(
+        ErrorCode.INVALID_REQUEST,
+        "callback_secret must be at least 32 characters",
+      );
+    }
     const existing = this.entries.get(manifest.id);
     if (existing?.kind === "builtin") {
       throw new PhoenixError(
@@ -158,7 +175,7 @@ export class CapabilityManager {
       kind: "external",
       endpoint,
       token,
-      client: new ExternalClient(endpoint, token),
+      client: new ExternalClient(endpoint, callbackSecret ?? token),
       status: "installed",
       health: { status: "unknown" },
       config: stored?.config ?? {},
@@ -211,7 +228,12 @@ export class CapabilityManager {
   }
 
   get(id: string): CapabilityView {
-    return this.view(this.require(id));
+    const entry = this.entries.get(id);
+    if (entry) return this.view(entry);
+    const known = this.list().find((c) => c.id === id); // e.g. a disconnected external capability
+    if (!known)
+      throw new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, `Capability "${id}" not found`);
+    return known;
   }
 
   operation(id: string): Operation {
@@ -348,6 +370,8 @@ export class CapabilityManager {
   }
 
   async close(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
     this.unsubscribe();
     for (const e of this.entries.values()) {
       if (e.status !== "enabled") continue;
@@ -420,11 +444,13 @@ export class CapabilityManager {
             ? await guarded(() => entry.module!.commands![command]!(input, entry.ctx!), timeout)
             : await entry.client!.command(command, input, op.id, timeout);
         this.update(op, { status: "succeeded", result });
+        if (this.closed) return;
         this.o.permissions.recordOutcome(action, "succeeded", { operation_id: op.id });
         this.emitOp("capability.command.completed", entry, op, "success");
       } catch (err) {
         const e = toPhoenixError(err);
         this.update(op, { status: "failed", error: e.toJSON() });
+        if (this.closed) return;
         if (action)
           this.o.permissions.recordOutcome(action, "failed", {
             operation_id: op.id,
@@ -514,9 +540,10 @@ export class CapabilityManager {
   private startHealth(entry: Entry): void {
     this.stopHealth(entry);
     const interval = entry.manifest.healthcheck?.interval_ms ?? this.healthIntervalMs;
-    entry.healthTimer = setInterval(() => void this.checkHealth(entry.manifest.id), interval);
+    const check = () => void this.checkHealth(entry.manifest.id).catch(() => {});
+    entry.healthTimer = setInterval(check, interval);
     entry.healthTimer.unref();
-    void this.checkHealth(entry.manifest.id);
+    check();
   }
 
   private stopHealth(entry: Entry): void {
@@ -541,7 +568,7 @@ export class CapabilityManager {
     } catch (err) {
       result = { status: "unhealthy", message: toPhoenixError(err).message };
     }
-    if (entry.status !== "enabled") return this.view(entry); // disabled while checking
+    if (entry.status !== "enabled" || this.closed) return this.view(entry); // disabled while checking
 
     entry.health = { ...result, checkedAt: new Date().toISOString() };
     const available = result.status !== "unhealthy";
@@ -607,6 +634,7 @@ export class CapabilityManager {
   }
 
   private persist(entry: Entry): void {
+    if (this.closed) return;
     this.o.db
       .prepare(
         `INSERT INTO capabilities (id, version, status, manifest, config, updated_at, kind, endpoint)
@@ -634,6 +662,7 @@ export class CapabilityManager {
     extra: Record<string, unknown> = {},
     options: { ephemeral?: boolean } = {},
   ): void {
+    if (this.closed) return;
     const r = this.o.bus.publish(
       createEvent({
         event_type: type,
@@ -654,6 +683,7 @@ export class CapabilityManager {
     severity: "success" | "warning",
     extra: Record<string, unknown> = {},
   ): void {
+    if (this.closed) return;
     this.o.bus.publish(
       createEvent({
         event_type: type,

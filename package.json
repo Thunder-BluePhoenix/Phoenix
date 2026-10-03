@@ -18,7 +18,8 @@
     "check": "pnpm typecheck && pnpm lint && pnpm test",
     "dev:web": "pnpm --filter @phoenix/web dev",
     "build:web": "pnpm --filter @phoenix/web build",
-    "start": "pnpm build:web && pnpm dev:core"
+    "start": "pnpm build:web && pnpm dev:core",
+    "simulate": "tsx sdk/testing/src/cli.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
