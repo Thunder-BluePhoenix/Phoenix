@@ -80,6 +80,8 @@ a {
   display: flex;
   gap: 12px;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 .nav-links a {
   text-decoration: none;
@@ -113,6 +115,16 @@ a {
   font-size: 12px;
   font-weight: 600;
   color: var(--danger);
+}
+/* Phones: Fawkes, the bell and the recording pill must always fit. The state
+   stays available as Fawkes' accessible label and in the Pet Panel. */
+@media (max-width: 420px) {
+  .navbar {
+    gap: 10px;
+  }
+  .state-text {
+    display: none;
+  }
 }
 .rec-dot {
   width: 8px;

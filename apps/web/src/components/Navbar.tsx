@@ -45,7 +45,8 @@ export const Navbar = forwardRef<FawkesAvatarHandle, NavbarProps>(function Navba
             {connectionText}
           </span>
         )}
-        {!connectionText && (
+        {/* The recording pill already names the state; showing it twice crowds Fawkes off narrow screens. */}
+        {!connectionText && !state.recording && (
           <span className="state-text" aria-hidden="true">
             {visualFor(state.state).label}
           </span>
