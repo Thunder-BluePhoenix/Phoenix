@@ -9,6 +9,9 @@ const ROOT = new URL("..", import.meta.url).pathname;
 const EXTENSIONS = [".ts", ".tsx", ".js", ".mjs", ".cjs", ".rs"];
 const IGNORE_DIRS = new Set(["node_modules", "dist", ".git", "coverage", "target"]);
 const HEADER = "SPDX-License-Identifier: GPL-3.0-or-later";
+// Character artwork is CC BY-SA 4.0 (ADR-0018) and may only live under pet/assets/.
+const ART_HEADER = "SPDX-License-Identifier: CC-BY-SA-4.0";
+const ART_DIR = "pet/assets/";
 
 function* walk(dir) {
   for (const name of readdirSync(dir)) {
@@ -22,7 +25,9 @@ function* walk(dir) {
 const missing = [];
 for (const file of walk(ROOT)) {
   const head = readFileSync(file, "utf8").split("\n").slice(0, 5).join("\n");
-  if (!head.includes(HEADER)) missing.push(relative(ROOT, file));
+  const rel = relative(ROOT, file);
+  const ok = head.includes(HEADER) || (rel.startsWith(ART_DIR) && head.includes(ART_HEADER));
+  if (!ok) missing.push(rel);
 }
 
 if (missing.length > 0) {
