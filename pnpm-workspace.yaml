@@ -1,0 +1,7 @@
+packages:
+  - protocol
+  - core/*
+  - apps/*
+  - pet/*
+  - sdk/*
+  - capabilities/*
