@@ -9,18 +9,26 @@ Every distributed dependency and asset must be GPL-3.0 compatible. Update this f
 | ajv         | protocol | MIT     | ✅         |
 | ajv-formats | protocol | MIT     | ✅         |
 | ws          | core/api | MIT     | ✅         |
+| react       | apps/web | MIT     | ✅         |
+| react-dom   | apps/web | MIT     | ✅         |
 
 ## Development dependencies (not distributed)
 
-| Package     | Licence    |
-| ----------- | ---------- |
-| typescript  | Apache-2.0 |
-| vitest      | MIT        |
-| tsx         | MIT        |
-| prettier    | MIT        |
-| happy-dom   | MIT        |
-| @types/node | MIT        |
-| @types/ws   | MIT        |
+| Package                | Licence    |
+| ---------------------- | ---------- |
+| typescript             | Apache-2.0 |
+| vitest                 | MIT        |
+| tsx                    | MIT        |
+| prettier               | MIT        |
+| happy-dom              | MIT        |
+| @types/node            | MIT        |
+| @types/ws              | MIT        |
+| vite                   | MIT        |
+| @vitejs/plugin-react   | MIT        |
+| @testing-library/react | MIT        |
+| @testing-library/dom   | MIT        |
+| @types/react           | MIT        |
+| @types/react-dom       | MIT        |
 
 ## Built-in platform modules
 

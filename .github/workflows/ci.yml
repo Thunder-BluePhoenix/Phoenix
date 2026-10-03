@@ -24,6 +24,8 @@ jobs:
         run: pnpm lint
       - name: Test (includes event schema validation)
         run: pnpm test
+      - name: Build web app
+        run: pnpm build:web
 
   secret-scan:
     runs-on: ubuntu-latest

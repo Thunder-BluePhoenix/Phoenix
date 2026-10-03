@@ -2,5 +2,6 @@
   "env": "prod",
   "host": "127.0.0.1",
   "port": 4870,
-  "logLevel": "info"
+  "logLevel": "info",
+  "webRoot": "apps/web/dist"
 }

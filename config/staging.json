@@ -3,5 +3,6 @@
   "host": "127.0.0.1",
   "port": 4870,
   "logLevel": "info",
-  "dataDir": ".phoenix/staging"
+  "dataDir": ".phoenix/staging",
+  "webRoot": "apps/web/dist"
 }

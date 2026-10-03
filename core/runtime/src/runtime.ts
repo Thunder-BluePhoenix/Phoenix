@@ -122,7 +122,11 @@ export class PhoenixRuntime implements CoreServices {
   }
 
   async start(): Promise<{ host: string; port: number }> {
-    this.api = new ApiServer({ services: this, token: this.token });
+    this.api = new ApiServer({
+      services: this,
+      token: this.token,
+      ...(this.config.webRoot ? { webRoot: this.config.webRoot } : {}),
+    });
     const address = await this.api.listen(this.config.port, this.config.host);
     if (this.options.writeTokenFile ?? true) this.writeTokenFile();
 

@@ -4,7 +4,8 @@
     "protocol/**/*.ts",
     "core/*/src/**/*.ts",
     "core/*/test/**/*.ts",
-    "protocol/test/**/*.ts"
+    "protocol/test/**/*.ts",
+    "apps/web/vite.config.ts"
   ],
   "exclude": ["**/node_modules/**", "**/dist/**"]
 }
