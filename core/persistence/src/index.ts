@@ -4,3 +4,4 @@ export * from "./database";
 export * from "./event-store";
 export * from "./migrations";
 export * from "./secret-store";
+export * from "./settings-store";

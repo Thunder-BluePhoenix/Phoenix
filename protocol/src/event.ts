@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 
-export const PROTOCOL_VERSION = "1.0";
+export const PROTOCOL_VERSION = "1.1";
 
 export const SEVERITIES = ["info", "success", "warning", "error"] as const;
 export type Severity = (typeof SEVERITIES)[number];

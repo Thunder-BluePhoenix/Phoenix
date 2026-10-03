@@ -9,6 +9,7 @@ import {
   findSecrets,
   isExpired,
   type PhoenixEvent,
+  PROTOCOL_VERSION,
   validateEvent,
 } from "../src";
 import { FAKE_BEARER, FAKE_GITHUB_TOKEN } from "../testing/fake-secrets";
@@ -28,8 +29,14 @@ describe("event schema v1", () => {
   it("createEvent produces a valid envelope", () => {
     const e = valid();
     expect(e.event_id).toMatch(/^evt_/);
-    expect(e.version).toBe("1.0");
+    expect(e.version).toBe(PROTOCOL_VERSION);
     expect(validateEvent(e).ok).toBe(true);
+  });
+
+  it("stays compatible with every 1.x minor version", () => {
+    for (const version of ["1.0", "1.1", "1.42"]) {
+      expect(validateEvent({ ...valid(), version }).ok).toBe(true);
+    }
   });
 
   it("tolerates unknown future fields", () => {

@@ -124,6 +124,19 @@ export const DEFAULT_MAPPING: readonly MappingRule[] = [
   },
   { match: "git.merge_conflict_resolved", group: "git.merge", effect: { clear: true } },
 
+  // Security (Phase 11). Confirmation requests carry requires_action → WAITING.
+  {
+    match: "security.confirmation.requested",
+    effect: { state: "WAITING", explain: "Approval needed: {payload.summary}" },
+  },
+  { match: "security.confirmation.resolved", effect: { clear: true } },
+  {
+    match: "security.kill_switch.engaged",
+    group: "security.kill",
+    effect: { state: "WARNING", explain: "Emergency stop: all capabilities are blocked" },
+  },
+  { match: "security.kill_switch.disengaged", group: "security.kill", effect: { clear: true } },
+
   // Capability health
   {
     match: "capability.unavailable",
