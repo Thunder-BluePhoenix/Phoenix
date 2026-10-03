@@ -86,4 +86,29 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    name: "permissions-and-audit",
+    sql: `
+      CREATE TABLE permission_grants (
+        capability_id TEXT NOT NULL,
+        permission TEXT NOT NULL,
+        granted_by TEXT NOT NULL,
+        granted_at TEXT NOT NULL,
+        expires_at TEXT,
+        PRIMARY KEY (capability_id, permission)
+      );
+
+      CREATE TABLE audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        action TEXT NOT NULL,
+        capability_id TEXT,
+        decision TEXT NOT NULL,
+        details TEXT NOT NULL
+      );
+      CREATE INDEX audit_capability ON audit_log (capability_id);
+    `,
+  },
 ];

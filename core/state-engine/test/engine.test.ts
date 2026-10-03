@@ -301,3 +301,51 @@ describe("renderExplanation", () => {
     expect(renderExplanation("{payload.long}", e).length).toBeLessThanOrEqual(80);
   });
 });
+
+describe("security mapping", () => {
+  it("confirmation request → WAITING until resolved", () => {
+    const engine = new StateEngine();
+    const base = { source: "core", correlation_id: "conf_1" };
+    engine.handle(
+      ev("security.confirmation.requested", {
+        ...base,
+        requires_action: true,
+        payload: { summary: "Create issue" },
+      }),
+    );
+    expect(engine.snapshot()).toMatchObject({
+      state: "WAITING",
+      explanation: "Approval needed: Create issue",
+    });
+    engine.handle(ev("security.confirmation.resolved", base));
+    expect(engine.snapshot().state).toBe("IDLE");
+  });
+
+  it("kill switch shows a persistent warning", () => {
+    const engine = new StateEngine();
+    engine.handle(ev("security.kill_switch.engaged", { source: "core" }));
+    expect(engine.snapshot().state).toBe("WARNING");
+    engine.handle(ev("security.kill_switch.disengaged", { source: "core" }));
+    expect(engine.snapshot().state).toBe("IDLE");
+  });
+});
+
+describe("active tasks", () => {
+  it("lists long-running work and notifies on progress, not on keep-alives", () => {
+    const c = clock();
+    const engine = new StateEngine({ now: c.now });
+    const updates: number[] = [];
+    engine.onTasksChange((t) => void updates.push(t.length));
+    engine.handle(ev("deploy.started", { payload: { environment: "staging" } }));
+    engine.handle(ev("deploy.progress", { payload: { progress: 0.5 } }));
+    c.advance(10);
+    engine.handle(ev("deploy.progress", { payload: { progress: 0.5 } }));
+    engine.handle(ev("build.failed", { source: "ci" }));
+    expect(engine.tasks()).toEqual([
+      expect.objectContaining({ state: "DEPLOYING", title: "Deploying to staging", progress: 0.5 }),
+    ]);
+    engine.handle(ev("deploy.succeeded"));
+    expect(engine.tasks()).toEqual([]);
+    expect(updates).toEqual([1, 1, 0]);
+  });
+});

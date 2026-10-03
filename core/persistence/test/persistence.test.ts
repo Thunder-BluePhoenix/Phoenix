@@ -94,3 +94,16 @@ describe("MemorySecretStore", () => {
     expect(await s.get("github")).toBeUndefined();
   });
 });
+
+describe("SettingsStore", () => {
+  it("round-trips JSON values with a fallback", async () => {
+    const { SettingsStore } = await import("../src");
+    const s = new SettingsStore(openDatabase(":memory:"));
+    expect(s.get("pet.sleeping", false)).toBe(false);
+    s.set("pet.sleeping", true);
+    s.set("pet.sleeping", { nested: [1] });
+    expect(s.get("pet.sleeping", null)).toEqual({ nested: [1] });
+    s.delete("pet.sleeping");
+    expect(s.get("pet.sleeping", "x")).toBe("x");
+  });
+});
