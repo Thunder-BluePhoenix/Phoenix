@@ -5,7 +5,7 @@
 | Stage | Stage 1 — MVP Foundation |
 | Release target | v0.1 |
 | Priority | Critical |
-| Status | ⬜ Not started |
+| Status | ✅ Done |
 | Depends on | [Phase 01 — Repository & Open-Source Foundation](phase-01-repo-and-open-source-foundation.md) |
 | Unblocks | [Phase 03 — Core Runtime Skeleton](phase-03-core-runtime-skeleton.md) |
 
@@ -29,14 +29,14 @@ Freeze a versioned, schema-validated event envelope that every component and cap
 
 ## Tasks
 
-- [ ] Define envelope: event_id, event_type, version, source, timestamp, severity, correlation_id, causation_id, subject, scope, requires_action, ttl_ms, data_classification, payload, metadata, provenance
-- [ ] Write JSON Schema + versioning policy (consumers must tolerate unknown fields)
-- [ ] Define namespaces: pet, system, agent, build, deploy, meeting/kage, frappe, security, workflow, ai
-- [ ] Encode Appendix A initial event matrix as example fixtures
-- [ ] Define standard error codes: CAPABILITY_DISABLED, CAPABILITY_UNAVAILABLE, PERMISSION_DENIED, INVALID_EVENT, EVENT_DUPLICATE, OPERATION_TIMEOUT, RESOURCE_NOT_FOUND, ACTION_REQUIRES_CONFIRMATION, SECURITY_POLICY_BLOCKED
-- [ ] Add rule + lint: no secrets in payloads (redaction field list)
-- [ ] Generate typed bindings for core language and web
-- [ ] Publish docs/protocol/events-v1.md
+- [x] Define envelope: event_id, event_type, version, source, timestamp, severity, correlation_id, causation_id, subject, scope, requires_action, ttl_ms, data_classification, payload, metadata, provenance
+- [x] Write JSON Schema + versioning policy (consumers must tolerate unknown fields)
+- [x] Define namespaces: pet, system, agent, build, deploy, meeting/kage, frappe, security, workflow, ai
+- [x] Encode Appendix A initial event matrix as example fixtures
+- [x] Define standard error codes: CAPABILITY_DISABLED, CAPABILITY_UNAVAILABLE, PERMISSION_DENIED, INVALID_EVENT, EVENT_DUPLICATE, OPERATION_TIMEOUT, RESOURCE_NOT_FOUND, ACTION_REQUIRES_CONFIRMATION, SECURITY_POLICY_BLOCKED
+- [x] Add rule + lint: no secrets in payloads (redaction field list)
+- [x] Generate typed bindings for core language and web
+- [x] Publish docs/protocol/events-v1.md
 
 ## Deliverables
 
@@ -47,12 +47,16 @@ Freeze a versioned, schema-validated event envelope that every component and cap
 
 ## Exit criteria
 
-- [ ] Schema-compat tests pass in CI
-- [ ] Event schema v1 is frozen (ADR)
+- [x] Schema-compat tests pass in CI
+- [x] Event schema v1 is frozen (ADR)
 
 ## Notes & risks
 
 - Schema changes after freeze require a version bump and compatibility test.
+
+## Progress log
+
+- 2026-10-03: protocol/ package — JSON Schema v1, TS types, Ajv validator, no-secrets rule, error codes, canonical Fawkes states, Appendix A fixtures, docs/protocol/events-v1.md. 28 tests.
 
 ## Source documents
 

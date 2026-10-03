@@ -5,7 +5,7 @@
 | Stage | Stage 1 — MVP Foundation |
 | Release target | v0.1 |
 | Priority | Critical |
-| Status | ⬜ Not started |
+| Status | ✅ Done |
 | Depends on | [Phase 04 — Local Event Bus](phase-04-event-bus.md) |
 | Unblocks | [Phase 06 — Core API — HTTP & WebSocket](phase-06-core-api-http-websocket.md), [Phase 07 — Fawkes Pet Runtime & Placeholder Character](phase-07-fawkes-pet-runtime.md) |
 
@@ -29,13 +29,13 @@ Compute the single current Fawkes state deterministically from events and active
 
 ## Tasks
 
-- [ ] Implement priority resolver: ERROR > USER_ACTION_REQUIRED/WAITING > RECORDING > DEPLOYING > THINKING > WORKING > SUCCESS > IDLE (plus WARNING/SLEEPING/OFFLINE placement from ADR)
-- [ ] Implement declarative mapping config (no app-specific logic in animation layer)
-- [ ] Track tasks by correlation_id with progress + heartbeat; time out stale tasks
-- [ ] Expire transient states (SUCCESS, WARNING) after TTL
-- [ ] Unknown events never crash the engine — log and ignore
-- [ ] Publish pet.state.changed with human-readable explanation text
-- [ ] Full transition-matrix tests + timeout tests
+- [x] Implement priority resolver: ERROR > USER_ACTION_REQUIRED/WAITING > RECORDING > DEPLOYING > THINKING > WORKING > SUCCESS > IDLE (plus WARNING/SLEEPING/OFFLINE placement from ADR)
+- [x] Implement declarative mapping config (no app-specific logic in animation layer)
+- [x] Track tasks by correlation_id with progress + heartbeat; time out stale tasks
+- [x] Expire transient states (SUCCESS, WARNING) after TTL
+- [x] Unknown events never crash the engine — log and ignore
+- [x] Publish pet.state.changed with human-readable explanation text
+- [x] Full transition-matrix tests + timeout tests
 
 ## Deliverables
 
@@ -44,8 +44,12 @@ Compute the single current Fawkes state deterministically from events and active
 
 ## Exit criteria
 
-- [ ] All transitions deterministic and covered by tests
-- [ ] Every state carries explanatory text (animation is never the only signal)
+- [x] All transitions deterministic and covered by tests
+- [x] Every state carries explanatory text (animation is never the only signal)
+
+## Progress log
+
+- 2026-10-03: core/state-engine — ADR-0019 priority, keyed conditions, TTL + timeout→WARNING, heartbeats/progress, sleep mode, recording flag, declarative default mapping. 106 tests incl. full pairwise priority matrix.
 
 ## Source documents
 
