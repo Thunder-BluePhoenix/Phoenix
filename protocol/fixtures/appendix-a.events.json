@@ -1,0 +1,132 @@
+[
+  {
+    "event_id": "evt_fixture000",
+    "event_type": "git.commit.created",
+    "version": "1.0",
+    "source": "git",
+    "timestamp": "2026-10-03T12:00:00Z",
+    "severity": "info",
+    "payload": {
+      "repository": "phoenix",
+      "sha": "a1b2c3d"
+    }
+  },
+  {
+    "event_id": "evt_fixture001",
+    "event_type": "build.started",
+    "version": "1.0",
+    "source": "terminal",
+    "timestamp": "2026-10-03T12:00:01Z",
+    "severity": "info",
+    "payload": {
+      "command": "pnpm build"
+    }
+  },
+  {
+    "event_id": "evt_fixture002",
+    "event_type": "build.failed",
+    "version": "1.0",
+    "source": "terminal",
+    "timestamp": "2026-10-03T12:00:02Z",
+    "severity": "error",
+    "payload": {
+      "command": "pnpm build",
+      "exit_code": 1
+    }
+  },
+  {
+    "event_id": "evt_fixture003",
+    "event_type": "build.passed",
+    "version": "1.0",
+    "source": "terminal",
+    "timestamp": "2026-10-03T12:00:03Z",
+    "severity": "success",
+    "payload": {
+      "command": "pnpm build",
+      "duration_ms": 8123
+    }
+  },
+  {
+    "event_id": "evt_fixture004",
+    "event_type": "agent.started",
+    "version": "1.0",
+    "source": "codex",
+    "timestamp": "2026-10-03T12:00:04Z",
+    "severity": "info",
+    "payload": {
+      "agent": "codex",
+      "workspace": "phoenix"
+    }
+  },
+  {
+    "event_id": "evt_fixture005",
+    "event_type": "agent.waiting",
+    "version": "1.0",
+    "source": "codex",
+    "timestamp": "2026-10-03T12:00:05Z",
+    "severity": "warning",
+    "payload": {
+      "agent": "codex",
+      "prompt": "Approve file write?"
+    },
+    "requires_action": true
+  },
+  {
+    "event_id": "evt_fixture006",
+    "event_type": "deploy.started",
+    "version": "1.0",
+    "source": "github",
+    "timestamp": "2026-10-03T12:00:06Z",
+    "severity": "info",
+    "payload": {
+      "environment": "staging"
+    }
+  },
+  {
+    "event_id": "evt_fixture007",
+    "event_type": "deploy.failed",
+    "version": "1.0",
+    "source": "github",
+    "timestamp": "2026-10-03T12:00:07Z",
+    "severity": "error",
+    "payload": {
+      "environment": "staging"
+    }
+  },
+  {
+    "event_id": "evt_fixture008",
+    "event_type": "kage.meeting.recording",
+    "version": "1.0",
+    "source": "kage",
+    "timestamp": "2026-10-03T12:00:08Z",
+    "severity": "info",
+    "payload": {
+      "meeting_id": "meeting_123"
+    },
+    "correlation_id": "meeting_123"
+  },
+  {
+    "event_id": "evt_fixture009",
+    "event_type": "kage.summary.ready",
+    "version": "1.0",
+    "source": "kage",
+    "timestamp": "2026-10-03T12:00:09Z",
+    "severity": "success",
+    "payload": {
+      "meeting_id": "meeting_123",
+      "summary_id": "summary_456"
+    },
+    "correlation_id": "meeting_123"
+  },
+  {
+    "event_id": "evt_fixture010",
+    "event_type": "frappe.site.unhealthy",
+    "version": "1.0",
+    "source": "frappe",
+    "timestamp": "2026-10-03T12:00:10Z",
+    "severity": "error",
+    "payload": {
+      "site": "erp.local"
+    }
+  }
+]
