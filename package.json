@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev:core": "tsx core/runtime/src/main.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "lint": "node scripts/check-license-headers.mjs && prettier --check .",
     "format": "prettier --write .",
     "test": "vitest run",
@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "happy-dom": "^20.14.5",
     "prettier": "^3.9.9",
     "tsx": "^4.23.15",
     "typescript": "~5.9.3",
