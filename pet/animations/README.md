@@ -1,3 +1,11 @@
 # pet/animations
 
-Placeholder. Implemented in [Phase 10 — Animation System & P0 States](../../docs/phases/phase-10-animation-system-p0-states.md).
+The animation system is split by responsibility rather than living here:
+
+| Piece                                                          | Where                                                    |
+| -------------------------------------------------------------- | -------------------------------------------------------- |
+| State → animation mapping (labels, tone, urgency, loop)        | [`pet/states`](../states/src/index.ts)                   |
+| Motion itself (keyframes, still poses for reduced motion)      | the character asset, [`pet/assets`](../assets/README.md) |
+| Playing it: interruption, reduced motion, pausing while hidden | [`pet/runtime`](../runtime/src/fawkes.ts)                |
+
+Phase 10 and the [asset rules](../assets/README.md) describe the contract.

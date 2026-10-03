@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { placeholderFawkes, type FawkesAsset } from "@phoenix/pet-assets";
+import { fawkes, type FawkesAsset } from "@phoenix/pet-assets";
 import { visualFor } from "@phoenix/pet-states";
 import { attachDrag, type DragEvent } from "./interaction";
 import { BASE_CSS, ensureStyles } from "./styles";
@@ -52,7 +52,7 @@ const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 export function mountFawkes(container: HTMLElement, options: MountOptions = {}): FawkesController {
   const doc = container.ownerDocument;
   const win = doc.defaultView;
-  const asset = options.asset ?? placeholderFawkes;
+  const asset = options.asset ?? fawkes;
   ensureStyles(doc, "phoenix-fawkes-base", BASE_CSS);
   ensureStyles(doc, `phoenix-fawkes-asset-${asset.id}`, asset.css);
 

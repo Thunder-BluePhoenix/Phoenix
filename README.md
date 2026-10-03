@@ -4,6 +4,8 @@
 
 Phoenix is an open-source developer companion. It connects your developer tools, meetings and AI agents through a common event and capability architecture, and shows what is happening through **Fawkes**, an animated pet that lives in your navbar or floats on your desktop.
 
+![Fawkes in every state](docs/images/fawkes-states.svg)
+
 The first capability is **Kage**, which handles meeting capture, transcription, summaries and archiving.
 
 > Status: early development (Stage 1 — MVP Foundation). See the [phase tracker](docs/phases/TRACKER.md).

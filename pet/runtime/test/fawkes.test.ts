@@ -201,3 +201,23 @@ describe("interaction", () => {
     expect(n).toBe(0);
   });
 });
+
+describe("interruptibility (Phase 10)", () => {
+  it("ERROR pre-empts a celebration immediately, and the recording dot survives any state", () => {
+    pet = mountFawkes(container);
+    pet.update({ state: "SUCCESS" });
+    expect(attr("data-animation")).toBe("celebrate");
+    pet.update({ state: "ERROR", explanation: "Build failed", recording: true });
+    expect(attr("data-animation")).toBe("alarm");
+    expect(rec().hidden).toBe(false);
+    pet.update({ state: "IDLE", recording: true });
+    expect(attr("data-animation")).toBe("breathe");
+    expect(rec().hidden).toBe(false);
+  });
+
+  it("uses the final Fawkes artwork by default", () => {
+    pet = mountFawkes(container);
+    expect(pet.element.querySelector(".fawkes-crest-core")).toBeTruthy();
+    expect(pet.element.ownerDocument.getElementById("phoenix-fawkes-asset-fawkes")).toBeTruthy();
+  });
+});
