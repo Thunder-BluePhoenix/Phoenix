@@ -1,0 +1,18 @@
+{
+  "name": "@phoenix/runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@phoenix/config": "workspace:*",
+    "@phoenix/event-bus": "workspace:*",
+    "@phoenix/logging": "workspace:*",
+    "@phoenix/persistence": "workspace:*",
+    "@phoenix/protocol": "workspace:*",
+    "@phoenix/state-engine": "workspace:*"
+  }
+}
