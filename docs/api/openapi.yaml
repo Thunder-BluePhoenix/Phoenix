@@ -333,6 +333,37 @@ paths:
         "200": { description: Capability }
         "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
+  /api/capabilities/{id}/secrets/{name}:
+    post:
+      summary: Store a credential (e.g. Kage api_key) in OS secret storage. Write-only; values are never returned.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - {
+            name: name,
+            in: path,
+            required: true,
+            schema: { type: string, pattern: "^[a-z][a-z0-9_]{0,63}$" },
+          }
+      requestBody:
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  { type: object, required: [value], properties: { value: { type: string } } },
+              },
+          }
+      responses:
+        "200": { description: "Capability (its `secrets` lists stored names)" }
+        "400": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Remove a stored credential
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: name, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Capability }
   /api/capabilities/{id}/uninstall:
     post:
       summary: Disable, revoke permissions and remove; optionally keep its event history
@@ -383,6 +414,58 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /api/meetings:
+    get:
+      summary: Meetings from meeting capabilities (Kage), newest first. Deleted meetings never appear.
+      parameters:
+        - { name: archived, in: query, schema: { type: boolean, default: false } }
+        - { name: limit, in: query, schema: { type: integer, default: 100, maximum: 500 } }
+      responses:
+        "200": { description: "{ meetings: Meeting[] }" }
+  /api/meetings/{id}:
+    get:
+      summary: "One meeting (id = <capability>:<external id>, e.g. kage:12)"
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Meeting metadata, status and recording reference }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Delete Phoenix's copy (purged, never re-imported). The recording itself stays in Kage.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  { type: object, required: [confirm], properties: { confirm: { const: true } } },
+              },
+          }
+      responses:
+        "200": { description: Deleted }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/meetings/{id}/transcript:
+    get:
+      summary: "Transcript ({ text, segments? })"
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Transcript }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/meetings/{id}/summary:
+    get:
+      summary: "Summary ({ text, generated_by, topics, decisions, action_items, follow_up_questions })"
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Summary }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/meetings/{id}/archive:
+    post:
+      summary: 'Archive (default) or unarchive with {"archived": false}'
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Meeting }
+        "404": { $ref: "#/components/responses/Error" }
   /api/notifications:
     get:
       summary: Recent notifications, newest first, with the unread count

@@ -9,7 +9,8 @@ coverage/
 .phoenix/
 *.sqlite
 *.sqlite-*
-# Local AI-tooling state (ruflo / claude-flow)
+# Local AI-tooling state (Claude Code desktop, ruflo / claude-flow)
+.claude/
 .claude-flow/
 .swarm/
 ruvector.db

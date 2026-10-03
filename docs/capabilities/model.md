@@ -39,9 +39,12 @@ Rules enforced on registration: valid schema; `id` not reserved (`core`, `pet`, 
 |                   | Builtin                                                 | External                                                       |
 | ----------------- | ------------------------------------------------------- | -------------------------------------------------------------- |
 | Runs              | Inside Phoenix Core                                     | Its own process, any language                                  |
-| Intended for      | First-party, trusted code                               | Everything else (Kage, third parties)                          |
+| Intended for      | First-party, trusted code (Kage, Git, Terminal)         | Everything else (third parties)                                |
 | Isolation         | Every call guarded: errors contained, timeouts enforced | Process boundary — a crash never touches core                  |
 | Talks to core via | `CapabilityContext.emit()`                              | `POST /api/capabilities/{id}/events` with its capability token |
+| Credentials       | `ctx.secret(name)` (OS keychain, set via the API)       | Manages its own                                                |
+
+Builtins can emit with `{ ephemeral: true }` for events that live subscribers need but that should not be stored or shown in history (Kage uses it to import past meetings quietly). Credentials are set write-only with `POST /api/capabilities/{id}/secrets/{name} {"value": …}`; the capability view lists their names, never values. When a capability is disabled, Fawkes drops every condition it raised.
 
 ## Lifecycle
 

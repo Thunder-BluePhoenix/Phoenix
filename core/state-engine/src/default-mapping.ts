@@ -26,6 +26,7 @@ export const EVENT_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "frappe.site.healthy": "Site {subject} is healthy again",
   "kage.connected": "Connected to Kage",
   "kage.meeting.archived": "Meeting archived",
+  "kage.capture.finished": "Meeting capture finished; Kage is uploading it",
 };
 
 const MIN = 60_000;

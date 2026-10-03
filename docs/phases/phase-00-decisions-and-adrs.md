@@ -36,7 +36,7 @@ Close every open architectural question the PRDs list as 'decide before coding',
 - [x] Decide local-only vs optional remote Phoenix server
 - [x] Define capability authentication (how capabilities prove identity to the event bus)
 - [x] Define the initial AI provider abstraction (interface only)
-- [ ] Define the first Kage API contract with the Kage maintainers
+- [x] Define the first Kage API contract with the Kage maintainers (reconciled with the real Kage backend in Phase 15; ADR-0017 accepted)
 - [x] Decide the Fawkes asset format (sprite sheet / SVG / Lottie / Rive) and licence for artwork
 - [x] Write a canonical Fawkes state list: IDLE, LISTENING, THINKING, WORKING, WAITING, SUCCESS, WARNING, ERROR, RECORDING, DEPLOYING, SLEEPING, OFFLINE — with priority order
 - [x] Write ADR-001…ADR-010 into docs/adr/
@@ -63,7 +63,7 @@ Close every open architectural question the PRDs list as 'decide before coding',
 
 - 2026-10-03: ADR-0001…0019 written (docs/adr/). Stack fixed: TypeScript/Node 22 + pnpm, React + Vite, Tauri v2, SQLite (node:sqlite).
 - Open: Tauri transparent-window spike (ADR-0013 is 'Accepted (pending spike)'); do it at the start of Phase 14.
-- Open: Kage API contract v0 is a draft (docs/contracts/kage-api-v0.md) — needs confirmation from Kage maintainers before Phase 15.
+- Resolved: Kage API contract (docs/contracts/kage-api-v0.md) reconciled with Kage's actual backend in Phase 15. Still open: desktop shell spike.
 
 ## Source documents
 

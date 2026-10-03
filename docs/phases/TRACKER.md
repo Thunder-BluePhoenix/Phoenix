@@ -8,13 +8,13 @@ Single source of truth for delivery progress. Derived from the five vision docum
 
 ## Current focus
 
-Next up: **Phase 15 — Kage adapter** (needs the Kage API confirmed; can build against the mock contract), **Phase 14 — floating desktop Fawkes**, then 16 and 19.
+Next up: **Phase 16 — Meetings UI** (Kage data and API are in place), **Phase 10 — animation P0 states**, **Phase 19 — settings & privacy** (incl. secrets UI), then **Phase 14 — floating desktop Fawkes** (needs the Tauri spike).
 
 ## Summary
 
 | Stage | Release | Phases | Done |
 |---|---|---|---|
-| Stage 1 — MVP Foundation | v0.1 | 00–20 (21) | 14/21 |
+| Stage 1 — MVP Foundation | v0.1 | 00–20 (21) | 15/21 |
 | Stage 2 — Useful Fawkes (v0.2) | v0.2 | 21–26 (6) | 0/6 |
 | Stage 3 — Memory & Context (v0.3) | v0.3 | 27–29 (3) | 0/3 |
 | Stage 4 — Fawkes Becomes an Agent (v0.4) | v0.4 | 30–33 (4) | 0/4 |
@@ -25,13 +25,13 @@ Next up: **Phase 15 — Kage adapter** (needs the Kage API confirmed; can build 
 | Stage 9 — Capability Ecosystem (v0.9) | v0.9 | 41–42 (2) | 0/2 |
 | Stage 10 — Developer Operating Layer (v1.0) | v1.0 | 43–44 (2) | 0/2 |
 | Stage 11 — AI Evolution (v1.1 → v2.0) | v1.1 → v2.0 | 45–55 (11) | 0/11 |
-| **Total** | | **56** | **14/56** |
+| **Total** | | **56** | **15/56** |
 
 ## Stage 1 — MVP Foundation
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 00 | [Pre-Coding Decisions & ADRs](phase-00-decisions-and-adrs.md) | v0.1 | Critical | — | 🟨 | | Desktop spike + Kage contract confirmation open |
+| 00 | [Pre-Coding Decisions & ADRs](phase-00-decisions-and-adrs.md) | v0.1 | Critical | — | 🟨 | | Desktop spike open (Kage contract reconciled in Phase 15) |
 | 01 | [Repository & Open-Source Foundation](phase-01-repo-and-open-source-foundation.md) | v0.1 | Critical | 00 | ✅ | | |
 | 02 | [Event Protocol v1](phase-02-event-protocol-v1.md) | v0.1 | Critical | 01 | ✅ | | |
 | 03 | [Core Runtime Skeleton](phase-03-core-runtime-skeleton.md) | v0.1 | Critical | 02 | ✅ | | |
@@ -46,7 +46,7 @@ Next up: **Phase 15 — Kage adapter** (needs the Kage API confirmed; can build 
 | 12 | [Capability Manager & Manifest](phase-12-capability-manager.md) | v0.1 | Critical | 11, 06 | ✅ | | |
 | 13 | [Capability SDK, Mock Capability & Event Simulator](phase-13-capability-sdk-mock-simulator.md) | v0.1 | Critical | 12 | ✅ | | |
 | 14 | [Floating Desktop Fawkes](phase-14-floating-desktop-fawkes.md) | v0.1 | High | 07, 06 | ⬜ | | |
-| 15 | [Kage Adapter & Meeting Lifecycle](phase-15-kage-adapter-meeting-lifecycle.md) | v0.1 | Critical | 13 | ⬜ | | |
+| 15 | [Kage Adapter & Meeting Lifecycle](phase-15-kage-adapter-meeting-lifecycle.md) | v0.1 | Critical | 13 | ✅ | | |
 | 16 | [Meetings UI & Recording Indicator](phase-16-meetings-ui.md) | v0.1 | Critical | 15, 09 | ⬜ | | |
 | 17 | [Git Capability](phase-17-git-capability.md) | v0.1 | High | 13 | ✅ | | |
 | 18 | [Terminal / Process Capability](phase-18-terminal-process-capability.md) | v0.1 | High | 13 | ✅ | | |

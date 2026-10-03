@@ -18,7 +18,7 @@
 | [ADR-0014](ADR-0014-persistence-sqlite-via-node-sqlite-secrets-in-os-keychain.md)    | Persistence: SQLite via node:sqlite; secrets in OS keychain          | Accepted                 |
 | [ADR-0015](ADR-0015-topology-local-only-core-bound-to-loopback.md)                   | Topology: local-only core bound to loopback                          | Accepted                 |
 | [ADR-0016](ADR-0016-capability-authentication.md)                                    | Capability authentication                                            | Accepted                 |
-| [ADR-0017](ADR-0017-kage-api-contract-v0.md)                                         | Kage API contract v0                                                 | Draft                    |
+| [ADR-0017](ADR-0017-kage-api-contract-v0.md)                                         | Kage API contract v0                                                 | Accepted                 |
 | [ADR-0018](ADR-0018-fawkes-asset-format-and-licence.md)                              | Fawkes asset format and licence                                      | Accepted                 |
 | [ADR-0019](ADR-0019-canonical-fawkes-states-and-priority.md)                         | Canonical Fawkes states and priority                                 | Accepted                 |
 
