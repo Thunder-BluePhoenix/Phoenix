@@ -111,4 +111,12 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX audit_capability ON audit_log (capability_id);
     `,
   },
+  {
+    version: 3,
+    name: "capability-transport",
+    sql: `
+      ALTER TABLE capabilities ADD COLUMN kind TEXT NOT NULL DEFAULT 'builtin';
+      ALTER TABLE capabilities ADD COLUMN endpoint TEXT;
+    `,
+  },
 ];

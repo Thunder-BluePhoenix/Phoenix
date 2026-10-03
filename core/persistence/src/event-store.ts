@@ -86,6 +86,11 @@ export class EventStore {
     return rows.map((r) => ({ seq: r.seq, event: JSON.parse(r.envelope) as PhoenixEvent }));
   }
 
+  /** Deletes all history from one source (capability uninstall without data retention). */
+  deleteBySource(source: string): number {
+    return Number(this.db.prepare("DELETE FROM events WHERE source = ?").run(source).changes);
+  }
+
   count(): number {
     return (this.db.prepare("SELECT COUNT(*) AS n FROM events").get() as { n: number }).n;
   }

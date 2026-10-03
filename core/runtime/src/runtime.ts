@@ -3,6 +3,7 @@
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ApiServer, generateSessionToken, type CoreServices } from "@phoenix/api";
+import { CapabilityManager, type CapabilityModule } from "@phoenix/capability-manager";
 import type { PhoenixConfig } from "@phoenix/config";
 import { EventBus } from "@phoenix/event-bus";
 import { createLogger, type Logger } from "@phoenix/logging";
@@ -32,6 +33,8 @@ export interface RuntimeOptions {
   token?: string;
   /** Write the session token to <dataDir>/session.token for local clients (default true). */
   writeTokenFile?: boolean;
+  /** First-party capabilities to register at startup. */
+  capabilities?: readonly CapabilityModule[];
 }
 
 /**
@@ -47,6 +50,7 @@ export class PhoenixRuntime implements CoreServices {
   readonly bus: EventBus;
   readonly state: StateEngine;
   readonly permissions: PermissionGateway;
+  readonly capabilities: CapabilityManager;
   readonly token: string;
   private api: ApiServer | null = null;
   private ticker: NodeJS.Timeout | null = null;
@@ -75,6 +79,15 @@ export class PhoenixRuntime implements CoreServices {
       },
     });
     this.token = options.token ?? generateSessionToken();
+    this.capabilities = new CapabilityManager({
+      db: this.db,
+      bus: this.bus,
+      events: this.events,
+      permissions: this.permissions,
+      state: this.state,
+      logger: this.logger,
+    });
+    for (const module of options.capabilities ?? []) this.capabilities.registerBuiltin(module);
 
     this.bus.subscribe("state-engine", "*", (event) => {
       this.state.handle(event);
@@ -115,6 +128,7 @@ export class PhoenixRuntime implements CoreServices {
 
     this.ticker = setInterval(() => this.state.tick(), this.options.tickMs ?? 1_000);
     this.ticker.unref();
+    await this.capabilities.restore();
 
     this.bus.publish(
       createEvent({
@@ -149,6 +163,9 @@ export class PhoenixRuntime implements CoreServices {
       pet: { state: snapshot.state, recording: snapshot.recording },
       kill_switch: this.permissions.isKillSwitchEngaged(),
       active_tasks: this.state.tasks().length,
+      capabilities: this.capabilities
+        .list()
+        .map((c) => ({ id: c.id, status: c.status, health: c.health.status })),
       bus: this.bus.metrics(),
       websocket: this.api?.hub.metrics() ?? null,
     };
@@ -159,6 +176,7 @@ export class PhoenixRuntime implements CoreServices {
     this.stopping ??= (async () => {
       if (this.ticker) clearInterval(this.ticker);
       await this.api?.close();
+      await this.capabilities.close();
       await this.bus.drain();
       if (this.options.writeTokenFile ?? true) {
         rmSync(join(this.config.dataDir, SESSION_TOKEN_FILE), { force: true });

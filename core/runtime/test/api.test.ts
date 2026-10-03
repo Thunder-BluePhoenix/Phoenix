@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { request } from "node:http";
+import { createServer, request } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import { connect, event, startCore } from "./helpers";
 
@@ -225,11 +225,104 @@ describe("permissions, confirmations, audit, kill switch", () => {
     await runtime.bus.drain();
     expect((await api("GET", "/api/pet/state")).json.state).toBe("IDLE");
   });
+});
 
-  it("capability endpoints exist but have no registry yet", async () => {
-    const { api } = await start();
-    expect((await api("GET", "/api/capabilities")).json).toEqual({ capabilities: [] });
-    expect((await api("POST", "/api/capabilities/kage/enable", {})).status).toBe(404);
+describe("capabilities", () => {
+  const manifest = {
+    id: "demo",
+    name: "Demo",
+    version: "1.0.0",
+    description: "Demo capability",
+    license: "GPL-3.0-or-later",
+    events: ["build.*"],
+    permissions: ["repository_access"],
+    commands: [
+      {
+        name: "status",
+        description: "Status",
+        side_effect: "read",
+        permissions: ["repository_access"],
+      },
+    ],
+  };
+  const demo = (status: () => unknown) => [{ manifest: manifest as never, commands: { status } }];
+
+  it("builtin: list, enable, run a command, poll the operation, disable", async () => {
+    const { api } = await start({}, { capabilities: demo(() => ({ clean: true })) });
+    expect((await api("GET", "/api/capabilities")).json.capabilities).toEqual([
+      expect.objectContaining({ id: "demo", status: "installed", kind: "builtin" }),
+    ]);
+    expect((await api("POST", "/api/capabilities/demo/commands/status", {})).json.code).toBe(
+      "CAPABILITY_DISABLED",
+    );
+    expect((await api("POST", "/api/capabilities/demo/enable", {})).json.status).toBe("enabled");
+    const op = await api("POST", "/api/capabilities/demo/commands/status", { input: {} });
+    expect(op.status).toBe(202);
+    let polled;
+    for (let i = 0; i < 50; i++) {
+      polled = (await api("GET", `/api/operations/${op.json.id}`)).json;
+      if (polled.status === "succeeded") break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(polled).toMatchObject({ status: "succeeded", result: { clean: true } });
+    expect((await api("POST", "/api/capabilities/demo/disable", {})).json.status).toBe("disabled");
+    expect((await api("GET", "/api/capabilities/nope")).status).toBe(404);
+    expect((await api("GET", "/api/operations/op_nope")).status).toBe(404);
+  });
+
+  it("external: register over the API and submit events with the capability token", async () => {
+    const { api, runtime } = await start();
+    const ext = createServer((req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(req.url === "/health" ? { status: "healthy" } : { ok: true }));
+    });
+    await new Promise<void>((r) => ext.listen(0, "127.0.0.1", () => r()));
+    const endpoint = `http://127.0.0.1:${(ext.address() as { port: number }).port}`;
+    try {
+      const reg = await api("POST", "/api/capabilities/register", { manifest, endpoint });
+      expect(reg.status).toBe(201);
+      const capToken = reg.json.token as string;
+      expect(reg.json.capability).toMatchObject({ id: "demo", kind: "external" });
+      await api("POST", "/api/capabilities/demo/enable", {});
+
+      const post = (body: unknown, token: string) =>
+        api("POST", "/api/capabilities/demo/events", body, {
+          authorization: "",
+          "x-phoenix-capability-token": token,
+        });
+      expect((await post(event("build.started", { source: "demo" }), capToken)).status).toBe(202);
+      expect((await post(event("build.started", { source: "demo" }), "wrong")).status).toBe(401);
+      expect((await post(event("deploy.started", { source: "demo" }), capToken)).json.code).toBe(
+        "SECURITY_POLICY_BLOCKED",
+      );
+      expect((await post(event("build.passed", { source: "terminal" }), capToken)).json.code).toBe(
+        "SECURITY_POLICY_BLOCKED",
+      );
+      await runtime.bus.drain();
+      expect((await api("GET", "/api/pet/state")).json.state).toBe("WORKING");
+
+      const remote = await api("POST", "/api/capabilities/register", {
+        manifest,
+        endpoint: "http://192.168.1.2:1",
+      });
+      expect(remote.status).toBe(403);
+      expect(
+        (await api("POST", "/api/capabilities/demo/uninstall", { retain_data: false })).status,
+      ).toBe(200);
+      expect((await api("GET", "/api/capabilities")).json.capabilities).toEqual([]);
+    } finally {
+      ext.close();
+    }
+  });
+
+  it("config endpoint rejects secrets", async () => {
+    const { api } = await start({}, { capabilities: demo(() => 1) });
+    const secret = await api("POST", "/api/capabilities/demo/config", {
+      config: { password: "x" },
+    });
+    expect(secret.status).toBe(403);
+    const ok = await api("POST", "/api/capabilities/demo/config", { config: { branch: "main" } });
+    expect(ok.json.config).toEqual({ branch: "main" });
   });
 });
 

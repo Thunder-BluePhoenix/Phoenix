@@ -140,7 +140,14 @@ export const DEFAULT_MAPPING: readonly MappingRule[] = [
   // Capability health
   {
     match: "capability.unavailable",
-    effect: { state: "WARNING", explain: "{subject} is unavailable" },
+    effect: { state: "WARNING", explain: "{payload.name} is unavailable" },
+  },
+  {
+    match: "capability.failed",
+    effect: { state: "ERROR", explain: "{payload.name} failed to start" },
   },
   { match: "capability.available", effect: { clear: true } },
+  { match: "capability.enabled", effect: { clear: true } },
+  { match: "capability.disabled", effect: { clear: true } },
+  { match: "capability.uninstalled", effect: { clear: true } },
 ];

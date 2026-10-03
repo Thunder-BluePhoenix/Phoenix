@@ -8,6 +8,7 @@ Every distributed dependency and asset must be GPL-3.0 compatible. Update this f
 | ----------- | -------- | ------- | ---------- |
 | ajv         | protocol | MIT     | ✅         |
 | ajv-formats | protocol | MIT     | ✅         |
+| ws          | core/api | MIT     | ✅         |
 
 ## Development dependencies (not distributed)
 
@@ -17,16 +18,18 @@ Every distributed dependency and asset must be GPL-3.0 compatible. Update this f
 | vitest      | MIT        |
 | tsx         | MIT        |
 | prettier    | MIT        |
+| happy-dom   | MIT        |
 | @types/node | MIT        |
+| @types/ws   | MIT        |
 
 ## Built-in platform modules
 
-| Module                               | Licence |
-| ------------------------------------ | ------- |
-| Node.js (`node:sqlite`, `node:http`) | MIT     |
+| Module                                              | Licence |
+| --------------------------------------------------- | ------- |
+| Node.js (`node:sqlite`, `node:http`, `node:crypto`) | MIT     |
 
 ## Artwork, audio and fonts
 
-| Asset                                                                                 | Author | Licence | Provenance |
-| ------------------------------------------------------------------------------------- | ------ | ------- | ---------- |
-| _(none yet — Fawkes artwork arrives in Phase 10, licensed CC BY-SA 4.0 per ADR-0018)_ |        |         |            |
+| Asset                                                | Author               | Licence      | Provenance                                                                                    |
+| ---------------------------------------------------- | -------------------- | ------------ | --------------------------------------------------------------------------------------------- |
+| Placeholder Fawkes (`pet/assets/src/placeholder.ts`) | Phoenix contributors | CC BY-SA 4.0 | Original, drawn for Phoenix in Phase 07. Preview: `docs/images/fawkes-placeholder-states.png` |

@@ -243,7 +243,7 @@ paths:
         "413": { $ref: "#/components/responses/Error" }
   /api/capabilities:
     get:
-      summary: Installed capabilities (registry arrives in Phase 12)
+      summary: Installed capabilities, including disconnected external ones
       responses:
         "200":
           {
@@ -274,6 +274,105 @@ paths:
       responses:
         "200": { description: Capability }
         "404": { $ref: "#/components/responses/Error" }
+  /api/capabilities/register:
+    post:
+      summary: Register an external capability process (loopback endpoint only)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [manifest, endpoint]
+              properties:
+                manifest: { $ref: "../../protocol/schemas/capability-manifest-v1.schema.json" }
+                endpoint: { type: string, example: "http://127.0.0.1:8765" }
+      responses:
+        "201":
+          description: Registered. `token` authenticates the capability's events (ADR-0016).
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      properties: { capability: { type: object }, token: { type: string } },
+                    },
+                },
+            }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/capabilities/{id}:
+    get:
+      summary: One capability
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Capability }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/capabilities/{id}/config:
+    post:
+      summary: Set configuration (validated against config_schema; secrets rejected)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          {
+            application/json:
+              { schema: { type: object, properties: { config: { type: object } } } },
+          }
+      responses:
+        "200": { description: Capability }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/capabilities/{id}/uninstall:
+    post:
+      summary: Disable, revoke permissions and remove; optionally keep its event history
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  { type: object, properties: { retain_data: { type: boolean, default: false } } },
+              },
+          }
+      responses:
+        "200": { description: Removed }
+  /api/capabilities/{id}/commands/{command}:
+    post:
+      summary: Start a command. Returns an operation immediately; it may wait for user confirmation.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: command, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { input: {} } } } }
+      responses:
+        "202": { description: Operation started }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/operations/{id}:
+    get:
+      summary: Status and result of a command operation
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: "Operation (pending | running | succeeded | failed)" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/capabilities/{id}/events:
+    post:
+      summary: Submit an event as an external capability
+      description: Authenticated with the `X-Phoenix-Capability-Token` header instead of the session token. Source must equal the capability id and the type must be declared in its manifest.
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: X-Phoenix-Capability-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        content: { application/json: { schema: { $ref: "#/components/schemas/Event" } } }
+      responses:
+        "202": { description: Accepted }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /api/permissions:
     get:
       summary: Active permission grants

@@ -1,5 +1,5 @@
 {
-  "name": "@phoenix/runtime",
+  "name": "@phoenix/capability-manager",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,18 +8,11 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@phoenix/api": "workspace:*",
-    "@phoenix/config": "workspace:*",
     "@phoenix/event-bus": "workspace:*",
     "@phoenix/logging": "workspace:*",
     "@phoenix/permissions": "workspace:*",
     "@phoenix/persistence": "workspace:*",
     "@phoenix/protocol": "workspace:*",
-    "@phoenix/state-engine": "workspace:*",
-    "@phoenix/capability-manager": "workspace:*"
-  },
-  "devDependencies": {
-    "ws": "^8.18.0",
-    "@types/ws": "^8.18.1"
+    "@phoenix/state-engine": "workspace:*"
   }
 }

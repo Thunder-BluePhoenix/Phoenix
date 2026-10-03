@@ -67,17 +67,20 @@ Unknown extra fields are allowed and must be ignored by consumers that do not un
 
 ## Error codes
 
-| Code                           | Meaning                        |
-| ------------------------------ | ------------------------------ |
-| `CAPABILITY_DISABLED`          | Capability disabled            |
-| `CAPABILITY_UNAVAILABLE`       | Capability unreachable         |
-| `PERMISSION_DENIED`            | Permission missing             |
-| `INVALID_EVENT`                | Schema invalid                 |
-| `EVENT_DUPLICATE`              | Already processed              |
-| `OPERATION_TIMEOUT`            | Operation timed out            |
-| `RESOURCE_NOT_FOUND`           | Resource unavailable           |
-| `ACTION_REQUIRES_CONFIRMATION` | Approval required              |
-| `SECURITY_POLICY_BLOCKED`      | Security policy blocked action |
+| Code                           | Meaning                                           |
+| ------------------------------ | ------------------------------------------------- |
+| `CAPABILITY_DISABLED`          | Capability disabled                               |
+| `CAPABILITY_UNAVAILABLE`       | Capability unreachable                            |
+| `PERMISSION_DENIED`            | Permission missing                                |
+| `INVALID_EVENT`                | Schema invalid                                    |
+| `EVENT_DUPLICATE`              | Already processed                                 |
+| `OPERATION_TIMEOUT`            | Operation timed out                               |
+| `RESOURCE_NOT_FOUND`           | Resource unavailable                              |
+| `ACTION_REQUIRES_CONFIRMATION` | Approval required                                 |
+| `SECURITY_POLICY_BLOCKED`      | Security policy blocked action                    |
+| `INVALID_REQUEST`              | Request malformed (API, since 1.1)                |
+| `UNAUTHENTICATED`              | Missing or invalid session token (API, since 1.1) |
+| `INTERNAL_ERROR`               | Unexpected internal error (API, since 1.1)        |
 
 ## Changelog
 

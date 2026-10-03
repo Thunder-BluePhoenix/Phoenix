@@ -93,7 +93,11 @@ export class ApiServer {
       if (!route.public) this.authenticate(req);
 
       const result = await route.handler({ req, res, url, params, body: () => readJsonBody(req) });
-      sendJson(res, res.statusCode === 202 ? 202 : 200, result);
+      sendJson(
+        res,
+        res.statusCode === 202 || res.statusCode === 201 ? res.statusCode : 200,
+        result,
+      );
     } catch (err) {
       if (!(err instanceof PhoenixError))
         logger.error("API handler failed", { path: req.url, error: err });

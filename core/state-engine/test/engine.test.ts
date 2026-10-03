@@ -256,11 +256,15 @@ describe("robustness", () => {
     expect(engine.handle(ev("pet.state.changed", { requires_action: true }))).toBe(false);
   });
 
-  it("capability rules take precedence", () => {
+  it("capability rules take precedence and can be removed", () => {
     const engine = new StateEngine();
-    engine.addRules([{ match: "build.started", effect: { state: "THINKING" } }]);
+    const rules = [{ match: "build.started", effect: { state: "THINKING" as const } }];
+    engine.addRules(rules);
     engine.handle(ev("build.started"));
     expect(engine.snapshot().state).toBe("THINKING");
+    engine.removeRules(rules);
+    engine.handle(ev("build.started"));
+    expect(engine.snapshot().state).toBe("WORKING");
   });
 });
 

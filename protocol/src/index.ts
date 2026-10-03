@@ -6,3 +6,4 @@ export * from "./secrets";
 export * from "./validate";
 export * from "./fawkes-state";
 export * from "./permissions";
+export * from "./manifest";
