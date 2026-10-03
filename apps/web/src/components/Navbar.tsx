@@ -18,21 +18,28 @@ export interface NavbarProps {
   connection: ConnectionStatus;
   panelOpen: boolean;
   panelId: string;
+  /** Current hash route, to mark the active link. */
+  route?: string;
   onToggleFawkes: () => void;
 }
 
 export const Navbar = forwardRef<FawkesAvatarHandle, NavbarProps>(function Navbar(
-  { state, connection, panelOpen, panelId, onToggleFawkes },
+  { state, connection, panelOpen, panelId, route = "/", onToggleFawkes },
   ref,
 ) {
   const connectionText = CONNECTION_TEXT[connection];
   return (
     <header className="navbar">
-      <a className="brand" href="/">
-        <span aria-hidden="true">🐦‍🔥</span> Phoenix
+      <a className="brand" href="#/" aria-label="Phoenix home">
+        <span aria-hidden="true">🐦‍🔥</span> <span className="brand-name">Phoenix</span>
       </a>
       <nav aria-label="Main" className="nav-links">
-        <a href="/">Home</a>
+        <a href="#/" aria-current={route === "/" ? "page" : undefined}>
+          Home
+        </a>
+        <a href="#/meetings" aria-current={route.startsWith("/meetings") ? "page" : undefined}>
+          Meetings
+        </a>
       </nav>
       <div className="navbar-fawkes">
         {state.recording && (

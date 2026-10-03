@@ -5,6 +5,7 @@ import { useState } from "react";
 import { formatSince, SIDE_EFFECT_LABEL } from "../core/format";
 import { useAction, useConfirmations, useKillSwitch } from "../core/hooks";
 import type { ActiveTask, Confirmation, PetState } from "../core/types";
+import { MeetingsGlance } from "./Meetings";
 
 export function Overview({ state, tasks }: { state: PetState; tasks: ActiveTask[] }) {
   const visual = visualFor(state.state);
@@ -41,12 +42,13 @@ export function Overview({ state, tasks }: { state: PetState; tasks: ActiveTask[
           </ul>
         )}
       </section>
+      <MeetingsGlance />
       <QuickActions state={state} />
     </div>
   );
 }
 
-function Approvals() {
+export function Approvals() {
   const { data: pending, error } = useConfirmations();
   if (error) return <p className="error-text">{error}</p>;
   if (pending.length === 0) return null;

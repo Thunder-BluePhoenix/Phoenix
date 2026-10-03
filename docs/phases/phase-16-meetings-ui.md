@@ -5,7 +5,7 @@
 | Stage | Stage 1 — MVP Foundation |
 | Release target | v0.1 |
 | Priority | Critical |
-| Status | ⬜ Not started |
+| Status | ✅ Done |
 | Depends on | [Phase 15 — Kage Adapter & Meeting Lifecycle](phase-15-kage-adapter-meeting-lifecycle.md), [Phase 09 — Pet Panel, Activity Feed & Notifications](phase-09-pet-panel-activity-notifications.md) |
 | Unblocks | [Phase 20 — Hardening, E2E, Observability & v0.1 Release](phase-20-hardening-and-v0-1-release.md), [Phase 35 — Kage Decisions & Action-Item Extraction](phase-35-kage-decisions-and-action-items.md) |
 
@@ -29,15 +29,15 @@ Let users start/stop meetings, always see recording status, and review transcrip
 
 ## Tasks
 
-- [ ] Meetings section in Pet Panel + dedicated pages
-- [ ] Start / Stop buttons with explicit confirmation
-- [ ] Persistent RECORDING indicator everywhere Fawkes is visible
-- [ ] Processing progress (transcribing / summarising)
-- [ ] Transcript view with timestamps + speakers
-- [ ] Summary view with topics
-- [ ] Show storage location; delete with confirmation; export
-- [ ] Approval dialog stub: any derived external action requires confirmation (no side effect before)
-- [ ] E2E: start → transcript → summary visible
+- [x] Meetings section in Pet Panel + dedicated pages (`#/meetings`, `#/meetings/<id>`)
+- [x] Start with explicit confirmation (permission-gateway approval shown inline). **Stop is not offered**: Kage's bot cannot stop gracefully (contract asks); the UI says how to stop (remove the bot from the call)
+- [x] Persistent RECORDING indicator everywhere Fawkes is visible today: navbar pill, Fawkes dot, Pet Panel, Meetings pages (desktop Fawkes arrives in Phase 14)
+- [x] Processing progress (processing / transcribing / summarising, step n of 3), live
+- [x] Transcript view with timestamps + speakers when segments exist (Kage currently provides plain text, shown as-is)
+- [x] Summary view with topics, decisions, action items, follow-up questions; labels AI vs extractive summary
+- [x] Show storage location; delete with confirmation (two-step, Phoenix copy); export (Markdown download); archive
+- [x] Derived actions: action items are shown with a note that Phoenix never acts on them by itself; any capability command with side effects already waits for approval in the permission gateway (Phase 11). Task creation lands in Phase 36
+- [x] E2E: start → approve → recording → transcript → summary visible (run in the real app against a stand-in Kage and bot; automated browser E2E belongs to Phase 20)
 
 ## Deliverables
 
@@ -45,10 +45,16 @@ Let users start/stop meetings, always see recording status, and review transcrip
 
 ## Exit criteria
 
-- [ ] US-05: recording visibly indicated
-- [ ] US-06: transcript + summary available
-- [ ] US-07: no external side effect before confirmation
-- [ ] PRD Phase 5 exit: end-to-end meeting workflow
+- [x] US-05: recording visibly indicated
+- [x] US-06: transcript + summary available
+- [x] US-07: no external side effect before confirmation (verified: no bot process and no capture events until Approve)
+- [x] PRD Phase 5 exit: end-to-end meeting workflow
+
+## Implementation notes
+
+- `apps/web/src/components/Meetings.tsx`: MeetingsPage, MeetingDetail, MeetingsGlance (Pet Panel); hash routing via `useHashRoute`, no router dependency.
+- Content (transcript/summary) is fetched from Kage just after the status event, so the detail view re-checks for up to 5 s until it lands.
+- Navbar at phone width: the brand word and state label hide below 420 px so Fawkes, the bell, the recording pill and both nav links always fit.
 
 ## Source documents
 

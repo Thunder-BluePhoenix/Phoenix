@@ -8,13 +8,13 @@ Single source of truth for delivery progress. Derived from the five vision docum
 
 ## Current focus
 
-Next up: **Phase 16 — Meetings UI** (Kage data and API are in place), **Phase 10 — animation P0 states**, **Phase 19 — settings & privacy** (incl. secrets UI), then **Phase 14 — floating desktop Fawkes** (needs the Tauri spike).
+Next up: **Phase 10 — animation P0 states**, **Phase 19 — settings & privacy** (incl. secrets UI), then **Phase 14 — floating desktop Fawkes** (needs the Tauri spike).
 
 ## Summary
 
 | Stage | Release | Phases | Done |
 |---|---|---|---|
-| Stage 1 — MVP Foundation | v0.1 | 00–20 (21) | 15/21 |
+| Stage 1 — MVP Foundation | v0.1 | 00–20 (21) | 16/21 |
 | Stage 2 — Useful Fawkes (v0.2) | v0.2 | 21–26 (6) | 0/6 |
 | Stage 3 — Memory & Context (v0.3) | v0.3 | 27–29 (3) | 0/3 |
 | Stage 4 — Fawkes Becomes an Agent (v0.4) | v0.4 | 30–33 (4) | 0/4 |
@@ -25,7 +25,7 @@ Next up: **Phase 16 — Meetings UI** (Kage data and API are in place), **Phase 
 | Stage 9 — Capability Ecosystem (v0.9) | v0.9 | 41–42 (2) | 0/2 |
 | Stage 10 — Developer Operating Layer (v1.0) | v1.0 | 43–44 (2) | 0/2 |
 | Stage 11 — AI Evolution (v1.1 → v2.0) | v1.1 → v2.0 | 45–55 (11) | 0/11 |
-| **Total** | | **56** | **15/56** |
+| **Total** | | **56** | **16/56** |
 
 ## Stage 1 — MVP Foundation
 
@@ -47,7 +47,7 @@ Next up: **Phase 16 — Meetings UI** (Kage data and API are in place), **Phase 
 | 13 | [Capability SDK, Mock Capability & Event Simulator](phase-13-capability-sdk-mock-simulator.md) | v0.1 | Critical | 12 | ✅ | | |
 | 14 | [Floating Desktop Fawkes](phase-14-floating-desktop-fawkes.md) | v0.1 | High | 07, 06 | ⬜ | | |
 | 15 | [Kage Adapter & Meeting Lifecycle](phase-15-kage-adapter-meeting-lifecycle.md) | v0.1 | Critical | 13 | ✅ | | |
-| 16 | [Meetings UI & Recording Indicator](phase-16-meetings-ui.md) | v0.1 | Critical | 15, 09 | ⬜ | | |
+| 16 | [Meetings UI & Recording Indicator](phase-16-meetings-ui.md) | v0.1 | Critical | 15, 09 | ✅ | | |
 | 17 | [Git Capability](phase-17-git-capability.md) | v0.1 | High | 13 | ✅ | | |
 | 18 | [Terminal / Process Capability](phase-18-terminal-process-capability.md) | v0.1 | High | 13 | ✅ | | |
 | 19 | [Settings & Privacy Controls](phase-19-settings-and-privacy.md) | v0.1 | High | 09, 12 | ⬜ | | |

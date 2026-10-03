@@ -3,7 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "./client";
 import { useClient } from "./context";
-import type { CapabilityView, Confirmation, Notification, StoredEvent } from "./types";
+import type {
+  CapabilityView,
+  Confirmation,
+  Meeting,
+  Notification,
+  StoredEvent,
+  Summary,
+  Transcript,
+} from "./types";
 
 /** Loads a resource and reloads it whenever `shouldReload` matches a live event. */
 function useLiveResource<T>(
@@ -177,4 +185,86 @@ export function useAction() {
     [client],
   );
   return { run, busy, error };
+}
+
+const isMeetingEvent = (t: string) => t.startsWith("kage.");
+
+export function useMeetings(archived = false) {
+  return useLiveResource<Meeting[]>(
+    `/api/meetings${archived ? "?archived=true" : ""}`,
+    (j) => j.meetings,
+    [],
+    isMeetingEvent,
+  );
+}
+
+/** One meeting with its transcript and summary, kept live. */
+export function useMeeting(id: string) {
+  const client = useClient();
+  const [data, setData] = useState<{
+    meeting: Meeting | null;
+    transcript: Transcript | null;
+    summary: Summary | null;
+  }>({ meeting: null, transcript: null, summary: null });
+  const [error, setError] = useState<string | null>(null);
+  const [missing, setMissing] = useState(false);
+
+  const reload = useCallback(async () => {
+    const path = `/api/meetings/${encodeURIComponent(id)}`;
+    const optional = <T>(p: string) => client.request<T>("GET", p).catch(() => null);
+    try {
+      const meeting = await client.request<Meeting>("GET", path);
+      const [transcript, summary] = await Promise.all([
+        meeting.has_transcript ? optional<Transcript>(`${path}/transcript`) : null,
+        meeting.has_summary ? optional<Summary>(`${path}/summary`) : null,
+      ]);
+      setData({ meeting, transcript, summary });
+      setError(null);
+      setMissing(false);
+      return meeting;
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "RESOURCE_NOT_FOUND") setMissing(true);
+      else setError(err instanceof ApiError ? err.message : "Phoenix Core is unreachable");
+      return null;
+    }
+  }, [client, id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let retries = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = async () => {
+      const m = await reload();
+      // Content is fetched from Kage just after the status event; check back until it lands.
+      const done = m?.status === "ready" || m?.status === "transcribed";
+      if (!cancelled && m && done && !m.has_transcript && retries++ < 5) {
+        timer = setTimeout(() => void load(), 1_000);
+      }
+    };
+    void load();
+    const off = client.eventCreated.on(({ event }) => {
+      if (isMeetingEvent(event.event_type)) {
+        retries = 0;
+        void load();
+      }
+    });
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      off();
+    };
+  }, [client, reload]);
+
+  return { ...data, error, missing, reload };
+}
+
+/** Current hash route without the leading "#" ("/" when empty). */
+export function useHashRoute(): string {
+  const [hash, setHash] = useState(() => window.location.hash);
+  useEffect(() => {
+    const onChange = () => setHash(window.location.hash);
+    window.addEventListener("hashchange", onChange);
+    return () => window.removeEventListener("hashchange", onChange);
+  }, []);
+  return hash.replace(/^#/, "") || "/";
 }

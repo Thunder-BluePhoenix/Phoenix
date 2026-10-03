@@ -122,7 +122,8 @@ a {
   .navbar {
     gap: 10px;
   }
-  .state-text {
+  .state-text,
+  .brand-name {
     display: none;
   }
 }
@@ -499,4 +500,124 @@ a {
 }
 .notif-item.read .notif-title {
   color: var(--muted);
+}
+
+/* ── Meetings (Phase 16) ─────────────────────────────────────────────────── */
+.nav-links a[aria-current="page"] {
+  color: inherit;
+  font-weight: 600;
+}
+.h3 {
+  font-size: 1rem;
+  margin: 0 0 8px;
+}
+.meetings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 760px;
+}
+.meetings h1 {
+  margin: 0;
+}
+.recording-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--danger);
+  border-left-width: 4px;
+  border-radius: 8px;
+  color: var(--danger);
+}
+.recording-banner .small {
+  color: inherit;
+}
+.start-meeting {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.start-meeting label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+.start-meeting input {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  min-width: 0;
+}
+.start-meeting .btn {
+  align-self: flex-start;
+}
+.list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.list-head .h3 {
+  margin: 0;
+}
+.meeting-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.meeting-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+}
+.meeting-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.meeting-status progress {
+  width: 60px;
+}
+.status-failed {
+  color: var(--danger);
+}
+.status-ready,
+.status-transcribed {
+  color: var(--success, #2f9e44);
+}
+.topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  font-size: 12px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.prose {
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.transcript {
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+code.break {
+  overflow-wrap: anywhere;
 }

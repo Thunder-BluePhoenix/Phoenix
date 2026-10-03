@@ -26,7 +26,8 @@ export function fakeApi(routes: Record<string, Handler> = {}) {
     const method = init?.method ?? "GET";
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ method, path: url.pathname + url.search, body });
-    const handler = table[`${method} ${url.pathname}`];
+    // Decoded like core's router does (kage%3A1 → kage:1).
+    const handler = table[`${method} ${decodeURIComponent(url.pathname)}`];
     if (!handler) {
       if (method === "POST") return new Response("{}", { status: 200 });
       return new Response(JSON.stringify({ code: "RESOURCE_NOT_FOUND", message: "Not found" }), {

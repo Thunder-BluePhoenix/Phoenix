@@ -81,3 +81,37 @@ export interface CapabilityView {
 }
 
 export type ConnectionStatus = "connecting" | "online" | "offline" | "unauthenticated";
+
+/** GET /api/meetings/{id} (Phoenix's record of a Kage meeting). */
+export interface Meeting {
+  id: string;
+  capability_id: string;
+  external_id: string;
+  title: string | null;
+  status: string;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  participants: string[] | null;
+  recording: { location: string; retention: string } | null;
+  has_transcript: boolean;
+  has_summary: boolean;
+  archived_at: string | null;
+  updated_at: string;
+}
+
+export interface Transcript {
+  text: string;
+  segments?: { start_ms: number; end_ms: number; speaker?: string | null; text: string }[];
+}
+
+export type ActionItem = string | { text: string; owner?: string | null; due?: string | null };
+
+export interface Summary {
+  text: string;
+  generated_by?: "ai" | "extractive";
+  topics?: string[];
+  decisions?: string[];
+  action_items?: ActionItem[];
+  follow_up_questions?: string[];
+}
