@@ -4,7 +4,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { EventBus, PublishResult } from "@phoenix/event-bus";
 import { silentLogger, type Logger } from "@phoenix/logging";
 import type { PermissionGateway } from "@phoenix/permissions";
-import type { Database, EventStore } from "@phoenix/persistence";
+import type { Database, EventStore, SecretStore } from "@phoenix/persistence";
 import {
   compileSchema,
   createEvent,
@@ -43,7 +43,11 @@ export interface CapabilityManagerOptions {
   callTimeoutMs?: number;
   defaultHealthIntervalMs?: number;
   defaultHealthTimeoutMs?: number;
+  /** OS secret storage for capability credentials (ctx.secret). */
+  secrets?: SecretStore;
 }
+
+const SECRET_NAME = /^[a-z][a-z0-9_]{0,63}$/;
 
 interface Entry {
   manifest: CapabilityManifest;
@@ -319,6 +323,8 @@ export class CapabilityManager {
     }
     if (entry.rules) this.o.state.removeRules(entry.rules);
     delete entry.rules;
+    // A stopped capability is no longer working, recording or warning about anything.
+    this.o.state.clearSource(id);
     entry.status = "disabled";
     entry.disabledReason = reason;
     entry.health = { status: "unknown" };
@@ -356,11 +362,70 @@ export class CapabilityManager {
     return this.view(entry);
   }
 
-  /** Disables, revokes permissions and removes the capability. */
+  // ── Secrets ───────────────────────────────────────────────────────────────
+
+  /** Stores a credential in OS secret storage; the database only keeps its name. */
+  async setSecret(id: string, name: string, value: string, by = "user"): Promise<CapabilityView> {
+    const entry = this.require(id);
+    const store = this.secretStore();
+    if (!SECRET_NAME.test(name)) {
+      throw new PhoenixError(ErrorCode.INVALID_REQUEST, "Invalid secret name");
+    }
+    if (!value || value.length > 8192) {
+      throw new PhoenixError(ErrorCode.INVALID_REQUEST, "Secret value must be 1-8192 characters");
+    }
+    await store.set(secretRef(id, name), value);
+    this.o.db
+      .prepare(
+        `INSERT INTO credentials (id, capability_id, secret_ref, created_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET created_at = excluded.created_at`,
+      )
+      .run(`${id}/${name}`, id, secretRef(id, name), new Date().toISOString());
+    this.o.permissions.audit.record({
+      actor: by,
+      action: "secret.set",
+      capabilityId: id,
+      decision: "info",
+      details: { name },
+    });
+    return this.view(entry);
+  }
+
+  async deleteSecret(id: string, name: string, by = "user"): Promise<CapabilityView> {
+    const entry = this.require(id);
+    await this.secretStore().delete(secretRef(id, name));
+    this.o.db.prepare("DELETE FROM credentials WHERE id = ?").run(`${id}/${name}`);
+    this.o.permissions.audit.record({
+      actor: by,
+      action: "secret.deleted",
+      capabilityId: id,
+      decision: "info",
+      details: { name },
+    });
+    return this.view(entry);
+  }
+
+  private secretNames(id: string): string[] {
+    return (
+      this.o.db
+        .prepare("SELECT id FROM credentials WHERE capability_id = ? ORDER BY id")
+        .all(id) as { id: string }[]
+    ).map((r) => r.id.slice(id.length + 1));
+  }
+
+  private secretStore(): SecretStore {
+    if (!this.o.secrets) {
+      throw new PhoenixError(ErrorCode.CAPABILITY_UNAVAILABLE, "No secret storage is available");
+    }
+    return this.o.secrets;
+  }
+
+  /** Disables, revokes permissions and removes the capability (and its secrets). */
   async uninstall(id: string, options: { retainData?: boolean } = {}): Promise<void> {
     const entry = this.require(id);
     await this.disable(id, "uninstall");
     this.o.permissions.revoke(id);
+    for (const name of this.secretNames(id)) await this.deleteSecret(id, name, "uninstall");
     if (!options.retainData) this.o.events?.deleteBySource(id);
     this.entries.delete(id);
     this.o.db.prepare("DELETE FROM capabilities WHERE id = ?").run(id);
@@ -508,7 +573,7 @@ export class CapabilityManager {
 
   // ── Internals ─────────────────────────────────────────────────────────────
 
-  private publishAs(entry: Entry, event: unknown): PublishResult {
+  private publishAs(entry: Entry, event: unknown, ephemeral = false): PublishResult {
     if (entry.status !== "enabled") {
       return { ok: false, error: new PhoenixError(ErrorCode.CAPABILITY_DISABLED) };
     }
@@ -532,7 +597,7 @@ export class CapabilityManager {
         ),
       };
     }
-    return this.o.bus.publish(v.event, { expectedSource: entry.manifest.id });
+    return this.o.bus.publish(v.event, { expectedSource: entry.manifest.id, ephemeral });
   }
 
   private context(entry: Entry, signal: AbortSignal): CapabilityContext {
@@ -541,10 +606,18 @@ export class CapabilityManager {
       config: Object.freeze({ ...entry.config }),
       logger: this.logger.child(entry.manifest.id),
       signal,
-      emit: (event) =>
+      secret: async (name) =>
+        this.o.secrets && SECRET_NAME.test(name)
+          ? this.o.secrets.get(secretRef(entry.manifest.id, name))
+          : undefined,
+      emit: (event, options) =>
         signal.aborted
           ? { ok: false, error: new PhoenixError(ErrorCode.CAPABILITY_DISABLED) }
-          : this.publishAs(entry, createEvent({ ...event, source: entry.manifest.id } as NewEvent)),
+          : this.publishAs(
+              entry,
+              createEvent({ ...event, source: entry.manifest.id } as NewEvent),
+              options?.ephemeral,
+            ),
     };
   }
 
@@ -738,8 +811,11 @@ export class CapabilityManager {
       events: e.manifest.events,
       data_categories: e.manifest.data_categories ?? [],
       config: e.config,
+      secrets: this.secretNames(e.manifest.id),
       ...(e.lastError ? { lastError: e.lastError } : {}),
       ...(e.disabledReason ? { disabledReason: e.disabledReason } : {}),
     };
   }
 }
+
+const secretRef = (id: string, name: string) => `capability.${id}.${name}`;

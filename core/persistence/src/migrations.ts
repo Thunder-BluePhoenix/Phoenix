@@ -128,4 +128,28 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX notifications_created ON notifications (created_at);
     `,
   },
+  {
+    version: 5,
+    name: "meetings",
+    sql: `
+      CREATE TABLE meetings (
+        id TEXT PRIMARY KEY,            -- "<capability>:<external id>"
+        capability_id TEXT NOT NULL,
+        external_id TEXT NOT NULL,
+        title TEXT,
+        status TEXT NOT NULL,
+        started_at TEXT,
+        ended_at TEXT,
+        duration_seconds INTEGER,
+        participants TEXT,              -- JSON array
+        recording TEXT,                 -- JSON reference {location, retention}; never the media itself
+        transcript TEXT,                -- JSON {text, segments}
+        summary TEXT,                   -- JSON {text, topics, decisions, action_items, ...}
+        archived_at TEXT,
+        deleted_at TEXT,                -- tombstone: content purged and never re-imported
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX meetings_updated ON meetings (updated_at);
+    `,
+  },
 ];

@@ -386,3 +386,15 @@ describe("describe()", () => {
     expect(engine.describe(ev("custom.thing_happened"))).toBe("Custom thing happened");
   });
 });
+
+describe("clearSource()", () => {
+  it("drops only the disabled capability's conditions", () => {
+    const engine = new StateEngine();
+    engine.handle(ev("kage.meeting.recording", { source: "kage", correlation_id: "m1" }));
+    engine.handle(ev("build.failed"));
+    expect(engine.snapshot()).toMatchObject({ state: "ERROR", recording: true });
+    expect(engine.clearSource("kage")).toBe(1);
+    expect(engine.snapshot()).toMatchObject({ state: "ERROR", recording: false });
+    expect(engine.clearSource("kage")).toBe(0);
+  });
+});

@@ -74,6 +74,19 @@ importers:
         specifier: workspace:*
         version: link:../../sdk/testing
 
+  capabilities/kage:
+    dependencies:
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
   capabilities/mock:
     dependencies:
       '@phoenix/sdk':
@@ -216,6 +229,9 @@ importers:
       '@phoenix/capability-git':
         specifier: workspace:*
         version: link:../../capabilities/git
+      '@phoenix/capability-kage':
+        specifier: workspace:*
+        version: link:../../capabilities/kage
       '@phoenix/capability-manager':
         specifier: workspace:*
         version: link:../capability-manager

@@ -4,7 +4,7 @@ import type { PhoenixConfig } from "@phoenix/config";
 import type { EventBus } from "@phoenix/event-bus";
 import type { Logger } from "@phoenix/logging";
 import type { PermissionGateway } from "@phoenix/permissions";
-import type { EventStore } from "@phoenix/persistence";
+import type { EventStore, MeetingStore } from "@phoenix/persistence";
 import type { StateEngine } from "@phoenix/state-engine";
 
 /** Capability registry surface used by the API (implemented by @phoenix/capability-manager). */
@@ -14,6 +14,8 @@ export interface CapabilityService {
   enable(id: string): Promise<unknown>;
   disable(id: string): Promise<unknown>;
   configure(id: string, config: unknown): unknown;
+  setSecret(id: string, name: string, value: string): Promise<unknown>;
+  deleteSecret(id: string, name: string): Promise<unknown>;
   uninstall(id: string, options: { retainData?: boolean }): Promise<void>;
   invoke(id: string, command: string, input: unknown, actor?: string): unknown;
   operation(id: string): unknown;
@@ -51,6 +53,7 @@ export interface CoreServices {
   permissions: PermissionGateway;
   capabilities?: CapabilityService;
   notifications?: NotificationsService;
+  meetings?: MeetingStore;
   /** Persists the user's sleep preference. */
   setSleeping(sleeping: boolean): void;
   health(): Record<string, unknown>;

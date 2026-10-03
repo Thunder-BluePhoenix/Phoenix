@@ -7,6 +7,7 @@ import { WS_PROTOCOL, WS_TOKEN_PREFIX } from "@phoenix/api";
 import type { CapabilityModule } from "@phoenix/capability-manager";
 import { defaults, type PhoenixConfig } from "@phoenix/config";
 import { silentLogger } from "@phoenix/logging";
+import type { SecretStore } from "@phoenix/persistence";
 import WebSocket from "ws";
 import { PhoenixRuntime } from "../src";
 
@@ -14,7 +15,7 @@ export const TOKEN = "test-token-0123456789";
 
 export async function startCore(
   overrides: Partial<PhoenixConfig> = {},
-  opts: { writeTokenFile?: boolean; capabilities?: CapabilityModule[] } = {},
+  opts: { writeTokenFile?: boolean; capabilities?: CapabilityModule[]; secrets?: SecretStore } = {},
 ) {
   const dataDir = mkdtempSync(join(tmpdir(), "phoenix-core-"));
   const runtime = new PhoenixRuntime({
@@ -24,6 +25,7 @@ export async function startCore(
     token: TOKEN,
     writeTokenFile: opts.writeTokenFile ?? false,
     capabilities: opts.capabilities ?? [],
+    ...(opts.secrets ? { secrets: opts.secrets } : {}),
   });
   const { port } = await runtime.start();
   const base = `http://127.0.0.1:${port}`;

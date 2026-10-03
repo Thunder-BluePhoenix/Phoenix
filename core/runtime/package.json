@@ -18,6 +18,7 @@
     "@phoenix/state-engine": "workspace:*",
     "@phoenix/capability-manager": "workspace:*",
     "@phoenix/capability-git": "workspace:*",
+    "@phoenix/capability-kage": "workspace:*",
     "@phoenix/capability-mock": "workspace:*",
     "@phoenix/capability-terminal": "workspace:*",
     "@phoenix/notifications": "workspace:*"

@@ -12,13 +12,16 @@ import { PermissionGateway } from "@phoenix/permissions";
 import {
   DeadLetterStore,
   EventStore,
+  MeetingStore,
   openDatabase,
   schemaVersion,
   SettingsStore,
   type Database,
+  type SecretStore,
 } from "@phoenix/persistence";
 import { createEvent, PROTOCOL_VERSION } from "@phoenix/protocol";
 import { StateEngine } from "@phoenix/state-engine";
+import { syncMeetings } from "./meetings";
 
 export const PHOENIX_VERSION = "0.1.0-dev";
 export const SESSION_TOKEN_FILE = "session.token";
@@ -36,6 +39,8 @@ export interface RuntimeOptions {
   writeTokenFile?: boolean;
   /** First-party capabilities to register at startup. */
   capabilities?: readonly CapabilityModule[];
+  /** OS secret storage for capability credentials. Without it, secrets cannot be set. */
+  secrets?: SecretStore;
 }
 
 /**
@@ -53,7 +58,9 @@ export class PhoenixRuntime implements CoreServices {
   readonly permissions: PermissionGateway;
   readonly capabilities: CapabilityManager;
   readonly notifications: NotificationService;
+  readonly meetings: MeetingStore;
   readonly token: string;
+  private readonly stopMeetingSync: () => void;
   private api: ApiServer | null = null;
   private ticker: NodeJS.Timeout | null = null;
   private readonly startedAt = Date.now();
@@ -88,12 +95,21 @@ export class PhoenixRuntime implements CoreServices {
       permissions: this.permissions,
       state: this.state,
       logger: this.logger,
+      ...(options.secrets ? { secrets: options.secrets } : {}),
     });
     for (const module of options.capabilities ?? []) this.capabilities.registerBuiltin(module);
     this.notifications = new NotificationService({
       db: this.db,
       bus: this.bus,
       state: this.state,
+      logger: this.logger,
+    });
+
+    this.meetings = new MeetingStore(this.db);
+    this.stopMeetingSync = syncMeetings({
+      bus: this.bus,
+      store: this.meetings,
+      capabilities: this.capabilities,
       logger: this.logger,
     });
 
@@ -189,6 +205,7 @@ export class PhoenixRuntime implements CoreServices {
       if (this.ticker) clearInterval(this.ticker);
       await this.api?.close();
       await this.capabilities.close();
+      this.stopMeetingSync();
       this.notifications.close();
       this.permissions.close();
       await this.bus.drain();

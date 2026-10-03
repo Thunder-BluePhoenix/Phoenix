@@ -7,7 +7,7 @@ import {
 } from "@phoenix/capability-manager";
 import { EventBus } from "@phoenix/event-bus";
 import { PermissionGateway } from "@phoenix/permissions";
-import { EventStore, openDatabase } from "@phoenix/persistence";
+import { EventStore, MemorySecretStore, openDatabase } from "@phoenix/persistence";
 import type { PhoenixEvent } from "@phoenix/protocol";
 import { StateEngine } from "@phoenix/state-engine";
 
@@ -34,6 +34,7 @@ export function createHarness(options: HarnessOptions = {}) {
     permissions,
     state,
     callTimeoutMs: options.callTimeoutMs ?? 2000,
+    secrets: new MemorySecretStore(),
     defaultHealthIntervalMs: 3_600_000,
   });
   const events: PhoenixEvent[] = [];

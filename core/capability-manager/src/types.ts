@@ -21,8 +21,13 @@ export interface CapabilityContext {
   readonly logger: Logger;
   /** Aborted when the capability is disabled. */
   readonly signal: AbortSignal;
-  /** Publishes an event as this capability. Only declared event types are accepted. */
-  emit(event: CapabilityEventInput): PublishResult;
+  /** Reads one of this capability's own credentials from OS secret storage. */
+  secret(name: string): Promise<string | undefined>;
+  /**
+   * Publishes an event as this capability. Only declared event types are accepted.
+   * Ephemeral events reach live subscribers but are not stored or shown in history.
+   */
+  emit(event: CapabilityEventInput, options?: { ephemeral?: boolean }): PublishResult;
 }
 
 export type CommandHandler = (input: unknown, ctx: CapabilityContext) => unknown | Promise<unknown>;
@@ -65,6 +70,8 @@ export interface CapabilityView {
   events: string[];
   data_categories: string[];
   config: Record<string, unknown>;
+  /** Names of credentials stored for this capability (never the values). */
+  secrets: string[];
   lastError?: string;
   disabledReason?: string;
 }

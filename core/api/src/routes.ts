@@ -16,6 +16,14 @@ export function buildRoutes(s: CoreServices): Route[] {
     if (!s.capabilities) throw notFound("Capability registry");
     return s.capabilities;
   };
+  const meetings = () => {
+    if (!s.meetings) throw notFound("Meetings");
+    return s.meetings;
+  };
+  const found = <T>(value: T | null, what: string): T => {
+    if (value === null) throw notFound(what);
+    return value;
+  };
   return [
     route("GET", "/api/health", () => s.health(), true),
 
@@ -87,6 +95,17 @@ export function buildRoutes(s: CoreServices): Route[] {
       const b = expectObject(await body());
       return caps().configure(params.id!, b.config);
     }),
+    // Write-only: values go to OS secret storage and are never returned.
+    route("POST", "/api/capabilities/:id/secrets/:name", async ({ params, body }) => {
+      const value = expectObject(await body()).value;
+      if (typeof value !== "string") {
+        throw new PhoenixError(ErrorCode.INVALID_REQUEST, '"value" must be a string');
+      }
+      return caps().setSecret(params.id!, params.name!, value);
+    }),
+    route("DELETE", "/api/capabilities/:id/secrets/:name", ({ params }) =>
+      caps().deleteSecret(params.id!, params.name!),
+    ),
     route("POST", "/api/capabilities/:id/uninstall", async ({ params, body }) => {
       const b = expectObject(await body());
       await caps().uninstall(params.id!, { retainData: b.retain_data === true });
@@ -116,6 +135,37 @@ export function buildRoutes(s: CoreServices): Route[] {
       },
       true,
     ),
+
+    // ── Meetings (Kage) ─────────────────────────────────────────────────────
+    route("GET", "/api/meetings", ({ url }) => ({
+      meetings: meetings().list({
+        archived: url.searchParams.get("archived") === "true",
+        limit: intParam(url, "limit", 100)!,
+      }),
+    })),
+    route("GET", "/api/meetings/:id", ({ params }) => found(meetings().get(params.id!), "Meeting")),
+    route("GET", "/api/meetings/:id/transcript", ({ params }) =>
+      found(meetings().transcript(params.id!), "Transcript"),
+    ),
+    route("GET", "/api/meetings/:id/summary", ({ params }) =>
+      found(meetings().summary(params.id!), "Summary"),
+    ),
+    route("POST", "/api/meetings/:id/archive", async ({ params, body }) => {
+      const archived = (await body().catch(() => ({}))) as { archived?: unknown };
+      return found(meetings().archive(params.id!, archived?.archived !== false), "Meeting");
+    }),
+    // Deletes Phoenix's copy; the recording itself is managed by the capability (e.g. Kage).
+    route("DELETE", "/api/meetings/:id", async ({ params, body }) => {
+      const b = (await body().catch(() => ({}))) as { confirm?: unknown } | null;
+      if (b?.confirm !== true) {
+        throw new PhoenixError(
+          ErrorCode.ACTION_REQUIRES_CONFIRMATION,
+          'Deleting a meeting needs {"confirm": true}',
+        );
+      }
+      if (!meetings().delete(params.id!)) throw notFound("Meeting");
+      return { deleted: params.id };
+    }),
 
     // ── Notifications ───────────────────────────────────────────────────────
     route("GET", "/api/notifications", ({ url }) =>

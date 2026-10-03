@@ -158,6 +158,19 @@ export class StateEngine {
     return removed;
   }
 
+  /** Drops every condition raised by `source` (its capability was disabled). */
+  clearSource(source: string): number {
+    let n = 0;
+    for (const [key, c] of this.conditions) {
+      if (c.source === source) {
+        this.conditions.delete(key);
+        n++;
+      }
+    }
+    if (n > 0) this.recompute();
+    return n;
+  }
+
   /** Clears every ERROR condition (user dismissed errors). */
   acknowledgeErrors(): number {
     let n = 0;
