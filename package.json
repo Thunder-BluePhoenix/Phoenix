@@ -1,0 +1,32 @@
+{
+  "name": "phoenix",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Phoenix — open-source developer companion platform. Fawkes is the pet.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev:core": "tsx core/runtime/src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "node scripts/check-license-headers.mjs && prettier --check .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "check": "pnpm typecheck && pnpm lint && pnpm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "prettier": "^3.9.9",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "vitest": "^3.2.7"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
