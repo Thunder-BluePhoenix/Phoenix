@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 import { gitCapability } from "@phoenix/capability-git";
 import { mockCapability } from "@phoenix/capability-mock";
+import { terminalCapability } from "@phoenix/capability-terminal";
 import { loadConfig } from "@phoenix/config";
 import { createLogger } from "@phoenix/logging";
 import { PhoenixRuntime } from "./runtime";
@@ -13,7 +14,11 @@ const runtime = new PhoenixRuntime({
   logger,
   // Installed, not enabled: each needs the user to enable it and grant its permissions.
   // The mock capability plays demo scenarios; it only exists in development.
-  capabilities: config.env === "dev" ? [gitCapability, mockCapability] : [gitCapability],
+  capabilities: [
+    gitCapability,
+    terminalCapability,
+    ...(config.env === "dev" ? [mockCapability] : []),
+  ],
 });
 
 const shutdown = (signal: string) => {

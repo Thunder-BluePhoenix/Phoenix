@@ -61,7 +61,7 @@ A capability may only emit event types listed in `events`, always with `source` 
 
 ## Commands
 
-`POST /api/capabilities/{id}/commands/{name}` returns an operation immediately. Each command passes the permission gateway: read-only commands run straight away; `write`, `execute`, `external` and `production` side effects (and microphone/camera/recording permissions) wait for explicit user confirmation. Results are available from `GET /api/operations/{id}`; completion is also announced with `capability.command.completed` / `.failed` events (`correlation_id` = operation id).
+`POST /api/capabilities/{id}/commands/{name}` returns an operation immediately. Each command passes the permission gateway: read-only commands run straight away; `write`, `execute`, `external` and `production` side effects (and microphone/camera/recording permissions) wait for explicit user confirmation. Results are available from `GET /api/operations/{id}`; completion is also announced with `capability.command.completed` / `.failed` events (`correlation_id` = operation id). Successful commands with side effect `none` announce completion as an ephemeral event (live subscribers only, not stored in history); the audit log records every command.
 
 ## External capability HTTP contract
 

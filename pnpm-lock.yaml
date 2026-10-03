@@ -87,6 +87,19 @@ importers:
         specifier: workspace:*
         version: link:../../sdk/testing
 
+  capabilities/terminal:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
   core/api:
     dependencies:
       '@phoenix/config':
@@ -209,6 +222,9 @@ importers:
       '@phoenix/capability-mock':
         specifier: workspace:*
         version: link:../../capabilities/mock
+      '@phoenix/capability-terminal':
+        specifier: workspace:*
+        version: link:../../capabilities/terminal
       '@phoenix/config':
         specifier: workspace:*
         version: link:../config

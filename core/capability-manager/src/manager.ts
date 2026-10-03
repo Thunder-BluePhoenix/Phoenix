@@ -446,7 +446,18 @@ export class CapabilityManager {
         this.update(op, { status: "succeeded", result });
         if (this.closed) return;
         this.o.permissions.recordOutcome(action, "succeeded", { operation_id: op.id });
-        this.emitOp("capability.command.completed", entry, op, "success");
+        // Commands without side effects (status reads, terminal reports) stay out of the
+        // activity history; the audit log still records them.
+        this.emitOp(
+          "capability.command.completed",
+          entry,
+          op,
+          "success",
+          {},
+          {
+            ephemeral: spec.side_effect === "none",
+          },
+        );
       } catch (err) {
         const e = toPhoenixError(err);
         this.update(op, { status: "failed", error: e.toJSON() });
@@ -682,6 +693,7 @@ export class CapabilityManager {
     op: Operation,
     severity: "success" | "warning",
     extra: Record<string, unknown> = {},
+    options: { ephemeral?: boolean } = {},
   ): void {
     if (this.closed) return;
     this.o.bus.publish(
@@ -698,6 +710,7 @@ export class CapabilityManager {
           ...extra,
         },
       }),
+      options,
     );
   }
 
