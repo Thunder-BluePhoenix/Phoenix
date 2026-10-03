@@ -6,11 +6,15 @@ Single source of truth for delivery progress. Derived from the five vision docum
 
 **How to use:** when a phase starts, change its status here *and* in the phase file. A phase is ✅ only when every exit criterion in its file is checked. Do not start a new stage until the stage gate above it is met — the roadmap advances on technical gates, not calendar dates.
 
+## Current focus
+
+Next up: **Phase 06 — Core API (HTTP & WebSocket)** and **Phase 07 — Fawkes pet runtime** (can run in parallel), plus **Phase 11 — Permissions & audit**.
+
 ## Summary
 
 | Stage | Release | Phases | Done |
 |---|---|---|---|
-| Stage 1 — MVP Foundation | v0.1 | 00–20 (21) | 0/21 |
+| Stage 1 — MVP Foundation | v0.1 | 00–20 (21) | 5/21 |
 | Stage 2 — Useful Fawkes (v0.2) | v0.2 | 21–26 (6) | 0/6 |
 | Stage 3 — Memory & Context (v0.3) | v0.3 | 27–29 (3) | 0/3 |
 | Stage 4 — Fawkes Becomes an Agent (v0.4) | v0.4 | 30–33 (4) | 0/4 |
@@ -21,18 +25,18 @@ Single source of truth for delivery progress. Derived from the five vision docum
 | Stage 9 — Capability Ecosystem (v0.9) | v0.9 | 41–42 (2) | 0/2 |
 | Stage 10 — Developer Operating Layer (v1.0) | v1.0 | 43–44 (2) | 0/2 |
 | Stage 11 — AI Evolution (v1.1 → v2.0) | v1.1 → v2.0 | 45–55 (11) | 0/11 |
-| **Total** | | **56** | **0/56** |
+| **Total** | | **56** | **5/56** |
 
 ## Stage 1 — MVP Foundation
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 00 | [Pre-Coding Decisions & ADRs](phase-00-decisions-and-adrs.md) | v0.1 | Critical | — | ⬜ | | |
-| 01 | [Repository & Open-Source Foundation](phase-01-repo-and-open-source-foundation.md) | v0.1 | Critical | 00 | ⬜ | | |
-| 02 | [Event Protocol v1](phase-02-event-protocol-v1.md) | v0.1 | Critical | 01 | ⬜ | | |
-| 03 | [Core Runtime Skeleton](phase-03-core-runtime-skeleton.md) | v0.1 | Critical | 02 | ⬜ | | |
-| 04 | [Local Event Bus](phase-04-event-bus.md) | v0.1 | Critical | 03 | ⬜ | | |
-| 05 | [Fawkes State Engine](phase-05-state-engine.md) | v0.1 | Critical | 04 | ⬜ | | |
+| 00 | [Pre-Coding Decisions & ADRs](phase-00-decisions-and-adrs.md) | v0.1 | Critical | — | 🟨 | | Desktop spike + Kage contract confirmation open |
+| 01 | [Repository & Open-Source Foundation](phase-01-repo-and-open-source-foundation.md) | v0.1 | Critical | 00 | ✅ | | |
+| 02 | [Event Protocol v1](phase-02-event-protocol-v1.md) | v0.1 | Critical | 01 | ✅ | | |
+| 03 | [Core Runtime Skeleton](phase-03-core-runtime-skeleton.md) | v0.1 | Critical | 02 | ✅ | | |
+| 04 | [Local Event Bus](phase-04-event-bus.md) | v0.1 | Critical | 03 | ✅ | | |
+| 05 | [Fawkes State Engine](phase-05-state-engine.md) | v0.1 | Critical | 04 | ✅ | | |
 | 06 | [Core API — HTTP & WebSocket](phase-06-core-api-http-websocket.md) | v0.1 | Critical | 05 | ⬜ | | |
 | 07 | [Fawkes Pet Runtime & Placeholder Character](phase-07-fawkes-pet-runtime.md) | v0.1 | Critical | 05 | ⬜ | | |
 | 08 | [Web App Shell & Navbar Fawkes](phase-08-web-shell-navbar-fawkes.md) | v0.1 | Critical | 06, 07 | ⬜ | | |

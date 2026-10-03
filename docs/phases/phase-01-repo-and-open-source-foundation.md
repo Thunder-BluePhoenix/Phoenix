@@ -5,7 +5,7 @@
 | Stage | Stage 1 — MVP Foundation |
 | Release target | v0.1 |
 | Priority | Critical |
-| Status | ⬜ Not started |
+| Status | ✅ Done |
 | Depends on | [Phase 00 — Pre-Coding Decisions & ADRs](phase-00-decisions-and-adrs.md) |
 | Unblocks | [Phase 02 — Event Protocol v1](phase-02-event-protocol-v1.md) |
 
@@ -29,13 +29,13 @@ Create the monorepo skeleton, licensing and contribution files, and a CI pipelin
 
 ## Tasks
 
-- [ ] Create layout: apps/{web,desktop}, core/{event-bus,state-engine,capability-manager,permissions,config,persistence}, pet/{runtime,states,animations,assets,interaction}, capabilities/{kage,git,terminal}, sdk/{capability,events,testing}, protocol/{schemas,versions}, docs/, tests/
-- [ ] Add LICENSE (GPL-3.0) and a GPL header template + header check in CI
-- [ ] Add CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md
-- [ ] Add docs/licenses/INVENTORY.md for dependencies and art/audio provenance
-- [ ] Set up workspace tooling (package manager, formatter, linter, test runner)
-- [ ] Configure CI: build all packages, lint, unit tests, schema validation, licence-header check
-- [ ] Separate dev / staging / prod config folders; add secret-scanning to CI
+- [x] Create layout: apps/{web,desktop}, core/{event-bus,state-engine,capability-manager,permissions,config,persistence}, pet/{runtime,states,animations,assets,interaction}, capabilities/{kage,git,terminal}, sdk/{capability,events,testing}, protocol/{schemas,versions}, docs/, tests/
+- [x] Add LICENSE (GPL-3.0) and a GPL header template + header check in CI
+- [x] Add CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md
+- [x] Add docs/licenses/INVENTORY.md for dependencies and art/audio provenance
+- [x] Set up workspace tooling (package manager, formatter, linter, test runner)
+- [x] Configure CI: build all packages, lint, unit tests, schema validation, licence-header check
+- [x] Separate dev / staging / prod config folders; add secret-scanning to CI
 
 ## Deliverables
 
@@ -45,12 +45,17 @@ Create the monorepo skeleton, licensing and contribution files, and a CI pipelin
 
 ## Exit criteria
 
-- [ ] `build + schema pass` (PRD v2.0 Phase 0 exit)
-- [ ] CI fails on a missing licence header or committed secret
+- [x] `build + schema pass` (PRD v2.0 Phase 0 exit)
+- [x] CI fails on a missing licence header or committed secret
 
 ## Notes & risks
 
 - Keep packages empty but buildable — real code starts in Phase 02.
+
+## Progress log
+
+- 2026-10-03: pnpm workspace, GPL-3.0 LICENSE + SPDX header check, CONTRIBUTING / CODE_OF_CONDUCT / SECURITY, licence inventory, config/{dev,staging,prod}.json, CI (typecheck, lint, tests, gitleaks secret scan).
+- Future packages have placeholder READMEs pointing to their phase.
 
 ## Source documents
 
