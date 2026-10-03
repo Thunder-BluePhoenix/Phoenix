@@ -4,6 +4,7 @@ import { visualFor } from "@phoenix/pet-states";
 import { forwardRef } from "react";
 import type { ConnectionStatus, PetState } from "../core/types";
 import { FawkesAvatar, type FawkesAvatarHandle } from "./FawkesAvatar";
+import { NotificationCenter } from "./NotificationCenter";
 
 const CONNECTION_TEXT: Record<ConnectionStatus, string | null> = {
   online: null,
@@ -49,6 +50,7 @@ export const Navbar = forwardRef<FawkesAvatarHandle, NavbarProps>(function Navba
             {visualFor(state.state).label}
           </span>
         )}
+        {connection === "online" && <NotificationCenter />}
         <FawkesAvatar
           ref={ref}
           state={state}

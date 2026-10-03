@@ -41,13 +41,13 @@ Reply: `{ "type": "subscribed", "channels": [...] }`. Errors: `{ "type": "error"
 
 ## Channels
 
-| Channel                | `data`                                                                        |
-| ---------------------- | ----------------------------------------------------------------------------- |
-| `state.changed`        | Fawkes state snapshot (same shape as `GET /api/pet/state`)                    |
-| `event.created`        | `{ "seq": number, "event": PhoenixEvent }` for each durable event             |
-| `task.updated`         | `{ "tasks": ActiveTask[] }` whenever the active-task list or progress changes |
-| `capability.health`    | `capability.*` events                                                         |
-| `notification.created` | `notification.created` events (Phase 09)                                      |
+| Channel                | `data`                                                                                   |
+| ---------------------- | ---------------------------------------------------------------------------------------- |
+| `state.changed`        | Fawkes state snapshot (same shape as `GET /api/pet/state`)                               |
+| `event.created`        | `{ "seq": number, "event": PhoenixEvent, "description": string }` for each durable event |
+| `task.updated`         | `{ "tasks": ActiveTask[] }` whenever the active-task list or progress changes            |
+| `capability.health`    | `capability.*` events                                                                    |
+| `notification.created` | `notification.created` events; the notification is in `payload.notification`             |
 
 Messages: `{ "type": "message", "channel": "...", "data": ... }`.
 

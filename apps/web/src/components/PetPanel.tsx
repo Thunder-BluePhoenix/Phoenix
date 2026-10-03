@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { visualFor } from "@phoenix/pet-states";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { ActiveTask, PetState } from "../core/types";
+import { ActivityFeed } from "./ActivityFeed";
+import { CapabilityList } from "./CapabilityList";
+import { Overview } from "./Overview";
 
 export interface PetPanelProps {
   id: string;
@@ -11,22 +13,46 @@ export interface PetPanelProps {
   onClose: () => void;
 }
 
-/**
- * Pet Panel shell (Phase 08). Activity feed, capabilities, notifications and
- * quick actions arrive in Phase 09.
- */
+const TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "activity", label: "Activity" },
+  { id: "capabilities", label: "Capabilities" },
+] as const;
+type TabId = (typeof TABS)[number]["id"];
+
+/** Pet Panel (PRD v2.0 §5.3): current state, approvals, tasks, activity, capabilities, actions. */
 export function PetPanel({ id, state, tasks, onClose }: PetPanelProps) {
   const heading = useRef<HTMLHeadingElement>(null);
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [tab, setTab] = useState<TabId>("overview");
+
   useEffect(() => heading.current?.focus(), []);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const visual = visualFor(state.state);
+  const onTabKey = (e: KeyboardEvent<HTMLButtonElement>) => {
+    const i = TABS.findIndex((t) => t.id === tab);
+    const next =
+      e.key === "ArrowRight"
+        ? (i + 1) % TABS.length
+        : e.key === "ArrowLeft"
+          ? (i - 1 + TABS.length) % TABS.length
+          : e.key === "Home"
+            ? 0
+            : e.key === "End"
+              ? TABS.length - 1
+              : -1;
+    if (next < 0) return;
+    e.preventDefault();
+    setTab(TABS[next]!.id);
+    tabRefs.current[TABS[next]!.id]?.focus();
+  };
+
   return (
     <section
       id={id}
@@ -48,31 +74,37 @@ export function PetPanel({ id, state, tasks, onClose }: PetPanelProps) {
           ×
         </button>
       </div>
-      <div className={`pet-status tone-${visual.tone}`}>
-        <strong>{visual.label}</strong>
-        <span>{state.explanation}</span>
+      <div role="tablist" aria-label="Pet Panel sections" className="tabs">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            ref={(el) => {
+              tabRefs.current[t.id] = el;
+            }}
+            type="button"
+            role="tab"
+            id={`${id}-tab-${t.id}`}
+            aria-selected={tab === t.id}
+            aria-controls={`${id}-panel-${t.id}`}
+            tabIndex={tab === t.id ? 0 : -1}
+            className="tab"
+            onClick={() => setTab(t.id)}
+            onKeyDown={onTabKey}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
-      {state.recording && (
-        <p className="pet-recording" role="note">
-          Recording is active.
-        </p>
-      )}
-      <h3>Active tasks</h3>
-      {tasks.length === 0 ? (
-        <p className="muted">Nothing running.</p>
-      ) : (
-        <ul className="task-list">
-          {tasks.map((t) => (
-            <li key={t.key}>
-              <span>{t.title}</span>
-              <span className="muted"> · {t.source}</span>
-              {t.progress !== undefined && (
-                <progress max={1} value={t.progress} aria-label={`${t.title} progress`} />
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <div
+        role="tabpanel"
+        id={`${id}-panel-${tab}`}
+        aria-labelledby={`${id}-tab-${tab}`}
+        className="tabpanel"
+      >
+        {tab === "overview" && <Overview state={state} tasks={tasks} />}
+        {tab === "activity" && <ActivityFeed />}
+        {tab === "capabilities" && <CapabilityList />}
+      </div>
     </section>
   );
 }

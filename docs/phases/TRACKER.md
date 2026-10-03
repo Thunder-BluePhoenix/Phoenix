@@ -8,13 +8,13 @@ Single source of truth for delivery progress. Derived from the five vision docum
 
 ## Current focus
 
-Next up: **Phase 09 — Pet Panel, activity feed & notifications**, then 14 (desktop), 15 (Kage adapter), 17/18 (Git, terminal).
+Next up: **Phase 15 — Kage adapter** (needs the Kage API confirmed; can build against the mock contract), **Phase 17/18 — Git and terminal capabilities**, **Phase 14 — floating desktop Fawkes**, then 16 and 19.
 
 ## Summary
 
 | Stage | Release | Phases | Done |
 |---|---|---|---|
-| Stage 1 — MVP Foundation | v0.1 | 00–20 (21) | 11/21 |
+| Stage 1 — MVP Foundation | v0.1 | 00–20 (21) | 12/21 |
 | Stage 2 — Useful Fawkes (v0.2) | v0.2 | 21–26 (6) | 0/6 |
 | Stage 3 — Memory & Context (v0.3) | v0.3 | 27–29 (3) | 0/3 |
 | Stage 4 — Fawkes Becomes an Agent (v0.4) | v0.4 | 30–33 (4) | 0/4 |
@@ -25,7 +25,7 @@ Next up: **Phase 09 — Pet Panel, activity feed & notifications**, then 14 (des
 | Stage 9 — Capability Ecosystem (v0.9) | v0.9 | 41–42 (2) | 0/2 |
 | Stage 10 — Developer Operating Layer (v1.0) | v1.0 | 43–44 (2) | 0/2 |
 | Stage 11 — AI Evolution (v1.1 → v2.0) | v1.1 → v2.0 | 45–55 (11) | 0/11 |
-| **Total** | | **56** | **11/56** |
+| **Total** | | **56** | **12/56** |
 
 ## Stage 1 — MVP Foundation
 
@@ -40,7 +40,7 @@ Next up: **Phase 09 — Pet Panel, activity feed & notifications**, then 14 (des
 | 06 | [Core API — HTTP & WebSocket](phase-06-core-api-http-websocket.md) | v0.1 | Critical | 05 | ✅ | | |
 | 07 | [Fawkes Pet Runtime & Placeholder Character](phase-07-fawkes-pet-runtime.md) | v0.1 | Critical | 05 | ✅ | | |
 | 08 | [Web App Shell & Navbar Fawkes](phase-08-web-shell-navbar-fawkes.md) | v0.1 | Critical | 06, 07 | ✅ | | |
-| 09 | [Pet Panel, Activity Feed & Notifications](phase-09-pet-panel-activity-notifications.md) | v0.1 | Critical | 08 | ⬜ | | |
+| 09 | [Pet Panel, Activity Feed & Notifications](phase-09-pet-panel-activity-notifications.md) | v0.1 | Critical | 08 | ✅ | | |
 | 10 | [Animation System & P0 States](phase-10-animation-system-p0-states.md) | v0.1 | High | 07 | ⬜ | | |
 | 11 | [Permissions & Audit Primitives](phase-11-permissions-and-audit.md) | v0.1 | Critical | 04 | ✅ | | |
 | 12 | [Capability Manager & Manifest](phase-12-capability-manager.md) | v0.1 | Critical | 11, 06 | ✅ | | |

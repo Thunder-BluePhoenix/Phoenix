@@ -214,7 +214,11 @@ paths:
                       {
                         type: object,
                         properties:
-                          { seq: { type: integer }, event: { $ref: "#/components/schemas/Event" } },
+                          {
+                            seq: { type: integer },
+                            event: { $ref: "#/components/schemas/Event" },
+                            description: { type: string },
+                          },
                       }
     post:
       summary: Publish an event (local tools, simulator). Source "core" is reserved.
@@ -379,6 +383,57 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /api/notifications:
+    get:
+      summary: Recent notifications, newest first, with the unread count
+      parameters:
+        - { name: unread_only, in: query, schema: { type: boolean } }
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 200, default: 50 },
+          }
+      responses:
+        "200":
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications: { type: array, items: { type: object } }
+                  unread: { type: integer }
+  /api/notifications/{id}/read:
+    post:
+      summary: Mark one notification read
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Notification }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/notifications/read-all:
+    post:
+      summary: Mark every notification read
+      responses:
+        "200": { description: "Count: { marked }" }
+  /api/notifications/preferences:
+    get:
+      summary: Notification preferences
+      responses:
+        "200": { description: Preferences }
+    post:
+      summary: Update notification preferences
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+                min_severity: { type: string, enum: [warning, error] }
+                muted_sources: { type: array, items: { type: string } }
+      responses:
+        "200": { description: Preferences }
+        "400": { $ref: "#/components/responses/Error" }
   /api/permissions:
     get:
       summary: Active permission grants

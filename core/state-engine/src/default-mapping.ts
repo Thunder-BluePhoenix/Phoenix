@@ -2,6 +2,29 @@
 // Copyright (C) 2026 Phoenix contributors
 import type { MappingRule } from "./rules";
 
+/**
+ * Wording for events that do not change Fawkes' state but appear in the
+ * activity feed and notifications. Same placeholders as rule explanations.
+ */
+export const EVENT_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  "system.online": "Phoenix Core started",
+  "capability.registered": "{payload.name} registered",
+  "capability.enabled": "{payload.name} enabled",
+  "capability.disabled": "{payload.name} disabled",
+  "capability.available": "{payload.name} is available",
+  "capability.uninstalled": "{payload.name} uninstalled",
+  "capability.command.completed": "{payload.capability}: {payload.command} completed",
+  "capability.command.failed": "{payload.capability}: {payload.command} failed",
+  "security.confirmation.resolved": "Request {payload.outcome}",
+  "security.permission.denied": "{payload.capability} was not allowed to run {payload.command}",
+  "security.kill_switch.disengaged": "Emergency stop released",
+  "git.commit.created": "New commit in {subject}",
+  "git.merge_conflict_resolved": "Merge conflict resolved in {subject}",
+  "frappe.site.healthy": "Site {subject} is healthy again",
+  "kage.connected": "Connected to Kage",
+  "kage.meeting.archived": "Meeting archived",
+};
+
 const MIN = 60_000;
 
 /**

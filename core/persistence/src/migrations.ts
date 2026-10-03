@@ -119,4 +119,13 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE capabilities ADD COLUMN endpoint TEXT;
     `,
   },
+  {
+    version: 4,
+    name: "notification-details",
+    sql: `
+      ALTER TABLE notifications ADD COLUMN source TEXT;
+      ALTER TABLE notifications ADD COLUMN event_type TEXT;
+      CREATE INDEX notifications_created ON notifications (created_at);
+    `,
+  },
 ];

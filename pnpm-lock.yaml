@@ -146,6 +146,24 @@ importers:
         specifier: workspace:*
         version: link:../../protocol
 
+  core/notifications:
+    dependencies:
+      '@phoenix/event-bus':
+        specifier: workspace:*
+        version: link:../event-bus
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../logging
+      '@phoenix/persistence':
+        specifier: workspace:*
+        version: link:../persistence
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@phoenix/state-engine':
+        specifier: workspace:*
+        version: link:../state-engine
+
   core/permissions:
     dependencies:
       '@phoenix/logging':
@@ -184,6 +202,9 @@ importers:
       '@phoenix/logging':
         specifier: workspace:*
         version: link:../logging
+      '@phoenix/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@phoenix/permissions':
         specifier: workspace:*
         version: link:../permissions

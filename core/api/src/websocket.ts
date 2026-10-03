@@ -64,7 +64,13 @@ export class WebSocketHub {
       s.state.onChange((snapshot) => this.broadcast("state.changed", snapshot)),
       s.state.onTasksChange((tasks) => this.broadcast("task.updated", { tasks })),
       s.bus.subscribe("api.websocket", "*", (event, info) => {
-        if (!info.ephemeral) this.broadcast("event.created", { seq: info.seq, event });
+        if (!info.ephemeral) {
+          this.broadcast("event.created", {
+            seq: info.seq,
+            event,
+            description: s.state.describe(event),
+          });
+        }
         const channel = channelFor(event);
         if (channel) this.broadcast(channel, event);
       }),
@@ -156,7 +162,11 @@ export class WebSocketHub {
       this.m.reconnects++;
       const missed = this.s.events.recent({ afterSeq: msg.since_seq, limit: MAX_REPLAY }).reverse();
       for (const { seq, event } of missed) {
-        this.send(client, { type: "message", channel: "event.created", data: { seq, event } });
+        this.send(client, {
+          type: "message",
+          channel: "event.created",
+          data: { seq, event, description: this.s.state.describe(event) },
+        });
       }
     }
   }
