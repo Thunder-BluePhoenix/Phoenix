@@ -5,7 +5,7 @@
 | Stage | Stage 1 — MVP Foundation |
 | Release target | v0.1 |
 | Priority | Critical |
-| Status | ⬜ Not started |
+| Status | ✅ Done |
 | Depends on | [Phase 05 — Fawkes State Engine](phase-05-state-engine.md) |
 | Unblocks | [Phase 08 — Web App Shell & Navbar Fawkes](phase-08-web-shell-navbar-fawkes.md), [Phase 10 — Animation System & P0 States](phase-10-animation-system-p0-states.md), [Phase 14 — Floating Desktop Fawkes](phase-14-floating-desktop-fawkes.md) |
 
@@ -28,13 +28,13 @@ Build the reusable pet runtime that turns state into visuals, using a placeholde
 
 ## Tasks
 
-- [ ] Define renderer interface (DOM/SVG or Canvas per ADR) independent of character assets
-- [ ] Implement state→animation mapping table loaded from pet/states
-- [ ] Implement interaction hooks: click, hover, drag (pet.clicked event)
-- [ ] Create original placeholder Fawkes (simple shape per state + text label)
-- [ ] Implement reduced-motion mode (static frames + text)
-- [ ] Keep CPU/GPU idle cost low (pause when hidden)
-- [ ] Unit tests for state→animation mapping
+- [x] Define renderer interface (DOM/SVG or Canvas per ADR) independent of character assets
+- [x] Implement state→animation mapping table loaded from pet/states
+- [x] Implement interaction hooks: click, hover, drag (pet.clicked event)
+- [x] Create original placeholder Fawkes (simple shape per state + text label)
+- [x] Implement reduced-motion mode (static frames + text)
+- [x] Keep CPU/GPU idle cost low (pause when hidden)
+- [x] Unit tests for state→animation mapping
 
 ## Deliverables
 
@@ -43,12 +43,18 @@ Build the reusable pet runtime that turns state into visuals, using a placeholde
 
 ## Exit criteria
 
-- [ ] Each state renders a distinct visual with text
-- [ ] Reduced-motion works
+- [x] Each state renders a distinct visual with text
+- [x] Reduced-motion works
 
 ## Notes & risks
 
 - Never ship Codex Pets / Coucou assets.
+
+## Progress log
+
+- 2026-10-03: pet/states (declarative state → animation/label/tone), pet/assets (original placeholder Fawkes SVG + CSS animations, CC BY-SA 4.0), pet/runtime (mountFawkes: accessible button, live-region announcements, recording badge independent of state, reduced motion auto/forced, pause when hidden, click + pointer drag).
+- pet/interaction was folded into pet/runtime/src/interaction.ts — too small for its own package.
+- Browser code typechecks separately (tsconfig.web.json) so DOM globals never leak into core. 35 tests (happy-dom).
 
 ## Source documents
 
