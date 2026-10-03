@@ -1,0 +1,7 @@
+LICENSE
+pnpm-lock.yaml
+docs/vision/
+docs/phases/
+node_modules/
+dist/
+.vscode/

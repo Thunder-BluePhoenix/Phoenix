@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phoenix.dev/schemas/event-v1.schema.json",
+  "title": "Phoenix Event Envelope v1",
+  "description": "Common envelope for every event on the Phoenix event bus. Consumers must tolerate unknown additional fields.",
+  "type": "object",
+  "required": ["event_id", "event_type", "version", "source", "timestamp", "severity", "payload"],
+  "additionalProperties": true,
+  "properties": {
+    "event_id": {
+      "description": "Globally unique event identifier; used for deduplication.",
+      "type": "string",
+      "pattern": "^evt_[A-Za-z0-9_-]{6,128}$"
+    },
+    "event_type": {
+      "description": "Namespaced, lower-case, dot-separated type, e.g. kage.meeting.started.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)+$",
+      "maxLength": 200
+    },
+    "version": {
+      "description": "Envelope schema version (major.minor). This schema covers major version 1.",
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$"
+    },
+    "source": {
+      "description": "Identifier of the emitting capability or core component.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+    },
+    "timestamp": {
+      "description": "ISO-8601 creation time.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["info", "success", "warning", "error"]
+    },
+    "correlation_id": {
+      "description": "Groups events belonging to the same task or workflow.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "causation_id": {
+      "description": "event_id of the event that caused this one.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "subject": {
+      "description": "What the event is about, e.g. a repository or site.",
+      "type": "string",
+      "maxLength": 500
+    },
+    "scope": {
+      "description": "Authorisation scope, e.g. project:phoenix.",
+      "type": "string",
+      "maxLength": 200
+    },
+    "requires_action": {
+      "description": "True when the user must act.",
+      "type": "boolean"
+    },
+    "ttl_ms": {
+      "description": "Milliseconds after timestamp when the event expires.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "data_classification": {
+      "type": "string",
+      "enum": ["public", "internal", "sensitive", "secret"],
+      "default": "internal"
+    },
+    "payload": {
+      "description": "Event-specific structured data. Must never contain secrets.",
+      "type": "object"
+    },
+    "metadata": {
+      "type": "object"
+    },
+    "provenance": {
+      "description": "Where the information came from (source system, ids, URLs).",
+      "type": "object"
+    }
+  }
+}

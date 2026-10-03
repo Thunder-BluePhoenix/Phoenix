@@ -1,0 +1,528 @@
+openapi: 3.1.0
+info:
+  title: Phoenix Core API
+  version: "0.1.0"
+  description: |
+    Local HTTP API of Phoenix Core (Phase 06). Bound to 127.0.0.1 by default (ADR-0015).
+
+    **Authentication.** Every route except `/api/health` requires
+    `Authorization: Bearer <token>`. The token is regenerated on each start and
+    written to `<dataDir>/session.token` (mode 0600).
+
+    **Host / Origin.** Requests with a non-loopback `Host` header are rejected
+    (DNS-rebinding protection). Browser requests must be same-origin or listed in
+    `allowedOrigins`.
+
+    Real-time updates: see [websocket.md](websocket.md).
+  license:
+    name: GPL-3.0-or-later
+    identifier: GPL-3.0-or-later
+servers:
+  - url: http://127.0.0.1:4870
+security:
+  - session: []
+components:
+  securitySchemes:
+    session:
+      type: http
+      scheme: bearer
+  schemas:
+    Error:
+      type: object
+      required: [code, message, details]
+      properties:
+        code:
+          type: string
+          enum:
+            - CAPABILITY_DISABLED
+            - CAPABILITY_UNAVAILABLE
+            - PERMISSION_DENIED
+            - INVALID_EVENT
+            - EVENT_DUPLICATE
+            - OPERATION_TIMEOUT
+            - RESOURCE_NOT_FOUND
+            - ACTION_REQUIRES_CONFIRMATION
+            - SECURITY_POLICY_BLOCKED
+            - INVALID_REQUEST
+            - UNAUTHENTICATED
+            - INTERNAL_ERROR
+        message: { type: string }
+        details: { type: array, items: { type: string } }
+    Event:
+      $ref: "../../protocol/schemas/event-v1.schema.json"
+    StateSnapshot:
+      type: object
+      required: [state, explanation, since, recording, sleeping, conditions]
+      properties:
+        state:
+          type: string
+          enum:
+            [
+              ERROR,
+              WAITING,
+              RECORDING,
+              WARNING,
+              DEPLOYING,
+              THINKING,
+              LISTENING,
+              WORKING,
+              SUCCESS,
+              IDLE,
+              SLEEPING,
+              OFFLINE,
+            ]
+        explanation: { type: string }
+        since: { type: string, format: date-time }
+        key: { type: string }
+        source: { type: string }
+        recording:
+          {
+            type: boolean,
+            description: "True whenever any recording is active, regardless of displayed state.",
+          }
+        sleeping: { type: boolean }
+        conditions: { type: array, items: { type: object } }
+    ActiveTask:
+      type: object
+      required: [key, state, title, source, since, updatedAt]
+      properties:
+        key: { type: string }
+        state: { type: string }
+        title: { type: string }
+        source: { type: string }
+        since: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        progress: { type: number, minimum: 0, maximum: 1 }
+    Confirmation:
+      type: object
+      properties:
+        id: { type: string }
+        capabilityId: { type: string }
+        command: { type: string }
+        summary: { type: string }
+        sideEffect: { type: string, enum: [none, read, write, execute, external, production] }
+        permissions: { type: array, items: { type: string } }
+        requestedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+paths:
+  /api/health:
+    get:
+      summary: Core health (public)
+      security: []
+      responses:
+        "200": { description: Health, content: { application/json: { schema: { type: object } } } }
+  /api/pet/state:
+    get:
+      summary: Current Fawkes state
+      responses:
+        "200":
+          {
+            description: Snapshot,
+            content:
+              { application/json: { schema: { $ref: "#/components/schemas/StateSnapshot" } } },
+          }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/pet/tasks:
+    get:
+      summary: Active long-running tasks
+      responses:
+        "200":
+          description: Tasks
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  properties:
+                    { tasks: { type: array, items: { $ref: "#/components/schemas/ActiveTask" } } },
+                }
+  /api/pet/sleep:
+    post:
+      summary: Pause or resume Fawkes (persisted)
+      requestBody:
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required: [sleeping],
+                    properties: { sleeping: { type: boolean } },
+                  },
+              },
+          }
+      responses:
+        "200":
+          {
+            description: Snapshot,
+            content:
+              { application/json: { schema: { $ref: "#/components/schemas/StateSnapshot" } } },
+          }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/pet/acknowledge:
+    post:
+      summary: Dismiss one condition by key, or all errors when key is omitted
+      requestBody:
+        content:
+          { application/json: { schema: { type: object, properties: { key: { type: string } } } } }
+      responses:
+        "200":
+          {
+            description: Count,
+            content:
+              {
+                application/json:
+                  { schema: { type: object, properties: { acknowledged: { type: integer } } } },
+              },
+          }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/events:
+    get:
+      summary: Recent durable events, newest first
+      parameters:
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 1000, default: 100 },
+          }
+        - { name: after_seq, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: source, in: query, schema: { type: string } }
+        - {
+            name: type,
+            in: query,
+            description: "Exact type or prefix ending in .*",
+            schema: { type: string },
+          }
+      responses:
+        "200":
+          description: Events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      {
+                        type: object,
+                        properties:
+                          {
+                            seq: { type: integer },
+                            event: { $ref: "#/components/schemas/Event" },
+                            description: { type: string },
+                          },
+                      }
+    post:
+      summary: Publish an event (local tools, simulator). Source "core" is reserved.
+      requestBody:
+        content: { application/json: { schema: { $ref: "#/components/schemas/Event" } } }
+      responses:
+        "202":
+          {
+            description: Accepted,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        properties:
+                          { event_id: { type: string }, seq: { type: [integer, "null"] } },
+                      },
+                  },
+              },
+          }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+  /api/capabilities:
+    get:
+      summary: Installed capabilities, including disconnected external ones
+      responses:
+        "200":
+          {
+            description: List,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        properties: { capabilities: { type: array, items: { type: object } } },
+                      },
+                  },
+              },
+          }
+  /api/capabilities/{id}/enable:
+    post:
+      summary: Enable a capability
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Capability }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/capabilities/{id}/disable:
+    post:
+      summary: Disable a capability
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Capability }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/capabilities/register:
+    post:
+      summary: Register an external capability process (loopback endpoint only)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [manifest, endpoint]
+              properties:
+                manifest: { $ref: "../../protocol/schemas/capability-manifest-v1.schema.json" }
+                endpoint: { type: string, example: "http://127.0.0.1:8765" }
+                callback_secret:
+                  {
+                    type: string,
+                    minLength: 32,
+                    description: "Secret core presents when calling the capability. Defaults to the issued token.",
+                  }
+      responses:
+        "201":
+          description: Registered. `token` authenticates the capability's events (ADR-0016).
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      properties: { capability: { type: object }, token: { type: string } },
+                    },
+                },
+            }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/capabilities/{id}:
+    get:
+      summary: One capability
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Capability }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/capabilities/{id}/config:
+    post:
+      summary: Set configuration (validated against config_schema; secrets rejected)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          {
+            application/json:
+              { schema: { type: object, properties: { config: { type: object } } } },
+          }
+      responses:
+        "200": { description: Capability }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/capabilities/{id}/uninstall:
+    post:
+      summary: Disable, revoke permissions and remove; optionally keep its event history
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  { type: object, properties: { retain_data: { type: boolean, default: false } } },
+              },
+          }
+      responses:
+        "200": { description: Removed }
+  /api/capabilities/{id}/commands/{command}:
+    post:
+      summary: Start a command. Returns an operation immediately; it may wait for user confirmation.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: command, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { input: {} } } } }
+      responses:
+        "202": { description: Operation started }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/operations/{id}:
+    get:
+      summary: Status and result of a command operation
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: "Operation (pending | running | succeeded | failed)" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/capabilities/{id}/events:
+    post:
+      summary: Submit an event as an external capability
+      description: Authenticated with the `X-Phoenix-Capability-Token` header instead of the session token. Source must equal the capability id and the type must be declared in its manifest.
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: X-Phoenix-Capability-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        content: { application/json: { schema: { $ref: "#/components/schemas/Event" } } }
+      responses:
+        "202": { description: Accepted }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/notifications:
+    get:
+      summary: Recent notifications, newest first, with the unread count
+      parameters:
+        - { name: unread_only, in: query, schema: { type: boolean } }
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 200, default: 50 },
+          }
+      responses:
+        "200":
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications: { type: array, items: { type: object } }
+                  unread: { type: integer }
+  /api/notifications/{id}/read:
+    post:
+      summary: Mark one notification read
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Notification }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/notifications/read-all:
+    post:
+      summary: Mark every notification read
+      responses:
+        "200": { description: "Count: { marked }" }
+  /api/notifications/preferences:
+    get:
+      summary: Notification preferences
+      responses:
+        "200": { description: Preferences }
+    post:
+      summary: Update notification preferences
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+                min_severity: { type: string, enum: [warning, error] }
+                muted_sources: { type: array, items: { type: string } }
+      responses:
+        "200": { description: Preferences }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/permissions:
+    get:
+      summary: Active permission grants
+      parameters: [{ name: capability, in: query, schema: { type: string } }]
+      responses:
+        "200": { description: Grants }
+  /api/permissions/{capability}/revoke:
+    post:
+      summary: Revoke some or all permissions of a capability
+      parameters: [{ name: capability, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    properties: { permissions: { type: array, items: { type: string } } },
+                  },
+              },
+          }
+      responses:
+        "200": { description: Remaining grants }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/confirmations:
+    get:
+      summary: Actions waiting for user approval
+      responses:
+        "200":
+          description: Pending
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  properties:
+                    {
+                      confirmations:
+                        { type: array, items: { $ref: "#/components/schemas/Confirmation" } },
+                    },
+                }
+  /api/confirmations/{id}:
+    post:
+      summary: Approve or reject a pending action
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  { type: object, required: [approve], properties: { approve: { type: boolean } } },
+              },
+          }
+      responses:
+        "200": { description: Resolved }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/audit:
+    get:
+      summary: Audit log, newest first
+      parameters:
+        - { name: capability, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: Entries }
+  /api/security/kill-switch:
+    get:
+      summary: Emergency stop status
+      responses:
+        "200":
+          {
+            description: Status,
+            content:
+              {
+                application/json:
+                  { schema: { type: object, properties: { engaged: { type: boolean } } } },
+              },
+          }
+    post:
+      summary: Engage or release the emergency stop for all capabilities
+      requestBody:
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  { type: object, required: [engaged], properties: { engaged: { type: boolean } } },
+              },
+          }
+      responses:
+        "200": { description: Status }

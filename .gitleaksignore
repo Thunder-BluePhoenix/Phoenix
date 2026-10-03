@@ -1,0 +1,4 @@
+# Kept for reference; .gitleaks.toml allowlists the fake test values by content,
+# which survives history rewrites (fingerprints include commit hashes).
+5849efa82b9c6c7a00888c52e9edb7600b40c19e:core/logging/test/logging.test.ts:curl-auth-header:17
+00c071e291f18d2bb898222c074d0013152c7aeb:core/logging/test/logging.test.ts:curl-auth-header:17

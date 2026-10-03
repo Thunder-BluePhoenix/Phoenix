@@ -1,0 +1,14 @@
+# Gitleaks configuration: default rules plus a narrow allowlist.
+title = "Phoenix"
+
+[extend]
+useDefault = true
+
+[allowlist]
+regexTarget = "line"
+description = "Fake credentials once used literally in log-redaction tests (now built at runtime in protocol/testing/fake-secrets.ts). Only these exact values are allowed."
+regexes = [
+  '''Bearer abcdefghijklmnop''',
+  '''ghp_abcdefghijklmnopqrstuvwxyz0123''',
+  '''sk-abcdefghijklmnopqrstuvwx''',
+]

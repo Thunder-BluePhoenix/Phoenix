@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phoenix.dev/schemas/capability-manifest-v1.schema.json",
+  "title": "Phoenix Capability Manifest v1",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "version",
+    "description",
+    "license",
+    "events",
+    "commands",
+    "permissions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "manifest_version": { "const": "1" },
+    "id": {
+      "description": "Stable identifier; also the `source` of every event the capability emits.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{1,63}$"
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z.-]+)?$"
+    },
+    "description": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "license": { "description": "SPDX licence identifier.", "type": "string", "minLength": 1 },
+    "author": { "type": "string" },
+    "homepage": { "type": "string", "format": "uri" },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protocol": { "description": "Event protocol major version.", "const": "1" }
+      }
+    },
+    "events": {
+      "description": "Event types the capability may emit: exact types or prefixes ending in .*",
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*(\\.\\*)?$" },
+      "uniqueItems": true
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "description", "side_effect"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$" },
+          "description": { "type": "string", "minLength": 1 },
+          "side_effect": { "enum": ["none", "read", "write", "execute", "external", "production"] },
+          "permissions": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/permission" },
+            "uniqueItems": true
+          },
+          "input_schema": { "type": "object" },
+          "timeout_ms": { "type": "integer", "minimum": 100, "maximum": 3600000 }
+        }
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/permission" },
+      "uniqueItems": true
+    },
+    "data_categories": {
+      "description": "Kinds of user data the capability accesses (privacy disclosure).",
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "healthcheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "interval_ms": { "type": "integer", "minimum": 1000 },
+        "timeout_ms": { "type": "integer", "minimum": 100 }
+      }
+    },
+    "config_schema": {
+      "description": "JSON Schema for the capability's configuration.",
+      "type": "object"
+    },
+    "state_rules": {
+      "description": "Extra event → Fawkes state rules for this capability's events.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["match", "effect"],
+        "additionalProperties": false,
+        "properties": {
+          "match": { "type": "string" },
+          "group": { "type": "string" },
+          "effect": { "type": "object" }
+        }
+      }
+    },
+    "ui_extensions": { "type": "array", "items": { "type": "object" } }
+  },
+  "$defs": {
+    "permission": {
+      "enum": [
+        "microphone",
+        "camera",
+        "meeting_recording",
+        "filesystem_read",
+        "filesystem_write",
+        "network",
+        "shell_command",
+        "repository_access",
+        "production_action",
+        "external_api",
+        "AI_external_processing"
+      ]
+    }
+  }
+}
