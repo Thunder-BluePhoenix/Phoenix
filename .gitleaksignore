@@ -1,0 +1,3 @@
+# False positive: fake token used to test log redaction (since replaced by
+# runtime-built values in protocol/testing/fake-secrets.ts).
+5849efa82b9c6c7a00888c52e9edb7600b40c19e:core/logging/test/logging.test.ts:curl-auth-header:17

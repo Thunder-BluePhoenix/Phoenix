@@ -11,6 +11,7 @@ import {
   type PhoenixEvent,
   validateEvent,
 } from "../src";
+import { FAKE_BEARER, FAKE_GITHUB_TOKEN } from "../testing/fake-secrets";
 
 const fixtures = JSON.parse(
   readFileSync(new URL("../fixtures/appendix-a.events.json", import.meta.url), "utf8"),
@@ -71,15 +72,16 @@ describe("no secrets in events", () => {
   it("blocks token-looking values anywhere", () => {
     const result = validateEvent({
       ...valid(),
-      metadata: { note: "Authorization: Bearer abcdefghijklmnop" },
+      metadata: { note: `Authorization: ${FAKE_BEARER}` },
     });
     expect(result.ok).toBe(false);
   });
 
   it("finds nested secrets", () => {
-    expect(
-      findSecrets({ a: [{ password: "x" }], b: "ghp_abcdefghijklmnopqrstuvwxyz0123" }),
-    ).toEqual(["$.a[0].password", "$.b"]);
+    expect(findSecrets({ a: [{ password: "x" }], b: FAKE_GITHUB_TOKEN })).toEqual([
+      "$.a[0].password",
+      "$.b",
+    ]);
   });
 
   it("does not flag ordinary words", () => {
