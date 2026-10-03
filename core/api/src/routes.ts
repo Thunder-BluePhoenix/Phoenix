@@ -8,6 +8,10 @@ const notFound = (what: string) =>
   new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, `${what} not found`);
 
 export function buildRoutes(s: CoreServices): Route[] {
+  const caps = () => {
+    if (!s.capabilities) throw notFound("Capability registry");
+    return s.capabilities;
+  };
   return [
     route("GET", "/api/health", () => s.health(), true),
 
@@ -50,16 +54,52 @@ export function buildRoutes(s: CoreServices): Route[] {
       return { event_id: result.event.event_id, seq: result.seq };
     }),
 
-    // ── Capabilities (registry arrives in Phase 12) ─────────────────────────
+    // ── Capabilities ────────────────────────────────────────────────────────
     route("GET", "/api/capabilities", () => ({ capabilities: s.capabilities?.list() ?? [] })),
-    route("POST", "/api/capabilities/:id/enable", async ({ params }) => {
-      if (!s.capabilities) throw notFound(`Capability "${params.id}"`);
-      return s.capabilities.enable(params.id!);
+    route("POST", "/api/capabilities/register", async ({ body, res }) => {
+      const b = expectObject(await body());
+      if (typeof b.endpoint !== "string")
+        throw new PhoenixError(ErrorCode.INVALID_REQUEST, '"endpoint" must be a string');
+      const result = await caps().registerExternal(b.manifest, b.endpoint);
+      res.statusCode = 201;
+      return result;
     }),
-    route("POST", "/api/capabilities/:id/disable", async ({ params }) => {
-      if (!s.capabilities) throw notFound(`Capability "${params.id}"`);
-      return s.capabilities.disable(params.id!);
+    route("GET", "/api/capabilities/:id", ({ params }) => caps().get(params.id!)),
+    route("POST", "/api/capabilities/:id/enable", ({ params }) => caps().enable(params.id!)),
+    route("POST", "/api/capabilities/:id/disable", ({ params }) => caps().disable(params.id!)),
+    route("POST", "/api/capabilities/:id/config", async ({ params, body }) => {
+      const b = expectObject(await body());
+      return caps().configure(params.id!, b.config);
     }),
+    route("POST", "/api/capabilities/:id/uninstall", async ({ params, body }) => {
+      const b = expectObject(await body());
+      await caps().uninstall(params.id!, { retainData: b.retain_data === true });
+      return { uninstalled: params.id };
+    }),
+    route("POST", "/api/capabilities/:id/commands/:command", async ({ params, body, res }) => {
+      const b = expectObject(await body());
+      const op = caps().invoke(params.id!, params.command!, b.input ?? {}, "user");
+      res.statusCode = 202;
+      return op;
+    }),
+    route("GET", "/api/operations/:id", ({ params }) => caps().operation(params.id!)),
+    // Authenticated with the capability token (not the session token), checked by the manager.
+    route(
+      "POST",
+      "/api/capabilities/:id/events",
+      async ({ params, body, req, res }) => {
+        const token = req.headers["x-phoenix-capability-token"];
+        const result = caps().ingest(
+          params.id!,
+          typeof token === "string" ? token : undefined,
+          await body(),
+        );
+        if (!result.ok) throw result.error;
+        res.statusCode = 202;
+        return { event_id: result.event.event_id, seq: result.seq };
+      },
+      true,
+    ),
 
     // ── Permissions, confirmations, audit, kill switch ──────────────────────
     route("GET", "/api/permissions", ({ url }) => {

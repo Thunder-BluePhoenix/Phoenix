@@ -7,11 +7,25 @@ import type { PermissionGateway } from "@phoenix/permissions";
 import type { EventStore } from "@phoenix/persistence";
 import type { StateEngine } from "@phoenix/state-engine";
 
-/** Capability registry surface used by the API (implemented in Phase 12). */
+/** Capability registry surface used by the API (implemented by @phoenix/capability-manager). */
 export interface CapabilityService {
   list(): unknown[];
+  get(id: string): unknown;
   enable(id: string): Promise<unknown>;
   disable(id: string): Promise<unknown>;
+  configure(id: string, config: unknown): unknown;
+  uninstall(id: string, options: { retainData?: boolean }): Promise<void>;
+  invoke(id: string, command: string, input: unknown, actor?: string): unknown;
+  operation(id: string): unknown;
+  registerExternal(
+    manifest: unknown,
+    endpoint: string,
+  ): Promise<{ capability: unknown; token: string }>;
+  ingest(
+    id: string,
+    token: string | undefined,
+    event: unknown,
+  ): { ok: true; event: { event_id: string }; seq: number | null } | { ok: false; error: Error };
 }
 
 /** Everything the API needs from Phoenix Core. */

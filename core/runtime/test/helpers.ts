@@ -4,6 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WS_PROTOCOL, WS_TOKEN_PREFIX } from "@phoenix/api";
+import type { CapabilityModule } from "@phoenix/capability-manager";
 import { defaults, type PhoenixConfig } from "@phoenix/config";
 import { silentLogger } from "@phoenix/logging";
 import WebSocket from "ws";
@@ -13,7 +14,7 @@ export const TOKEN = "test-token-0123456789";
 
 export async function startCore(
   overrides: Partial<PhoenixConfig> = {},
-  opts: { writeTokenFile?: boolean } = {},
+  opts: { writeTokenFile?: boolean; capabilities?: CapabilityModule[] } = {},
 ) {
   const dataDir = mkdtempSync(join(tmpdir(), "phoenix-core-"));
   const runtime = new PhoenixRuntime({
@@ -22,6 +23,7 @@ export async function startCore(
     databasePath: ":memory:",
     token: TOKEN,
     writeTokenFile: opts.writeTokenFile ?? false,
+    capabilities: opts.capabilities ?? [],
   });
   const { port } = await runtime.start();
   const base = `http://127.0.0.1:${port}`;

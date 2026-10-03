@@ -58,6 +58,27 @@ importers:
         specifier: ^8.18.1
         version: 8.18.2
 
+  core/capability-manager:
+    dependencies:
+      '@phoenix/event-bus':
+        specifier: workspace:*
+        version: link:../event-bus
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../logging
+      '@phoenix/permissions':
+        specifier: workspace:*
+        version: link:../permissions
+      '@phoenix/persistence':
+        specifier: workspace:*
+        version: link:../persistence
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@phoenix/state-engine':
+        specifier: workspace:*
+        version: link:../state-engine
+
   core/config: {}
 
   core/event-bus:
@@ -101,6 +122,9 @@ importers:
       '@phoenix/api':
         specifier: workspace:*
         version: link:../api
+      '@phoenix/capability-manager':
+        specifier: workspace:*
+        version: link:../capability-manager
       '@phoenix/config':
         specifier: workspace:*
         version: link:../config

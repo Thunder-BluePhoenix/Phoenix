@@ -101,6 +101,14 @@ export class StateEngine {
     this.rules.unshift(...rules);
   }
 
+  /** Removes rules previously added with addRules (matched by identity). */
+  removeRules(rules: readonly MappingRule[]): void {
+    const remove = new Set(rules);
+    for (let i = this.rules.length - 1; i >= 0; i--) {
+      if (remove.has(this.rules[i]!)) this.rules.splice(i, 1);
+    }
+  }
+
   /** Processes an event. Returns true if it affected any condition. */
   handle(event: PhoenixEvent): boolean {
     try {
