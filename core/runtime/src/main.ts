@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import { gitCapability } from "@phoenix/capability-git";
 import { mockCapability } from "@phoenix/capability-mock";
 import { loadConfig } from "@phoenix/config";
 import { createLogger } from "@phoenix/logging";
@@ -10,8 +11,9 @@ const logger = createLogger({ level: config.logLevel });
 const runtime = new PhoenixRuntime({
   config,
   logger,
+  // Installed, not enabled: each needs the user to enable it and grant its permissions.
   // The mock capability plays demo scenarios; it only exists in development.
-  capabilities: config.env === "dev" ? [mockCapability] : [],
+  capabilities: config.env === "dev" ? [gitCapability, mockCapability] : [gitCapability],
 });
 
 const shutdown = (signal: string) => {

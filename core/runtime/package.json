@@ -17,6 +17,7 @@
     "@phoenix/protocol": "workspace:*",
     "@phoenix/state-engine": "workspace:*",
     "@phoenix/capability-manager": "workspace:*",
+    "@phoenix/capability-git": "workspace:*",
     "@phoenix/capability-mock": "workspace:*",
     "@phoenix/notifications": "workspace:*"
   },

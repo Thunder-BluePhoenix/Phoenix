@@ -61,6 +61,19 @@ importers:
         specifier: ^8.3.2
         version: 8.3.2(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)
 
+  capabilities/git:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
   capabilities/mock:
     dependencies:
       '@phoenix/sdk':
@@ -187,6 +200,9 @@ importers:
       '@phoenix/api':
         specifier: workspace:*
         version: link:../api
+      '@phoenix/capability-git':
+        specifier: workspace:*
+        version: link:../../capabilities/git
       '@phoenix/capability-manager':
         specifier: workspace:*
         version: link:../capability-manager
