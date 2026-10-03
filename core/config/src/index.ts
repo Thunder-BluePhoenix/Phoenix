@@ -23,6 +23,8 @@ export interface PhoenixConfig {
   eventHistoryLimit: number;
   /** How many recent event ids the bus remembers for deduplication. */
   dedupWindow: number;
+  /** Browser origins allowed to call the API (CORS), e.g. the Vite dev server. */
+  allowedOrigins: string[];
 }
 
 export class ConfigError extends Error {
@@ -45,6 +47,7 @@ export function defaults(env: Environment): PhoenixConfig {
     allowRemote: false,
     eventHistoryLimit: 10_000,
     dedupWindow: 10_000,
+    allowedOrigins: env === "dev" ? ["http://localhost:5173", "http://127.0.0.1:5173"] : [],
   };
 }
 
@@ -86,6 +89,11 @@ export function loadConfig(options: LoadOptions = {}): PhoenixConfig {
   if (env.PHOENIX_PORT) config.port = parseIntStrict("PHOENIX_PORT", env.PHOENIX_PORT);
   if (env.PHOENIX_LOG_LEVEL) config.logLevel = env.PHOENIX_LOG_LEVEL as LogLevel;
   if (env.PHOENIX_DATA_DIR) config.dataDir = env.PHOENIX_DATA_DIR;
+  if (env.PHOENIX_ALLOWED_ORIGINS !== undefined) {
+    config.allowedOrigins = env.PHOENIX_ALLOWED_ORIGINS.split(",")
+      .map((o) => o.trim())
+      .filter(Boolean);
+  }
   if (env.PHOENIX_ALLOW_REMOTE) config.allowRemote = env.PHOENIX_ALLOW_REMOTE === "true";
 
   if (!isAbsolute(config.dataDir)) config.dataDir = resolve(cwd, config.dataDir);
@@ -102,6 +110,11 @@ export function validateConfig(config: PhoenixConfig): void {
     throw new ConfigError(
       `Refusing to bind to non-loopback host "${config.host}". Set allowRemote=true to override (ADR-0015).`,
     );
+  }
+  for (const origin of config.allowedOrigins) {
+    if (!/^https?:\/\/[^/\s]+$/.test(origin)) {
+      throw new ConfigError(`allowedOrigins entry "${origin}" must be scheme://host[:port]`);
+    }
   }
   if (config.eventHistoryLimit < 1 || config.dedupWindow < 1) {
     throw new ConfigError("eventHistoryLimit and dedupWindow must be positive");

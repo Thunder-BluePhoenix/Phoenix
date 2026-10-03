@@ -12,7 +12,13 @@ import {
 import { RecentIds } from "./dedup";
 import { isValidPattern, matchesPattern } from "./pattern";
 
-export type EventHandler = (event: PhoenixEvent) => void | Promise<void>;
+export interface DeliveryInfo {
+  /** Position in durable history; null for ephemeral events or when no store is configured. */
+  seq: number | null;
+  ephemeral: boolean;
+}
+
+export type EventHandler = (event: PhoenixEvent, info: DeliveryInfo) => void | Promise<void>;
 
 export interface PublishOptions {
   /** Ephemeral events (transient UI signals) are not persisted and are not retried. */
@@ -55,6 +61,7 @@ export interface EventBusOptions {
 interface Delivery {
   event: PhoenixEvent;
   durable: boolean;
+  seq: number | null;
   publishedAt: number;
 }
 
@@ -139,7 +146,7 @@ export class EventBus {
     this.m.published++;
 
     let deliveredTo = 0;
-    const delivery: Delivery = { event, durable, publishedAt: this.now() };
+    const delivery: Delivery = { event, durable, seq, publishedAt: this.now() };
     for (const sub of this.subs.values()) {
       if (!sub.patterns.some((p) => matchesPattern(p, event.event_type))) continue;
       sub.queue.push(delivery);
@@ -223,7 +230,7 @@ export class EventBus {
     for (let attempt = 1; attempt <= attempts; attempt++) {
       if (!sub.active) return;
       try {
-        await sub.handler(d.event);
+        await sub.handler(d.event, { seq: d.seq, ephemeral: !d.durable });
         this.m.delivered++;
         const latency = this.now() - d.publishedAt;
         this.latencyTotal += latency;

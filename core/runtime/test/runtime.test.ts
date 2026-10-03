@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { defaults } from "@phoenix/config";
-import { silentLogger } from "@phoenix/logging";
-import { createEvent } from "@phoenix/protocol";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { MIGRATIONS } from "@phoenix/persistence";
+import { createEvent, PROTOCOL_VERSION } from "@phoenix/protocol";
 import { afterEach, describe, expect, it } from "vitest";
-import { PhoenixRuntime } from "../src";
+import { SESSION_TOKEN_FILE, type PhoenixRuntime } from "../src";
+import { startCore, TOKEN } from "./helpers";
 
 let runtime: PhoenixRuntime | undefined;
 afterEach(async () => {
@@ -12,33 +14,25 @@ afterEach(async () => {
   runtime = undefined;
 });
 
-function make() {
-  runtime = new PhoenixRuntime({
-    config: { ...defaults("dev"), port: 0 },
-    logger: silentLogger,
-    databasePath: ":memory:",
-  });
-  return runtime;
-}
-
 describe("PhoenixRuntime", () => {
-  it("serves /api/health", async () => {
-    const rt = make();
-    const { port } = await rt.start();
-    const res = await fetch(`http://127.0.0.1:${port}/api/health`);
+  it("serves /api/health without authentication", async () => {
+    const core = await startCore();
+    runtime = core.runtime;
+    const res = await fetch(`${core.base}/api/health`);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
       status: "ok",
-      protocol: "1.0",
-      schema_version: 1,
+      protocol: PROTOCOL_VERSION,
+      schema_version: MIGRATIONS.at(-1)!.version,
       pet: { state: "IDLE", recording: false },
+      kill_switch: false,
     });
-    expect((await fetch(`http://127.0.0.1:${port}/nope`)).status).toBe(404);
   });
 
   it("routes events through the bus into the state engine and history", async () => {
-    const rt = make();
-    await rt.start();
+    const core = await startCore();
+    runtime = core.runtime;
+    const rt = core.runtime;
     const changes: string[] = [];
     rt.bus.subscribe(
       "test",
@@ -57,7 +51,7 @@ describe("PhoenixRuntime", () => {
 
     expect(rt.state.snapshot().state).toBe("ERROR");
     expect(changes).toEqual(["WORKING", "ERROR"]);
-    // system.online + 2 builds are durable; pet.state.changed is ephemeral.
+    // pet.state.changed is ephemeral and not stored.
     expect(rt.events.recent().map((r) => r.event.event_type)).toEqual([
       "build.failed",
       "build.started",
@@ -65,9 +59,17 @@ describe("PhoenixRuntime", () => {
     ]);
   });
 
+  it("writes a private session token file and removes it on stop", async () => {
+    const core = await startCore({}, { writeTokenFile: true });
+    const path = join(core.dataDir, SESSION_TOKEN_FILE);
+    expect(readFileSync(path, "utf8").trim()).toBe(TOKEN);
+    if (process.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(0o600);
+    await core.runtime.stop();
+    expect(existsSync(path)).toBe(false);
+  });
+
   it("stop is graceful and idempotent", async () => {
-    const rt = make();
-    await rt.start();
-    await Promise.all([rt.stop(), rt.stop()]);
+    const core = await startCore();
+    await Promise.all([core.runtime.stop(), core.runtime.stop()]);
   });
 });

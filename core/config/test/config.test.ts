@@ -41,6 +41,16 @@ describe("loadConfig", () => {
     ).toBe("0.0.0.0");
   });
 
+  it("parses allowed origins and rejects malformed ones", () => {
+    expect(
+      loadConfig({ env: { PHOENIX_ALLOWED_ORIGINS: "http://a:1, https://b" }, configDir: tmp() })
+        .allowedOrigins,
+    ).toEqual(["http://a:1", "https://b"]);
+    expect(() =>
+      loadConfig({ env: { PHOENIX_ALLOWED_ORIGINS: "http://a/path" }, configDir: tmp() }),
+    ).toThrow(ConfigError);
+  });
+
   it("rejects bad values", () => {
     expect(() => loadConfig({ env: { PHOENIX_ENV: "qa" }, configDir: tmp() })).toThrow();
     expect(() => loadConfig({ env: { PHOENIX_PORT: "abc" }, configDir: tmp() })).toThrow();

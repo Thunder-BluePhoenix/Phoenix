@@ -45,6 +45,19 @@ export interface StateSnapshot {
 
 export type StateListener = (snapshot: StateSnapshot, previous: StateSnapshot) => void;
 
+/** A long-running activity, as shown in the Pet Panel's active-task list. */
+export interface ActiveTask {
+  key: string;
+  state: FawkesState;
+  title: string;
+  source: string;
+  since: string;
+  updatedAt: string;
+  progress?: number;
+}
+
+export type TaskListener = (tasks: ActiveTask[]) => void;
+
 export interface StateEngineOptions {
   mapping?: readonly MappingRule[];
   now?: () => number;
@@ -71,6 +84,8 @@ export class StateEngine {
   private readonly timeoutWarningTtlMs: number;
   private readonly conditions = new Map<string, Condition>();
   private readonly listeners = new Set<StateListener>();
+  private readonly taskListeners = new Set<TaskListener>();
+  private taskSignature = "[]";
   private sleeping = false;
   private current: StateSnapshot;
 
@@ -132,6 +147,28 @@ export class StateEngine {
   onChange(listener: StateListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /** Long-running activities (working, thinking, deploying, recording…), newest first. */
+  tasks(): ActiveTask[] {
+    return [...this.conditions.values()]
+      .filter((c) => LONG_RUNNING.has(c.state) || c.state === "RECORDING")
+      .sort((a, b) => b.since - a.since || a.key.localeCompare(b.key))
+      .map((c) => ({
+        key: c.key,
+        state: c.state,
+        title: c.explanation,
+        source: c.source,
+        since: new Date(c.since).toISOString(),
+        updatedAt: new Date(c.updatedAt).toISOString(),
+        ...(c.progress !== undefined ? { progress: c.progress } : {}),
+      }));
+  }
+
+  /** Fires whenever the active-task list changes, including progress updates. */
+  onTasksChange(listener: TaskListener): () => void {
+    this.taskListeners.add(listener);
+    return () => this.taskListeners.delete(listener);
   }
 
   private apply(event: PhoenixEvent): boolean {
@@ -231,6 +268,8 @@ export class StateEngine {
       }
     }
 
+    this.notifyTasks();
+
     const next = this.compute(now);
     const prev = this.current;
     if (
@@ -254,6 +293,21 @@ export class StateEngine {
         } catch {
           // A faulty listener must not break state computation.
         }
+      }
+    }
+  }
+
+  private notifyTasks(): void {
+    if (this.taskListeners.size === 0) return;
+    const tasks = this.tasks();
+    const signature = JSON.stringify(tasks.map(({ updatedAt: _u, ...rest }) => rest));
+    if (signature === this.taskSignature) return;
+    this.taskSignature = signature;
+    for (const l of this.taskListeners) {
+      try {
+        l(tasks);
+      } catch {
+        // Listener faults are contained.
       }
     }
   }

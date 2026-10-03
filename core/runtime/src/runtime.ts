@@ -1,22 +1,25 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { ApiServer, generateSessionToken, type CoreServices } from "@phoenix/api";
 import type { PhoenixConfig } from "@phoenix/config";
 import { EventBus } from "@phoenix/event-bus";
 import { createLogger, type Logger } from "@phoenix/logging";
+import { PermissionGateway } from "@phoenix/permissions";
 import {
   DeadLetterStore,
   EventStore,
   openDatabase,
   schemaVersion,
+  SettingsStore,
   type Database,
 } from "@phoenix/persistence";
 import { createEvent, PROTOCOL_VERSION } from "@phoenix/protocol";
 import { StateEngine } from "@phoenix/state-engine";
 
 export const PHOENIX_VERSION = "0.1.0-dev";
+export const SESSION_TOKEN_FILE = "session.token";
 
 export interface RuntimeOptions {
   config: PhoenixConfig;
@@ -25,20 +28,27 @@ export interface RuntimeOptions {
   databasePath?: string;
   /** Interval for expiring transient states. */
   tickMs?: number;
+  /** Fixed session token (tests). A random one is generated otherwise. */
+  token?: string;
+  /** Write the session token to <dataDir>/session.token for local clients (default true). */
+  writeTokenFile?: boolean;
 }
 
 /**
- * Phoenix Core process: owns persistence, the event bus and the state engine,
- * and exposes a minimal HTTP surface. The full API arrives in Phase 06.
+ * Phoenix Core process: owns persistence, the event bus, the state engine and
+ * the permission gateway, and serves the HTTP/WebSocket API.
  */
-export class PhoenixRuntime {
+export class PhoenixRuntime implements CoreServices {
   readonly config: PhoenixConfig;
   readonly logger: Logger;
   readonly db: Database;
   readonly events: EventStore;
+  readonly settings: SettingsStore;
   readonly bus: EventBus;
   readonly state: StateEngine;
-  private server: Server | null = null;
+  readonly permissions: PermissionGateway;
+  readonly token: string;
+  private api: ApiServer | null = null;
   private ticker: NodeJS.Timeout | null = null;
   private readonly startedAt = Date.now();
   private stopping: Promise<void> | null = null;
@@ -48,6 +58,7 @@ export class PhoenixRuntime {
     this.logger = options.logger ?? createLogger({ level: options.config.logLevel });
     this.db = openDatabase(options.databasePath ?? join(this.config.dataDir, "phoenix.sqlite"));
     this.events = new EventStore(this.db, this.config.eventHistoryLimit);
+    this.settings = new SettingsStore(this.db);
     this.bus = new EventBus({
       store: this.events,
       deadLetters: new DeadLetterStore(this.db),
@@ -55,6 +66,15 @@ export class PhoenixRuntime {
       dedupWindow: this.config.dedupWindow,
     });
     this.state = new StateEngine();
+    this.permissions = new PermissionGateway({
+      db: this.db,
+      logger: this.logger,
+      publish: (event) => {
+        const result = this.bus.publish(event);
+        if (!result.ok) this.logger.warn("security event rejected", { code: result.error.code });
+      },
+    });
+    this.token = options.token ?? generateSessionToken();
 
     this.bus.subscribe("state-engine", "*", (event) => {
       this.state.handle(event);
@@ -75,24 +95,23 @@ export class PhoenixRuntime {
         { ephemeral: true },
       );
     });
+    this.state.setSleeping(this.settings.get("pet.sleeping", false));
+    if (this.permissions.isKillSwitchEngaged()) {
+      // Re-raise the warning so an engaged emergency stop is visible after restart.
+      this.state.handle(
+        createEvent({
+          event_type: "security.kill_switch.engaged",
+          source: "core",
+          severity: "warning",
+        }),
+      );
+    }
   }
 
   async start(): Promise<{ host: string; port: number }> {
-    this.server = createServer((req, res) => {
-      const url = new URL(req.url ?? "/", "http://localhost");
-      const send = (status: number, body: unknown) => {
-        res.writeHead(status, { "content-type": "application/json" });
-        res.end(JSON.stringify(body));
-      };
-      if (req.method === "GET" && url.pathname === "/api/health") return send(200, this.health());
-      return send(404, { code: "RESOURCE_NOT_FOUND", message: "Not found" });
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      this.server!.once("error", reject);
-      this.server!.listen(this.config.port, this.config.host, () => resolve());
-    });
-    const address = this.server.address() as AddressInfo;
+    this.api = new ApiServer({ services: this, token: this.token });
+    const address = await this.api.listen(this.config.port, this.config.host);
+    if (this.options.writeTokenFile ?? true) this.writeTokenFile();
 
     this.ticker = setInterval(() => this.state.tick(), this.options.tickMs ?? 1_000);
     this.ticker.unref();
@@ -106,15 +125,20 @@ export class PhoenixRuntime {
       }),
     );
     this.logger.info("Phoenix Core started", {
-      host: address.address,
-      port: address.port,
+      url: `http://${address.address}:${address.port}`,
       env: this.config.env,
       dataDir: this.config.dataDir,
     });
     return { host: address.address, port: address.port };
   }
 
+  setSleeping(sleeping: boolean): void {
+    this.settings.set("pet.sleeping", sleeping);
+    this.state.setSleeping(sleeping);
+  }
+
   health() {
+    const snapshot = this.state.snapshot();
     return {
       status: "ok" as const,
       version: PHOENIX_VERSION,
@@ -122,8 +146,11 @@ export class PhoenixRuntime {
       env: this.config.env,
       uptime_ms: Date.now() - this.startedAt,
       schema_version: schemaVersion(this.db),
-      pet: { state: this.state.snapshot().state, recording: this.state.snapshot().recording },
+      pet: { state: snapshot.state, recording: snapshot.recording },
+      kill_switch: this.permissions.isKillSwitchEngaged(),
+      active_tasks: this.state.tasks().length,
       bus: this.bus.metrics(),
+      websocket: this.api?.hub.metrics() ?? null,
     };
   }
 
@@ -131,14 +158,21 @@ export class PhoenixRuntime {
   stop(): Promise<void> {
     this.stopping ??= (async () => {
       if (this.ticker) clearInterval(this.ticker);
-      if (this.server) {
-        await new Promise<void>((resolve) => this.server!.close(() => resolve()));
-        this.server.closeAllConnections?.();
-      }
+      await this.api?.close();
       await this.bus.drain();
+      if (this.options.writeTokenFile ?? true) {
+        rmSync(join(this.config.dataDir, SESSION_TOKEN_FILE), { force: true });
+      }
       this.db.close();
       this.logger.info("Phoenix Core stopped");
     })();
     return this.stopping;
+  }
+
+  private writeTokenFile(): void {
+    mkdirSync(this.config.dataDir, { recursive: true });
+    const path = join(this.config.dataDir, SESSION_TOKEN_FILE);
+    writeFileSync(path, this.token + "\n", { mode: 0o600 });
+    chmodSync(path, 0o600);
   }
 }
