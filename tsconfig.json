@@ -5,7 +5,12 @@
     "core/*/src/**/*.ts",
     "core/*/test/**/*.ts",
     "protocol/test/**/*.ts",
-    "apps/web/vite.config.ts"
+    "apps/web/vite.config.ts",
+    "sdk/*/src/**/*.ts",
+    "sdk/*/test/**/*.ts",
+    "capabilities/*/src/**/*.ts",
+    "capabilities/*/test/**/*.ts",
+    "scripts/**/*.ts"
   ],
   "exclude": ["**/node_modules/**", "**/dist/**"]
 }

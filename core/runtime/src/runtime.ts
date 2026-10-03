@@ -181,7 +181,9 @@ export class PhoenixRuntime implements CoreServices {
       if (this.ticker) clearInterval(this.ticker);
       await this.api?.close();
       await this.capabilities.close();
+      this.permissions.close();
       await this.bus.drain();
+      this.bus.close();
       if (this.options.writeTokenFile ?? true) {
         rmSync(join(this.config.dataDir, SESSION_TOKEN_FILE), { force: true });
       }

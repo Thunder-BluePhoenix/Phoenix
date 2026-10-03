@@ -286,6 +286,12 @@ paths:
               properties:
                 manifest: { $ref: "../../protocol/schemas/capability-manifest-v1.schema.json" }
                 endpoint: { type: string, example: "http://127.0.0.1:8765" }
+                callback_secret:
+                  {
+                    type: string,
+                    minLength: 32,
+                    description: "Secret core presents when calling the capability. Defaults to the issued token.",
+                  }
       responses:
         "201":
           description: Registered. `token` authenticates the capability's events (ADR-0016).

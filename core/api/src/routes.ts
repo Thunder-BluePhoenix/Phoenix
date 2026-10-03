@@ -60,7 +60,13 @@ export function buildRoutes(s: CoreServices): Route[] {
       const b = expectObject(await body());
       if (typeof b.endpoint !== "string")
         throw new PhoenixError(ErrorCode.INVALID_REQUEST, '"endpoint" must be a string');
-      const result = await caps().registerExternal(b.manifest, b.endpoint);
+      if (b.callback_secret !== undefined && typeof b.callback_secret !== "string")
+        throw new PhoenixError(ErrorCode.INVALID_REQUEST, '"callback_secret" must be a string');
+      const result = await caps().registerExternal(
+        b.manifest,
+        b.endpoint,
+        b.callback_secret as string | undefined,
+      );
       res.statusCode = 201;
       return result;
     }),

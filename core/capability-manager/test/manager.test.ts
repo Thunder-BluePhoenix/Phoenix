@@ -410,6 +410,13 @@ describe("external capabilities (separate process)", () => {
       ],
     });
 
+  it("rejects weak callback secrets", async () => {
+    const { manager } = setup();
+    expect(
+      await errCode(manager.registerExternal(extManifest(), "http://127.0.0.1:9", "short")),
+    ).toBe(ErrorCode.INVALID_REQUEST);
+  });
+
   it("only loopback endpoints are allowed", async () => {
     const { manager } = setup();
     expect(await errCode(manager.registerExternal(extManifest(), "http://10.0.0.5:9000"))).toBe(

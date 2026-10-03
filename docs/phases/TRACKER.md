@@ -8,13 +8,13 @@ Single source of truth for delivery progress. Derived from the five vision docum
 
 ## Current focus
 
-Next up: **Phase 09 — Pet Panel, activity feed & notifications** and **Phase 13 — Capability SDK + mock capability + event simulator**, then 14 (desktop) and 10 (final art).
+Next up: **Phase 09 — Pet Panel, activity feed & notifications**, then 14 (desktop), 15 (Kage adapter), 17/18 (Git, terminal).
 
 ## Summary
 
 | Stage | Release | Phases | Done |
 |---|---|---|---|
-| Stage 1 — MVP Foundation | v0.1 | 00–20 (21) | 10/21 |
+| Stage 1 — MVP Foundation | v0.1 | 00–20 (21) | 11/21 |
 | Stage 2 — Useful Fawkes (v0.2) | v0.2 | 21–26 (6) | 0/6 |
 | Stage 3 — Memory & Context (v0.3) | v0.3 | 27–29 (3) | 0/3 |
 | Stage 4 — Fawkes Becomes an Agent (v0.4) | v0.4 | 30–33 (4) | 0/4 |
@@ -25,7 +25,7 @@ Next up: **Phase 09 — Pet Panel, activity feed & notifications** and **Phase 1
 | Stage 9 — Capability Ecosystem (v0.9) | v0.9 | 41–42 (2) | 0/2 |
 | Stage 10 — Developer Operating Layer (v1.0) | v1.0 | 43–44 (2) | 0/2 |
 | Stage 11 — AI Evolution (v1.1 → v2.0) | v1.1 → v2.0 | 45–55 (11) | 0/11 |
-| **Total** | | **56** | **10/56** |
+| **Total** | | **56** | **11/56** |
 
 ## Stage 1 — MVP Foundation
 
@@ -44,7 +44,7 @@ Next up: **Phase 09 — Pet Panel, activity feed & notifications** and **Phase 1
 | 10 | [Animation System & P0 States](phase-10-animation-system-p0-states.md) | v0.1 | High | 07 | ⬜ | | |
 | 11 | [Permissions & Audit Primitives](phase-11-permissions-and-audit.md) | v0.1 | Critical | 04 | ✅ | | |
 | 12 | [Capability Manager & Manifest](phase-12-capability-manager.md) | v0.1 | Critical | 11, 06 | ✅ | | |
-| 13 | [Capability SDK, Mock Capability & Event Simulator](phase-13-capability-sdk-mock-simulator.md) | v0.1 | Critical | 12 | ⬜ | | |
+| 13 | [Capability SDK, Mock Capability & Event Simulator](phase-13-capability-sdk-mock-simulator.md) | v0.1 | Critical | 12 | ✅ | | |
 | 14 | [Floating Desktop Fawkes](phase-14-floating-desktop-fawkes.md) | v0.1 | High | 07, 06 | ⬜ | | |
 | 15 | [Kage Adapter & Meeting Lifecycle](phase-15-kage-adapter-meeting-lifecycle.md) | v0.1 | Critical | 13 | ⬜ | | |
 | 16 | [Meetings UI & Recording Indicator](phase-16-meetings-ui.md) | v0.1 | Critical | 15, 09 | ⬜ | | |

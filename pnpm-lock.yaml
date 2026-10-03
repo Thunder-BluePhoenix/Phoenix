@@ -61,6 +61,19 @@ importers:
         specifier: ^8.3.2
         version: 8.3.2(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)
 
+  capabilities/mock:
+    dependencies:
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+      '@phoenix/sdk-events':
+        specifier: workspace:*
+        version: link:../../sdk/events
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
   core/api:
     dependencies:
       '@phoenix/config':
@@ -159,6 +172,9 @@ importers:
       '@phoenix/capability-manager':
         specifier: workspace:*
         version: link:../capability-manager
+      '@phoenix/capability-mock':
+        specifier: workspace:*
+        version: link:../../capabilities/mock
       '@phoenix/config':
         specifier: workspace:*
         version: link:../config
@@ -223,6 +239,71 @@ importers:
       ajv-formats:
         specifier: ^3.0.1
         version: 3.0.1(ajv@8.20.0)
+
+  sdk/capability:
+    dependencies:
+      '@phoenix/capability-manager':
+        specifier: workspace:*
+        version: link:../../core/capability-manager
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@phoenix/sdk-events':
+        specifier: workspace:*
+        version: link:../events
+    devDependencies:
+      '@phoenix/config':
+        specifier: workspace:*
+        version: link:../../core/config
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/runtime':
+        specifier: workspace:*
+        version: link:../../core/runtime
+
+  sdk/events:
+    dependencies:
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+
+  sdk/testing:
+    dependencies:
+      '@phoenix/capability-manager':
+        specifier: workspace:*
+        version: link:../../core/capability-manager
+      '@phoenix/event-bus':
+        specifier: workspace:*
+        version: link:../../core/event-bus
+      '@phoenix/permissions':
+        specifier: workspace:*
+        version: link:../../core/permissions
+      '@phoenix/persistence':
+        specifier: workspace:*
+        version: link:../../core/persistence
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../capability
+      '@phoenix/sdk-events':
+        specifier: workspace:*
+        version: link:../events
+      '@phoenix/state-engine':
+        specifier: workspace:*
+        version: link:../../core/state-engine
+    devDependencies:
+      '@phoenix/config':
+        specifier: workspace:*
+        version: link:../../core/config
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/runtime':
+        specifier: workspace:*
+        version: link:../../core/runtime
 
 packages:
 

@@ -93,6 +93,7 @@ export class EventBus {
   private readonly maxAttempts: number;
   private readonly retryDelayMs: number;
   private readonly now: () => number;
+  private closed = false;
   private latencyTotal = 0;
   private latencyCount = 0;
   private readonly m: Omit<BusMetrics, "avgLatencyMs" | "subscribers"> = {
@@ -115,6 +116,12 @@ export class EventBus {
   }
 
   publish(input: unknown, options: PublishOptions = {}): PublishResult {
+    if (this.closed) {
+      return {
+        ok: false,
+        error: new PhoenixError(ErrorCode.INTERNAL_ERROR, "Event bus is closed"),
+      };
+    }
     const validation = validateEvent(input);
     if (!validation.ok) return this.reject(validation.error, input);
     const event = validation.event;
@@ -187,6 +194,11 @@ export class EventBus {
       if (running.length === 0) return;
       await Promise.all(running);
     }
+  }
+
+  /** Rejects further publishes (shutdown). Call drain() first to flush queued deliveries. */
+  close(): void {
+    this.closed = true;
   }
 
   metrics(): BusMetrics {
