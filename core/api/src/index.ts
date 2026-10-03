@@ -4,3 +4,4 @@ export * from "./security";
 export * from "./server";
 export * from "./services";
 export * from "./websocket";
+export * from "./static";

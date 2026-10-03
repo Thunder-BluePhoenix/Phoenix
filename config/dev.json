@@ -3,5 +3,6 @@
   "host": "127.0.0.1",
   "port": 4870,
   "logLevel": "debug",
-  "dataDir": ".phoenix/dev"
+  "dataDir": ".phoenix/dev",
+  "webRoot": "apps/web/dist"
 }

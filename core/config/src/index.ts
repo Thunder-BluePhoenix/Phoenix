@@ -25,6 +25,8 @@ export interface PhoenixConfig {
   dedupWindow: number;
   /** Browser origins allowed to call the API (CORS), e.g. the Vite dev server. */
   allowedOrigins: string[];
+  /** Directory with the built web app (apps/web/dist) served at "/". Unset: API only. */
+  webRoot?: string;
 }
 
 export class ConfigError extends Error {
@@ -94,9 +96,11 @@ export function loadConfig(options: LoadOptions = {}): PhoenixConfig {
       .map((o) => o.trim())
       .filter(Boolean);
   }
+  if (env.PHOENIX_WEB_ROOT) config.webRoot = env.PHOENIX_WEB_ROOT;
   if (env.PHOENIX_ALLOW_REMOTE) config.allowRemote = env.PHOENIX_ALLOW_REMOTE === "true";
 
   if (!isAbsolute(config.dataDir)) config.dataDir = resolve(cwd, config.dataDir);
+  if (config.webRoot && !isAbsolute(config.webRoot)) config.webRoot = resolve(cwd, config.webRoot);
   validateConfig(config);
   return config;
 }

@@ -7,6 +7,7 @@ import { ErrorCode, PhoenixError } from "@phoenix/protocol";
 import { matchRoute, readJsonBody, sendError, sendJson, type Route } from "./http";
 import { buildRoutes } from "./routes";
 import { isAllowedHost, isAllowedOrigin, requestToken, tokensEqual } from "./security";
+import { StaticSite } from "./static";
 import type { CoreServices } from "./services";
 import { WebSocketHub } from "./websocket";
 
@@ -14,6 +15,8 @@ export interface ApiServerOptions {
   services: CoreServices;
   /** Session token required on every non-public request. */
   token: string;
+  /** Built web app to serve at "/" (optional). */
+  webRoot?: string;
 }
 
 /** Phoenix Core HTTP + WebSocket API (Phase 06). */
@@ -23,10 +26,12 @@ export class ApiServer {
   private readonly routes: Route[];
   private readonly s: CoreServices;
   private readonly token: string;
+  private readonly site: StaticSite | null;
 
   constructor(options: ApiServerOptions) {
     this.s = options.services;
     this.token = options.token;
+    this.site = options.webRoot ? new StaticSite(options.webRoot, options.token) : null;
     this.routes = buildRoutes(this.s);
     this.hub = new WebSocketHub(this.s);
     this.server = createServer((req, res) => void this.onRequest(req, res));
@@ -74,6 +79,13 @@ export class ApiServer {
       }
 
       const url = new URL(req.url ?? "/", "http://localhost");
+      if (!url.pathname.startsWith("/api/") && (req.method === "GET" || req.method === "HEAD")) {
+        if (this.site?.available()) return this.site.serve(url.pathname, res);
+        throw new PhoenixError(
+          ErrorCode.RESOURCE_NOT_FOUND,
+          "Web app not built (run: pnpm --filter @phoenix/web build)",
+        );
+      }
       const { route, params, pathMatched } = matchRoute(
         this.routes,
         req.method ?? "GET",
