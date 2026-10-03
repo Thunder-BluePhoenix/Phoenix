@@ -353,3 +353,36 @@ describe("active tasks", () => {
     expect(updates).toEqual([1, 1, 0]);
   });
 });
+
+describe("describe()", () => {
+  it("uses the mapping's wording, else a readable event type", () => {
+    const engine = new StateEngine();
+    expect(engine.describe(ev("build.failed"))).toBe("Build failed (terminal)");
+    expect(engine.describe(ev("deploy.started", { payload: { environment: "prod" } }))).toBe(
+      "Deploying to prod",
+    );
+    expect(engine.describe(ev("kage.summary.ready", { source: "kage" }))).toBe(
+      "Meeting summary ready",
+    );
+    expect(engine.describe(ev("frappe.site.healthy", { subject: "erp.local" }))).toBe(
+      "Site erp.local is healthy again",
+    );
+    expect(
+      engine.describe(ev("capability.enabled", { source: "core", payload: { name: "Deployer" } })),
+    ).toBe("Deployer enabled");
+    expect(
+      engine.describe(
+        ev("capability.command.completed", {
+          source: "core",
+          payload: { capability: "deployer", command: "ship" },
+        }),
+      ),
+    ).toBe("deployer: ship completed");
+    expect(
+      engine.describe(
+        ev("security.confirmation.resolved", { source: "core", payload: { outcome: "approved" } }),
+      ),
+    ).toBe("Request approved");
+    expect(engine.describe(ev("custom.thing_happened"))).toBe("Custom thing happened");
+  });
+});

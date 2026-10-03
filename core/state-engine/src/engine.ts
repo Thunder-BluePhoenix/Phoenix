@@ -8,7 +8,7 @@ import {
   type FawkesState,
   type PhoenixEvent,
 } from "@phoenix/protocol";
-import { DEFAULT_MAPPING } from "./default-mapping";
+import { DEFAULT_MAPPING, EVENT_DESCRIPTIONS } from "./default-mapping";
 import { conditionKey, renderExplanation, ruleMatches, type MappingRule } from "./rules";
 
 /** One active reason for Fawkes to be in a state. */
@@ -65,6 +65,12 @@ export interface StateEngineOptions {
   timeoutWarningTtlMs?: number;
 }
 
+/** "kage.summary.ready" → "Kage summary ready" */
+export function humanizeEventType(eventType: string): string {
+  const text = eventType.replace(/[._]+/g, " ").trim();
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 const LONG_RUNNING: ReadonlySet<FawkesState> = new Set([
   "WORKING",
   "THINKING",
@@ -117,6 +123,28 @@ export class StateEngine {
       // Malformed or unexpected input must never break the engine.
       return false;
     }
+  }
+
+  /**
+   * Human-readable sentence for an event, using the same wording Fawkes shows
+   * (e.g. "Build failed (terminal)"). Falls back to a readable event type.
+   */
+  describe(event: PhoenixEvent): string {
+    try {
+      const rule = this.rules.find((r) => ruleMatches(r, event.event_type));
+      if (rule && "state" in rule.effect) {
+        const text = renderExplanation(rule.effect.explain ?? "", event);
+        if (text) return text;
+      }
+      const template = EVENT_DESCRIPTIONS[event.event_type];
+      if (template) {
+        const text = renderExplanation(template, event);
+        if (text) return text;
+      }
+    } catch {
+      // fall through
+    }
+    return humanizeEventType(event.event_type);
   }
 
   /** Expires transient conditions and converts stalled tasks into timeout warnings. */

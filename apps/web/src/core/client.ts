@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import type { ActiveTask, ConnectionStatus, PetState, StoredEvent } from "./types";
+import type {
+  ActiveTask,
+  ConnectionStatus,
+  Notification,
+  PetState,
+  PhoenixEvent,
+  StoredEvent,
+} from "./types";
 
 export const WS_PROTOCOL = "phoenix.v1";
 export const WS_TOKEN_PREFIX = "phoenix.token.";
@@ -52,6 +59,8 @@ export class PhoenixClient {
   readonly tasksChanged = new Emitter<ActiveTask[]>();
   readonly eventCreated = new Emitter<StoredEvent>();
   readonly statusChanged = new Emitter<ConnectionStatus>();
+  readonly notificationCreated = new Emitter<Notification>();
+  readonly capabilityChanged = new Emitter<PhoenixEvent>();
 
   private ws: WebSocket | null = null;
   private status_: ConnectionStatus = "connecting";
@@ -168,6 +177,14 @@ export class PhoenixClient {
         this.eventCreated.emit(stored);
         break;
       }
+      case "notification.created": {
+        const n = (msg.data as PhoenixEvent).payload?.notification as Notification | undefined;
+        if (n) this.notificationCreated.emit(n);
+        break;
+      }
+      case "capability.health":
+        this.capabilityChanged.emit(msg.data as PhoenixEvent);
+        break;
     }
   }
 

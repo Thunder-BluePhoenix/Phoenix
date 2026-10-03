@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "../src/App";
 import { PhoenixClient } from "../src/core/client";
 import { CoreProvider } from "../src/core/context";
+import { fakeApi } from "./fake-api";
 import { FakeWebSocket } from "./fake-ws";
 
 beforeEach(() => FakeWebSocket.reset());
@@ -16,6 +17,7 @@ function setup(token: string | null = "tok") {
     token,
     baseUrl: "http://127.0.0.1:4870",
     WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    fetchImpl: fakeApi().fetchImpl,
   });
   render(
     <CoreProvider client={client}>

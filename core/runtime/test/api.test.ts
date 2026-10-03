@@ -379,3 +379,54 @@ describe("WebSocket", () => {
     expect(await c.next((m) => m.type === "error")).toMatchObject({ message: "Invalid JSON" });
   });
 });
+
+describe("notifications and event descriptions", () => {
+  it("creates notifications for failures, lists, marks read and streams them", async () => {
+    const { api, runtime, port } = await start();
+    const c = ws(port);
+    await c.opened;
+    c.send({ type: "subscribe", channels: ["notification.created", "event.created"] });
+    await c.next((m) => m.type === "subscribed");
+
+    await api("POST", "/api/events", event("build.failed", { severity: "error" }));
+    const streamed = await c.next((m) => m.channel === "notification.created");
+    expect(streamed.data.payload.notification).toMatchObject({ title: "Build failed (terminal)" });
+    const created = await c.next((m) => m.channel === "event.created");
+    expect(created.data.description).toBe("Build failed (terminal)");
+    await runtime.bus.drain();
+
+    const list = (await api("GET", "/api/notifications")).json;
+    expect(list.unread).toBe(1);
+    const id = list.notifications[0].id;
+    expect((await api("POST", `/api/notifications/${id}/read`, {})).json.read).toBe(true);
+    expect((await api("GET", "/api/notifications?unread_only=true")).json.notifications).toEqual(
+      [],
+    );
+    expect((await api("POST", "/api/notifications/read-all", {})).json).toEqual({ marked: 0 });
+    expect((await api("POST", "/api/notifications/ntf_nope/read", {})).status).toBe(404);
+  });
+
+  it("exposes and validates preferences", async () => {
+    const { api } = await start();
+    expect((await api("GET", "/api/notifications/preferences")).json).toEqual({
+      enabled: true,
+      min_severity: "warning",
+      muted_sources: [],
+    });
+    expect(
+      (await api("POST", "/api/notifications/preferences", { min_severity: "error" })).json
+        .min_severity,
+    ).toBe("error");
+    expect(
+      (await api("POST", "/api/notifications/preferences", { min_severity: "loud" })).status,
+    ).toBe(400);
+  });
+
+  it("event history carries human descriptions", async () => {
+    const { api, runtime } = await start();
+    await api("POST", "/api/events", event("deploy.started", { payload: { environment: "prod" } }));
+    await runtime.bus.drain();
+    const [first] = (await api("GET", "/api/events?type=deploy.*")).json.events;
+    expect(first.description).toBe("Deploying to prod");
+  });
+});

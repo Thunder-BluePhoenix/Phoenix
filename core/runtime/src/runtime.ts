@@ -7,6 +7,7 @@ import { CapabilityManager, type CapabilityModule } from "@phoenix/capability-ma
 import type { PhoenixConfig } from "@phoenix/config";
 import { EventBus } from "@phoenix/event-bus";
 import { createLogger, type Logger } from "@phoenix/logging";
+import { NotificationService } from "@phoenix/notifications";
 import { PermissionGateway } from "@phoenix/permissions";
 import {
   DeadLetterStore,
@@ -51,6 +52,7 @@ export class PhoenixRuntime implements CoreServices {
   readonly state: StateEngine;
   readonly permissions: PermissionGateway;
   readonly capabilities: CapabilityManager;
+  readonly notifications: NotificationService;
   readonly token: string;
   private api: ApiServer | null = null;
   private ticker: NodeJS.Timeout | null = null;
@@ -88,6 +90,12 @@ export class PhoenixRuntime implements CoreServices {
       logger: this.logger,
     });
     for (const module of options.capabilities ?? []) this.capabilities.registerBuiltin(module);
+    this.notifications = new NotificationService({
+      db: this.db,
+      bus: this.bus,
+      state: this.state,
+      logger: this.logger,
+    });
 
     this.bus.subscribe("state-engine", "*", (event) => {
       this.state.handle(event);
@@ -181,6 +189,7 @@ export class PhoenixRuntime implements CoreServices {
       if (this.ticker) clearInterval(this.ticker);
       await this.api?.close();
       await this.capabilities.close();
+      this.notifications.close();
       this.permissions.close();
       await this.bus.drain();
       this.bus.close();

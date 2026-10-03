@@ -8,6 +8,10 @@ const notFound = (what: string) =>
   new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, `${what} not found`);
 
 export function buildRoutes(s: CoreServices): Route[] {
+  const notes = () => {
+    if (!s.notifications) throw notFound("Notifications");
+    return s.notifications;
+  };
   const caps = () => {
     if (!s.capabilities) throw notFound("Capability registry");
     return s.capabilities;
@@ -40,7 +44,13 @@ export function buildRoutes(s: CoreServices): Route[] {
         ...(url.searchParams.get("source") ? { source: url.searchParams.get("source")! } : {}),
         ...(url.searchParams.get("type") ? { type: url.searchParams.get("type")! } : {}),
       });
-      return { events: items.map((i) => ({ seq: i.seq, event: i.event })) };
+      return {
+        events: items.map((i) => ({
+          seq: i.seq,
+          event: i.event,
+          description: s.state.describe(i.event),
+        })),
+      };
     }),
     route("POST", "/api/events", async ({ body, res }) => {
       const event = await body();
@@ -105,6 +115,20 @@ export function buildRoutes(s: CoreServices): Route[] {
         return { event_id: result.event.event_id, seq: result.seq };
       },
       true,
+    ),
+
+    // ── Notifications ───────────────────────────────────────────────────────
+    route("GET", "/api/notifications", ({ url }) =>
+      notes().list({
+        unreadOnly: url.searchParams.get("unread_only") === "true",
+        limit: intParam(url, "limit", 50)!,
+      }),
+    ),
+    route("POST", "/api/notifications/read-all", () => ({ marked: notes().markAllRead() })),
+    route("POST", "/api/notifications/:id/read", ({ params }) => notes().markRead(params.id!)),
+    route("GET", "/api/notifications/preferences", () => notes().preferences()),
+    route("POST", "/api/notifications/preferences", async ({ body }) =>
+      notes().setPreferences(await body()),
     ),
 
     // ── Permissions, confirmations, audit, kill switch ──────────────────────

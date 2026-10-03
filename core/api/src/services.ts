@@ -29,6 +29,18 @@ export interface CapabilityService {
   ): { ok: true; event: { event_id: string }; seq: number | null } | { ok: false; error: Error };
 }
 
+/** Notification surface used by the API (implemented by @phoenix/notifications). */
+export interface NotificationsService {
+  list(options: { unreadOnly?: boolean; limit?: number }): {
+    notifications: unknown[];
+    unread: number;
+  };
+  markRead(id: string): unknown;
+  markAllRead(): number;
+  preferences(): unknown;
+  setPreferences(input: unknown): unknown;
+}
+
 /** Everything the API needs from Phoenix Core. */
 export interface CoreServices {
   config: PhoenixConfig;
@@ -38,6 +50,7 @@ export interface CoreServices {
   state: StateEngine;
   permissions: PermissionGateway;
   capabilities?: CapabilityService;
+  notifications?: NotificationsService;
   /** Persists the user's sleep preference. */
   setSleeping(sleeping: boolean): void;
   health(): Record<string, unknown>;
