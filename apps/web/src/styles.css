@@ -781,3 +781,118 @@ code.break {
   font-size: 12px;
   resize: vertical;
 }
+
+/* ── Memory browser and AI settings (Phase 29) ───────────────────────────── */
+.chips.wrap {
+  flex-wrap: wrap;
+}
+.memory {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.memory-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.memory-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.memory-row input {
+  flex: 1 1 140px;
+  min-width: 0;
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+}
+.memory-list,
+.memory-facts {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.memory-item,
+.memory-facts li {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+.memory-item > .btn {
+  margin-top: 4px;
+}
+.memory-text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.memory-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+}
+.mem-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+/* The border carries the difference besides the words; text stays on the AA-safe variants. */
+.mem-kind-interpretation {
+  color: var(--info-text);
+  border-style: dashed;
+  border-color: var(--info);
+}
+.mem-sens-sensitive {
+  color: var(--danger-text);
+  border-color: var(--danger);
+}
+.mem-sens-internal {
+  color: var(--warning-text);
+  border-color: var(--warning);
+}
+.memory-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.memory-answer h4 {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+.memory-interpretation {
+  border-left: 3px dashed var(--info);
+  padding-left: 8px;
+}
+.memory-delete {
+  margin-top: 4px;
+}
+.ai-providers li {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.settings fieldset.ai-external {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.ai-sensitive {
+  border: 2px solid var(--danger);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.ai-sensitive-confirm {
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+  padding-top: 6px;
+}

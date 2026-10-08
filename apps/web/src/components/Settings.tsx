@@ -13,9 +13,11 @@ import {
   type PetSettings,
 } from "../core/hooks";
 import type { CapabilityView, JsonSchema, PetState } from "../core/types";
+import { AiSettings, MemorySettingsSection } from "./MemorySettings";
+import { Feedback } from "./Feedback";
 import { QuickActions } from "./Overview";
 
-/** Settings (PRD v2.0 §16, FR-014): Fawkes, notifications, capabilities, privacy. */
+/** Settings (PRD v2.0 §16, FR-014): Fawkes, notifications, capabilities, privacy, memory, AI. */
 export function SettingsPage({ state }: { state: PetState }) {
   return (
     <div className="settings">
@@ -24,26 +26,14 @@ export function SettingsPage({ state }: { state: PetState }) {
       <NotificationSettings />
       <CapabilitySettings recording={state.recording} />
       <PrivacySettings />
+      <MemorySettingsSection />
+      <AiSettings />
       <SupportSettings />
       <div className="card">
         <QuickActions state={state} />
       </div>
     </div>
   );
-}
-
-function Feedback({ error, saved }: { error: string | null; saved?: string | null }) {
-  if (error)
-    return (
-      <p className="error-text small" role="alert">
-        {error}
-      </p>
-    );
-  return saved ? (
-    <p className="small" role="status">
-      {saved}
-    </p>
-  ) : null;
 }
 
 function FawkesSettings() {
@@ -449,6 +439,7 @@ const DATA_LABELS: Record<string, string> = {
   events: "Activity history",
   notifications: "Notifications",
   meetings: "Meetings",
+  memory: "Memory",
 };
 
 /**

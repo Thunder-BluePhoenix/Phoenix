@@ -4,9 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "./client";
 import { useClient } from "./context";
 import type {
+  AiStatus,
   CapabilityView,
   Confirmation,
   Meeting,
+  MemoryItem,
+  MemoryList,
+  MemorySearchHit,
+  MemorySettings,
   Notification,
   StoredEvent,
   Summary,
@@ -339,4 +344,153 @@ export function useNotificationPreferences() {
     null,
     () => false,
   );
+}
+
+export const MEMORY_PAGE_SIZE = 50;
+
+const memoryQuery = (params: Record<string, string | number | null>) => {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== null && v !== "") q.set(k, String(v));
+  return q.toString();
+};
+
+export interface MemoryBrowser {
+  items: MemoryItem[];
+  total: number;
+  counts: Record<string, number>;
+  aiEnabled: boolean;
+  loaded: boolean;
+  error: string | null;
+  /** Fetches the next page of the current filter and appends it. */
+  loadMore: () => Promise<void>;
+  /** Starts over from the first page (after a delete, say). */
+  reload: () => Promise<void>;
+  /** Drops one forgotten item from view and the counts, without losing the pages already loaded. */
+  remove: (item: MemoryItem) => void;
+}
+
+/** Pages through GET /api/memory for one domain filter (null = every domain). */
+export function useMemoryBrowser(domain: string | null): MemoryBrowser {
+  const client = useClient();
+  const [items, setItems] = useState<MemoryItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Only the newest request may write state: a slow page for an old filter must not land on a new one.
+  const latest = useRef(0);
+  const lengthRef = useRef(0);
+  lengthRef.current = items.length;
+
+  const fetchPage = useCallback(
+    async (offset: number) => {
+      const ticket = ++latest.current;
+      try {
+        const query = memoryQuery({
+          domain,
+          limit: MEMORY_PAGE_SIZE,
+          offset,
+          include: "live",
+        });
+        const page = await client.request<MemoryList>("GET", `/api/memory?${query}`);
+        if (ticket !== latest.current) return;
+        setItems((cur) => (offset === 0 ? page.items : [...cur, ...page.items]));
+        setTotal(page.total);
+        // Counts cover every domain; a filtered page may only report its own, so merge it in.
+        setCounts((cur) => (domain === null ? page.counts : { ...cur, ...page.counts }));
+        setAiEnabled(page.ai.enabled);
+        setError(null);
+        setLoaded(true);
+      } catch (err) {
+        if (ticket !== latest.current) return;
+        setError(err instanceof ApiError ? err.message : "Phoenix Core is unreachable");
+      }
+    },
+    [client, domain],
+  );
+
+  useEffect(() => {
+    setItems([]);
+    setLoaded(false);
+    void fetchPage(0);
+    return () => {
+      latest.current++;
+    };
+  }, [fetchPage]);
+
+  const loadMore = useCallback(() => fetchPage(lengthRef.current), [fetchPage]);
+  const reload = useCallback(() => fetchPage(0), [fetchPage]);
+  const remove = useCallback((gone: MemoryItem) => {
+    setItems((cur) => cur.filter((item) => item.id !== gone.id));
+    setTotal((t) => Math.max(0, t - 1));
+    setCounts((cur) => ({ ...cur, [gone.domain]: Math.max(0, (cur[gone.domain] ?? 0) - 1) }));
+  }, []);
+  return { items, total, counts, aiEnabled, loaded, error, loadMore, reload, remove };
+}
+
+export interface MemorySearch {
+  /** The submitted query, or null when no search is showing. */
+  query: string | null;
+  hits: MemorySearchHit[];
+  busy: boolean;
+  error: string | null;
+  search: (q: string, domain: string | null) => Promise<void>;
+  clear: () => void;
+  remove: (id: string) => void;
+}
+
+/** GET /api/memory/search, run on submit (never on a timer). */
+export function useMemorySearch(): MemorySearch {
+  const client = useClient();
+  const [query, setQuery] = useState<string | null>(null);
+  const [hits, setHits] = useState<MemorySearchHit[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const latest = useRef(0);
+
+  const search = useCallback(
+    async (q: string, domain: string | null) => {
+      const ticket = ++latest.current;
+      setBusy(true);
+      setError(null);
+      try {
+        const res = await client.request<{ items: MemorySearchHit[] }>(
+          "GET",
+          `/api/memory/search?${memoryQuery({ q, domain, limit: 20 })}`,
+        );
+        if (ticket !== latest.current) return;
+        setHits(res.items);
+        setQuery(q);
+      } catch (err) {
+        if (ticket !== latest.current) return;
+        setError(err instanceof ApiError ? err.message : "Phoenix Core is unreachable");
+      } finally {
+        if (ticket === latest.current) setBusy(false);
+      }
+    },
+    [client],
+  );
+  const clear = useCallback(() => {
+    latest.current++;
+    setQuery(null);
+    setHits([]);
+    setBusy(false);
+    setError(null);
+  }, []);
+  const remove = useCallback((id: string) => setHits((cur) => cur.filter((h) => h.id !== id)), []);
+  return { query, hits, busy, error, search, clear, remove };
+}
+
+export function useMemorySettings() {
+  return useLiveResource<MemorySettings | null>(
+    "/api/memory/settings",
+    (j) => j,
+    null,
+    () => false,
+  );
+}
+
+export function useAiStatus() {
+  return useLiveResource<AiStatus | null>("/api/ai/status", (j) => j, null, () => false);
 }

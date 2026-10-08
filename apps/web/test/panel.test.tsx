@@ -237,8 +237,11 @@ describe("tabs", () => {
     expect(tab("Activity").getAttribute("aria-selected")).toBe("true");
     expect(document.activeElement).toBe(tab("Activity"));
     fireEvent.keyDown(tab("Activity"), { key: "End" });
+    expect(tab("Memory").getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(tab("Memory"), { key: "ArrowLeft" });
     expect(tab("Capabilities").getAttribute("aria-selected")).toBe("true");
     fireEvent.keyDown(tab("Capabilities"), { key: "ArrowRight" });
+    fireEvent.keyDown(tab("Memory"), { key: "ArrowRight" });
     expect(tab("Overview").getAttribute("aria-selected")).toBe("true");
   });
 });

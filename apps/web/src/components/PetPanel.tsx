@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { ActiveTask, PetState } from "../core/types";
 import { ActivityFeed } from "./ActivityFeed";
 import { CapabilityList } from "./CapabilityList";
+import { MemoryPanel } from "./MemoryPanel";
 import { Overview } from "./Overview";
 
 export interface PetPanelProps {
@@ -17,6 +18,7 @@ const TABS = [
   { id: "overview", label: "Overview" },
   { id: "activity", label: "Activity" },
   { id: "capabilities", label: "Capabilities" },
+  { id: "memory", label: "Memory" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -104,6 +106,7 @@ export function PetPanel({ id, state, tasks, onClose }: PetPanelProps) {
         {tab === "overview" && <Overview state={state} tasks={tasks} />}
         {tab === "activity" && <ActivityFeed />}
         {tab === "capabilities" && <CapabilityList />}
+        {tab === "memory" && <MemoryPanel />}
       </div>
     </section>
   );

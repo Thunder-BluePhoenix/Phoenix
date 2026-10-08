@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { gitCapability } from "@phoenix/capability-git";
-import { kageCapability } from "@phoenix/capability-kage";
-import { mockCapability } from "@phoenix/capability-mock";
-import { terminalCapability } from "@phoenix/capability-terminal";
 import { loadConfig, type PhoenixConfig } from "@phoenix/config";
 import { createLogger } from "@phoenix/logging";
 import { KeychainSecretStore, type SecretStore } from "@phoenix/persistence";
+import { builtinCapabilities } from "./builtins";
 import { PhoenixRuntime } from "./runtime";
 import { explainStartupError } from "./startup-errors";
 
@@ -42,14 +39,7 @@ try {
     config,
     logger,
     ...(secrets ? { secrets } : {}),
-    // Installed, not enabled: each needs the user to enable it and grant its permissions.
-    // The mock capability plays demo scenarios; it only exists in development.
-    capabilities: [
-      kageCapability,
-      gitCapability,
-      terminalCapability,
-      ...(config.env === "dev" ? [mockCapability] : []),
-    ],
+    capabilities: builtinCapabilities(config.env),
   });
 } catch (err) {
   fail(err, { port: config.port, dataDir: config.dataDir });
