@@ -772,3 +772,8 @@ code.break {
 .privacy-list li > .btn {
   align-self: flex-start;
 }
+.field textarea.report {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  resize: vertical;
+}

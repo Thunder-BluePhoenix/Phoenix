@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { useState, type FormEvent } from "react";
+import { ApiError } from "../core/client";
+import { useClient } from "../core/context";
 import {
   announcePetSettings,
   useAction,
@@ -22,6 +24,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <NotificationSettings />
       <CapabilitySettings recording={state.recording} />
       <PrivacySettings />
+      <SupportSettings />
       <div className="card">
         <QuickActions state={state} />
       </div>
@@ -447,6 +450,69 @@ const DATA_LABELS: Record<string, string> = {
   notifications: "Notifications",
   meetings: "Meetings",
 };
+
+/**
+ * A report a user can paste into a bug report (PRD v2.0 §21). Core builds it from an allow-list, so
+ * it is shown in full before anyone copies it: nothing here is hidden from the person sharing it.
+ */
+function SupportSettings() {
+  const client = useClient();
+  const [report, setReport] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const show = async () => {
+    setBusy(true);
+    setCopied(null);
+    setError(null);
+    try {
+      setReport(JSON.stringify(await client.request("GET", "/api/diagnostics"), null, 2));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Phoenix Core is unreachable");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(report ?? "");
+      setCopied("Copied.");
+    } catch {
+      setCopied("Could not copy automatically. Select the text above and copy it.");
+    }
+  };
+
+  return (
+    <section aria-labelledby="support-h" className="card">
+      <h2 id="support-h" className="h3">
+        Support
+      </h2>
+      <p className="small">
+        If something is wrong, attach a diagnostics report to your bug report. It says how Phoenix
+        is behaving (versions, capability health, counts, recent event names). It has no event
+        contents, meeting titles, transcripts, settings values, secrets or file paths.
+      </p>
+      <div className="button-row wrap">
+        <button type="button" className="btn" disabled={busy} onClick={() => void show()}>
+          {report === null ? "Show diagnostics report" : "Refresh report"}
+        </button>
+        {report !== null && (
+          <button type="button" className="btn" onClick={() => void copy()}>
+            Copy report
+          </button>
+        )}
+      </div>
+      {report !== null && (
+        <label className="field">
+          Diagnostics report
+          <textarea className="report" readOnly rows={12} value={report} />
+        </label>
+      )}
+      <Feedback error={error} saved={copied} />
+    </section>
+  );
+}
 
 function PrivacySettings() {
   const { data: inv, error: loadError, reload } = usePrivacy();

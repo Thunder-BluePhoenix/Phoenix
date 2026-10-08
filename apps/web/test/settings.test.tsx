@@ -168,6 +168,31 @@ describe("Settings (FR-014)", () => {
       (within(notes).getByRole("button", { name: "Delete all…" }) as HTMLButtonElement).disabled,
     ).toBe(true);
   });
+
+  it("shows the diagnostics report Core builds, and says so when Core cannot", async () => {
+    const api = setup();
+    const report = { version: "0.1.0", counts: { events: 12 }, capabilities: [] };
+    api.set("GET /api/diagnostics", () => report);
+    const section = (await screen.findByRole("heading", { name: "Support" })).closest("section")!;
+    expect(within(section).queryByRole("textbox")).toBeNull();
+
+    fireEvent.click(within(section).getByRole("button", { name: "Show diagnostics report" }));
+    const box = (await within(section).findByRole("textbox")) as HTMLTextAreaElement;
+    expect(JSON.parse(box.value)).toEqual(report);
+    expect(box.readOnly).toBe(true);
+    const get = api.calls.find((c) => c.path === "/api/diagnostics")!;
+    expect(get).toMatchObject({ method: "GET", body: undefined });
+
+    api.set(
+      "GET /api/diagnostics",
+      () =>
+        new Response(JSON.stringify({ code: "INTERNAL_ERROR", message: "Report failed" }), {
+          status: 500,
+        }),
+    );
+    fireEvent.click(within(section).getByRole("button", { name: "Refresh report" }));
+    expect((await within(section).findByRole("alert")).textContent).toBe("Report failed");
+  });
 });
 
 describe("fromForm", () => {
