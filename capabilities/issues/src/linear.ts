@@ -6,13 +6,16 @@
 // service (no credentials were available when this was written).
 import { resolveBase, statusError } from "./http";
 import { PAGE_SIZE, ProviderBase, type ProviderOptions } from "./provider-base";
+import { TrackerError, type IssueCategory, type IssueProvider, type RawIssueChange } from "./types";
 import {
-  TrackerError,
-  type IssueCategory,
-  type IssueProvider,
-  type RawIssueChange,
-} from "./types";
-import { MAX_STATUS, MAX_TITLE, isRecord, parseJson, safeUrl, sanitiseText, toIso } from "./validate";
+  MAX_STATUS,
+  MAX_TITLE,
+  isRecord,
+  parseJson,
+  safeUrl,
+  sanitiseText,
+  toIso,
+} from "./validate";
 
 export const LINEAR_API = "https://api.linear.app/graphql";
 /** Most issue ids sent in one query; more tracked issues than this are still found by assignee. */
@@ -83,7 +86,10 @@ export function linearError(status: number, body: unknown): TrackerError | undef
       return new TrackerError("auth", "Linear rejected the API key");
     }
     const message = isRecord(first) ? sanitiseText(first.message, 120) : undefined;
-    return new TrackerError("unavailable", `Linear reported an error${message ? `: ${message}` : ""}`);
+    return new TrackerError(
+      "unavailable",
+      `Linear reported an error${message ? `: ${message}` : ""}`,
+    );
   }
   return undefined;
 }

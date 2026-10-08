@@ -47,5 +47,11 @@ Add Jira / Linear / GitHub Issues awareness and close out v0.2.
 
 - Post-MVP Roadmap v1.0 §4.3, §18
 
+## Notes (honest status)
+
+- **Progress (capability part only; release/gate boxes above are the parent's to tick).** `capabilities/issues` is read-only: one capability (`issues`, permission `network`) with a small `IssueProvider` interface and three providers — GitHub Issues, Linear, Jira Cloud — selected by `config.trackers`; only configured trackers poll and a missing secret or failure degrades that tracker in `health` while the others continue. Shared events: `issues.assigned`, `issues.status_changed` (normalised `open|in_progress|done|cancelled` category plus the raw status name), `issues.unassigned`, and an ephemeral `issues.completed` that drives a short SUCCESS. Assignment and status change appear in the activity feed only (severity `info`); they do not change Fawkes' state and, with the default `min_severity: warning`, do not raise notifications. First poll baselines without replay; cursors use the tracker's own timestamps.
+- **Verified for real:** the GitHub provider's parser and baseline/diff ran against live `api.github.com` responses (`microsoft/vscode`, `Thunder-BluePhoenix/Phoenix`; read-only, a handful of calls) and trimmed real responses are committed as fixtures under `capabilities/issues/test/fixtures/` with contract tests. The Phoenix repo currently has only a pull request and no issues, so no real *assignment* event was observed there.
+- **Not verified:** Linear and Jira are written from the providers' documentation and tested only against a local mock; they have never run against the real services (no credentials). A Linear personal API key and a Jira Cloud site + account email + API token would close this.
+
 ---
 Back to [TRACKER](TRACKER.md)

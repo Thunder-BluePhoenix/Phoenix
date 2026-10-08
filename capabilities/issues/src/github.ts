@@ -3,15 +3,24 @@
 //
 // GitHub Issues provider (REST v3). Deliberately shares no code with the `github` capability:
 // that one watches pull requests and CI, this one watches issues assigned to the user.
-import { resolveBase, retryAfterMs, statusError, MAX_RETRY_AFTER_MS, type HttpResult } from "./http";
-import { PAGE_SIZE, ProviderBase, type ProviderOptions } from "./provider-base";
 import {
-  TrackerError,
-  type IssueCategory,
-  type IssueProvider,
-  type RawIssueChange,
-} from "./types";
-import { MAX_STATUS, MAX_TITLE, isRecord, parseJson, safeUrl, sanitiseText, toIso } from "./validate";
+  resolveBase,
+  retryAfterMs,
+  statusError,
+  MAX_RETRY_AFTER_MS,
+  type HttpResult,
+} from "./http";
+import { PAGE_SIZE, ProviderBase, type ProviderOptions } from "./provider-base";
+import { TrackerError, type IssueCategory, type IssueProvider, type RawIssueChange } from "./types";
+import {
+  MAX_STATUS,
+  MAX_TITLE,
+  isRecord,
+  parseJson,
+  safeUrl,
+  sanitiseText,
+  toIso,
+} from "./validate";
 
 export const GITHUB_API = "https://api.github.com";
 export const REPO_PATTERN = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
@@ -209,7 +218,8 @@ export class GithubProvider extends ProviderBase implements IssueProvider {
     }
     const notes: string[] = [];
     if (!this.authenticated) notes.push("no token: 60 requests/hour, public repositories only");
-    if (truncated) notes.push(`more than ${this.maxPages} pages; the rest follows on the next poll`);
+    if (truncated)
+      notes.push(`more than ${this.maxPages} pages; the rest follows on the next poll`);
     if (skipped > 0) notes.push(`${skipped} malformed issue(s) ignored`);
     this.setNote(notes.length ? notes.join("; ") : undefined);
     return changes;

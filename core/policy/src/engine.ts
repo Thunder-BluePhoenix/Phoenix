@@ -106,7 +106,9 @@ export class PolicyEngine {
       return {
         effect: "deny",
         risk,
-        reasons: denied.map((r) => `Denied by rule "${r.id}"${r.description ? `: ${r.description}` : ""}`),
+        reasons: denied.map(
+          (r) => `Denied by rule "${r.id}"${r.description ? `: ${r.description}` : ""}`,
+        ),
         matched: denied.map((r) => r.id),
       };
     }
@@ -195,7 +197,11 @@ export class PolicyEngine {
         action: "policy.decision",
         capabilityId: request.capabilityId.slice(0, 64),
         decision:
-          decision.effect === "allow" ? "allowed" : decision.effect === "deny" ? "denied" : "pending",
+          decision.effect === "allow"
+            ? "allowed"
+            : decision.effect === "deny"
+              ? "denied"
+              : "pending",
         details: {
           ...context,
           effect: decision.effect,
@@ -230,7 +236,8 @@ export class PolicyEngine {
   }
 
   private malformed(r: ToolRequest): string | undefined {
-    if (r.tool !== `${r.capabilityId}.${r.command}`) return "tool does not match capability and command";
+    if (r.tool !== `${r.capabilityId}.${r.command}`)
+      return "tool does not match capability and command";
     if (!(ENVIRONMENTS as readonly string[]).includes(r.environment)) return "unknown environment";
     if (!(SIDE_EFFECTS as readonly string[]).includes(r.sideEffect)) return "unknown side effect";
     if (!r.permissions.every(isPermission)) return "unknown permission";
@@ -238,7 +245,10 @@ export class PolicyEngine {
     if (typeof r.actor.id !== "string" || r.actor.id.length === 0) return "actor has no id";
     if (typeof r.actor.trustedByUser !== "boolean") return "actor trust flag is not a boolean";
     if (r.resource === NO_RESOURCE) return "reserved resource name";
-    if (!Number.isFinite(r.at.getTime()) || Math.abs(r.at.getTime() - this.now()) > MAX_CLOCK_SKEW_MS)
+    if (
+      !Number.isFinite(r.at.getTime()) ||
+      Math.abs(r.at.getTime() - this.now()) > MAX_CLOCK_SKEW_MS
+    )
       return "request time does not match the clock";
     return undefined;
   }

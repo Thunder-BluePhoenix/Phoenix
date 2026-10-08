@@ -77,7 +77,7 @@ export async function httpRequest(
 /** Seconds in a Retry-After header, as milliseconds (capped), or undefined. */
 export function retryAfterMs(headers: Headers): number | undefined {
   const raw = headers.get("retry-after");
-  if (raw === null || !/^\d{1,7}$/.test(raw.trim())) return undefined;
+  if (raw === null || !/^\d{1,10}$/.test(raw.trim())) return undefined;
   return Math.min(Number(raw) * 1000, MAX_RETRY_AFTER_MS);
 }
 
@@ -90,7 +90,11 @@ export function statusError(tracker: string, res: HttpResult): TrackerError {
     return new TrackerError("auth", `${tracker} refused access (403); check the token's scopes`);
   }
   if (res.status === 429) {
-    return new TrackerError("rate_limit", `${tracker} rate limit reached`, retryAfterMs(res.headers));
+    return new TrackerError(
+      "rate_limit",
+      `${tracker} rate limit reached`,
+      retryAfterMs(res.headers),
+    );
   }
   return new TrackerError("unavailable", `${tracker} responded ${res.status}`);
 }

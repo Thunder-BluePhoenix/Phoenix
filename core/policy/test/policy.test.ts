@@ -99,9 +99,15 @@ describe("risk tiers", () => {
 
   it("the production_action permission makes a read high and a write critical", () => {
     const p: Permission[] = ["production_action"];
-    expect(assessRisk({ sideEffect: "read", permissions: p, environment: "local" }).risk).toBe("high");
-    expect(assessRisk({ sideEffect: "write", permissions: p, environment: "dev" }).risk).toBe("critical");
-    expect(assessRisk({ sideEffect: "external", permissions: p, environment: "dev" }).risk).toBe("high");
+    expect(assessRisk({ sideEffect: "read", permissions: p, environment: "local" }).risk).toBe(
+      "high",
+    );
+    expect(assessRisk({ sideEffect: "write", permissions: p, environment: "dev" }).risk).toBe(
+      "critical",
+    );
+    expect(assessRisk({ sideEffect: "external", permissions: p, environment: "dev" }).risk).toBe(
+      "high",
+    );
   });
 
   it("explains itself", () => {
@@ -113,9 +119,15 @@ describe("risk tiers", () => {
 describe("decisions", () => {
   it("allows low risk and medium risk for non-agents, but medium risk for an agent needs approval", () => {
     const { engine } = setup();
-    const read = withTool("git", "status", { sideEffect: "read", permissions: ["repository_access"] });
+    const read = withTool("git", "status", {
+      sideEffect: "read",
+      permissions: ["repository_access"],
+    });
     expect(engine.evaluate(read)).toMatchObject({ effect: "allow", risk: "low" });
-    const write = withTool("notes", "save", { sideEffect: "write", permissions: ["filesystem_write"] });
+    const write = withTool("notes", "save", {
+      sideEffect: "write",
+      permissions: ["filesystem_write"],
+    });
     expect(engine.evaluate({ ...write, actor: user }).effect).toBe("allow");
     expect(engine.evaluate(write)).toMatchObject({ effect: "require_approval", risk: "medium" });
   });
@@ -136,14 +148,18 @@ describe("decisions", () => {
   it("denies malformed requests (tool/command mismatch, bad enum, skewed clock)", () => {
     const { engine } = setup();
     const base = withTool("git", "status", { sideEffect: "read" });
-    expect(engine.evaluate({ ...base, tool: "git.other" }).matched).toEqual(["builtin:malformed-request"]);
-    expect(
-      engine.evaluate({ ...base, environment: "prod" as unknown as Environment }).effect,
-    ).toBe("deny");
+    expect(engine.evaluate({ ...base, tool: "git.other" }).matched).toEqual([
+      "builtin:malformed-request",
+    ]);
+    expect(engine.evaluate({ ...base, environment: "prod" as unknown as Environment }).effect).toBe(
+      "deny",
+    );
     expect(
       engine.evaluate({ ...base, permissions: ["root" as unknown as Permission] }).effect,
     ).toBe("deny");
-    expect(engine.evaluate({ ...base, at: new Date(T0 + MAX_CLOCK_SKEW_MS + 1) }).effect).toBe("deny");
+    expect(engine.evaluate({ ...base, at: new Date(T0 + MAX_CLOCK_SKEW_MS + 1) }).effect).toBe(
+      "deny",
+    );
     expect(engine.evaluate({ ...base, at: new Date(NaN) }).effect).toBe("deny");
     expect(engine.evaluate({ ...base, at: new Date(T0 + MAX_CLOCK_SKEW_MS) }).effect).toBe("allow");
   });
@@ -176,8 +192,15 @@ describe("decisions", () => {
     const d = engine.evaluate(request({ resource: "owner/x" }));
     expect(d).toMatchObject({ effect: "require_approval", risk: "high" });
     expect(d.matched).toEqual(["builtin:no-standing-grant"]);
-    const prod = withTool("deploy", "run", { sideEffect: "production", permissions: ["production_action"], environment: "production" });
-    expect(engine.evaluate({ ...prod, actor: user })).toMatchObject({ effect: "require_approval", risk: "critical" });
+    const prod = withTool("deploy", "run", {
+      sideEffect: "production",
+      permissions: ["production_action"],
+      environment: "production",
+    });
+    expect(engine.evaluate({ ...prod, actor: user })).toMatchObject({
+      effect: "require_approval",
+      risk: "critical",
+    });
   });
 });
 
@@ -205,26 +228,51 @@ describe("rules", () => {
     expect(engine.evaluate({ ...w, resource: "/etc/passwd" }).effect).toBe("require_approval");
     expect(engine.evaluate({ ...w, resource: undefined }).effect).toBe("require_approval");
     expect(engine.evaluate({ ...w, environment: "dev" }).effect).toBe("require_approval");
-    expect(engine.evaluate({ ...w, tool: "notes.save2", command: "save2" }).effect).toBe("require_approval");
+    expect(engine.evaluate({ ...w, tool: "notes.save2", command: "save2" }).effect).toBe(
+      "require_approval",
+    );
   });
 
   it("matches on data class, side effect, permissions, actor and time windows", () => {
     const { engine, admin } = setup();
-    admin.addRule(user, { id: "no-sensitive", effect: "deny", match: { dataClasses: ["sensitive"], actorKinds: ["agent"] } });
-    admin.addRule(user, { id: "bob", effect: "deny", match: { actorId: "bob", permissions: ["network"], sideEffects: ["read"] } });
-    const read = withTool("git", "status", { sideEffect: "read", permissions: ["repository_access"] });
+    admin.addRule(user, {
+      id: "no-sensitive",
+      effect: "deny",
+      match: { dataClasses: ["sensitive"], actorKinds: ["agent"] },
+    });
+    admin.addRule(user, {
+      id: "bob",
+      effect: "deny",
+      match: { actorId: "bob", permissions: ["network"], sideEffects: ["read"] },
+    });
+    const read = withTool("git", "status", {
+      sideEffect: "read",
+      permissions: ["repository_access"],
+    });
     expect(engine.evaluate(read).effect).toBe("allow");
     expect(engine.evaluate({ ...read, dataClass: "sensitive" }).matched).toEqual(["no-sensitive"]);
     expect(engine.evaluate({ ...read, dataClass: "public" }).effect).toBe("allow");
     expect(engine.evaluate({ ...read, actor: user, dataClass: "sensitive" }).effect).toBe("allow");
-    const bobRead = { ...read, actor: { kind: "agent", id: "bob", trustedByUser: true } as Actor, permissions: ["network" as const] };
+    const bobRead = {
+      ...read,
+      actor: { kind: "agent", id: "bob", trustedByUser: true } as Actor,
+      permissions: ["network" as const],
+    };
     expect(engine.evaluate(bobRead).matched).toEqual(["bob"]);
   });
 
   it("time windows wrap midnight, are UTC, and are start-inclusive / end-exclusive", () => {
     const s = setup();
-    s.admin.addRule(user, { id: "night", effect: "deny", match: { tool: "git.*", time: { fromHourUtc: 22, toHourUtc: 6 } } });
-    s.admin.addRule(user, { id: "sat", effect: "deny", match: { tool: "gh.*", time: { fromHourUtc: 0, toHourUtc: 24, days: [6] } } });
+    s.admin.addRule(user, {
+      id: "night",
+      effect: "deny",
+      match: { tool: "git.*", time: { fromHourUtc: 22, toHourUtc: 6 } },
+    });
+    s.admin.addRule(user, {
+      id: "sat",
+      effect: "deny",
+      match: { tool: "gh.*", time: { fromHourUtc: 0, toHourUtc: 24, days: [6] } },
+    });
     const at = (iso: string) => {
       s.setNow(Date.parse(iso));
       return new Date(Date.parse(iso));
@@ -251,7 +299,11 @@ describe("rules", () => {
       { id: "x", effect: "allow", match: { tool: "*", environments: ["local"] } },
       { id: "x", effect: "allow", match: { tool: "git.*" } },
       { id: "x", effect: "allow", match: { tool: "git.*", environments: [] } },
-      { id: "x", effect: "allow", match: { tool: "git.*", environments: ["local"], resource: "*" } },
+      {
+        id: "x",
+        effect: "allow",
+        match: { tool: "git.*", environments: ["local"], resource: "*" },
+      },
       { id: "x", effect: "permit", match: { tool: "git.status" } },
       { id: "X Y", effect: "deny", match: {} },
       { id: "x", effect: "deny", match: { tool: "git.status" }, extra: true },
@@ -273,7 +325,9 @@ describe("rules", () => {
   it("fails closed when a stored rule has been corrupted", () => {
     const s = setup();
     s.db
-      .prepare("INSERT INTO policy_rules (id, rule, created_by, created_at) VALUES ('bad', ?, 'x', 'now')")
+      .prepare(
+        "INSERT INTO policy_rules (id, rule, created_by, created_at) VALUES ('bad', ?, 'x', 'now')",
+      )
       .run('{"id":"bad","effect":"allow","match":{}}');
     const d = s.engine.evaluate(withTool("git", "status", { actor: user, sideEffect: "read" }));
     expect(d).toMatchObject({ effect: "deny", matched: ["builtin:invalid-rules"] });
@@ -310,40 +364,71 @@ describe("temporary approvals", () => {
     s.setNow(a.expiresAt - 1);
     expect(s.engine.evaluate(medium({ at: new Date(a.expiresAt - 1) })).effect).toBe("allow");
     s.setNow(a.expiresAt);
-    expect(s.engine.evaluate(medium({ at: new Date(a.expiresAt) })).effect).toBe("require_approval");
+    expect(s.engine.evaluate(medium({ at: new Date(a.expiresAt) })).effect).toBe(
+      "require_approval",
+    );
     s.setNow(a.expiresAt + 1);
-    expect(s.engine.evaluate(medium({ at: new Date(a.expiresAt + 1) })).effect).toBe("require_approval");
+    expect(s.engine.evaluate(medium({ at: new Date(a.expiresAt + 1) })).effect).toBe(
+      "require_approval",
+    );
   });
 
   it("does not escalate scope: tool, environment, resource and agent must all match", () => {
     const { engine, admin } = setup();
-    approve(admin, { scope: { environment: "local", resource: "/tmp/notes/*", actorId: "fawkes" } });
+    approve(admin, {
+      scope: { environment: "local", resource: "/tmp/notes/*", actorId: "fawkes" },
+    });
     expect(engine.evaluate(medium()).effect).toBe("allow");
     expect(engine.evaluate(medium({ environment: "dev" })).effect).toBe("require_approval");
-    expect(engine.evaluate(medium({ resource: "/tmp/other/a.md" })).effect).toBe("require_approval");
+    expect(engine.evaluate(medium({ resource: "/tmp/other/a.md" })).effect).toBe(
+      "require_approval",
+    );
     expect(engine.evaluate(medium({ resource: undefined })).effect).toBe("require_approval");
-    expect(engine.evaluate(medium({ actor: { ...agent, id: "other" } })).effect).toBe("require_approval");
+    expect(engine.evaluate(medium({ actor: { ...agent, id: "other" } })).effect).toBe(
+      "require_approval",
+    );
     expect(
-      engine.evaluate(withTool("notes", "delete", { sideEffect: "write", resource: "/tmp/notes/a.md" })).effect,
+      engine.evaluate(
+        withTool("notes", "delete", { sideEffect: "write", resource: "/tmp/notes/a.md" }),
+      ).effect,
     ).toBe("require_approval");
     expect(
-      engine.evaluate(withTool("notes2", "save", { sideEffect: "write", resource: "/tmp/notes/a.md" })).effect,
+      engine.evaluate(
+        withTool("notes2", "save", { sideEffect: "write", resource: "/tmp/notes/a.md" }),
+      ).effect,
     ).toBe("require_approval");
   });
 
   it("a capability-wide pattern covers its commands but not another capability", () => {
     const { engine, admin } = setup();
     approve(admin, { toolPattern: "notes.*" });
-    expect(engine.evaluate(withTool("notes", "delete", { sideEffect: "write", resource: "/tmp/notes/x" })).effect).toBe("allow");
-    expect(engine.evaluate(withTool("notesx", "delete", { sideEffect: "write", resource: "/tmp/notes/x" })).effect).toBe("require_approval");
+    expect(
+      engine.evaluate(
+        withTool("notes", "delete", { sideEffect: "write", resource: "/tmp/notes/x" }),
+      ).effect,
+    ).toBe("allow");
+    expect(
+      engine.evaluate(
+        withTool("notesx", "delete", { sideEffect: "write", resource: "/tmp/notes/x" }),
+      ).effect,
+    ).toBe("require_approval");
   });
 
   it("can never cover a critical action, and never lifts high risk for agents", () => {
     const { engine, admin } = setup();
-    approve(admin, { toolPattern: "notes.save", scope: { environment: "production", resource: "/tmp/*" } });
+    approve(admin, {
+      toolPattern: "notes.save",
+      scope: { environment: "production", resource: "/tmp/*" },
+    });
     const prodWrite = medium({ environment: "production", resource: "/tmp/a" });
-    expect(engine.evaluate(prodWrite)).toMatchObject({ effect: "require_approval", risk: "critical" });
-    expect(engine.evaluate({ ...prodWrite, actor: user })).toMatchObject({ effect: "require_approval", risk: "critical" });
+    expect(engine.evaluate(prodWrite)).toMatchObject({
+      effect: "require_approval",
+      risk: "critical",
+    });
+    expect(engine.evaluate({ ...prodWrite, actor: user })).toMatchObject({
+      effect: "require_approval",
+      risk: "critical",
+    });
   });
 
   it("is capped at 24 hours, and needs a positive integer ttl and a real scope", () => {
@@ -416,7 +501,10 @@ describe("persistence", () => {
     expect(second.engine.rules().map((r) => r.id)).toEqual(["keep"]);
     const req = withTool("notes", "save", { sideEffect: "write", resource: "/n/a" });
     expect(second.engine.evaluate(req)).toMatchObject({ effect: "allow", matched: [a.id] });
-    expect(second.engine.evaluate(withTool("git", "push", { actor: user, sideEffect: "external" })).effect).toBe("deny");
+    expect(
+      second.engine.evaluate(withTool("git", "push", { actor: user, sideEffect: "external" }))
+        .effect,
+    ).toBe("deny");
     second.setNow(a.expiresAt);
     expect(second.engine.evaluate(req).effect).toBe("require_approval");
   });
@@ -428,7 +516,11 @@ describe("audit", () => {
     const a = engine.decide(withTool("git", "status", { sideEffect: "read" }));
     const b = engine.decide(withTool("git", "push", { sideEffect: "external" }));
     const c = engine.decide(withTool("git", "status", { sideEffect: "write" }));
-    expect([a.decision.effect, b.decision.effect, c.decision.effect]).toEqual(["allow", "deny", "require_approval"]);
+    expect([a.decision.effect, b.decision.effect, c.decision.effect]).toEqual([
+      "allow",
+      "deny",
+      "require_approval",
+    ]);
     expect(b.auditId).toBeGreaterThan(a.auditId);
     const entries = audit.list().reverse();
     expect(entries.map((e) => e.decision)).toEqual(["allowed", "denied", "pending"]);
@@ -439,7 +531,11 @@ describe("audit", () => {
     const s = setup();
     const failing = new PolicyEngine({
       store: s.store,
-      audit: { record: () => { throw new Error("disk full"); } },
+      audit: {
+        record: () => {
+          throw new Error("disk full");
+        },
+      },
       isKillSwitchEngaged: () => false,
       isKnownTool: () => true,
       now: () => T0,
@@ -451,7 +547,12 @@ describe("audit", () => {
 
   it("redacts secrets in audited details", () => {
     const { engine, audit } = setup();
-    engine.decide(withTool("git", "status", { sideEffect: "read", resource: "token ghp_abcdefghijklmnopqrstuvwxyz0123456789" }));
+    engine.decide(
+      withTool("git", "status", {
+        sideEffect: "read",
+        resource: "token ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+      }),
+    );
     expect(JSON.stringify(audit.list()[0]?.details)).not.toContain("ghp_abcdef");
   });
 });
@@ -486,7 +587,9 @@ describe("untrusted content cannot change policy", () => {
           }),
       ];
       for (const attempt of attempts) {
-        expect(attempt).toThrow(expect.objectContaining({ name: "PolicyError", code: "NOT_USER_ACTOR" }));
+        expect(attempt).toThrow(
+          expect.objectContaining({ name: "PolicyError", code: "NOT_USER_ACTOR" }),
+        );
       }
     }
     expect(store.ruleCount()).toBe(0);
@@ -513,7 +616,14 @@ describe("untrusted content cannot change policy", () => {
   it("the engine handed to agents exposes no mutating method", () => {
     const { engine } = setup();
     const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(engine));
-    expect(methods.sort()).toEqual(["approvals", "constructor", "decide", "evaluate", "malformed", "rules"]);
+    expect(methods.sort()).toEqual([
+      "approvals",
+      "constructor",
+      "decide",
+      "evaluate",
+      "malformed",
+      "rules",
+    ]);
   });
 
   it("text in a request cannot change a decision", () => {
@@ -524,7 +634,9 @@ describe("untrusted content cannot change policy", () => {
     });
     expect(engine.evaluate(r).effect).toBe("require_approval");
     expect(
-      engine.evaluate(withTool("deploy", "run", { actor: agent, sideEffect: "production", resource: injected })).effect,
+      engine.evaluate(
+        withTool("deploy", "run", { actor: agent, sideEffect: "production", resource: injected }),
+      ).effect,
     ).toBe("require_approval");
     expect(engine.rules()).toEqual([]);
   });

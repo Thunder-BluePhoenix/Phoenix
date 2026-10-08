@@ -61,7 +61,7 @@ function describe(t: Tracker): string {
   if (t.problem) return `${t.kind}: ${t.problem.message}`;
   if (t.cursor === undefined) return `${t.kind}: not polled yet`;
   const note = t.provider.note();
-  return `${t.kind}: ${t.assigned} assigned${note ? ` (${note})` : ""}`;
+  return `${t.kind}: ${t.assigned} open assigned${note ? ` (${note})` : ""}`;
 }
 
 /** A fresh capability instance (own per-tracker state); Phoenix Core uses `issuesCapability`. */
@@ -116,7 +116,10 @@ export function createIssuesCapability(options: IssuesOptions = {}) {
         // First poll: remember what is already assigned, say nothing about it. The cursor is the
         // tracker's own clock (a little behind, so nothing slips between polls), else the newest
         // timestamp seen. With neither, stay un-baselined and try again next time.
-        const newest = changes.reduce<string | undefined>((m, c) => maxIso(m, c.updatedAt), undefined);
+        const newest = changes.reduce<string | undefined>(
+          (m, c) => maxIso(m, c.updatedAt),
+          undefined,
+        );
         const cursor = t.provider.serverTime() ?? newest;
         if (cursor !== undefined) {
           baseline(t.snapshots, changes);
@@ -126,14 +129,17 @@ export function createIssuesCapability(options: IssuesOptions = {}) {
         emitAll(ctx, t, changes);
         t.cursor = changes.reduce<string | undefined>((m, c) => maxIso(m, c.updatedAt), t.cursor);
       }
-      t.assigned = t.snapshots.size;
+      t.assigned = [...t.snapshots.values()].filter(
+        (s) => s.category === "open" || s.category === "in_progress",
+      ).length;
       t.problem = undefined;
     } catch (err) {
       if (ctx.signal.aborted) return;
       if (err instanceof TrackerError) {
         t.problem = { kind: err.kind, message: err.message };
         if (err.kind === "rate_limit") {
-          t.backoffUntil = now() + Math.min(err.retryAfterMs ?? DEFAULT_BACKOFF_MS, MAX_RETRY_AFTER_MS);
+          t.backoffUntil =
+            now() + Math.min(err.retryAfterMs ?? DEFAULT_BACKOFF_MS, MAX_RETRY_AFTER_MS);
         }
       } else {
         // A bug in a provider must cost that tracker one poll, never the process.
@@ -185,7 +191,8 @@ export function createIssuesCapability(options: IssuesOptions = {}) {
       secrets: [
         {
           name: "github_token",
-          description: "GitHub token (optional for public repositories; needs read access to issues)",
+          description:
+            "GitHub token (optional for public repositories; needs read access to issues)",
         },
         { name: "linear_api_key", description: "Linear personal API key (Settings → API)" },
         { name: "jira_email", description: "Email address of your Atlassian account" },
@@ -230,7 +237,8 @@ export function createIssuesCapability(options: IssuesOptions = {}) {
     },
     commands: {
       async list(input, ctx) {
-        const wanted = isRecord(input) && typeof input.tracker === "string" ? input.tracker : undefined;
+        const wanted =
+          isRecord(input) && typeof input.tracker === "string" ? input.tracker : undefined;
         const selected = trackers.filter((t) => wanted === undefined || t.kind === wanted);
         return await Promise.all(selected.map((t) => listOpen(ctx, t)));
       },

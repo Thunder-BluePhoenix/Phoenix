@@ -6,12 +6,7 @@
 // (no credentials were available when this was written).
 import { resolveBase, statusError } from "./http";
 import { PAGE_SIZE, ProviderBase, type ProviderOptions } from "./provider-base";
-import {
-  TrackerError,
-  type IssueCategory,
-  type IssueProvider,
-  type RawIssueChange,
-} from "./types";
+import { TrackerError, type IssueCategory, type IssueProvider, type RawIssueChange } from "./types";
 import { MAX_STATUS, MAX_TITLE, isRecord, parseJson, sanitiseText, toIso } from "./validate";
 
 export const MAX_TRACKED_KEYS = 100;
@@ -20,7 +15,8 @@ const ACCOUNT_ID = /^[A-Za-z0-9:_-]{1,128}$/;
 /** JQL dates carry no zone and are read in the user's profile timezone, so look back a day more. */
 const JQL_ZONE_SLACK_MS = 26 * 3_600_000;
 /** Resolutions that mean "will not be done" rather than "done". */
-const CANCELLED_RESOLUTIONS = /won'?t|not planned|declined|duplicate|cannot reproduce|invalid|rejected/i;
+const CANCELLED_RESOLUTIONS =
+  /won'?t|not planned|declined|duplicate|cannot reproduce|invalid|rejected/i;
 
 export interface JiraConfig {
   site: string;
@@ -132,11 +128,7 @@ export class JiraProvider extends ProviderBase implements IssueProvider {
     super(options);
   }
 
-  private async get(
-    path: string,
-    auth: string,
-    signal: AbortSignal,
-  ): Promise<unknown> {
+  private async get(path: string, auth: string, signal: AbortSignal): Promise<unknown> {
     const site = resolveBase(this.config.site, "Jira site");
     const res = await this.send(
       `${site}${path}`,
@@ -155,7 +147,10 @@ export class JiraProvider extends ProviderBase implements IssueProvider {
     const email = await this.secret("jira_email");
     const apiToken = await this.secret("jira_api_token");
     if (!email || !apiToken) {
-      throw new TrackerError("config", "Set the Jira email and API token (secrets jira_email, jira_api_token)");
+      throw new TrackerError(
+        "config",
+        "Set the Jira email and API token (secrets jira_email, jira_api_token)",
+      );
     }
     const site = resolveBase(this.config.site, "Jira site");
     const auth = `Basic ${Buffer.from(`${email}:${apiToken}`).toString("base64")}`;
@@ -193,7 +188,8 @@ export class JiraProvider extends ProviderBase implements IssueProvider {
     // JQL only has minute precision and a timezone guess, so trim to the real cursor here.
     const result = since === undefined ? changes : changes.filter((c) => c.updatedAt >= since);
     const notes: string[] = [];
-    if (truncated) notes.push(`more than ${this.maxPages} pages; the rest follows on the next poll`);
+    if (truncated)
+      notes.push(`more than ${this.maxPages} pages; the rest follows on the next poll`);
     if (skipped > 0) notes.push(`${skipped} malformed issue(s) ignored`);
     this.setNote(notes.length ? notes.join("; ") : undefined);
     return result;

@@ -59,7 +59,9 @@ export class PolicyStore {
   }
 
   ruleCount(): number {
-    const row = this.db.prepare("SELECT COUNT(*) AS n FROM policy_rules").get() as unknown as CountRow;
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS n FROM policy_rules")
+      .get() as unknown as CountRow;
     return row.n;
   }
 
@@ -110,7 +112,9 @@ export class PolicyStore {
 
   revokeApproval(id: string, now: number): boolean {
     const result = this.db
-      .prepare("UPDATE policy_approvals SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL AND expires_at > ?")
+      .prepare(
+        "UPDATE policy_approvals SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL AND expires_at > ?",
+      )
       .run(now, id, now);
     return Number(result.changes) > 0;
   }

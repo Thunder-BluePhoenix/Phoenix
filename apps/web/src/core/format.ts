@@ -8,6 +8,11 @@ export function formatTime(iso: string): string {
     : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+export function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString([], { dateStyle: "medium" });
+}
+
 /** "just now", "3 min", "2 h", "4 d" */
 export function formatSince(iso: string, now: number = Date.now()): string {
   const ms = now - Date.parse(iso);

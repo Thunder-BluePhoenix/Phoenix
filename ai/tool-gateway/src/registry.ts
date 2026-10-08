@@ -55,6 +55,7 @@ export class ToolRegistry {
   }
 
   get(name: string): RegisteredTool | undefined {
+    if (typeof name !== "string") return undefined;
     for (const manifest of this.o.manifests()) {
       if (!name.startsWith(`${manifest.id}.`)) continue;
       const command = manifest.commands.find((c) => `${manifest.id}.${c.name}` === name);
@@ -74,7 +75,10 @@ export class ToolRegistry {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  private tool(manifest: CapabilityManifest, command: CapabilityManifest["commands"][number]): RegisteredTool {
+  private tool(
+    manifest: CapabilityManifest,
+    command: CapabilityManifest["commands"][number],
+  ): RegisteredTool {
     const name = `${manifest.id}.${command.name}`;
     const outputSchema = this.o.outputSchemas?.[name];
     const contract: ToolContract = {

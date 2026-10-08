@@ -12,7 +12,14 @@ import { redact } from "@phoenix/logging";
  * `working`/`waiting`/`completed`/`failed` map to the matching `agent.*` event;
  * `ended` removes the session (event `agent.ended`, which clears its Fawkes state).
  */
-export const AGENT_STATES = ["started", "working", "waiting", "completed", "failed", "ended"] as const;
+export const AGENT_STATES = [
+  "started",
+  "working",
+  "waiting",
+  "completed",
+  "failed",
+  "ended",
+] as const;
 export type AgentState = (typeof AGENT_STATES)[number];
 
 /** Why an agent is waiting: a permission prompt, a question, or an idle prompt. */
@@ -61,7 +68,14 @@ export type AgentEventPayload = {
 
 export type ReportResult = { ok: true; report: AgentReport } | { ok: false; problems: string[] };
 
-const REPORT_KEYS: readonly string[] = ["agent", "agent_id", "state", "workspace", "task", "reason"];
+const REPORT_KEYS: readonly string[] = [
+  "agent",
+  "agent_id",
+  "state",
+  "workspace",
+  "task",
+  "reason",
+];
 
 const isState = (v: unknown): v is AgentState =>
   typeof v === "string" && (AGENT_STATES as readonly string[]).includes(v);
@@ -82,9 +96,7 @@ export function validateReport(input: unknown): ReportResult {
     problems.push(`agent must be a slug of up to ${MAX_AGENT} characters (letters, digits, . _ -)`);
   }
   if (typeof r.agent_id !== "string" || !AGENT_ID_PATTERN.test(r.agent_id)) {
-    problems.push(
-      `agent_id must be up to ${MAX_AGENT_ID} characters (letters, digits, . _ : -)`,
-    );
+    problems.push(`agent_id must be up to ${MAX_AGENT_ID} characters (letters, digits, . _ : -)`);
   }
   if (!isState(r.state)) problems.push(`state must be one of ${AGENT_STATES.join(", ")}`);
   if (

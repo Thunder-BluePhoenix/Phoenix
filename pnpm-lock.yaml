@@ -366,6 +366,18 @@ importers:
 
   core/runtime:
     dependencies:
+      '@phoenix/ai-context':
+        specifier: workspace:*
+        version: link:../../ai/context
+      '@phoenix/ai-memory':
+        specifier: workspace:*
+        version: link:../../ai/memory
+      '@phoenix/ai-models':
+        specifier: workspace:*
+        version: link:../../ai/models
+      '@phoenix/ai-tool-gateway':
+        specifier: workspace:*
+        version: link:../../ai/tool-gateway
       '@phoenix/api':
         specifier: workspace:*
         version: link:../api
@@ -417,6 +429,9 @@ importers:
       '@phoenix/persistence':
         specifier: workspace:*
         version: link:../persistence
+      '@phoenix/policy':
+        specifier: workspace:*
+        version: link:../policy
       '@phoenix/protocol':
         specifier: workspace:*
         version: link:../../protocol

@@ -129,3 +129,79 @@ export interface JsonSchema {
   maximum?: number;
   pattern?: string;
 }
+
+export type MemorySensitivity = "public" | "internal" | "sensitive";
+
+/** GET /api/memory item: what Core is willing to show about a stored memory (Phase 29). */
+export interface MemoryItem {
+  id: string;
+  text: string;
+  layer: string;
+  domain: string;
+  kind: "fact" | "interpretation";
+  source: string;
+  source_ref: string | null;
+  scope: string;
+  sensitivity: MemorySensitivity;
+  observed_at: string;
+  confidence: number;
+  retention_days: number | null;
+  expires_at: string | null;
+  redacted: boolean;
+}
+
+export type MemorySearchHit = MemoryItem & { score: number };
+
+export interface MemoryList {
+  items: MemoryItem[];
+  total: number;
+  counts: Record<string, number>;
+  ai: { enabled: boolean };
+}
+
+export const MEMORY_LAYERS = ["working", "episodic", "project", "preference"] as const;
+export type MemoryLayer = (typeof MEMORY_LAYERS)[number];
+
+/** GET/POST /api/memory/settings. */
+export interface MemorySettings {
+  retention_days: Record<MemoryLayer, number | null>;
+  allow_sensitive_meetings: boolean;
+  doc_paths: string[];
+  capture_git: boolean;
+}
+
+export interface MemoryFact {
+  id: string;
+  text: string;
+  domain: string;
+  source: string;
+  source_ref: string | null;
+  observed_at: string;
+  sensitivity: MemorySensitivity;
+}
+
+/** POST /api/memory/ask. `facts` are stored data; `interpretation` is generated and never a fact. */
+export interface MemoryAnswer {
+  facts: MemoryFact[];
+  interpretation: string | null;
+  processed_by: string | null;
+  ai_used: boolean;
+  note: string | null;
+}
+
+export interface AiProviderStatus {
+  id: string;
+  label: string;
+  locality: "local" | "cloud";
+  available: boolean;
+  reason: string | null;
+}
+
+/** GET /api/ai/status. */
+export interface AiStatus {
+  enabled: boolean;
+  preferred: string | null;
+  cloud_opt_in: Record<MemorySensitivity, boolean>;
+  external_processing_granted: boolean;
+  providers: AiProviderStatus[];
+}

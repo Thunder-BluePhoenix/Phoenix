@@ -86,12 +86,25 @@ export class PolicyAdmin {
     if (!(ENVIRONMENTS as readonly string[]).includes(scope?.environment))
       problems.push("scope.environment must be one of " + ENVIRONMENTS.join(", "));
     const resource = scope?.resource;
-    if (typeof resource !== "string" || resource.length === 0 || resource === "*" || resource.length > 500)
+    if (
+      typeof resource !== "string" ||
+      resource.length === 0 ||
+      resource === "*" ||
+      resource.length > 500
+    )
       problems.push("scope.resource is required and must not be a wildcard for everything");
-    if (scope?.actorId !== undefined && (typeof scope.actorId !== "string" || scope.actorId.length === 0))
+    if (
+      scope?.actorId !== undefined &&
+      (typeof scope.actorId !== "string" || scope.actorId.length === 0)
+    )
       problems.push("scope.actorId must be a non-empty string");
     if (problems.length > 0) {
-      this.record(by, "policy.approval.rejected", { toolPattern, scope, ttlMs, problems }, "denied");
+      this.record(
+        by,
+        "policy.approval.rejected",
+        { toolPattern, scope, ttlMs, problems },
+        "denied",
+      );
       throw new PolicyError("INVALID_APPROVAL", "Invalid temporary approval", problems);
     }
     const nowMs = this.now();
@@ -130,11 +143,16 @@ export class PolicyAdmin {
   private requireUser(by: Actor, action: string): void {
     if (by?.kind === "user" && by.trustedByUser === true && by.id.length > 0) return;
     try {
-      this.record(by ?? { kind: "agent", id: "unknown", trustedByUser: false }, `${action}.refused`, {
-        reason: "Only an authenticated user can change policy",
-        claimedKind: by?.kind,
-        trustedByUser: by?.trustedByUser,
-      }, "denied");
+      this.record(
+        by ?? { kind: "agent", id: "unknown", trustedByUser: false },
+        `${action}.refused`,
+        {
+          reason: "Only an authenticated user can change policy",
+          claimedKind: by?.kind,
+          trustedByUser: by?.trustedByUser,
+        },
+        "denied",
+      );
     } catch {
       // The refusal stands even if the audit write fails.
     }

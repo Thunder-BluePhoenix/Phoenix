@@ -45,7 +45,8 @@ export interface IssueProvider {
   note(): string | undefined;
 }
 
-export type TrackerErrorKind = "config" | "auth" | "rate_limit" | "unavailable" | "invalid_response";
+export type TrackerErrorKind =
+  "config" | "auth" | "rate_limit" | "unavailable" | "invalid_response";
 
 /** A provider failure whose message is safe to show and log (it never holds credentials). */
 export class TrackerError extends Error {

@@ -127,8 +127,8 @@ export function reconcile(
   changes: readonly RawIssueChange[],
 ): IssueEvent[] {
   const events: IssueEvent[] = [];
-  const ordered = [...changes].sort(
-    (a, b) => (a.updatedAt < b.updatedAt ? -1 : a.updatedAt > b.updatedAt ? 1 : 0),
+  const ordered = [...changes].sort((a, b) =>
+    a.updatedAt < b.updatedAt ? -1 : a.updatedAt > b.updatedAt ? 1 : 0,
   );
   for (const change of ordered) {
     const prev = snapshots.get(change.key);

@@ -112,7 +112,8 @@ export function validateRule(value: unknown): PolicyRule {
     if (!match.tool || match.tool === "*") extra.push("/match/tool an allow rule must name a tool");
     if (!match.environments?.length)
       extra.push("/match/environments an allow rule must list its environments");
-    if (match.resource === "*") extra.push("/match/resource an allow rule must not match every resource");
+    if (match.resource === "*")
+      extra.push("/match/resource an allow rule must not match every resource");
   }
   if (extra.length > 0) throw new PolicyError("INVALID_RULE", "Invalid policy rule", extra);
   return rule;

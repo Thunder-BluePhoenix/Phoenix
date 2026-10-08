@@ -49,19 +49,13 @@ export interface ToolGatewayOptions {
   now?: () => number;
   logger?: Logger;
   /**
-   * Extra attempts for idempotent tools after a timeout or an unavailable capability
-   * (default 0). Each attempt gets its own policy decision and audit record.
+   * Extra attempts for idempotent tools after a timeout (default 0). Other failures are never retried. Each attempt gets its own policy decision and audit record.
    * Non-idempotent tools are never retried.
    */
   idempotentRetries?: number;
   /** Extra time on top of the tool's timeout for a human to answer a confirmation. */
   approvalWaitMs?: number;
 }
-
-const RETRYABLE: Readonly<Record<string, true>> = {
-  [ErrorCode.OPERATION_TIMEOUT]: true,
-  [ErrorCode.CAPABILITY_UNAVAILABLE]: true,
-};
 
 /**
  * The only path from an agent to a capability.
@@ -102,10 +96,7 @@ export class ToolGateway {
         return await this.attempt(call, tool, attempt);
       } catch (err) {
         const retry =
-          attempt < maxAttempts &&
-          err instanceof ToolGatewayError &&
-          (err.code === "TIMEOUT" || err.code === "EXECUTION_FAILED") &&
-          err.details.some((d) => RETRYABLE[d]);
+          attempt < maxAttempts && err instanceof ToolGatewayError && err.code === "TIMEOUT";
         if (!retry) throw err;
       }
     }
@@ -124,7 +115,11 @@ export class ToolGateway {
       audited = this.o.policy.decide(request, { attempt, origin: "tool-gateway" });
     } catch (err) {
       if (err instanceof PolicyError)
-        throw new ToolGatewayError("AUDIT_FAILED", "Tool call blocked: the decision could not be recorded", [err.message]);
+        throw new ToolGatewayError(
+          "AUDIT_FAILED",
+          "Tool call blocked: the decision could not be recorded",
+          [err.message],
+        );
       throw err;
     }
     const { decision } = audited;
@@ -139,10 +134,17 @@ export class ToolGateway {
     }
     const contract = tool.contract;
 
-    if (decision.effect === "require_approval") await this.approve(call, contract, decision.reasons);
+    if (decision.effect === "require_approval")
+      await this.approve(call, contract, decision.reasons);
 
     const output = await this.execute(audited, call, tool);
-    return { tool: contract.name, output: output.result, operationId: output.operationId, decision, auditId: audited.auditId };
+    return {
+      tool: contract.name,
+      output: output.result,
+      operationId: output.operationId,
+      decision,
+      auditId: audited.auditId,
+    };
   }
 
   /** The only method that touches the capability host. */
@@ -153,7 +155,12 @@ export class ToolGateway {
   ): Promise<{ result: unknown; operationId: string }> {
     assertAudited(proof);
     if (proof.decision.effect === "deny") {
-      throw new ToolGatewayError("DENIED", "Denied by policy", proof.decision.reasons, proof.decision);
+      throw new ToolGatewayError(
+        "DENIED",
+        "Denied by policy",
+        proof.decision.reasons,
+        proof.decision,
+      );
     }
     const { contract } = tool;
     const actor = `${call.actor.kind}:${call.actor.id}`.slice(0, 200);
@@ -187,9 +194,14 @@ export class ToolGateway {
 
     if (op.status !== "succeeded") {
       const code = op.error?.code ?? ErrorCode.INTERNAL_ERROR;
-      const rejected = code === ErrorCode.PERMISSION_DENIED || code === ErrorCode.SECURITY_POLICY_BLOCKED;
+      const rejected =
+        code === ErrorCode.PERMISSION_DENIED || code === ErrorCode.SECURITY_POLICY_BLOCKED;
       const failed = new ToolGatewayError(
-        rejected ? "APPROVAL_REJECTED" : code === ErrorCode.OPERATION_TIMEOUT ? "TIMEOUT" : "EXECUTION_FAILED",
+        rejected
+          ? "APPROVAL_REJECTED"
+          : code === ErrorCode.OPERATION_TIMEOUT
+            ? "TIMEOUT"
+            : "EXECUTION_FAILED",
         `${contract.name} failed: ${op.error?.message ?? "unknown error"}`,
         [code],
         proof.decision,
@@ -200,10 +212,17 @@ export class ToolGateway {
 
     const size = JSON.stringify(op.result ?? null).length;
     const problems =
-      size > MAX_OUTPUT_BYTES ? [`output is ${size} bytes (limit ${MAX_OUTPUT_BYTES})`] : tool.checkOutput(op.result);
+      size > MAX_OUTPUT_BYTES
+        ? [`output is ${size} bytes (limit ${MAX_OUTPUT_BYTES})`]
+        : tool.checkOutput(op.result);
     if (problems.length > 0) {
       this.outcome(proof, contract, call, "invalid_output", { problems });
-      throw new ToolGatewayError("INVALID_OUTPUT", `${contract.name} returned invalid output`, problems, proof.decision);
+      throw new ToolGatewayError(
+        "INVALID_OUTPUT",
+        `${contract.name} returned invalid output`,
+        problems,
+        proof.decision,
+      );
     }
     this.outcome(proof, contract, call, "succeeded", { operationId: op.id });
     return { result: op.result, operationId: op.id };
@@ -227,7 +246,11 @@ export class ToolGateway {
     } catch (err) {
       this.logger.warn("could not audit rejected tool input", { error: err });
     }
-    throw new ToolGatewayError("INVALID_INPUT", `Invalid input for ${tool.contract.name}`, problems);
+    throw new ToolGatewayError(
+      "INVALID_INPUT",
+      `Invalid input for ${tool.contract.name}`,
+      problems,
+    );
   }
 
   /**
@@ -235,12 +258,13 @@ export class ToolGateway {
    * permissions comes from the caller. Unknown tools get a request that the engine denies.
    */
   private toRequest(call: ToolCall, contract: ToolContract | undefined): ToolRequest {
-    const dot = typeof call.tool === "string" ? call.tool.indexOf(".") : -1;
+    const name = typeof call.tool === "string" ? call.tool : "(invalid)";
+    const dot = name.indexOf(".");
     return {
       actor: call.actor,
-      tool: String(call.tool),
-      capabilityId: contract?.capabilityId ?? (dot > 0 ? call.tool.slice(0, dot) : String(call.tool)),
-      command: contract?.command ?? (dot > 0 ? call.tool.slice(dot + 1) : ""),
+      tool: name,
+      capabilityId: contract?.capabilityId ?? (dot > 0 ? name.slice(0, dot) : name),
+      command: contract?.command ?? (dot > 0 ? name.slice(dot + 1) : ""),
       sideEffect: contract?.sideEffect ?? "execute",
       permissions: contract?.permissions ?? [],
       environment: call.environment,
@@ -256,7 +280,11 @@ export class ToolGateway {
    * would not confirm (a read in production, a rule forcing approval) go through the same
    * PermissionGateway confirmation flow via the approver.
    */
-  private async approve(call: ToolCall, contract: ToolContract, reasons: readonly string[]): Promise<void> {
+  private async approve(
+    call: ToolCall,
+    contract: ToolContract,
+    reasons: readonly string[],
+  ): Promise<void> {
     try {
       await this.o.approver.approve({
         contract,
@@ -264,17 +292,29 @@ export class ToolGateway {
         summary: `${contract.description} (${reasons[0] ?? "policy requires approval"})`,
       });
     } catch (err) {
-      throw new ToolGatewayError("APPROVAL_REJECTED", `Not approved: ${err instanceof Error ? err.message : String(err)}`, reasons);
+      throw new ToolGatewayError(
+        "APPROVAL_REJECTED",
+        `Not approved: ${err instanceof Error ? err.message : String(err)}`,
+        reasons,
+      );
     }
   }
 
-  private failure(err: unknown, proof: AuditedDecision, contract: ToolContract, call: ToolCall): ToolGatewayError {
+  private failure(
+    err: unknown,
+    proof: AuditedDecision,
+    contract: ToolContract,
+    call: ToolCall,
+  ): ToolGatewayError {
     if (err instanceof ToolGatewayError) {
       this.outcome(proof, contract, call, "timeout", {});
       return err;
     }
     const message = err instanceof Error ? err.message : String(err);
-    const code = typeof err === "object" && err !== null && "code" in err ? String(err.code) : "INTERNAL_ERROR";
+    const code =
+      typeof err === "object" && err !== null && "code" in err
+        ? String(err.code)
+        : "INTERNAL_ERROR";
     this.outcome(proof, contract, call, "failed", { code });
     return new ToolGatewayError(
       code === ErrorCode.CAPABILITY_DISABLED ? "CAPABILITY_DISABLED" : "EXECUTION_FAILED",
@@ -297,7 +337,12 @@ export class ToolGateway {
         action: `tool.${outcome}`,
         capabilityId: contract.capabilityId,
         decision: "info",
-        details: { tool: contract.name, decisionAuditId: proof.auditId, ...contract.auditMetadata, ...extra },
+        details: {
+          tool: contract.name,
+          decisionAuditId: proof.auditId,
+          ...contract.auditMetadata,
+          ...extra,
+        },
       });
     } catch (err) {
       // The decision record already exists; losing the outcome record must not hide the result.
@@ -310,7 +355,10 @@ export class ToolGateway {
  * Manifests of the capabilities that are enabled right now, for `ToolRegistry`. Manifests are
  * the ones the capability manager persisted when the capability registered.
  */
-export function enabledManifests(manager: CapabilityManager, db: Database): () => CapabilityManifest[] {
+export function enabledManifests(
+  manager: CapabilityManager,
+  db: Database,
+): () => CapabilityManifest[] {
   return () =>
     manifestsFromDatabase(db).filter((m) => {
       try {
