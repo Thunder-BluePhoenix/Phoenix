@@ -5,7 +5,9 @@
   --bubble-text: #1b1b1f;
   --bubble-border: #dee2e6;
   --danger: #e03131;
-  --warning: #f08c00;
+  /* The pill's text sits on the bubble background and must meet WCAG AA (4.5:1). */
+  --danger-text: #c92a2a;
+  --warning: #c76a00;
   --success: #2f9e44;
   --info: #1c7ed6;
   --focus: #4c6ef5;
@@ -21,6 +23,8 @@
     --bubble-bg: #1f2023;
     --bubble-text: #e9ecef;
     --bubble-border: #373a40;
+    --danger-text: #ff6b6b;
+    --warning: #f08c00;
     --fawkes-rec-ring: #1f2023;
   }
 }
@@ -84,7 +88,7 @@ body {
   padding: 2px 8px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--danger);
+  color: var(--danger-text);
   background: var(--bubble-bg);
   border: 1px solid var(--danger);
   border-radius: 999px;

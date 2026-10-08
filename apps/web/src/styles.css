@@ -7,7 +7,15 @@
   --border: #dee2e6;
   --accent: #e8590c;
   --danger: #e03131;
-  --warning: #f08c00;
+  /* Text and filled-button colours that meet WCAG AA (4.5:1) in both themes; --danger and
+     --accent stay for borders, dots and rings, where 3:1 is enough. */
+  --danger-text: #c92a2a;
+  --warning-text: #a85400;
+  --success-text: #237a36;
+  --info-text: #1971c2;
+  --accent-text: #b8430a;
+  --accent-fill: #c2410c;
+  --warning: #c76a00;
   --success: #2f9e44;
   --info: #1c7ed6;
   --focus: #4c6ef5;
@@ -27,6 +35,12 @@
     --text: #e9ecef;
     --muted: #a6a7ab;
     --border: #373a40;
+    --warning: #f08c00;
+    --danger-text: #ff6b6b;
+    --warning-text: #f08c00;
+    --success-text: #51cf66;
+    --info-text: #4dabf7;
+    --accent-text: #ff8a4c;
     --fawkes-rec-ring: #1f2023;
   }
 }
@@ -105,7 +119,7 @@ a {
 }
 .conn-offline,
 .conn-unauthenticated {
-  color: var(--danger);
+  color: var(--danger-text);
   border-color: var(--danger);
 }
 .rec-pill {
@@ -114,7 +128,7 @@ a {
   gap: 6px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--danger);
+  color: var(--danger-text);
 }
 /* Phones: Fawkes, the bell and the recording pill must always fit. The state
    stays available as Fawkes' accessible label and in the Pet Panel. */
@@ -128,6 +142,10 @@ a {
   }
 }
 .rec-dot {
+  /* inline-block: inside the banner's <strong> this is an inline element, where width and height
+     do nothing, so the dot drew at 0 px and the banner had no non-text recording marker. */
+  display: inline-block;
+  flex: none;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -200,7 +218,7 @@ a {
   border-left-color: var(--danger);
 }
 .pet-recording {
-  color: var(--danger);
+  color: var(--danger-text);
   font-weight: 600;
 }
 .task-list {
@@ -241,10 +259,10 @@ a {
   white-space: nowrap;
 }
 .error-text {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 .warning-text {
-  color: var(--warning);
+  color: var(--warning-text);
 }
 .pet-panel {
   width: min(420px, calc(100vw - 32px));
@@ -289,8 +307,8 @@ a {
   cursor: default;
 }
 .btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
   color: #fff;
 }
 .btn-danger {
@@ -299,7 +317,7 @@ a {
   color: #fff;
 }
 .btn-danger-outline {
-  color: var(--danger);
+  color: var(--danger-text);
   border-color: var(--danger);
 }
 .button-row {
@@ -314,7 +332,7 @@ a {
   background: none;
   border: 0;
   padding: 0;
-  color: var(--info);
+  color: var(--info-text);
   cursor: pointer;
   font: inherit;
   text-decoration: underline;
@@ -347,14 +365,14 @@ a {
 }
 .status-enabled,
 .health-healthy {
-  color: var(--success);
+  color: var(--success-text);
 }
 .status-failed,
 .health-unhealthy {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 .health-degraded {
-  color: var(--warning);
+  color: var(--warning-text);
 }
 .perm-list {
   list-style: none;
@@ -423,19 +441,19 @@ a {
   border: 1px solid var(--border);
 }
 .sev-badge.sev-error {
-  color: var(--danger);
+  color: var(--danger-text);
   border-color: var(--danger);
 }
 .sev-badge.sev-warning {
-  color: var(--warning);
+  color: var(--warning-text);
   border-color: var(--warning);
 }
 .sev-badge.sev-success {
-  color: var(--success);
+  color: var(--success-text);
   border-color: var(--success);
 }
 .sev-badge.sev-info {
-  color: var(--info);
+  color: var(--info-text);
   border-color: var(--info);
 }
 
@@ -528,7 +546,7 @@ a {
   border: 1px solid var(--danger);
   border-left-width: 4px;
   border-radius: 8px;
-  color: var(--danger);
+  color: var(--danger-text);
 }
 .recording-banner .small {
   color: inherit;
@@ -589,11 +607,11 @@ a {
   width: 60px;
 }
 .status-failed {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 .status-ready,
 .status-transcribed {
-  color: var(--success, #2f9e44);
+  color: var(--success-text);
 }
 .topics {
   display: flex;
@@ -694,7 +712,7 @@ code.break {
   border: 0;
   padding: 0;
   font: inherit;
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: underline;
   cursor: pointer;
 }
