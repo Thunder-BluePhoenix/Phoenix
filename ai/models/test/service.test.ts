@@ -152,8 +152,7 @@ describe("gate: no silent external transmission", () => {
       }),
     };
   }
-  const cloudRequests = (f: FakeFetch) =>
-    f.requests.filter((r) => r.url.includes("anthropic"));
+  const cloudRequests = (f: FakeFetch) => f.requests.filter((r) => r.url.includes("anthropic"));
   const build = (registry: ProviderRegistry, grant: () => boolean, optIn = ON.cloudOptIn) =>
     new AiService({
       registry,

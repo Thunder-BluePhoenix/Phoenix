@@ -8,6 +8,7 @@
 // label are never read, so they cannot end up in an event.
 import { redact } from "@phoenix/logging";
 import type { CapabilityContext } from "@phoenix/sdk";
+import { isRecord } from "./guards";
 
 export type DockerEvent = Parameters<CapabilityContext["emit"]>[0];
 
@@ -44,9 +45,6 @@ const ACTIVE: Readonly<Record<string, true>> = { running: true, paused: true, re
 /** Exit codes `docker stop` / `docker kill` / a user's Ctrl-C produce: SIGKILL and SIGTERM. */
 const SIGNAL_EXITS: Readonly<Record<number, true>> = { 137: true, 143: true };
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 /** Printable, bounded text from an untrusted value, with credentials redacted. */
 function text(value: unknown, max: number): string | undefined {
