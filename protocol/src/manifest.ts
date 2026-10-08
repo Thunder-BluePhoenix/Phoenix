@@ -83,6 +83,16 @@ export function validateManifest(value: unknown): ManifestResult {
   const m = value as unknown as CapabilityManifest;
   const problems: string[] = [];
   if (RESERVED_SOURCES.has(m.id)) problems.push(`/id "${m.id}" is reserved`);
+  // The same names are the namespaces of Phoenix's own events (security.confirmation.requested,
+  // pet.state.changed, capability.failed, ...). A capability may not claim them: an event under
+  // one would be indistinguishable from Phoenix speaking, and Fawkes and the notification centre
+  // would believe it (a forged "Approval needed" prompt put Fawkes in WAITING).
+  for (const pattern of m.events) {
+    const namespace = pattern.split(".")[0]!;
+    if (RESERVED_SOURCES.has(namespace)) {
+      problems.push(`/events "${pattern}" is in the reserved "${namespace}" namespace`);
+    }
+  }
 
   const declared = new Set(m.permissions);
   const names = new Set<string>();

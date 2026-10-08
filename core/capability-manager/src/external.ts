@@ -22,6 +22,50 @@ export function assertLoopbackEndpoint(endpoint: string): URL {
   return url;
 }
 
+/** Largest reply Phoenix will read from a capability. Real replies are tiny; this is a ceiling. */
+export const MAX_RESPONSE_BYTES = 1024 * 1024;
+
+/** Longest free-text message kept from a capability; it is shown in the UI and stored. */
+const MAX_MESSAGE_CHARS = 300;
+
+/**
+ * Reads a response body but stops, and cancels the connection, once it passes `maxBytes`. Without
+ * this a capability could answer with an endless body and Core would buffer all of it
+ * (one 200 MB reply took Core from 129 MB to 987 MB), because the request timeout only covers
+ * the headers. The whole read also has to finish within `timeoutMs` (a body that drips one byte
+ * at a time is cut off).
+ */
+async function readCapped(res: Response, maxBytes: number, timeoutMs: number): Promise<string> {
+  const declared = Number(res.headers.get("content-length") ?? 0);
+  if (declared > maxBytes) {
+    await res.body?.cancel();
+    throw new PhoenixError(ErrorCode.CAPABILITY_UNAVAILABLE, "Capability reply is too large");
+  }
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  const onTimeout = () => void reader.cancel().catch(() => {});
+  deadline.addEventListener("abort", onTimeout, { once: true });
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) {
+        await reader.cancel();
+        throw new PhoenixError(ErrorCode.CAPABILITY_UNAVAILABLE, "Capability reply is too large");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    deadline.removeEventListener("abort", onTimeout);
+  }
+  if (deadline.aborted) throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT);
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 /**
  * HTTP client Phoenix uses to talk to an external capability process.
  *
@@ -42,7 +86,10 @@ export class ExternalClient {
     const status = (body as { status?: string })?.status;
     if (status === "healthy" || status === "degraded" || status === "unhealthy") {
       const message = (body as { message?: unknown }).message;
-      return { status, ...(typeof message === "string" ? { message } : {}) };
+      return {
+        status,
+        ...(typeof message === "string" ? { message: message.slice(0, MAX_MESSAGE_CHARS) } : {}),
+      };
     }
     return { status: "unhealthy", message: "Malformed health response" };
   }
@@ -89,7 +136,15 @@ export class ExternalClient {
         throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT);
       throw new PhoenixError(ErrorCode.CAPABILITY_UNAVAILABLE, "Capability is unreachable");
     }
-    const text = await res.text();
+    let text: string;
+    try {
+      text = await readCapped(res, MAX_RESPONSE_BYTES, timeoutMs);
+    } catch (err) {
+      if (err instanceof PhoenixError) throw err;
+      if ((err as Error).name === "TimeoutError")
+        throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT);
+      throw new PhoenixError(ErrorCode.CAPABILITY_UNAVAILABLE, "Capability is unreachable");
+    }
     let parsed: unknown;
     try {
       parsed = text ? JSON.parse(text) : undefined;
@@ -100,7 +155,9 @@ export class ExternalClient {
       const message = (parsed as { message?: unknown })?.message;
       throw new PhoenixError(
         ErrorCode.CAPABILITY_UNAVAILABLE,
-        typeof message === "string" ? message.slice(0, 300) : `Capability responded ${res.status}`,
+        typeof message === "string"
+          ? message.slice(0, MAX_MESSAGE_CHARS)
+          : `Capability responded ${res.status}`,
       );
     }
     return parsed;

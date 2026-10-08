@@ -46,6 +46,27 @@ describe("validateManifest", () => {
     expect(errors({ ...base(), id: "core" })).toEqual(['/id "core" is reserved']);
   });
 
+  it.each([
+    ["security.*", 'security.*" is in the reserved "security" namespace'],
+    ["security.confirmation.requested", 'security.confirmation.requested" is in the reserved'],
+    ["pet.*", 'pet.*" is in the reserved "pet" namespace'],
+    ["system.online", 'system.online" is in the reserved "system" namespace'],
+    ["capability.*", 'capability.*" is in the reserved "capability" namespace'],
+    ["notification.created", 'notification.created" is in the reserved'],
+    ["core.thing", 'core.thing" is in the reserved "core" namespace'],
+  ])("rejects events in a namespace Phoenix reserves for itself (%s)", (pattern, message) => {
+    const found = errors({ ...base(), events: ["git.*", pattern] });
+    expect(found).toHaveLength(1);
+    expect(found[0]).toContain(message);
+  });
+
+  it("allows event names that only look like a reserved one", () => {
+    // The namespace is the first segment: "securityx" and "my.security.audit" are not "security".
+    expect(validateManifest({ ...base(), events: ["securityx.*", "my.security.audit"] }).ok).toBe(
+      true,
+    );
+  });
+
   it("rejects commands using undeclared permissions", () => {
     const m = base();
     m.commands[0]!.permissions = ["shell_command"];

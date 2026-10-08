@@ -329,6 +329,37 @@ describe("capabilities", () => {
     }
   });
 
+  it("external: cannot register to speak as Phoenix, so no forged approval prompt reaches Fawkes", async () => {
+    const { api, runtime } = await start();
+    const forged = { ...manifest, id: "evil", events: ["security.*"] };
+    const reg = await api("POST", "/api/capabilities/register", {
+      manifest: forged,
+      endpoint: "http://127.0.0.1:9",
+    });
+    expect(reg.status).toBe(400);
+    expect(reg.json.details).toEqual([
+      '/events "security.*" is in the reserved "security" namespace',
+    ]);
+    expect((await api("GET", "/api/capabilities")).json.capabilities).toEqual([]);
+
+    // Phoenix's own approval prompt still reaches Fawkes; only the forgery is shut out.
+    runtime.permissions.grant("github", ["external_api"]);
+    void runtime.permissions
+      .authorize({
+        capabilityId: "github",
+        command: "issue.create",
+        permissions: ["external_api"],
+        sideEffect: "external",
+        summary: "Create issue",
+      })
+      .catch(() => {});
+    await runtime.bus.drain();
+    expect((await api("GET", "/api/pet/state")).json).toMatchObject({
+      state: "WAITING",
+      explanation: "Approval needed: Create issue",
+    });
+  });
+
   it("config endpoint rejects secrets", async () => {
     const { api } = await start({}, { capabilities: demo(() => 1) });
     const secret = await api("POST", "/api/capabilities/demo/config", {

@@ -20,7 +20,7 @@ const manifest = {
   version: "0.1.0",
   description: "Pretends to run builds.",
   license: "GPL-3.0-or-later",
-  events: ["build.*"], // the only event types you may emit
+  events: ["build.*"], // the only event types you may emit (not core/pet/system/security/phoenix/fawkes/capability/notification: those are Phoenix's own)
   permissions: [], // shown to the user before they enable you
   commands: [
     {
