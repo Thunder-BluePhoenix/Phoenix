@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { defaults } from "@phoenix/config";
+import { silentLogger } from "@phoenix/logging";
 import { MIGRATIONS } from "@phoenix/persistence";
 import { createEvent, PROTOCOL_VERSION } from "@phoenix/protocol";
 import { afterEach, describe, expect, it } from "vitest";
-import { SESSION_TOKEN_FILE, type PhoenixRuntime } from "../src";
+import { PhoenixRuntime, SESSION_TOKEN_FILE } from "../src";
 import { startCore, TOKEN } from "./helpers";
 
 let runtime: PhoenixRuntime | undefined;
@@ -71,5 +74,36 @@ describe("PhoenixRuntime", () => {
   it("stop is graceful and idempotent", async () => {
     const core = await startCore();
     await Promise.all([core.runtime.stop(), core.runtime.stop()]);
+  });
+
+  it("refuses to start a second Core on the same data directory, and does not touch the first", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "phoenix-two-"));
+    const options = {
+      config: { ...defaults("dev"), port: 0, dataDir },
+      logger: silentLogger,
+      token: TOKEN,
+      capabilities: [],
+    };
+    const first = new PhoenixRuntime(options);
+    runtime = first;
+    const { port } = await first.start();
+    const tokenFile = join(dataDir, SESSION_TOKEN_FILE);
+    const before = readFileSync(tokenFile, "utf8");
+
+    expect(() => new PhoenixRuntime({ ...options, token: "another-token-0123456789" })).toThrow(
+      /Another Phoenix Core is already using/,
+    );
+    // The refused Core must not replace the running one's session token.
+    expect(readFileSync(tokenFile, "utf8")).toBe(before);
+    const res = await fetch(`http://127.0.0.1:${port}/api/pet/state`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    expect(res.status).toBe(200);
+
+    // Once the first Core stops, the folder is free for the next one.
+    await first.stop();
+    const next = new PhoenixRuntime(options);
+    await next.start();
+    await next.stop();
   });
 });

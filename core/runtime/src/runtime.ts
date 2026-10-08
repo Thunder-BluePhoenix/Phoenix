@@ -13,6 +13,7 @@ import {
   DeadLetterStore,
   EventStore,
   MeetingStore,
+  lockDatabaseFile,
   openDatabase,
   schemaVersion,
   SettingsStore,
@@ -71,6 +72,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly token: string;
   private pruner: NodeJS.Timeout | null = null;
   private readonly stopMeetingSync: () => void;
+  /** Gives up the claim on the data directory (see lockDatabaseFile). */
+  private readonly releaseDatabase: () => void;
   private api: ApiServer | null = null;
   private ticker: NodeJS.Timeout | null = null;
   private readonly startedAt = Date.now();
@@ -79,7 +82,14 @@ export class PhoenixRuntime implements CoreServices {
   constructor(private readonly options: RuntimeOptions) {
     this.config = options.config;
     this.logger = options.logger ?? createLogger({ level: options.config.logLevel });
-    this.db = openDatabase(options.databasePath ?? join(this.config.dataDir, "phoenix.sqlite"));
+    const databasePath = options.databasePath ?? join(this.config.dataDir, "phoenix.sqlite");
+    this.releaseDatabase = lockDatabaseFile(databasePath);
+    try {
+      this.db = openDatabase(databasePath);
+    } catch (err) {
+      this.releaseDatabase();
+      throw err;
+    }
     this.events = new EventStore(this.db, this.config.eventHistoryLimit);
     this.settings = new SettingsStore(this.db);
     this.deadLetters = new DeadLetterStore(this.db);
@@ -277,6 +287,7 @@ export class PhoenixRuntime implements CoreServices {
         rmSync(join(this.config.dataDir, SESSION_TOKEN_FILE), { force: true });
       }
       this.db.close();
+      this.releaseDatabase();
       this.logger.info("Phoenix Core stopped");
     })();
     return this.stopping;

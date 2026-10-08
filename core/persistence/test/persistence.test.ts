@@ -3,11 +3,15 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { createEvent } from "@phoenix/protocol";
 import { describe, expect, it } from "vitest";
 import {
+  DatabaseInUseError,
+  DatabaseTooNewError,
   DeadLetterStore,
   EventStore,
+  lockDatabaseFile,
   MemorySecretStore,
   MIGRATIONS,
   migrate,
@@ -30,6 +34,52 @@ describe("database", () => {
     const reopened = openDatabase(path);
     expect(new EventStore(reopened).count()).toBe(1);
     reopened.close();
+  });
+
+  it("refuses a database written by a newer Phoenix, and leaves it as it was", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "phoenix-db-")), "phoenix.sqlite");
+    const newest = MIGRATIONS.at(-1)!.version;
+    const db = openDatabase(path);
+    db.prepare("INSERT INTO schema_migrations VALUES (?, 'from_the_future', 'x')").run(newest + 1);
+    db.close();
+
+    expect(() => openDatabase(path)).toThrow(DatabaseTooNewError);
+    expect(() => openDatabase(path)).toThrow(/newer Phoenix.*schema \d+/);
+    const check = new DatabaseSync(path);
+    expect(schemaVersion(check)).toBe(newest + 1);
+    check.close();
+  });
+});
+
+describe("lockDatabaseFile", () => {
+  const freshPath = () => join(mkdtempSync(join(tmpdir(), "phoenix-lock-")), "phoenix.sqlite");
+
+  it("lets only one Core use a data directory at a time", () => {
+    const path = freshPath();
+    const release = lockDatabaseFile(path);
+    expect(() => lockDatabaseFile(path)).toThrow(DatabaseInUseError);
+    expect(() => lockDatabaseFile(path)).toThrow(/Another Phoenix Core is already using/);
+    release();
+
+    // Once the first one stops, the directory is free again.
+    lockDatabaseFile(path)();
+  });
+
+  it("leaves the database itself readable by other tools while Core runs", () => {
+    const path = freshPath();
+    const release = lockDatabaseFile(path);
+    const db = openDatabase(path);
+    new EventStore(db).append(ev());
+    const reader = new DatabaseSync(path, { readOnly: true });
+    expect(reader.prepare("SELECT count(*) AS n FROM events").get()).toEqual({ n: 1 });
+    reader.close();
+    db.close();
+    release();
+  });
+
+  it("does not lock in-memory databases", () => {
+    lockDatabaseFile(":memory:")();
+    lockDatabaseFile(":memory:")();
   });
 });
 
