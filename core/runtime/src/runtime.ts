@@ -21,6 +21,7 @@ import {
 } from "@phoenix/persistence";
 import { createEvent, ErrorCode, PhoenixError, PROTOCOL_VERSION } from "@phoenix/protocol";
 import { StateEngine } from "@phoenix/state-engine";
+import { collectDiagnostics, type Diagnostics } from "./diagnostics";
 import { syncMeetings } from "./meetings";
 import { PrivacyService } from "./privacy";
 
@@ -59,6 +60,7 @@ export class PhoenixRuntime implements CoreServices {
   readonly db: Database;
   readonly events: EventStore;
   readonly settings: SettingsStore;
+  readonly deadLetters: DeadLetterStore;
   readonly bus: EventBus;
   readonly state: StateEngine;
   readonly permissions: PermissionGateway;
@@ -80,9 +82,10 @@ export class PhoenixRuntime implements CoreServices {
     this.db = openDatabase(options.databasePath ?? join(this.config.dataDir, "phoenix.sqlite"));
     this.events = new EventStore(this.db, this.config.eventHistoryLimit);
     this.settings = new SettingsStore(this.db);
+    this.deadLetters = new DeadLetterStore(this.db);
     this.bus = new EventBus({
       store: this.events,
-      deadLetters: new DeadLetterStore(this.db),
+      deadLetters: this.deadLetters,
       logger: this.logger,
       dedupWindow: this.config.dedupWindow,
     });
@@ -239,6 +242,23 @@ export class PhoenixRuntime implements CoreServices {
       bus: this.bus.metrics(),
       websocket: this.api?.hub.metrics() ?? null,
     };
+  }
+
+  /** A report safe to attach to a bug report: how Phoenix behaves, not what you were doing. */
+  diagnostics(): Diagnostics {
+    return collectDiagnostics({
+      health: this.health(),
+      capabilities: this.capabilities,
+      events: this.events,
+      deadLetters: this.deadLetters,
+      audit: this.permissions.audit,
+      counts: {
+        events: this.events.count(),
+        notifications: this.notifications.count(),
+        meetings: this.meetings.count(),
+        audit_entries: this.permissions.audit.count(),
+      },
+    });
   }
 
   /** Graceful shutdown: stop accepting requests, flush the bus, close the database. Idempotent. */

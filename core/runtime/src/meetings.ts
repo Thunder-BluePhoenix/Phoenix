@@ -22,19 +22,21 @@ export function syncMeetings(o: {
 }): () => void {
   const fetchContent = async (event: PhoenixEvent, externalId: string) => {
     const id = `${event.source}:${externalId}`;
-    const commands = new Set(o.capabilities.get(event.source).commands.map((c) => c.name));
-    const pull = async (command: string) => {
-      if (!commands.has(command)) return undefined;
-      const op = await o.capabilities.invokeAndWait(
-        event.source,
-        command,
-        { meeting_id: externalId },
-        "core",
-      );
-      if (op.status !== "succeeded") throw new Error(op.error?.message ?? `${command} failed`);
-      return op.result;
-    };
     try {
+      // Events can come from any source, including ones that are not registered capabilities
+      // (POST /api/events). That must never reach the process as an unhandled rejection.
+      const commands = new Set(o.capabilities.get(event.source).commands.map((c) => c.name));
+      const pull = async (command: string) => {
+        if (!commands.has(command)) return undefined;
+        const op = await o.capabilities.invokeAndWait(
+          event.source,
+          command,
+          { meeting_id: externalId },
+          "core",
+        );
+        if (op.status !== "succeeded") throw new Error(op.error?.message ?? `${command} failed`);
+        return op.result;
+      };
       const transcript = (await pull("meeting.get_transcript")) as Transcript | undefined;
       if (transcript) o.store.setTranscript(id, transcript);
       const summary = (await pull("meeting.get_summary")) as Summary | null | undefined;

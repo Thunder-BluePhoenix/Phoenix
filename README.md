@@ -59,6 +59,8 @@ Phoenix is local-first. Everything it stores lives in its data directory on your
 - [Phase tracker](docs/phases/TRACKER.md)
 - [Architecture decisions](docs/adr/README.md)
 - [Event protocol v1](docs/protocol/events-v1.md)
+- [Architecture](docs/architecture.md)
+- [Security review](docs/security-review.md)
 
 ## License
 

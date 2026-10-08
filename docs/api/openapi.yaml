@@ -650,6 +650,17 @@ paths:
       responses:
         "200": { description: Resolved }
         "404": { $ref: "#/components/responses/Error" }
+  /api/diagnostics:
+    get:
+      summary: Support report with no secrets and no meeting content
+      description: |
+        How Phoenix is behaving, for a bug report: versions, counts, bus and WebSocket metrics,
+        capability status (names only, never configuration values), dead letters, recent event
+        types and sources (never payloads or subjects), recent audit actions and how long Kage
+        meetings took to process. Never includes meeting titles, participants, transcripts,
+        summaries, credentials or file paths.
+      responses:
+        "200": { description: Report }
   /api/audit:
     get:
       summary: Audit log, newest first

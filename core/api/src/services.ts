@@ -65,4 +65,6 @@ export interface CoreServices {
   /** Persists the user's sleep preference. */
   setSleeping(sleeping: boolean): void;
   health(): Record<string, unknown>;
+  /** Support report with no secrets and no meeting content (GET /api/diagnostics). */
+  diagnostics?(): unknown;
 }

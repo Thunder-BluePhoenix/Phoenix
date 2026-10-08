@@ -6,7 +6,8 @@ import { createKageCapability } from "@phoenix/capability-kage";
 import { MOCK_KAGE_KEY, startMockKage, type MockKage } from "@phoenix/capability-kage/testing";
 import { MemorySecretStore } from "@phoenix/persistence";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { startCore } from "./helpers";
+import { createLogger } from "@phoenix/logging";
+import { event, startCore } from "./helpers";
 
 let kage: MockKage | undefined;
 let stop: (() => Promise<void>) | undefined;
@@ -141,5 +142,37 @@ describe("meetings API", () => {
     expect((await api("GET", "/api/health")).json.status).toBe("ok");
     // Phoenix's own records stay readable during the outage.
     expect((await api("GET", "/api/meetings")).json.meetings).toHaveLength(1);
+  });
+});
+
+describe("meeting events from sources that are not capabilities", () => {
+  it("do not crash core (event injection through POST /api/events)", async () => {
+    // Settles on whichever happens first: core handles it (logs a warning) or it escapes.
+    const outcome = Promise.withResolvers<"handled" | "escaped">();
+    const onRejection = () => outcome.resolve("escaped");
+    process.on("unhandledRejection", onRejection);
+    try {
+      const logger = createLogger({
+        sink: (record) => {
+          if (record.msg === "could not fetch meeting content") outcome.resolve("handled");
+        },
+      });
+      const core = await startCore({}, { logger });
+      stop = () => core.runtime.stop();
+      const res = await core.api(
+        "POST",
+        "/api/events",
+        event("thing.summary.ready", {
+          source: "ghost",
+          payload: { meeting_id: "1", status: "ready", title: "Injected" },
+        }),
+      );
+      expect(res.status).toBe(202);
+
+      expect(await outcome.promise).toBe("handled");
+      expect((await core.api("GET", "/api/health")).status).toBe(200);
+    } finally {
+      process.off("unhandledRejection", onRejection);
+    }
   });
 });

@@ -77,7 +77,12 @@ export async function startMockKage() {
     setDown(value: boolean) {
       down = value;
     },
-    close: () => new Promise<void>((r) => server.close(() => r())),
+    close: () =>
+      new Promise<void>((r) => {
+        // Core's poller keeps connections alive; without this, close() waits ~3 s for them.
+        server.close(() => r());
+        server.closeAllConnections();
+      }),
   };
 }
 

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { WS_PROTOCOL, WS_TOKEN_PREFIX } from "@phoenix/api";
 import type { CapabilityModule } from "@phoenix/capability-manager";
 import { defaults, type PhoenixConfig } from "@phoenix/config";
-import { silentLogger } from "@phoenix/logging";
+import { silentLogger, type Logger } from "@phoenix/logging";
 import type { SecretStore } from "@phoenix/persistence";
 import WebSocket from "ws";
 import { PhoenixRuntime } from "../src";
@@ -15,12 +15,17 @@ export const TOKEN = "test-token-0123456789";
 
 export async function startCore(
   overrides: Partial<PhoenixConfig> = {},
-  opts: { writeTokenFile?: boolean; capabilities?: CapabilityModule[]; secrets?: SecretStore } = {},
+  opts: {
+    writeTokenFile?: boolean;
+    capabilities?: CapabilityModule[];
+    secrets?: SecretStore;
+    logger?: Logger;
+  } = {},
 ) {
   const dataDir = mkdtempSync(join(tmpdir(), "phoenix-core-"));
   const runtime = new PhoenixRuntime({
     config: { ...defaults("dev"), port: 0, dataDir, ...overrides },
-    logger: silentLogger,
+    logger: opts.logger ?? silentLogger,
     databasePath: ":memory:",
     token: TOKEN,
     writeTokenFile: opts.writeTokenFile ?? false,

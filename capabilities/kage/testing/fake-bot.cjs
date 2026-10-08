@@ -2,7 +2,11 @@
 // Copyright (C) 2026 Phoenix contributors
 //
 // Prints the same progress lines as Kage's bot/bot.js, without Chrome or audio.
-// FAKE_BOT_EXIT sets the exit code; FAKE_BOT_HOLD_MS keeps it "recording" that long.
+// FAKE_BOT_EXIT sets the exit code; FAKE_BOT_HOLD_MS keeps it "recording" that long;
+// FAKE_BOT_PIDFILE makes it write its pid there so tests can check it really stopped.
+if (process.env.FAKE_BOT_PIDFILE) {
+  require("node:fs").writeFileSync(process.env.FAKE_BOT_PIDFILE, String(process.pid));
+}
 const key = process.env.KAGE_API_KEY;
 if (!key || process.argv.some((a) => a.includes(key))) {
   console.error("API key must arrive via KAGE_API_KEY, not argv");

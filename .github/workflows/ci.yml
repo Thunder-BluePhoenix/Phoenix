@@ -27,6 +27,37 @@ jobs:
       - name: Build web app
         run: pnpm build:web
 
+  # The desktop shell (Phase 14). macOS only: it is the one platform verified so far, and the
+  # Linux build needs webkit2gtk system packages that are not set up yet.
+  desktop:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - run: pnpm install --frozen-lockfile
+      # tauri::generate_context! needs the built web app (frontendDist) at compile time.
+      - name: Build web app
+        run: pnpm build:web
+      - name: Format
+        run: cargo fmt --check
+        working-directory: apps/desktop/src-tauri
+      - name: Lint
+        run: cargo clippy --all-targets --locked -- -D warnings
+        working-directory: apps/desktop/src-tauri
+      - name: Test
+        run: cargo test --locked
+        working-directory: apps/desktop/src-tauri
+
   secret-scan:
     runs-on: ubuntu-latest
     steps:

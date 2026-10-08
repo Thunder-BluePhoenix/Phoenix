@@ -30,6 +30,10 @@ export function buildRoutes(s: CoreServices): Route[] {
   };
   return [
     route("GET", "/api/health", () => s.health(), true),
+    route("GET", "/api/diagnostics", () => {
+      if (!s.diagnostics) throw notFound("Diagnostics");
+      return s.diagnostics();
+    }),
 
     // ── Fawkes ──────────────────────────────────────────────────────────────
     route("GET", "/api/pet/state", () => s.state.snapshot()),
