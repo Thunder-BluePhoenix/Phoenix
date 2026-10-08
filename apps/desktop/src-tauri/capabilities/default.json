@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The floating Fawkes window may move itself; everything else is a command defined by this app.",
+  "windows": ["fawkes"],
+  "permissions": ["core:default", "core:window:allow-start-dragging"]
+}

@@ -1,6 +1,9 @@
 node_modules/
 dist/
 coverage/
+# Rust / Tauri build output (apps/desktop)
+target/
+apps/desktop/src-tauri/gen/
 *.log
 .env
 .env.*

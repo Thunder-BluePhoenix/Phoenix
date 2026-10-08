@@ -3,7 +3,7 @@
 
 export interface DragEvent {
   phase: "start" | "move" | "end";
-  /** Movement since the previous drag event, in CSS pixels. */
+  /** Movement since the previous drag event, in screen CSS pixels. */
   dx: number;
   dy: number;
 }
@@ -12,7 +12,9 @@ const DRAG_THRESHOLD_PX = 4;
 
 /**
  * Pointer drag detection. A press that moves more than a few pixels becomes a
- * drag and suppresses the click that follows it.
+ * drag and suppresses the click that follows it. Movement is measured in screen
+ * coordinates, so it stays correct when the drag moves the window under the pointer
+ * (the floating desktop pet).
  */
 export function attachDrag(
   el: HTMLElement,
@@ -28,7 +30,7 @@ export function attachDrag(
 
   const down = (e: PointerEvent) => {
     if (e.button !== 0) return;
-    start = { x: e.clientX, y: e.clientY };
+    start = { x: e.screenX, y: e.screenY };
     last = { ...start };
     dragging = false;
     el.setPointerCapture?.(e.pointerId);
@@ -36,12 +38,12 @@ export function attachDrag(
   const move = (e: PointerEvent) => {
     if (!start) return;
     if (!dragging) {
-      if (Math.hypot(e.clientX - start.x, e.clientY - start.y) < DRAG_THRESHOLD_PX) return;
+      if (Math.hypot(e.screenX - start.x, e.screenY - start.y) < DRAG_THRESHOLD_PX) return;
       dragging = true;
       onDrag({ phase: "start", dx: 0, dy: 0 });
     }
-    onDrag({ phase: "move", dx: e.clientX - last.x, dy: e.clientY - last.y });
-    last = { x: e.clientX, y: e.clientY };
+    onDrag({ phase: "move", dx: e.screenX - last.x, dy: e.screenY - last.y });
+    last = { x: e.screenX, y: e.screenY };
   };
   const up = () => {
     if (dragging) {

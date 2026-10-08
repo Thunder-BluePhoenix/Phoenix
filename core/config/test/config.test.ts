@@ -51,6 +51,18 @@ describe("loadConfig", () => {
     ).toThrow(ConfigError);
   });
 
+  it("always trusts the desktop shell's webview origin, in every environment", () => {
+    for (const PHOENIX_ENV of ["dev", "staging", "prod"]) {
+      const origins = loadConfig({ env: { PHOENIX_ENV }, configDir: tmp() }).allowedOrigins;
+      expect(origins).toContain("tauri://localhost");
+      expect(origins).toContain("http://tauri.localhost");
+    }
+    // The Vite dev server stays a development-only origin.
+    expect(
+      loadConfig({ env: { PHOENIX_ENV: "prod" }, configDir: tmp() }).allowedOrigins,
+    ).not.toContain("http://localhost:5173");
+  });
+
   it("rejects bad values", () => {
     expect(() => loadConfig({ env: { PHOENIX_ENV: "qa" }, configDir: tmp() })).toThrow();
     expect(() => loadConfig({ env: { PHOENIX_PORT: "abc" }, configDir: tmp() })).toThrow();

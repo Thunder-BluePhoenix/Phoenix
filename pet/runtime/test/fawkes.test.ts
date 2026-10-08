@@ -22,7 +22,15 @@ const rec = () => pet.element.querySelector<HTMLElement>(".fawkes-rec")!;
 
 function pointer(type: string, x: number, y: number) {
   pet.element.dispatchEvent(
-    new PointerEvent(type, { clientX: x, clientY: y, button: 0, pointerId: 1, bubbles: true }),
+    new PointerEvent(type, {
+      clientX: x,
+      clientY: y,
+      screenX: x,
+      screenY: y,
+      button: 0,
+      pointerId: 1,
+      bubbles: true,
+    }),
   );
 }
 

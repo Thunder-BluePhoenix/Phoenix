@@ -60,6 +60,20 @@ describe("web app serving", () => {
     expect(await (await fetch(`${core.base}/meetings/42`)).text()).toContain("phoenix-token");
   });
 
+  it("serves every HTML page uncached with the session token, including floating.html", async () => {
+    const root = site();
+    writeFileSync(
+      join(root, "floating.html"),
+      "<!doctype html><html><head><title>Fawkes</title></head><body></body></html>",
+    );
+    const core = await startCore({ webRoot: root });
+    stop = () => core.runtime.stop();
+    const res = await fetch(`${core.base}/floating.html`);
+    expect(await res.text()).toContain(`<meta name="phoenix-token" content="${TOKEN}">`);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("content-type")).toContain("text/html");
+  });
+
   it("never serves files outside the web root", async () => {
     const core = await startCore({ webRoot: site() });
     stop = () => core.runtime.stop();

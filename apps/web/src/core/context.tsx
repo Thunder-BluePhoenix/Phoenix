@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import type { PhoenixClient } from "./client";
+import { displayedState, type PhoenixClient } from "./client";
 import type { ActiveTask, ConnectionStatus, PetState } from "./types";
 
 const ClientContext = createContext<PhoenixClient | null>(null);
@@ -54,16 +54,5 @@ export function useTasks(): ActiveTask[] {
 
 /** What Fawkes should display, accounting for connectivity (OFFLINE mode, ADR-0019). */
 export function useDisplayedState(): PetState {
-  const state = usePetState();
-  const status = useConnection();
-  if (status === "offline")
-    return { ...state, state: "OFFLINE", explanation: "Phoenix Core is unreachable" };
-  if (status === "unauthenticated") {
-    return {
-      ...state,
-      state: "OFFLINE",
-      explanation: "Not connected — open Phoenix from its local address",
-    };
-  }
-  return state;
+  return displayedState(usePetState(), useConnection());
 }

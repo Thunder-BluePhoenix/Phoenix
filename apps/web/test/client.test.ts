@@ -99,6 +99,47 @@ describe("WebSocket connection", () => {
     expect(c.status).toBe("unauthenticated");
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
+
+  it("with refreshToken it waits for Core, re-reads the token on every attempt and never says unauthenticated", async () => {
+    const tokens: (string | null)[] = [null, "first", "second"];
+    const c = new PhoenixClient({
+      token: null,
+      baseUrl: "http://127.0.0.1:4870",
+      WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+      refreshToken: async () => tokens.shift() ?? null,
+      minReconnectMs: 100,
+      maxReconnectMs: 400,
+    });
+    c.connect();
+    await vi.advanceTimersByTimeAsync(0);
+    // Core is not running yet (no token file): keep trying, no socket.
+    expect(c.status).toBe("offline");
+    expect(FakeWebSocket.instances).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(FakeWebSocket.last.protocols).toEqual(["phoenix.v1", "phoenix.token.first"]);
+    FakeWebSocket.last.open();
+    expect(c.status).toBe("online");
+
+    // Core restarted with a new token.
+    FakeWebSocket.last.drop();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(FakeWebSocket.last.protocols).toEqual(["phoenix.v1", "phoenix.token.second"]);
+  });
+
+  it("close() during a token refresh does not open a socket", async () => {
+    let release: (t: string) => void = () => {};
+    const c = new PhoenixClient({
+      token: null,
+      WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+      refreshToken: () => new Promise<string>((r) => (release = r)),
+    });
+    c.connect();
+    c.close();
+    release("late");
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(FakeWebSocket.instances).toHaveLength(0);
+  });
 });
 
 describe("HTTP requests", () => {

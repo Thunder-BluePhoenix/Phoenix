@@ -51,6 +51,12 @@ export interface ClientOptions {
   fetchImpl?: typeof fetch;
   minReconnectMs?: number;
   maxReconnectMs?: number;
+  /**
+   * Reads the current session token before every connection attempt. Used by the
+   * desktop shell, which outlives Core restarts. A null result means Core is not
+   * running yet, so the client keeps retrying instead of reporting "unauthenticated".
+   */
+  refreshToken?: () => Promise<string | null>;
 }
 
 /** Talks to Phoenix Core over HTTP and a self-healing WebSocket. */
@@ -62,6 +68,7 @@ export class PhoenixClient {
   readonly notificationCreated = new Emitter<Notification>();
   readonly capabilityChanged = new Emitter<PhoenixEvent>();
 
+  private token: string | null;
   private ws: WebSocket | null = null;
   private status_: ConnectionStatus = "connecting";
   private lastSeq: number | undefined;
@@ -73,6 +80,7 @@ export class PhoenixClient {
   private readonly fetchImpl: typeof fetch;
 
   constructor(private readonly o: ClientOptions) {
+    this.token = o.token;
     this.base =
       o.baseUrl ?? (typeof location !== "undefined" ? location.origin : "http://127.0.0.1:4870");
     this.WS = o.WebSocketImpl ?? WebSocket;
@@ -85,7 +93,7 @@ export class PhoenixClient {
 
   connect(): void {
     this.closed = false;
-    if (!this.o.token) return this.setStatus("unauthenticated");
+    if (!this.token && !this.o.refreshToken) return this.setStatus("unauthenticated");
     this.open();
   }
 
@@ -100,7 +108,7 @@ export class PhoenixClient {
     const res = await this.fetchImpl(this.base + path, {
       method,
       headers: {
-        authorization: `Bearer ${this.o.token ?? ""}`,
+        authorization: `Bearer ${this.token ?? ""}`,
         ...(body !== undefined ? { "content-type": "application/json" } : {}),
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -120,10 +128,27 @@ export class PhoenixClient {
 
   private open(): void {
     this.setStatus("connecting");
+    const refresh = this.o.refreshToken;
+    if (!refresh) return this.openSocket();
+    // Core issues a new session token on every start, so re-read it before each attempt.
+    refresh().then(
+      (token) => {
+        if (this.closed) return;
+        this.token = token;
+        if (token) this.openSocket();
+        else this.scheduleReconnect();
+      },
+      () => {
+        if (!this.closed) this.scheduleReconnect();
+      },
+    );
+  }
+
+  private openSocket(): void {
     const url = this.base.replace(/^http/, "ws") + "/api/ws";
     let ws: WebSocket;
     try {
-      ws = new this.WS(url, [WS_PROTOCOL, WS_TOKEN_PREFIX + this.o.token]);
+      ws = new this.WS(url, [WS_PROTOCOL, WS_TOKEN_PREFIX + this.token]);
     } catch {
       return this.scheduleReconnect();
     }
@@ -210,4 +235,22 @@ export class PhoenixClient {
 /** Reads the token core (or the Vite dev plugin) injected into index.html. */
 export function readInjectedToken(doc: Document = document): string | null {
   return doc.querySelector<HTMLMetaElement>('meta[name="phoenix-token"]')?.content || null;
+}
+
+/**
+ * What Fawkes should display, accounting for connectivity (OFFLINE mode, ADR-0019).
+ * Shared by every Fawkes view (web navbar, desktop floating window).
+ */
+export function displayedState(state: PetState, status: ConnectionStatus): PetState {
+  if (status === "offline") {
+    return { ...state, state: "OFFLINE", explanation: "Phoenix Core is unreachable" };
+  }
+  if (status === "unauthenticated") {
+    return {
+      ...state,
+      state: "OFFLINE",
+      explanation: "Not connected — open Phoenix from its local address",
+    };
+  }
+  return state;
 }

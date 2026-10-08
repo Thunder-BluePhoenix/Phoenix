@@ -39,6 +39,12 @@ export function defaultDataDir(env: Environment): string {
   return join(homedir(), ".phoenix", env);
 }
 
+/** Vite dev server (development only). */
+const DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"];
+
+/** Origins of the Phoenix desktop shell's webview (Tauri: tauri://localhost, Windows http://tauri.localhost). */
+const DESKTOP_ORIGINS = ["tauri://localhost", "http://tauri.localhost"];
+
 export function defaults(env: Environment): PhoenixConfig {
   return {
     env,
@@ -49,7 +55,7 @@ export function defaults(env: Environment): PhoenixConfig {
     allowRemote: false,
     eventHistoryLimit: 10_000,
     dedupWindow: 10_000,
-    allowedOrigins: env === "dev" ? ["http://localhost:5173", "http://127.0.0.1:5173"] : [],
+    allowedOrigins: env === "dev" ? [...DEV_ORIGINS, ...DESKTOP_ORIGINS] : [...DESKTOP_ORIGINS],
   };
 }
 
@@ -116,7 +122,7 @@ export function validateConfig(config: PhoenixConfig): void {
     );
   }
   for (const origin of config.allowedOrigins) {
-    if (!/^https?:\/\/[^/\s]+$/.test(origin)) {
+    if (!/^[a-z][a-z0-9+.-]*:\/\/[^/\s]+$/.test(origin)) {
       throw new ConfigError(`allowedOrigins entry "${origin}" must be scheme://host[:port]`);
     }
   }

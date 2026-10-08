@@ -45,9 +45,9 @@ export function injectToken(html: string, token: string): string {
 }
 
 /**
- * Serves the built web app. Hashed assets are cached; index.html is never
- * cached because it carries the per-start session token. Unknown paths fall
- * back to index.html (single-page app).
+ * Serves the built web app. Hashed assets are cached; HTML pages (index.html and
+ * floating.html) are never cached because they carry the per-start session token.
+ * Unknown paths fall back to index.html (single-page app).
  */
 export class StaticSite {
   private readonly root: string;
@@ -74,14 +74,14 @@ export class StaticSite {
     const inside = candidate === this.root || candidate.startsWith(this.root + sep);
     const isFile = inside && existsSync(candidate) && statSync(candidate).isFile();
     const file = isFile ? candidate : join(this.root, "index.html");
-    const isIndex = file === join(this.root, "index.html");
+    const isHtml = extname(file) === ".html";
 
     const headers: Record<string, string> = {
       ...PAGE_HEADERS,
       "content-type": TYPES[extname(file)] ?? "application/octet-stream",
-      "cache-control": isIndex ? "no-store" : "public, max-age=31536000, immutable",
+      "cache-control": isHtml ? "no-store" : "public, max-age=31536000, immutable",
     };
-    const body = isIndex ? injectToken(readFileSync(file, "utf8"), this.token) : readFileSync(file);
+    const body = isHtml ? injectToken(readFileSync(file, "utf8"), this.token) : readFileSync(file);
     res.writeHead(200, headers);
     res.end(body);
   }

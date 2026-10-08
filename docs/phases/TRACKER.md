@@ -8,7 +8,7 @@ Single source of truth for delivery progress. Derived from the five vision docum
 
 ## Current focus
 
-Next up: **Phase 14 — floating desktop Fawkes** (needs the Tauri spike), then **Phase 20 — hardening & v0.1 release**.
+Next up: finish **Phase 14 — floating desktop Fawkes** (built and launching on macOS; needs a visual check of the window, drag and tray, and the Linux/Windows spike), then **Phase 20 — hardening & v0.1 release**.
 
 ## Summary
 
@@ -45,7 +45,7 @@ Next up: **Phase 14 — floating desktop Fawkes** (needs the Tauri spike), then 
 | 11 | [Permissions & Audit Primitives](phase-11-permissions-and-audit.md) | v0.1 | Critical | 04 | ✅ | | |
 | 12 | [Capability Manager & Manifest](phase-12-capability-manager.md) | v0.1 | Critical | 11, 06 | ✅ | | |
 | 13 | [Capability SDK, Mock Capability & Event Simulator](phase-13-capability-sdk-mock-simulator.md) | v0.1 | Critical | 12 | ✅ | | |
-| 14 | [Floating Desktop Fawkes](phase-14-floating-desktop-fawkes.md) | v0.1 | High | 07, 06 | ⬜ | | |
+| 14 | [Floating Desktop Fawkes](phase-14-floating-desktop-fawkes.md) | v0.1 | High | 07, 06 | 🟨 | | Tauri shell builds and launches on macOS; window look, drag, tray unverified; Linux/Windows spike not run |
 | 15 | [Kage Adapter & Meeting Lifecycle](phase-15-kage-adapter-meeting-lifecycle.md) | v0.1 | Critical | 13 | ✅ | | |
 | 16 | [Meetings UI & Recording Indicator](phase-16-meetings-ui.md) | v0.1 | Critical | 15, 09 | ✅ | | |
 | 17 | [Git Capability](phase-17-git-capability.md) | v0.1 | High | 13 | ✅ | | |

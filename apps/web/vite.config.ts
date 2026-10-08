@@ -49,5 +49,12 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: true,
+    // Two pages: the main app and the transparent floating Fawkes (apps/desktop).
+    rolldownOptions: {
+      input: {
+        index: resolve(__dirname, "index.html"),
+        floating: resolve(__dirname, "floating.html"),
+      },
+    },
   },
 });

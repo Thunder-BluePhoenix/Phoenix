@@ -1,0 +1,97 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* The desktop window is transparent: nothing here may paint a page background. */
+:root {
+  --bubble-bg: #ffffff;
+  --bubble-text: #1b1b1f;
+  --bubble-border: #dee2e6;
+  --danger: #e03131;
+  --warning: #f08c00;
+  --success: #2f9e44;
+  --info: #1c7ed6;
+  --focus: #4c6ef5;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bubble-bg: #1f2023;
+    --bubble-text: #e9ecef;
+    --bubble-border: #373a40;
+    --fawkes-rec-ring: #1f2023;
+  }
+}
+html,
+body {
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.floating-root {
+  box-sizing: border-box;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 8px 8px 10px;
+}
+.bubble-slot {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+}
+.bubble {
+  margin: 0;
+  max-width: 100%;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--bubble-text);
+  background: var(--bubble-bg);
+  border: 1px solid var(--bubble-border);
+  border-radius: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.bubble[data-tone="danger"] {
+  border-color: var(--danger);
+}
+.bubble[data-tone="warning"] {
+  border-color: var(--warning);
+}
+.bubble[data-tone="success"] {
+  border-color: var(--success);
+}
+.bubble[data-tone="recording"] {
+  border-color: var(--danger);
+}
+.rec-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--danger);
+  background: var(--bubble-bg);
+  border: 1px solid var(--danger);
+  border-radius: 999px;
+}
+.rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+}

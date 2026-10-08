@@ -1,6 +1,6 @@
 # ADR-0013: Desktop shell: Tauri v2
 
-**Status:** Accepted (pending spike)  
+**Status:** Accepted (pending spike: macOS builds and launches; Linux and Windows not yet run)  
 **Date:** 2026-10-03
 
 ## Context
@@ -10,6 +10,11 @@ Floating Fawkes needs a transparent, borderless, always-on-top window (PRD v2.0 
 ## Decision
 
 apps/desktop uses Tauri v2, reusing the web pet runtime. Phase 14 begins with a transparent-window spike on Linux, macOS and Windows; if it fails on a platform, revisit this ADR.
+
+## Spike result (Phase 14)
+
+- **macOS (Apple silicon):** the shell builds and launches with a transparent, borderless window. Transparency needs Tauri's `macos-private-api` feature, so the app cannot go in the Mac App Store. The window was not seen on screen (the display was locked), so transparency is configured but not visually confirmed.
+- **Linux, Windows:** not run. The decision stays "pending spike" until they are.
 
 ## Consequences
 

@@ -36,6 +36,13 @@ Open <http://127.0.0.1:4870>. Fawkes lives in the top bar; click it for the Pet 
 
 For UI development with hot reload, run `pnpm dev:core` in one terminal and `pnpm dev:web` in another, then open <http://localhost:5173> (the Vite dev server proxies the API and picks up the core's session token).
 
+The floating desktop Fawkes (Phase 14, in progress) is a Tauri v2 app in `apps/desktop`. It needs Rust ≥ 1.90 and a running core:
+
+```sh
+pnpm dev:core
+pnpm --filter @phoenix/desktop dev
+```
+
 Tools and scripts can call the API with the session token core writes to `.phoenix/dev/session.token`:
 
 ```sh
