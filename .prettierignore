@@ -5,3 +5,4 @@ docs/phases/
 node_modules/
 dist/
 .vscode/
+THIRD_PARTY_NOTICES.md

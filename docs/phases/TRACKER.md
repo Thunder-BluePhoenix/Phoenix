@@ -8,7 +8,7 @@ Single source of truth for delivery progress. Derived from the five vision docum
 
 ## Current focus
 
-Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still needs the Linux and Windows spikes, a multi-monitor check and automated desktop tests) and **Phase 20 — hardening & v0.1 release** (security review, E2E, diagnostics and dependency scan done; still needs packaging, a run against a real Kage server and the release tag).
+Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still needs the Linux and Windows spikes, a multi-monitor check and automated desktop tests) and **Phase 20 — hardening & v0.1 release** (security review, E2E, diagnostics, dependency scan and a real-Kage run done; still needs packaging, a live Meet capture and AI-summary run, and the release tag).
 
 ## Summary
 
@@ -51,7 +51,7 @@ Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still 
 | 17 | [Git Capability](phase-17-git-capability.md) | v0.1 | High | 13 | ✅ | | |
 | 18 | [Terminal / Process Capability](phase-18-terminal-process-capability.md) | v0.1 | High | 13 | ✅ | | |
 | 19 | [Settings & Privacy Controls](phase-19-settings-and-privacy.md) | v0.1 | High | 09, 12 | ✅ | | |
-| 20 | [Hardening, E2E, Observability & v0.1 Release](phase-20-hardening-and-v0-1-release.md) | v0.1 | Critical | 14, 16, 17, 18, 19, 10 | 🟨 | | Security review, E2E, diagnostics, desktop CI and dependency scan done; packaging, real-Kage run and release tag open |
+| 20 | [Hardening, E2E, Observability & v0.1 Release](phase-20-hardening-and-v0-1-release.md) | v0.1 | Critical | 14, 16, 17, 18, 19, 10 | 🟨 | | Security review, E2E, diagnostics, desktop CI, dependency scan and a real-Kage run (all but the live Meet capture and AI summaries) done; packaging and release tag open |
 
 **Stage gate:** PRD v2.0 §30 Definition of Done met; core event/state/pet loop stable.
 

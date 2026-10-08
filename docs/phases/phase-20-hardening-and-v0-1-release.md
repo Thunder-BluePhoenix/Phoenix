@@ -34,7 +34,7 @@ Prove the MVP is safe and reliable, then package and release Phoenix v0.1.
 - [x] Failure tests: broken capability cannot crash core (existing `manager.test.ts` init/command failure tests, plus the new unregistered-source regression test)
 - [ ] Observability: structured logs, capability health, event latency/failure, active tasks, Kage duration, WS reconnects (all present in `/api/health` and `/api/diagnostics`; Kage duration is derived from event timestamps, so it is only as accurate as the capability's clock; none of it is shown in the UI)
 - [x] Diagnostic export without secrets or raw meeting content (`GET /api/diagnostics`)
-- [ ] Package web + desktop builds with licence notices (not started)
+- [ ] Package web + desktop builds with licence notices (licence notices are generated and checked in CI; the bundles themselves are not built: they need signing and OS decisions)
 - [x] Update dependency/asset licence inventory (npm production and dev packages, all 458 Rust crates, and the app icon; scanned 2026-10-08, plus `pnpm audit` and `cargo audit`)
 - [ ] Verify v0.1 Definition of Done checklist; tag release (checklist done above: 12 of 14 hold, 2 partial; no tag)
 
@@ -47,7 +47,7 @@ Prove the MVP is safe and reliable, then package and release Phoenix v0.1.
 ## Exit criteria
 
 - [ ] Every item in PRD v2.0 §30 Definition of Done is checked (see the checklist below: 12 of 14 hold, 2 are partial)
-- [ ] MVP success: a developer installs Phoenix, sees Fawkes react to real events, runs a Kage meeting and gets a summary (the workflow is covered by `e2e-meeting.test.ts` against a Kage test double; it has not been run against a real Kage server)
+- [ ] MVP success: a developer installs Phoenix, sees Fawkes react to real events, runs a Kage meeting and gets a summary (done end to end except the live Google Meet capture; no AI summary was generated because there is no Anthropic key here)
 
 ## PRD v2.0 §30 Definition of Done, status
 
@@ -60,7 +60,7 @@ Prove the MVP is safe and reliable, then package and release Phoenix v0.1.
 | Event protocol is documented/versioned | ✅ | `docs/protocol/events-v1.md`, `protocol/schemas` |
 | Capability manager handles registration and permissions | ✅ | `manager.test.ts` |
 | Floating desktop prototype works | 🟨 | Works on macOS (Phase 14); Linux and Windows not built |
-| Kage meeting workflow works end-to-end | 🟨 | `e2e-meeting.test.ts` passes against a test double; not run against real Kage |
+| Kage meeting workflow works end-to-end | 🟨 | Everything after the capture was run against the real Kage backend (see "Real Kage run" below). The capture itself (Meet bot joining a call and recording) was not. `e2e-meeting.test.ts` covers the capture step against a test double. |
 | Recording status is visible | ✅ | `e2e-meeting.test.ts`, `floating.test.tsx`, `engine.test.ts` |
 | Transcript and summary are retrievable | ✅ | `e2e-meeting.test.ts`, `meetings.test.ts` |
 | Core survives Kage outage | ✅ | `e2e-meeting.test.ts`, `kage.test.ts` |
@@ -73,8 +73,33 @@ Prove the MVP is safe and reliable, then package and release Phoenix v0.1.
 - Gate MVP → v0.2: core event/state/pet loop is stable.
 - Found by this phase: any holder of the session token could crash Core by posting a meeting-shaped event from an unregistered source (unhandled promise rejection). Fixed in `core/runtime/src/meetings.ts` with a regression test. Details in the security review.
 - `GET /api/diagnostics` is the diagnostic export. It lists structure and counts only; the test seeds a real secret, meeting title, participants, transcript and summary and asserts none appear.
-- Not done: packaging (signed web + desktop bundles with licence notices), bundling third-party licence texts into release artefacts, and the release tag. Packaging needs decisions that are not mine to make: signing identities, which OSes ship in v0.1, and whether Windows ships without OS secret storage.
+- Not done: signed web + desktop bundles, and the release tag. Those need decisions that are not mine to make: signing identities, which OSes ship in v0.1, and whether Windows ships without OS secret storage. The licence notices are generated (`THIRD_PARTY_NOTICES.md`, checked in CI) but not yet copied into any bundle, because there are no bundles.
 - Dependency scan done 2026-10-08: no known vulnerabilities in npm or Rust dependencies; every licence is GPL-3.0 compatible (see `docs/licenses/INVENTORY.md`). Clearing 2 critical and 2 moderate advisories in Vitest needed the 3 → 4.1.11 upgrade; the suite passed unchanged. CI now has an `audit` job.
+
+## Real Kage run (2026-10-08)
+
+Phoenix Core was connected to the real Kage backend (`~/kage/backend`, FastAPI, commit `cffcd54`) running on a separate port with its database, storage and model cache under `/tmp`. Kage's own checkout and data were not touched. Credentials went to an in-memory secret store, not the Keychain.
+
+Done:
+
+- Registered a Kage user, got a real API key, and connected Phoenix's Kage capability (`healthy`).
+- Uploaded a 7-second speech file the way the Kage extension and bot do (`POST /api/meetings`). Real Kage ran Whisper (`tiny` model, local) and TF-IDF keywords and extractive summary.
+- Phoenix followed it: Fawkes went `WORKING "Transcribing meeting"` → `SUCCESS "Transcript ready: Release planning"`. Phoenix's meeting record matched Kage's exactly: title, participants, duration, recording reference, transcript (identical text), summary (`generated_by: "extractive"`, 8 topics).
+- Uploaded a corrupt file. Kage set `failed` with a real error; Phoenix recorded `kage.meeting.failed` with that message, Fawkes showed ERROR, and the meeting appeared as `failed`.
+- Stopped Kage while Phoenix was running. Within one health interval the capability went `unhealthy`, Fawkes showed WARNING "Kage is unavailable", Core stayed up (`/api/health` 200), and already-synced meetings and transcripts kept being served.
+- Read Kage's source for every status it can set (`uploaded`, `transcribing`, `transcribed`, `failed`, `summarizing`, `summarized`). They match Phoenix's status map.
+
+Not covered:
+
+- **The Meet bot capture** (`meeting.start` against a live Google Meet). It needs Chrome, a Meet call, BlackHole audio routing and a Google account. The approval, recording indicator and emergency stop are tested against a fake bot only.
+- **AI summaries.** With no `ANTHROPIC_API_KEY`, Kage never reaches `summarizing` or `summarized`, so Phoenix's `summary.started/ready` handling, AI decisions and action items were only exercised against the test double.
+- **Speaker diarization and Postgres/Redis modes** in Kage.
+- **A long meeting.** The audio was 7 seconds and the model was `tiny`.
+
+Things observed:
+
+- When Kage reached `transcribed`, Fawkes already showed SUCCESS (from the event), but Phoenix's meeting record still said `transcribing` with no transcript for one more poll. It had caught up by the next sample two seconds later. The transcript is fetched after the event, so a freshly finished meeting can briefly show no transcript. The UI should not treat that as missing content.
+- Right after Kage went down, a check 5 s later still reported `healthy`; the next sample showed `unhealthy` with Fawkes in WARNING. Health is checked every 15 s, so detection can take that long.
 
 ## Source documents
 
@@ -83,3 +108,4 @@ Prove the MVP is safe and reliable, then package and release Phoenix v0.1.
 
 ---
 Back to [TRACKER](TRACKER.md)
+

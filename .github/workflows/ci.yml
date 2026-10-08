@@ -79,6 +79,13 @@ jobs:
       - name: Rust advisories
         run: cargo audit
         working-directory: apps/desktop/src-tauri
+      # THIRD_PARTY_NOTICES.md is generated from the lockfiles; a dependency change that does
+      # not regenerate it fails here.
+      - name: Fetch crate sources (licence texts)
+        run: cargo fetch --locked
+        working-directory: apps/desktop/src-tauri
+      - name: Third-party notices are up to date
+        run: node scripts/generate-third-party-notices.mjs --check
 
   secret-scan:
     runs-on: ubuntu-latest

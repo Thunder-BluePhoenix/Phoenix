@@ -69,7 +69,7 @@ Worth naming:
 | `cssparser`, `cssparser-macros`, `dtoa-short`, `option-ext`, `selectors` | MPL-2.0                                | File-level copyleft; compatible with GPL-3.0 (MPL-2.0 §3.3). We do not modify them. Their source must stay available, which `Cargo.lock` plus crates.io satisfies. |
 | `r-efi` (2 versions)                                                     | MIT OR Apache-2.0 OR LGPL-2.1-or-later | UEFI only; we use the MIT option.                                                                                                                                  |
 
-Licence texts are not yet bundled with release artefacts; that belongs to packaging (Phase 20).
+`THIRD_PARTY_NOTICES.md` at the repository root holds the licence text of every npm package that ships and every Rust crate (468 packages, 228 distinct texts). It is generated from the lockfiles by `scripts/generate-third-party-notices.mjs` and CI fails if it is out of date. Run `node scripts/generate-third-party-notices.mjs` after changing dependencies (use `cargo fetch` first on a clean machine). 40 crates ship no licence file; they are listed in the notices with their declared licence and source, not with a text. Copying `THIRD_PARTY_NOTICES.md` and `LICENSE` into the release bundles is part of packaging.
 
 ### Vulnerability scan (2026-10-08)
 
