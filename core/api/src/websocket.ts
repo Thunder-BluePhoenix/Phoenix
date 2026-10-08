@@ -33,6 +33,8 @@ export interface SubscribeMessage {
 
 const MAX_BUFFERED_BYTES = 1024 * 1024;
 const MAX_REPLAY = 1000;
+/** How long shutdown waits for clients to answer the close handshake before dropping them. */
+const CLOSE_GRACE_MS = 1_000;
 
 interface Client {
   ws: WebSocket;
@@ -88,10 +90,25 @@ export class WebSocketHub {
     return { connections: this.clients.size, ...this.m };
   }
 
-  close(): void {
+  /**
+   * Asks every client to close, waits up to `graceMs` for them to answer, then drops the rest.
+   * Without the second step one client that stopped reading held shutdown for 30 s (the `ws`
+   * close-handshake timeout), because HTTP's closeAllConnections() does not reach upgraded sockets.
+   */
+  async close(graceMs = CLOSE_GRACE_MS): Promise<void> {
     clearInterval(this.pingTimer);
     for (const u of this.unsubscribe) u();
-    for (const c of this.clients) c.ws.close(1001, "Server shutting down");
+    const closed = [...this.clients].map((c) => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      c.ws.once("close", () => resolve());
+      c.ws.close(1001, "Server shutting down");
+      return promise;
+    });
+    const grace = Promise.withResolvers<void>();
+    const timer = setTimeout(() => grace.resolve(), graceMs);
+    await Promise.race([Promise.all(closed), grace.promise]);
+    clearTimeout(timer);
+    for (const c of this.clients) c.ws.terminate();
     this.wss.close();
   }
 

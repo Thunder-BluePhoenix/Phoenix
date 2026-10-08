@@ -392,6 +392,18 @@ describe("WebSocket", () => {
     c.ws.send("not json");
     expect(await c.next((m) => m.type === "error")).toMatchObject({ message: "Invalid JSON" });
   });
+
+  it("shuts down promptly even when a client has stopped answering", async () => {
+    const { port, runtime } = await start();
+    const idle = ws(port);
+    await idle.opened;
+    // Stop the client reading: it will never reply to the server's close frame.
+    idle.ws.pause();
+    const started = Date.now();
+    await runtime.stop();
+    // Without a bound, the `ws` library waits its own 30 s close timeout.
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
 });
 
 describe("notifications and event descriptions", () => {

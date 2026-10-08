@@ -47,7 +47,7 @@ export class ApiServer {
   }
 
   async close(): Promise<void> {
-    this.hub.close();
+    await this.hub.close();
     await new Promise<void>((resolve) => {
       this.server.close(() => resolve());
       this.server.closeAllConnections();
