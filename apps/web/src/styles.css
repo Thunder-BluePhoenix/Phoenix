@@ -7,6 +7,8 @@
   --border: #dee2e6;
   --accent: #e8590c;
   --danger: #e03131;
+  /* Height of the navbar; the Pet Panel starts just below it. The narrow-screen rule raises it. */
+  --navbar-h: 52px;
   /* Text and filled-button colours that meet WCAG AA (4.5:1) in both themes; --danger and
      --accent stay for borders, dots and rings, where 3:1 is enough. */
   --danger-text: #c92a2a;
@@ -77,7 +79,7 @@ a {
   display: flex;
   align-items: center;
   gap: 16px;
-  height: 52px;
+  min-height: var(--navbar-h);
   padding: 0 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
@@ -130,11 +132,36 @@ a {
   font-weight: 600;
   color: var(--danger-text);
 }
-/* Phones: Fawkes, the bell and the recording pill must always fit. The state
-   stays available as Fawkes' accessible label and in the Pet Panel. */
-@media (max-width: 420px) {
+/* Narrow screens: Fawkes, the bell and the recording pill must always fit, and so must the page
+   links. With the recording pill showing, one row needs about 456 px; below that "Settings" was
+   cut off (7 px of it visible at 320 px) and could not be clicked. So the links move to a row of
+   their own below. The state text stays available as Fawkes' accessible label and in the Pet
+   Panel. */
+@media (max-width: 460px) {
+  :root {
+    --navbar-h: 88px;
+  }
   .navbar {
-    gap: 10px;
+    gap: 4px 10px;
+    flex-wrap: wrap;
+    align-content: center;
+    padding-block: 4px;
+  }
+  .brand {
+    order: 1;
+  }
+  .navbar-fawkes {
+    order: 2;
+    margin-left: auto;
+  }
+  .nav-links {
+    order: 3;
+    flex: 1 1 100%;
+    overflow: visible;
+    gap: 4px;
+  }
+  .nav-links a {
+    padding: 4px 8px;
   }
   .state-text,
   .brand-name {
@@ -154,7 +181,7 @@ a {
 
 .pet-panel {
   position: fixed;
-  top: 60px;
+  top: calc(var(--navbar-h) + 8px);
   right: 16px;
   width: min(360px, calc(100vw - 32px));
   max-height: calc(100vh - 80px);
@@ -492,6 +519,18 @@ a {
   box-shadow: 0 12px 32px rgb(0 0 0 / 0.15);
   padding: 12px;
   z-index: 7;
+}
+/* Narrow screens: the bell sits near the right edge, so a 340 px popover anchored to it ran off
+   the left of the screen (26 px lost at 320 px, with the first words of every item cut). Anchor
+   it to the screen instead, below the navbar, like the Pet Panel. */
+@media (max-width: 460px) {
+  .notif-popover {
+    position: fixed;
+    top: calc(var(--navbar-h) + 8px);
+    right: 16px;
+    width: calc(100vw - 32px);
+    max-height: calc(100vh - var(--navbar-h) - 24px);
+  }
 }
 .notif-head {
   display: flex;
