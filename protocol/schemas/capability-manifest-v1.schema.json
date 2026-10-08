@@ -126,6 +126,7 @@
         "network",
         "shell_command",
         "repository_access",
+        "container_access",
         "production_action",
         "external_api",
         "AI_external_processing"

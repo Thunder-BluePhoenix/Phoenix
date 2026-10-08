@@ -1,6 +1,7 @@
 packages:
   - protocol
   - core/*
+  - ai/*
   - apps/*
   - pet/*
   - sdk/*

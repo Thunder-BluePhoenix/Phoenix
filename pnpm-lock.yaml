@@ -27,6 +27,66 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@22.20.5)(happy-dom@20.14.5)(vite@8.3.2(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15))
 
+  ai/context:
+    dependencies:
+      '@phoenix/ai-memory':
+        specifier: workspace:*
+        version: link:../memory
+      '@phoenix/ai-models':
+        specifier: workspace:*
+        version: link:../models
+      '@phoenix/persistence':
+        specifier: workspace:*
+        version: link:../../core/persistence
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+
+  ai/memory:
+    dependencies:
+      '@phoenix/ai-models':
+        specifier: workspace:*
+        version: link:../models
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/persistence':
+        specifier: workspace:*
+        version: link:../../core/persistence
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+
+  ai/models:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+
+  ai/tool-gateway:
+    dependencies:
+      '@phoenix/capability-manager':
+        specifier: workspace:*
+        version: link:../../core/capability-manager
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/permissions':
+        specifier: workspace:*
+        version: link:../../core/permissions
+      '@phoenix/persistence':
+        specifier: workspace:*
+        version: link:../../core/persistence
+      '@phoenix/policy':
+        specifier: workspace:*
+        version: link:../../core/policy
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+
   apps/desktop:
     devDependencies:
       '@tauri-apps/cli':
@@ -67,7 +127,72 @@ importers:
         specifier: ^8.3.2
         version: 8.3.2(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)
 
+  capabilities/agents:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
+  capabilities/docker:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
+  capabilities/frappe:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
   capabilities/git:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
+  capabilities/github:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
+  capabilities/issues:
     dependencies:
       '@phoenix/logging':
         specifier: workspace:*
@@ -227,14 +352,41 @@ importers:
         specifier: workspace:*
         version: link:../../protocol
 
+  core/policy:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../logging
+      '@phoenix/persistence':
+        specifier: workspace:*
+        version: link:../persistence
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+
   core/runtime:
     dependencies:
       '@phoenix/api':
         specifier: workspace:*
         version: link:../api
+      '@phoenix/capability-agents':
+        specifier: workspace:*
+        version: link:../../capabilities/agents
+      '@phoenix/capability-docker':
+        specifier: workspace:*
+        version: link:../../capabilities/docker
+      '@phoenix/capability-frappe':
+        specifier: workspace:*
+        version: link:../../capabilities/frappe
       '@phoenix/capability-git':
         specifier: workspace:*
         version: link:../../capabilities/git
+      '@phoenix/capability-github':
+        specifier: workspace:*
+        version: link:../../capabilities/github
+      '@phoenix/capability-issues':
+        specifier: workspace:*
+        version: link:../../capabilities/issues
       '@phoenix/capability-kage':
         specifier: workspace:*
         version: link:../../capabilities/kage
