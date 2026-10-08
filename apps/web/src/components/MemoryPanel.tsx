@@ -2,12 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 import { useId, useState, type FormEvent } from "react";
 import { formatDate } from "../core/format";
-import {
-  useAction,
-  useMemoryBrowser,
-  useMemorySearch,
-  type MemorySearch,
-} from "../core/hooks";
+import { useAction, useMemoryBrowser, useMemorySearch, type MemorySearch } from "../core/hooks";
 import type { MemoryAnswer, MemoryItem, MemorySensitivity } from "../core/types";
 import { Feedback } from "./Feedback";
 
@@ -150,13 +145,7 @@ function DomainFilter({
   );
 }
 
-function SearchBox({
-  search,
-  domain,
-}: {
-  search: MemorySearch;
-  domain: string | null;
-}) {
+function SearchBox({ search, domain }: { search: MemorySearch; domain: string | null }) {
   const [text, setText] = useState("");
   const id = useId();
   const submit = (e: FormEvent) => {
@@ -297,7 +286,7 @@ function DeleteMemory({
     const res = (await run(
       "POST",
       "/api/memory/delete",
-      domain === null ? {} : { domain },
+      domain === null ? { confirm: true } : { domain, confirm: true },
     )) as { deleted: number } | undefined;
     setConfirming(false);
     if (res) {
@@ -380,8 +369,8 @@ export function MemoryPanel() {
       <Feedback error={browser.error} />
       {searching ? (
         <p className="small" role="status">
-          {search.hits.length} {search.hits.length === 1 ? "result" : "results"} for “
-          {search.query}”.
+          {search.hits.length} {search.hits.length === 1 ? "result" : "results"} for “{search.query}
+          ”.
         </p>
       ) : (
         browser.loaded && (

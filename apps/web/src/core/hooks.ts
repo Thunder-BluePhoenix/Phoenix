@@ -492,5 +492,10 @@ export function useMemorySettings() {
 }
 
 export function useAiStatus() {
-  return useLiveResource<AiStatus | null>("/api/ai/status", (j) => j, null, () => false);
+  return useLiveResource<AiStatus | null>(
+    "/api/ai/status",
+    (j) => j,
+    null,
+    () => false,
+  );
 }

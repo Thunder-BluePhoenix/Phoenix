@@ -21,7 +21,14 @@ import {
   NoProviderError,
   type Attempt,
 } from "./errors";
-import { checkGate, type CloudOptIn, type ExternalAiPolicy, type GateDecision } from "./gate";
+import {
+  checkGate,
+  NO_CLOUD_OPT_IN,
+  PURPOSE_ANSWER_FROM_MEMORY,
+  type CloudOptIn,
+  type ExternalAiPolicy,
+  type GateDecision,
+} from "./gate";
 import type { ProviderRegistry } from "./registry";
 import { route, type RoutePlan, type RouteTask, type RouterProvider } from "./router";
 import {
@@ -35,9 +42,10 @@ import {
   type PrivacyClass,
   type Provenance,
   type StreamChunk,
+  type TaskKind,
 } from "./types";
 
-/** User settings for the AI layer. There is deliberately no opt-in key for sensitive data. */
+/** User settings for the AI layer. */
 export interface AiSettings {
   enabled: boolean;
   /** Provider id the user prefers among the allowed ones. */
@@ -47,7 +55,7 @@ export interface AiSettings {
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
   enabled: false,
-  cloudOptIn: { public: false, internal: false },
+  cloudOptIn: NO_CLOUD_OPT_IN,
 };
 
 /** Waits `ms` (or rejects early when `signal` aborts). Injected so tests never really wait. */
@@ -80,6 +88,22 @@ const realSleep: Sleeper = (ms, signal) => {
   return done.promise;
 };
 
+/**
+ * What is recorded each time sensitive data is about to be sent to a cloud provider. Counts and
+ * names only: never a prompt, a reply or a credential.
+ */
+export interface CloudSendRecord {
+  provider: string;
+  kind: TaskKind;
+  purpose: string;
+  /** Which try of this provider this is (1 = first, 2 = first retry ...). */
+  attempt: number;
+  /** Chat messages (generate/stream) or input strings (embed) in the request. */
+  items: number;
+  /** Total characters in them. */
+  characters: number;
+}
+
 export interface AiServiceDeps {
   registry: ProviderRegistry;
   /** The AI_external_processing grant. Asked again before every provider call. */
@@ -91,6 +115,11 @@ export interface AiServiceDeps {
   retry?: RetryPolicy;
   /** How long a health check result is trusted. */
   healthTtlMs?: number;
+  /**
+   * Called before EVERY send of a sensitive-class request to a cloud provider (retries included).
+   * If it throws the request is not sent. Without it, sensitive data never goes to the cloud.
+   */
+  auditCloudSend?: (record: CloudSendRecord) => void;
   /** Logged: provider, kind, purpose and outcome. Never prompts, replies or credentials. */
   logger?: Logger;
 }
@@ -191,15 +220,31 @@ export class AiService {
     return settings;
   }
 
-  private gateFor(provider: RouterProvider, privacy: PrivacyClass, settings: AiSettings) {
-    return checkGate(provider.locality, privacy, this.deps.policy, settings.cloudOptIn);
+  private gateFor(
+    provider: RouterProvider,
+    privacy: PrivacyClass,
+    settings: AiSettings,
+    purpose: string,
+  ) {
+    const gate = checkGate(provider.locality, privacy, this.deps.policy, settings.cloudOptIn, purpose);
+    if (gate.allowed && provider.locality === "cloud" && privacy === "sensitive") {
+      // Fail closed: a sensitive cloud send that cannot be recorded does not happen.
+      if (!this.deps.auditCloudSend) {
+        return { allowed: false, reason: "sensitive cloud sends need an audit sink" };
+      }
+    }
+    return gate;
   }
 
   /** Health of providers that may receive this data class; others are not contacted at all. */
-  private async refreshHealth(privacy: PrivacyClass, settings: AiSettings): Promise<void> {
+  private async refreshHealth(
+    privacy: PrivacyClass,
+    settings: AiSettings,
+    purpose: string,
+  ): Promise<void> {
     const stale = this.deps.registry
       .list()
-      .filter((p) => this.gateFor(p, privacy, settings).allowed)
+      .filter((p) => this.gateFor(p, privacy, settings, purpose).allowed)
       .filter((p) => {
         const entry = this.healthCache[p.id];
         return entry === undefined || this.now() - entry.at >= this.healthTtlMs;
@@ -214,14 +259,15 @@ export class AiService {
     );
   }
 
-  private routerState(settings: AiSettings) {
+  private routerState(settings: AiSettings, sensitiveCloud: boolean) {
     const health: Record<string, boolean | undefined> = {};
     for (const [id, entry] of Object.entries(this.healthCache)) health[id] = entry?.ok;
     return {
       providers: this.deps.registry.list(),
       health,
       policy: this.deps.policy,
-      cloudOptIn: settings.cloudOptIn,
+      // Without an audit sink the router must not even plan a sensitive cloud send.
+      cloudOptIn: sensitiveCloud ? settings.cloudOptIn : { ...settings.cloudOptIn, sensitive: false },
     };
   }
 
@@ -230,7 +276,7 @@ export class AiService {
     const settings = this.requireEnabled();
     return route(
       { ...task, preferred: task.preferred ?? settings.preferred },
-      this.routerState(settings),
+      this.routerState(settings, this.deps.auditCloudSend !== undefined),
     );
   }
 
@@ -240,13 +286,17 @@ export class AiService {
     if (!settings.enabled) {
       return { enabled: false, cloudOptIn: settings.cloudOptIn, providers: [] };
     }
-    await Promise.all(PRIVACY_CLASSES.map((c) => this.refreshHealth(c, settings)));
+    await Promise.all(
+      PRIVACY_CLASSES.map((c) => this.refreshHealth(c, settings, PURPOSE_ANSWER_FROM_MEMORY)),
+    );
     const providers = this.deps.registry.list().map((p): ProviderStatus => {
       const entry = this.healthCache[p.id];
+      // Access is shown for the one purpose sensitive data may be sent for (a question the user asks).
+      const purpose = PURPOSE_ANSWER_FROM_MEMORY;
       const access = {
-        public: this.gateFor(p, "public", settings),
-        internal: this.gateFor(p, "internal", settings),
-        sensitive: this.gateFor(p, "sensitive", settings),
+        public: this.gateFor(p, "public", settings, purpose),
+        internal: this.gateFor(p, "internal", settings, purpose),
+        sensitive: this.gateFor(p, "sensitive", settings, purpose),
       };
       return {
         id: p.id,
@@ -273,16 +323,17 @@ export class AiService {
   async run(task: AiTask): Promise<AiOutcome> {
     const settings = this.requireEnabled();
     const privacy = task.request.privacy;
-    await this.refreshHealth(privacy, settings);
+    await this.refreshHealth(privacy, settings, task.request.purpose);
     const plan = route(
       {
         kind: task.kind,
         privacy,
+        purpose: task.request.purpose,
         latencyBudgetMs: task.latencyBudgetMs,
         maxCostTier: task.maxCostTier,
         preferred: task.preferred ?? settings.preferred,
       },
-      this.routerState(settings),
+      this.routerState(settings, this.deps.auditCloudSend !== undefined),
     );
     const attempts: Attempt[] = plan.candidates
       .filter((c) => c.refusedBecause !== undefined)
@@ -328,6 +379,25 @@ export class AiService {
     throw new AllProvidersFailedError(attempts);
   }
 
+  /** Sensitive data on its way to a cloud provider is recorded first; no record, no send. */
+  private recordCloudSend(provider: ModelProvider, task: AiTask, attempt: number): void {
+    if (provider.locality !== "cloud" || task.request.privacy !== "sensitive") return;
+    const texts =
+      task.kind === "embed" ? task.request.input : task.request.messages.map((m) => m.content);
+    try {
+      this.deps.auditCloudSend?.({
+        provider: provider.id,
+        kind: task.kind,
+        purpose: task.request.purpose,
+        attempt,
+        items: texts.length,
+        characters: texts.reduce((n, t) => n + t.length, 0),
+      });
+    } catch {
+      throw new ModelError("config", provider.id, "the cloud send could not be recorded; not sent");
+    }
+  }
+
   private noProvider(task: AiTask, attempts: Attempt[]): NoProviderError {
     this.deps.logger?.warn("ai.no_provider", { kind: task.kind, purpose: task.request.purpose });
     return new NoProviderError(attempts);
@@ -345,8 +415,14 @@ export class AiService {
       if (task.signal?.aborted)
         throw new ModelError("aborted", provider.id, "The request was cancelled");
       // Re-checked before every call: the grant may have been revoked while we backed off.
-      const gate = this.gateFor(provider, task.request.privacy, this.deps.settings());
+      const gate = this.gateFor(
+        provider,
+        task.request.privacy,
+        this.deps.settings(),
+        task.request.purpose,
+      );
       if (!gate.allowed) throw new ModelError("config", provider.id, gate.reason ?? "not allowed");
+      this.recordCloudSend(provider, task, n);
       attempt.calls++;
       try {
         const base = { provider: provider.id, attempts };

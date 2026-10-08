@@ -9,6 +9,7 @@ import {
   AiDisabledError,
   AllProvidersFailedError,
   NoProviderError,
+  PURPOSE_ANSWER_FROM_MEMORY,
   type AiService,
   type GenerateRequest,
   type GenerateResult,
@@ -250,7 +251,7 @@ export async function ask(request: ContextRequest, options: AskOptions): Promise
   try {
     const result = await options.generate({
       privacy: requestPrivacy,
-      purpose: "answer a question from memory",
+      purpose: PURPOSE_ANSWER_FROM_MEMORY,
       messages: buildAskMessages(
         request.question,
         [...preview.facts, ...preview.storedInterpretations],

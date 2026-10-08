@@ -27,7 +27,7 @@ function state(over: Partial<RouterState> = {}): RouterState {
     providers: [local(), cloud()],
     health: {},
     policy: { allowed: () => true },
-    cloudOptIn: { public: true, internal: true },
+    cloudOptIn: { public: true, internal: true, sensitive: false },
     ...over,
   };
 }
@@ -46,6 +46,38 @@ describe("route: privacy", () => {
     expect(plan.notes.join(" ")).toMatch(/preferred provider anthropic was not used: sensitive/);
   });
 
+  it("sensitive data reaches a cloud provider only with the grant, the sensitive opt-in AND an allowed purpose", () => {
+    const optIn = { public: true, internal: true, sensitive: true };
+    const ask = { privacy: "sensitive" as const, purpose: "answer a question from memory" };
+    const allowed = route(task({ ...ask, preferred: "anthropic" }), state({ cloudOptIn: optIn }));
+    expect(allowed.order[0]).toBe("anthropic");
+    // Each condition on its own is enough to refuse.
+    const noOptIn = route(task(ask), state());
+    expect(noOptIn.order).toEqual(["ollama"]);
+    expect(noOptIn.candidates.at(-1)?.refusedBecause).toMatch(/opt in/);
+    const noGrant = route(task(ask), state({ cloudOptIn: optIn, policy: { allowed: () => false } }));
+    expect(noGrant.order).toEqual(["ollama"]);
+    expect(noGrant.candidates.at(-1)?.refusedBecause).toMatch(/AI_external_processing/);
+    const otherPurpose = route(
+      task({ privacy: "sensitive", purpose: "summarise in the background" }),
+      state({ cloudOptIn: optIn }),
+    );
+    expect(otherPurpose.order).toEqual(["ollama"]);
+    expect(otherPurpose.candidates.at(-1)?.refusedBecause).toMatch(/purpose/);
+    const noPurpose = route(task({ privacy: "sensitive" }), state({ cloudOptIn: optIn }));
+    expect(noPurpose.order).toEqual(["ollama"]);
+  });
+
+  it("opting in to sensitive data does not opt in the other classes, and the reverse", () => {
+    const ask = { privacy: "public" as const, purpose: "answer a question from memory" };
+    const onlySensitive = state({ cloudOptIn: { public: false, internal: false, sensitive: true } });
+    expect(route(task(ask), onlySensitive).order).toEqual(["ollama"]);
+    const everythingButSensitive = state();
+    expect(
+      route(task({ ...ask, privacy: "sensitive" }), everythingButSensitive).order,
+    ).toEqual(["ollama"]);
+  });
+
   it("with only a cloud provider, sensitive data gets an empty plan", () => {
     const plan = route(task({ privacy: "sensitive" }), state({ providers: [cloud()] }));
     expect(plan.order).toEqual([]);
@@ -62,7 +94,7 @@ describe("route: privacy", () => {
   });
 
   it("refuses cloud for a class that is not opted in, but allows the opted-in class", () => {
-    const s = state({ cloudOptIn: { public: true, internal: false } });
+    const s = state({ cloudOptIn: { public: true, internal: false, sensitive: false } });
     expect(route(task({ privacy: "internal" }), s).order).toEqual(["ollama"]);
     expect(route(task({ privacy: "internal" }), s).candidates.at(-1)?.refusedBecause).toMatch(
       /not enabled for internal/,
@@ -153,7 +185,7 @@ describe("route: explainability and determinism", () => {
           cloud(),
           cloud({ id: "z-cloud", capabilities: { generate: true, stream: true, embed: true } }),
         ],
-        cloudOptIn: { public: false, internal: false },
+        cloudOptIn: { public: false, internal: false, sensitive: false },
       }),
     );
     expect(plan.candidates).toHaveLength(3);

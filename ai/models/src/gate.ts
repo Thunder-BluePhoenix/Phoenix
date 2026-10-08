@@ -9,24 +9,29 @@ export interface ExternalAiPolicy {
 }
 
 /**
- * Per-class opt-in for cloud use. There is deliberately no `sensitive` key: sensitive data can
- * never be opted in from here.
+ * Per-class opt-in for cloud use. `sensitive` is the Phase 29 opt-in: it is false unless the user
+ * set it on purpose (the runtime only ever sets it from the user's own settings request), and it
+ * is never defaulted to true anywhere.
  */
 export interface CloudOptIn {
   public: boolean;
   internal: boolean;
+  sensitive: boolean;
 }
 
+/** Cloud AI is off for every class until the user says otherwise. */
+export const NO_CLOUD_OPT_IN: CloudOptIn = { public: false, internal: false, sensitive: false };
+
+/** Purpose of a question the user asked Fawkes about their own memory (`ask` in ai/context). */
+export const PURPOSE_ANSWER_FROM_MEMORY = "answer a question from memory";
+
 /**
- * PHASE 29 HOOK. Sensitive data never leaves the device in Phase 27, and the router and the
- * service both refuse it for cloud providers by consulting this constant. Phase 29 (privacy
- * classification and redaction) owns any future rule that lets redacted sensitive content go to
- * the cloud; it must replace this constant with an explicit, audited decision and update the
- * tests that pin this behaviour. Flipping it alone is not enough: `checkGate` also refuses
- * sensitive data because `CloudOptIn` has no sensitive key, so Phase 29 has to extend both on
- * purpose. Until then it is `false` and nothing else may bypass it.
+ * Purposes for which sensitive data may be sent to a cloud provider once the user has opted in.
+ * This is code, not a setting: nothing an agent or a request can write changes it. A background
+ * or automatic purpose (indexing, summarising on a schedule) is deliberately not listed, so
+ * sensitive data only reaches the cloud for something the user asked for just now.
  */
-export const SENSITIVE_DATA_MAY_USE_CLOUD = false as boolean;
+export const SENSITIVE_CLOUD_PURPOSES: readonly string[] = [PURPOSE_ANSWER_FROM_MEMORY];
 
 export interface GateDecision {
   allowed: boolean;
@@ -38,28 +43,36 @@ const ALLOWED: GateDecision = { allowed: true };
 
 /**
  * Decides whether a provider may receive a request of the given data class. Local providers are
- * always allowed (data stays on the device). A cloud provider needs the sensitive-data rule, the
- * AI_external_processing grant AND the opt-in for this class. The caller records the reason, so a
- * skipped cloud provider is visible and never silently replaced by "send it anyway".
+ * always allowed (data stays on the device). A cloud provider needs the AI_external_processing
+ * grant AND the opt-in for this class, and for sensitive data additionally a purpose from
+ * SENSITIVE_CLOUD_PURPOSES. The caller records the reason, so a skipped cloud provider is visible
+ * and never silently replaced by "send it anyway".
  */
 export function checkGate(
   locality: Locality,
   privacy: PrivacyClass,
   policy: ExternalAiPolicy,
   optIn: CloudOptIn,
+  purpose: string,
 ): GateDecision {
   if (locality === "local") return ALLOWED;
-  if (privacy === "sensitive" && !SENSITIVE_DATA_MAY_USE_CLOUD) {
-    return { allowed: false, reason: "sensitive data never leaves this device" };
+  if (privacy === "sensitive" && !optIn.sensitive) {
+    return {
+      allowed: false,
+      reason: "sensitive data stays on this device unless you opt in to cloud AI for it",
+    };
   }
   if (!policy.allowed()) {
     return { allowed: false, reason: "AI_external_processing permission is not granted" };
   }
-  if (privacy === "sensitive") {
-    return { allowed: false, reason: "sensitive data cannot be opted in to cloud AI" };
-  }
   if (!optIn[privacy]) {
     return { allowed: false, reason: `cloud AI is not enabled for ${privacy} data` };
+  }
+  if (privacy === "sensitive" && !SENSITIVE_CLOUD_PURPOSES.includes(purpose)) {
+    return {
+      allowed: false,
+      reason: "this purpose is not covered by the sensitive-data opt-in",
+    };
   }
   return ALLOWED;
 }

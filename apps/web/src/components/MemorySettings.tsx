@@ -182,11 +182,7 @@ export function MemorySettingsSection() {
       </p>
       {data ? (
         // Re-keyed so the document box restarts from what Core saved, not from stale edits.
-        <MemorySettingsForm
-          key={JSON.stringify(data.doc_paths)}
-          settings={data}
-          reload={reload}
-        />
+        <MemorySettingsForm key={JSON.stringify(data.doc_paths)} settings={data} reload={reload} />
       ) : (
         error && <Feedback error={error} />
       )}
@@ -327,8 +323,8 @@ function AiSettingsForm({ status, reload }: { status: AiStatus; reload: () => Pr
           Allow Phoenix to send data to external AI providers
         </label>
         <p className="muted small">
-          Off by default. Nothing leaves this device unless this is on and the type of memory
-          below is also allowed.
+          Off by default. Nothing leaves this device unless this is on and the type of memory below
+          is also allowed.
         </p>
         {(["public", "internal"] as const).map((cls) => (
           <label key={cls} className="choice">
@@ -399,7 +395,11 @@ export function AiSettings() {
       <h2 id="ai-h" className="h3">
         AI
       </h2>
-      {data ? <AiSettingsForm status={data} reload={reload} /> : error && <Feedback error={error} />}
+      {data ? (
+        <AiSettingsForm status={data} reload={reload} />
+      ) : (
+        error && <Feedback error={error} />
+      )}
     </section>
   );
 }

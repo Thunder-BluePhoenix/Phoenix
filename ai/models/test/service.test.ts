@@ -11,6 +11,7 @@ import {
   ProviderRegistry,
   createDefaultProviders,
   type AiSettings,
+  type CloudSendRecord,
   type AiServiceDeps,
   type GenerateTask,
   type ModelProvider,
@@ -35,7 +36,10 @@ const gen = (over: Partial<GenerateTask> = {}): GenerateTask => ({
   request: { privacy: "public", purpose: "test", messages: [{ role: "user", content: "hi" }] },
   ...over,
 });
-const ON: AiSettings = { enabled: true, cloudOptIn: { public: true, internal: true } };
+const ON: AiSettings = {
+  enabled: true,
+  cloudOptIn: { public: true, internal: true, sensitive: false },
+};
 
 interface Rig {
   service: AiService;
@@ -89,7 +93,10 @@ describe("disabled", () => {
     const service = new AiService({
       registry,
       policy: { allowed: () => true },
-      settings: () => ({ enabled: false, cloudOptIn: { public: true, internal: true } }),
+      settings: () => ({
+        enabled: false,
+        cloudOptIn: { public: true, internal: true, sensitive: false },
+      }),
     });
     const req = { privacy: "public" as const, purpose: "t" };
     const msgs = [{ role: "user" as const, content: "x" }];
@@ -175,7 +182,11 @@ describe("gate: no silent external transmission", () => {
 
   it("with the grant but no opt-in for the class, the cloud still receives nothing", async () => {
     const { f, registry } = network();
-    const out = await build(registry, () => true, { public: false, internal: true }).run(gen());
+    const out = await build(registry, () => true, {
+      public: false,
+      internal: true,
+      sensitive: false,
+    }).run(gen());
     expect(cloudRequests(f)).toHaveLength(0);
     expect(out.provider).toBe("ollama");
     expect(out.attempts[0]?.reason).toMatch(/not enabled for public/);
@@ -206,12 +217,12 @@ describe("gate: no silent external transmission", () => {
       .catch((x: unknown) => x);
     expect(e).toBeInstanceOf(NoProviderError);
     expect((e as NoProviderError).details.join(" ")).toMatch(
-      /sensitive data never leaves this device/,
+      /sensitive data stays on this device/,
     );
     expect(f.requests).toHaveLength(0);
   });
 
-  it("sensitive data never reaches the cloud even with grant + opt-in + preferred, for generate, stream and embed", async () => {
+  it("sensitive data never reaches the cloud with grant + public/internal opt-in + preferred but no sensitive opt-in, for generate, stream and embed", async () => {
     const { f, registry } = network((req) => {
       if (req.url.endsWith("/api/version")) return json({ version: "x" });
       if (req.url.endsWith("/api/embed")) return json({ embeddings: [[1, 2]] });
@@ -231,6 +242,136 @@ describe("gate: no silent external transmission", () => {
     expect([g.provider, st.provider, em.provider]).toEqual(["ollama", "ollama", "ollama"]);
     expect(cloudRequests(f)).toHaveLength(0);
     expect(f.requests.every((r) => r.url.startsWith("http://127.0.0.1:11434"))).toBe(true);
+  });
+
+  describe("sensitive data and the Phase 29 opt-in", () => {
+    const SECRET_TEXT = "my private diary LEAKCANARY-TEXT";
+    const SENSITIVE_OPT_IN = { public: true, internal: true, sensitive: true };
+    const ask = (purpose = "answer a question from memory"): GenerateTask => ({
+      kind: "generate",
+      request: {
+        privacy: "sensitive",
+        purpose,
+        messages: [
+          { role: "system", content: "s" },
+          { role: "user", content: SECRET_TEXT },
+        ],
+      },
+    });
+    const sink = () => {
+      const sent: CloudSendRecord[] = [];
+      return { sent, auditCloudSend: (r: CloudSendRecord) => void sent.push(r) };
+    };
+    const buildAudited = (
+      registry: ProviderRegistry,
+      deps: Partial<AiServiceDeps>,
+      optIn = SENSITIVE_OPT_IN,
+      grant: () => boolean = () => true,
+    ) =>
+      new AiService({
+        registry,
+        policy: { allowed: grant },
+        settings: () => ({ enabled: true, preferred: "anthropic", cloudOptIn: optIn }),
+        sleep: () => Promise.resolve(),
+        ...deps,
+      });
+
+    it("with grant + sensitive opt-in + allowed purpose it goes to the cloud, and the send is audited without its text", async () => {
+      const { f, registry } = network();
+      const { sent, auditCloudSend } = sink();
+      const out = await buildAudited(registry, { auditCloudSend }).run(ask());
+      expect(out.provider).toBe("anthropic");
+      expect(cloudRequests(f).length).toBeGreaterThan(0);
+      expect(sent).toEqual([
+        {
+          provider: "anthropic",
+          kind: "generate",
+          purpose: "answer a question from memory",
+          attempt: 1,
+          items: 2,
+          characters: 1 + SECRET_TEXT.length,
+        },
+      ]);
+      expect(JSON.stringify(sent)).not.toContain("LEAKCANARY");
+    });
+
+    it("every retry of a sensitive cloud send is audited separately", async () => {
+      let tries = 0;
+      const { f, registry } = network((req) => {
+        if (req.url.startsWith("https://api.anthropic.com")) {
+          if (req.url.includes("/v1/models")) return json({ data: [] });
+          tries++;
+          return tries < 3
+            ? json({ error: { type: "overloaded_error", message: "busy" } }, 529)
+            : json({ model: "claude-test-1", content: [{ type: "text", text: "ok" }], usage: {} });
+        }
+        if (req.url.endsWith("/api/version")) return json({ version: "0.15.5" });
+        return json({ message: { role: "assistant", content: "local" }, done: true });
+      });
+      const { sent, auditCloudSend } = sink();
+      const out = await buildAudited(registry, { auditCloudSend }).run(ask());
+      expect(out.provider).toBe("anthropic");
+      expect(sent.map((r) => r.attempt)).toEqual([1, 2, 3]);
+      expect(cloudRequests(f).filter((r) => r.url.endsWith("/v1/messages"))).toHaveLength(3);
+    });
+
+    it("a local answer for sensitive data writes no cloud audit record", async () => {
+      const { registry } = network();
+      const { sent, auditCloudSend } = sink();
+      const out = await buildAudited(registry, { auditCloudSend }, {
+        public: true,
+        internal: true,
+        sensitive: false,
+      }).run(ask());
+      expect(out.provider).toBe("ollama");
+      expect(sent).toEqual([]);
+    });
+
+    it("each missing condition keeps sensitive data off the network: grant, opt-in, purpose", async () => {
+      const make = (deps: Partial<AiServiceDeps>, optIn = SENSITIVE_OPT_IN, grant = () => true) => {
+        const net = network();
+        return { net, service: buildAudited(net.registry, deps, optIn, grant) };
+      };
+      const { sent, auditCloudSend } = sink();
+      const noGrant = make({ auditCloudSend }, SENSITIVE_OPT_IN, () => false);
+      const noOptIn = make({ auditCloudSend }, { ...SENSITIVE_OPT_IN, sensitive: false });
+      const badPurpose = make({ auditCloudSend });
+      const noAuditSink = make({});
+      expect((await noGrant.service.run(ask())).provider).toBe("ollama");
+      expect((await noOptIn.service.run(ask())).provider).toBe("ollama");
+      expect((await badPurpose.service.run(ask("summarise in the background"))).provider).toBe(
+        "ollama",
+      );
+      expect((await noAuditSink.service.run(ask())).provider).toBe("ollama");
+      for (const c of [noGrant, noOptIn, badPurpose, noAuditSink]) {
+        expect(cloudRequests(c.net.f)).toHaveLength(0);
+      }
+      expect(sent).toEqual([]);
+    });
+
+    it("if the audit sink throws the cloud request is not sent and the local provider answers", async () => {
+      const { f, registry } = network();
+      const service = buildAudited(registry, {
+        auditCloudSend: () => {
+          throw new Error("disk full");
+        },
+      });
+      const out = await service.run(ask());
+      expect(out.provider).toBe("ollama");
+      expect(out.attempts.find((a) => a.provider === "anthropic")).toMatchObject({
+        outcome: "failed",
+        reason: expect.stringContaining("could not be recorded"),
+      });
+      expect(cloudRequests(f).filter((r) => r.url.endsWith("/v1/messages"))).toHaveLength(0);
+    });
+
+    it("public and internal cloud sends are not written to the sensitive audit", async () => {
+      const { registry } = network();
+      const { sent, auditCloudSend } = sink();
+      const out = await buildAudited(registry, { auditCloudSend }).run(gen());
+      expect(out.provider).toBe("anthropic");
+      expect(sent).toEqual([]);
+    });
   });
 
   it("with grant + opt-in the cloud is used, labelled, and the key is sent only to it", async () => {
@@ -586,7 +727,7 @@ describe("status", () => {
   it("shows per-class access so the UI can explain what is allowed", async () => {
     const local = fakeProvider({ id: "ollama", locality: "local" });
     const cloud = fakeProvider({ id: "anthropic", locality: "cloud" });
-    const r = rig([local, cloud], { cloudOptIn: { public: true, internal: false } });
+    const r = rig([local, cloud], { cloudOptIn: { public: true, internal: false, sensitive: false } });
     const s = await r.service.status();
     const a = s.providers.find((p) => p.id === "anthropic")!;
     expect(a.access.public.allowed).toBe(true);
