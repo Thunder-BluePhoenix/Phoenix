@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
-import { matchRoute, readJsonBody, sendError, sendJson, type Route } from "./http";
+import { decodeParams, matchRoute, readJsonBody, sendError, sendJson, type Route } from "./http";
 import { buildRoutes } from "./routes";
 import { isAllowedHost, isAllowedOrigin, requestToken, tokensEqual } from "./security";
 import { StaticSite } from "./static";
@@ -104,7 +104,13 @@ export class ApiServer {
       }
       if (!route.public) this.authenticate(req);
 
-      const result = await route.handler({ req, res, url, params, body: () => readJsonBody(req) });
+      const result = await route.handler({
+        req,
+        res,
+        url,
+        params: decodeParams(params),
+        body: () => readJsonBody(req),
+      });
       sendJson(
         res,
         res.statusCode === 202 || res.statusCode === 201 ? res.statusCode : 200,

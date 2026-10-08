@@ -45,6 +45,20 @@ describe("authentication and origin checks", () => {
     expect((await api("GET", "/api/pet/state")).status).toBe(200);
   });
 
+  it("answers a malformed %-escape in the path with 400, and only after authentication", async () => {
+    const { api } = await start();
+    for (const path of ["/api/meetings/%zz", "/api/capabilities/%zz/enable", "/api/operations/%"]) {
+      const bad = await api(path.endsWith("enable") ? "POST" : "GET", path, undefined);
+      expect(bad.status, path).toBe(400);
+      expect(bad.json.code).toBe("INVALID_REQUEST");
+    }
+    // Without a token the caller learns nothing about how paths are parsed.
+    const anon = await api("GET", "/api/meetings/%zz", undefined, { authorization: "" });
+    expect(anon.status).toBe(401);
+    // A valid escape still decodes (an id with a colon).
+    expect((await api("GET", "/api/meetings/kage%3A1")).status).toBe(404);
+  });
+
   it("blocks DNS-rebinding hosts", async () => {
     const { port } = await start();
     expect(await rawGet(port, "/api/health", { host: "evil.example:80" })).toBe(403);

@@ -44,7 +44,20 @@ export function route(method: string, path: string, handler: Handler, isPublic =
   );
   return { method, pattern, keys, handler, ...(isPublic ? { public: true } : {}) };
 }
+/** A path segment with its %-escapes decoded; a malformed escape (`%zz`) is a bad request, not a crash. */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    throw new PhoenixError(ErrorCode.INVALID_REQUEST, "Malformed %-escape in the URL path");
+  }
+}
 
+/**
+ * Finds the route for a request. `params` are the raw path segments, still %-encoded: decoding
+ * can fail, and that must only be reported to a caller who has passed authentication
+ * (see `decodeParams`).
+ */
 export function matchRoute(routes: readonly Route[], method: string, pathname: string) {
   let pathMatched = false;
   for (const r of routes) {
@@ -53,10 +66,14 @@ export function matchRoute(routes: readonly Route[], method: string, pathname: s
     pathMatched = true;
     if (r.method !== method) continue;
     const params: Record<string, string> = {};
-    r.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1]!)));
+    r.keys.forEach((k, i) => (params[k] = m[i + 1]!));
     return { route: r, params };
   }
   return { route: undefined, params: {}, pathMatched };
+}
+
+export function decodeParams(raw: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, decodeSegment(v)]));
 }
 
 export function readJsonBody(req: IncomingMessage): Promise<unknown> {
