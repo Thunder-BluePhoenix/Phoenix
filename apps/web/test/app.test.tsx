@@ -124,4 +124,46 @@ describe("Pet Panel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close Pet Panel" }));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  it("lists the first few of many tasks and keeps the emergency stop close", () => {
+    const { ws } = setup();
+    const tasks = Array.from({ length: 500 }, (_, i) => ({
+      key: `corr:run-${i}`,
+      state: "WORKING",
+      title: `Build running ${i}`,
+      source: "terminal",
+      since: "",
+      updatedAt: "",
+    }));
+    act(() => ws.message("task.updated", { tasks }));
+    fireEvent.click(fawkes());
+    const panel = screen.getByRole("dialog", { name: "Fawkes" });
+    expect(panel.querySelectorAll(".task-list li")).toHaveLength(10);
+    expect(screen.getByRole("button", { name: "Emergency stop" })).toBeTruthy();
+
+    const toggle = screen.getByRole("button", { name: "Show all 500 tasks" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(panel.querySelectorAll(".task-list li")).toHaveLength(500);
+    const fewer = screen.getByRole("button", { name: "Show fewer" });
+    expect(fewer.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(fewer);
+    expect(panel.querySelectorAll(".task-list li")).toHaveLength(10);
+  });
+
+  it("shows every task when there are only a few, with no toggle", () => {
+    const { ws } = setup();
+    const tasks = Array.from({ length: 10 }, (_, i) => ({
+      key: `k${i}`,
+      state: "WORKING",
+      title: `Task ${i}`,
+      source: "ci",
+      since: "",
+      updatedAt: "",
+    }));
+    act(() => ws.message("task.updated", { tasks }));
+    fireEvent.click(fawkes());
+    expect(screen.getByRole("dialog").querySelectorAll(".task-list li")).toHaveLength(10);
+    expect(screen.queryByRole("button", { name: /Show (all|fewer)/ })).toBeNull();
+  });
 });

@@ -7,6 +7,36 @@ import { useAction, useConfirmations, useKillSwitch } from "../core/hooks";
 import type { ActiveTask, Confirmation, PetState } from "../core/types";
 import { MeetingsGlance } from "./Meetings";
 
+/** How many tasks the panel lists before "Show all": enough to see what is happening, few enough
+ *  that the actions below (Pause Fawkes, Emergency stop) never end up thousands of pixels away. */
+const TASKS_SHOWN = 10;
+
+function TaskList({ tasks }: { tasks: ActiveTask[] }) {
+  const [all, setAll] = useState(false);
+  if (tasks.length === 0) return <p className="muted">Nothing running.</p>;
+  const shown = all ? tasks : tasks.slice(0, TASKS_SHOWN);
+  return (
+    <>
+      <ul className="task-list">
+        {shown.map((t) => (
+          <li key={t.key}>
+            <span>{t.title}</span>
+            <span className="muted"> · {t.source}</span>
+            {t.progress !== undefined && (
+              <progress max={1} value={t.progress} aria-label={`${t.title} progress`} />
+            )}
+          </li>
+        ))}
+      </ul>
+      {tasks.length > TASKS_SHOWN && (
+        <button type="button" className="btn" aria-expanded={all} onClick={() => setAll(!all)}>
+          {all ? "Show fewer" : `Show all ${tasks.length} tasks`}
+        </button>
+      )}
+    </>
+  );
+}
+
 export function Overview({ state, tasks }: { state: PetState; tasks: ActiveTask[] }) {
   const visual = visualFor(state.state);
   return (
@@ -26,21 +56,7 @@ export function Overview({ state, tasks }: { state: PetState; tasks: ActiveTask[
       <Approvals />
       <section aria-labelledby="tasks-h">
         <h3 id="tasks-h">Active tasks</h3>
-        {tasks.length === 0 ? (
-          <p className="muted">Nothing running.</p>
-        ) : (
-          <ul className="task-list">
-            {tasks.map((t) => (
-              <li key={t.key}>
-                <span>{t.title}</span>
-                <span className="muted"> · {t.source}</span>
-                {t.progress !== undefined && (
-                  <progress max={1} value={t.progress} aria-label={`${t.title} progress`} />
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+        <TaskList tasks={tasks} />
       </section>
       <MeetingsGlance />
       <QuickActions state={state} />
