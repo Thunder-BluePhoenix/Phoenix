@@ -63,7 +63,12 @@ export interface StateEngineOptions {
   now?: () => number;
   /** How long a timed-out task stays as a WARNING. */
   timeoutWarningTtlMs?: number;
+  /** Most activities tracked at once; beyond it the least important are dropped. */
+  maxConditions?: number;
 }
+
+/** Far more than anyone has running at once; small enough to keep every event cheap. */
+export const DEFAULT_MAX_CONDITIONS = 500;
 
 /** "kage.summary.ready" → "Kage summary ready" */
 export function humanizeEventType(eventType: string): string {
@@ -88,6 +93,7 @@ export class StateEngine {
   private readonly rules: MappingRule[];
   private readonly now: () => number;
   private readonly timeoutWarningTtlMs: number;
+  private readonly maxConditions: number;
   private readonly conditions = new Map<string, Condition>();
   private readonly listeners = new Set<StateListener>();
   private readonly taskListeners = new Set<TaskListener>();
@@ -99,6 +105,7 @@ export class StateEngine {
     this.rules = [...(options.mapping ?? DEFAULT_MAPPING)];
     this.now = options.now ?? Date.now;
     this.timeoutWarningTtlMs = options.timeoutWarningTtlMs ?? 60_000;
+    this.maxConditions = options.maxConditions ?? DEFAULT_MAX_CONDITIONS;
     this.current = this.compute(this.now());
   }
 
@@ -293,6 +300,30 @@ export class StateEngine {
     if (ttlMs !== undefined) c.expiresAt = now + ttlMs;
     if (timeoutMs !== undefined) c.timeoutMs = timeoutMs;
     this.conditions.set(key, c);
+    if (this.conditions.size > this.maxConditions) this.evictOne();
+  }
+
+  /**
+   * Drops the condition that matters least: the lowest priority, then the oldest. An active
+   * recording and a pending approval go last, because losing either hides something the user
+   * must see. Without a bound, a source that gives every run its own correlation id grows this
+   * map (and every state broadcast, and the work done per event) without limit, and ERROR
+   * conditions never expire on their own. History and notifications still keep what was dropped.
+   */
+  private evictOne(): void {
+    const rank = (c: Condition) =>
+      c.state === "RECORDING" || c.state === "WAITING" ? 0 : STATE_PRIORITY[c.state];
+    let victim: Condition | undefined;
+    for (const c of this.conditions.values()) {
+      if (
+        !victim ||
+        rank(c) > rank(victim) ||
+        (rank(c) === rank(victim) && c.updatedAt < victim.updatedAt)
+      ) {
+        victim = c;
+      }
+    }
+    if (victim) this.conditions.delete(victim.key);
   }
 
   private recompute(): void {

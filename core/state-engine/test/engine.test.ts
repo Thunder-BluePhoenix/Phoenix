@@ -78,6 +78,78 @@ describe("priority (ADR-0019)", () => {
   });
 });
 
+describe("bounded memory", () => {
+  const run = (type: string, id: string, extra: Partial<PhoenixEvent> = {}) =>
+    ev(type, { correlation_id: id, subject: id, ...extra });
+
+  it("tracks at most maxConditions activities, however many unique runs arrive", () => {
+    const c = clock();
+    const engine = new StateEngine({ now: c.now, maxConditions: 50 });
+    for (let i = 0; i < 1000; i++) {
+      c.advance(1);
+      engine.handle(run("test.failed", `run-${i}`));
+    }
+    expect(engine.snapshot().conditions).toHaveLength(50);
+    // The ones kept are the newest, so the explanation is about something recent.
+    expect(engine.snapshot().conditions.map((x) => x.key)).toContain("corr:run-999");
+    expect(engine.snapshot().conditions.map((x) => x.key)).not.toContain("corr:run-0");
+  });
+
+  it("drops finished-looking work before errors, and the oldest first", () => {
+    const c = clock();
+    const engine = new StateEngine({ now: c.now, maxConditions: 3 });
+    engine.handle(run("test.failed", "failure"));
+    c.advance(1);
+    engine.handle(run("build.started", "old-build"));
+    c.advance(1);
+    engine.handle(run("build.started", "newer-build"));
+    c.advance(1);
+    engine.handle(run("build.started", "newest-build"));
+    expect(
+      engine
+        .snapshot()
+        .conditions.map((x) => x.key)
+        .sort(),
+    ).toEqual(["corr:failure", "corr:newer-build", "corr:newest-build"]);
+    expect(engine.snapshot().state).toBe("ERROR");
+  });
+
+  it("never drops a recording or a pending approval to make room", () => {
+    const c = clock();
+    const engine = new StateEngine({ now: c.now, maxConditions: 5 });
+    engine.handle(run("kage.meeting.recording", "meeting", { source: "kage" }));
+    engine.handle(
+      run("security.confirmation.requested", "approval", {
+        source: "core",
+        requires_action: true,
+        payload: { summary: "Start capture" },
+      }),
+    );
+    for (let i = 0; i < 200; i++) {
+      c.advance(1);
+      engine.handle(run("test.failed", `noise-${i}`));
+    }
+    const keys = engine.snapshot().conditions.map((x) => x.key);
+    expect(keys).toContain("corr:meeting");
+    expect(keys).toContain("corr:approval");
+    expect(engine.snapshot().recording).toBe(true);
+    expect(keys).toHaveLength(5);
+  });
+
+  it("keeps updating an existing activity when the table is full", () => {
+    const c = clock();
+    const engine = new StateEngine({ now: c.now, maxConditions: 3 });
+    for (const id of ["a", "b", "c"]) {
+      c.advance(1);
+      engine.handle(run("build.started", id));
+    }
+    c.advance(1);
+    engine.handle(run("build.passed", "a"));
+    expect(engine.snapshot().conditions).toHaveLength(3);
+    expect(engine.snapshot().conditions.find((x) => x.key === "corr:a")?.state).toBe("SUCCESS");
+  });
+});
+
 describe("lifecycle", () => {
   it("build: started → passed → expires to IDLE", () => {
     const c = clock();
