@@ -90,6 +90,31 @@ describe("notifications", () => {
     expect(service.consider(ev("build.failed", { severity: "error" }))).not.toBeNull();
   });
 
+  it("a failure that keeps repeating notifies once, then again only after it has stopped", () => {
+    const { service, advance } = setup();
+    const failed = () => service.consider(ev("build.failed", { severity: "error" }));
+    expect(failed()).not.toBeNull();
+    // Retried every 10 s for five minutes: still the same problem, no further alerts.
+    for (let i = 0; i < 30; i++) {
+      advance(10_000);
+      expect(failed(), `repeat ${i + 1}`).toBeNull();
+    }
+    expect(service.count()).toBe(1);
+    // It went quiet for a full window, so a new failure is news again.
+    advance(30_000);
+    expect(failed()).not.toBeNull();
+    expect(service.count()).toBe(2);
+  });
+
+  it("different problems from the same source are not folded together", () => {
+    const { service } = setup();
+    const fail = (command: string) =>
+      service.consider(ev("command.failed", { severity: "error", payload: { command } }));
+    expect(fail("make")).not.toBeNull();
+    expect(fail("pnpm test")).not.toBeNull();
+    expect(fail("make")).toBeNull();
+  });
+
   it("can be marked read individually or all at once", () => {
     const { service } = setup();
     const a = service.consider(ev("build.failed", { severity: "error" }))!;

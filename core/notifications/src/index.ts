@@ -191,9 +191,13 @@ export class NotificationService {
     const dedupKey = `${event.source}|${event.subject ?? ""}|${title}`;
     const nowMs = this.now();
     const last = this.recent.get(dedupKey);
-    if (last !== undefined && nowMs - last < DUPLICATE_WINDOW_MS) return null;
+    // The quiet period slides: each repeat renews it, so something that keeps happening notifies
+    // once and stays quiet until it has stopped for a whole window. A fixed window alerted again
+    // every 30 s for as long as a build kept failing.
+    this.recent.delete(dedupKey); // re-insert so the map stays ordered by last activity
     this.recent.set(dedupKey, nowMs);
     if (this.recent.size > 500) this.recent.delete(this.recent.keys().next().value!);
+    if (last !== undefined && nowMs - last < DUPLICATE_WINDOW_MS) return null;
 
     const n: Notification = {
       id: `ntf_${nowMs.toString(36)}${randomBytes(5).toString("hex")}`,

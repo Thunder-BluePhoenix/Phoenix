@@ -59,7 +59,7 @@ Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still 
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 21 | [Post-MVP Stabilisation](phase-21-post-mvp-stabilization.md) | v0.2 | Critical | 20 | ⬜ | | |
+| 21 | [Post-MVP Stabilisation](phase-21-post-mvp-stabilization.md) | v0.2 | Critical | 20 | 🟨 | | Started early on decision-free items: hostile-event robustness test, repeated-failure notification noise; telemetry is blocked on a decision |
 | 22 | [GitHub & CI/CD Capability](phase-22-github-and-cicd-capability.md) | v0.2 | High | 21 | ⬜ | | |
 | 23 | [Frappe / ERPNext Capability](phase-23-frappe-erpnext-capability.md) | v0.2 | High | 21 | ⬜ | | |
 | 24 | [Docker & Editor Capabilities](phase-24-docker-and-editor-capabilities.md) | v0.2 | Medium | 21 | ⬜ | | |
