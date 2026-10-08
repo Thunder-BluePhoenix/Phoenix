@@ -1,6 +1,6 @@
 # ADR-0013: Desktop shell: Tauri v2
 
-**Status:** Accepted (pending spike: macOS builds and launches; Linux and Windows not yet run)  
+**Status:** Accepted (pending spike: macOS verified on a real desktop; Linux and Windows not yet run)  
 **Date:** 2026-10-03
 
 ## Context
@@ -13,7 +13,7 @@ apps/desktop uses Tauri v2, reusing the web pet runtime. Phase 14 begins with a 
 
 ## Spike result (Phase 14)
 
-- **macOS (Apple silicon):** the shell builds and launches with a transparent, borderless window. Transparency needs Tauri's `macos-private-api` feature, so the app cannot go in the Mac App Store. The window was not seen on screen (the display was locked), so transparency is configured but not visually confirmed.
+- **macOS (Apple silicon):** passes. The transparent, borderless window renders with fully transparent corners, drags, keeps its position across restarts, and the tray, keep-on-top and start-on-login all work. Transparency needs Tauri's `macos-private-api` feature, so the app cannot go in the Mac App Store.
 - **Linux, Windows:** not run. The decision stays "pending spike" until they are.
 
 ## Consequences

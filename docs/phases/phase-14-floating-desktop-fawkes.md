@@ -32,14 +32,14 @@ Ship an independent, transparent, draggable desktop Fawkes that mirrors core sta
 ## Tasks
 
 - [x] Scaffold apps/desktop with chosen shell (Tauri v2 in `apps/desktop/src-tauri`; builds and launches on macOS)
-- [ ] Transparent borderless window rendering pet runtime (configured: transparent, no decorations, no shadow, hidden from the Dock/taskbar; not yet seen on screen)
-- [ ] Drag + persist position; multi-monitor sanity (placement and persistence logic unit-tested in `position.rs`/`settings.rs`, drag deltas tested in the web app; a real window drag is untested)
-- [ ] Opt-in always-on-top; hide without disabling Phoenix (implemented in the tray and window menu; not exercised)
-- [ ] Tray menu: show/hide, open Phoenix, quit (implemented; not exercised)
-- [x] Short contextual speech bubbles; click opens relevant page (tested in `apps/web/test/floating.test.tsx`; the shell only opens validated in-app routes)
-- [ ] Configurable start-on-login (implemented with `tauri-plugin-autostart`; not exercised)
-- [x] Visibility must never imply recording: show explicit indicator only when RECORDING (tested)
-- [ ] Desktop tests: window lifecycle, tray, position (20 Rust tests cover position, settings, Core discovery and route validation; window lifecycle and tray need a display)
+- [x] Transparent borderless window rendering pet runtime (macOS: transparent corners, no Dock icon, 200×220)
+- [ ] Drag + persist position; multi-monitor sanity (drag and restart persistence verified on one display; multi-monitor placement is unit-tested only)
+- [x] Opt-in always-on-top; hide without disabling Phoenix (macOS: off by default, layer change verified, hiding leaves Core and the connection alone)
+- [ ] Tray menu: show/hide, open panel, quit (show/hide and quit verified; "Open Phoenix" not exercised)
+- [x] Short contextual speech bubbles; click opens relevant page (bubble verified in the real window; routing tested in `apps/web/test/floating.test.tsx`; the shell only opens validated in-app routes)
+- [x] Configurable start-on-login (macOS: LaunchAgent created and removed from the menu)
+- [x] Visibility must never imply recording: show explicit indicator only when RECORDING (tested, and seen in the real window)
+- [ ] Desktop tests: window lifecycle, tray, position (23 Rust tests cover position, settings, Core discovery and route validation; window lifecycle and tray were checked by hand, not automated)
 
 ## Deliverables
 
@@ -47,8 +47,8 @@ Ship an independent, transparent, draggable desktop Fawkes that mirrors core sta
 
 ## Exit criteria
 
-- [ ] PRD Phase 3 exit: independent desktop pet works
-- [ ] Launch, move, close all work (launch verified on macOS; move and close not yet exercised)
+- [ ] PRD Phase 3 exit: independent desktop pet works (works on macOS; Linux and Windows untested)
+- [x] Launch, move, close all work (macOS)
 
 ## Notes & risks
 
@@ -56,7 +56,16 @@ Ship an independent, transparent, draggable desktop Fawkes that mirrors core sta
 - Spike result (ADR-0013): only macOS (Apple silicon) was built and launched. The Linux and Windows spikes have not been run.
 - Transparency on macOS needs Tauri's `macos-private-api` feature, which rules out Mac App Store distribution.
 - On macOS, `available_monitors()` returned an empty list while the app was starting, which put the window at (0, 0). Placement now falls back to the primary/current monitor, and a saved position is kept when monitors are unknown.
-- The Phase 14 checks were made with the screen locked, so the window was never seen. Transparency, dragging, the tray and the context menu still need a manual check on each OS.
+- Checked on a real macOS desktop (Apple silicon, one display) with a live Core, using synthetic mouse events, accessibility queries and window screenshots:
+  - The window is 200×220 points and its corner pixels are fully transparent.
+  - A real mouse drag moved it, saved the new position, and a restart put it back at the same spot.
+  - The tray icon exists. A left click hides or shows Fawkes. A right click opens the menu with all seven entries.
+  - "Keep Fawkes on top" moves the window layer 0 → 5 and back, and the check mark follows the setting.
+  - "Quit Fawkes" ends the app and leaves Core running.
+  - "Start Fawkes when I log in" writes `~/Library/LaunchAgents/Phoenix.plist` and the menu removes it. That agent points at the binary that is running, so a debug build registers the debug binary. A packaged build still needs checking.
+  - Stopping Core leaves the window up and showing OFFLINE. Restarting Core with a new token reconnected without restarting the app.
+  - The speech bubble, red ERROR outline and recording pill appear in the captured window.
+- Not checked: "Open Phoenix" and click-to-open (they open a browser), the right-click menu on Fawkes itself (a popup window appeared, but I did not read its entries), more than one monitor, and how Fawkes looks to a person (checks used pixel counts and an ASCII rendering, not eyes).
 - Verified against a live Core on macOS: the desktop webview finds the session token and opens a WebSocket (Core reported one live connection while the app ran). The first run found no token because the dev Core keeps its data in `<repo>/.phoenix/dev`, not `~/.phoenix/dev`; a debug build of the shell now looks in both and uses the newest token.
 
 ## Source documents

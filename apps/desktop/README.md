@@ -23,4 +23,4 @@ pnpm --filter @phoenix/desktop test:rust
 
 ## Status
 
-Verified on macOS (Apple silicon): builds, launches, unit tests pass. Not yet verified: how the window looks, dragging, the tray and menu, start on login (the screen was locked during testing). Linux and Windows have not been built. See the phase file for the checklist.
+Checked on macOS (Apple silicon) on a real desktop: transparent window, drag, position saved across restarts, tray (show/hide, menu, quit), keep-on-top, start on login, and reconnecting after Core restarts. Not yet verified: a person looking at it, more than one monitor, the "Open Phoenix" menu item, and any other OS (Linux and Windows have not been built). See the phase file for the checklist.
