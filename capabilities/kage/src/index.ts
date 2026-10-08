@@ -10,10 +10,14 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { isAbsolute } from "node:path";
 import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
 import { defineCapability, type CapabilityContext, type HealthResult } from "@phoenix/sdk";
 
 export const DEFAULT_KAGE_URL = "http://127.0.0.1:8000";
+
+/** Runs Kage's bot and stops it if Core dies (see bot-supervisor.cjs). */
+const SUPERVISOR = fileURLToPath(new URL("./bot-supervisor.cjs", import.meta.url));
 
 /** A meeting as Kage's GET /api/meetings returns it (fields Phoenix uses). */
 export interface KageMeeting {
@@ -183,9 +187,12 @@ export function createKageCapability() {
       args.push("--max-duration-min", String(ctx.config.max_duration_min));
     }
     // The API key goes in the environment, never on the command line (it would show in `ps`).
-    const child = spawn(process.execPath, args, {
+    // The bot runs under a supervisor that stops it when Core's end of the stdin pipe closes, which
+    // is what the OS does if Core is killed. Without it, a killed Core leaves the bot recording.
+    // Core must keep this pipe open and never write to it.
+    const child = spawn(process.execPath, [SUPERVISOR, ...args], {
       env: { ...process.env, KAGE_API_KEY: apiKey },
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
     });
     const correlation = `kage-capture-${randomBytes(6).toString("hex")}`;
     bot = { child, correlation, title };

@@ -68,7 +68,12 @@ Harden the MVP based on real usage before adding breadth (90-day plan, weeks 1�
 - Keyboard-only pass in the same real browser (home, meetings, settings; real key presses via the browser's `press`, not synthetic clicks):
   - Found and fixed: the "Skip to content" link was broken. It pointed at `#main`, but the hash is this app's router, so activating it navigated to a route called `main`: the page was replaced by the Home screen and focus was lost to the document body. It now moves focus to the page content and leaves the route alone (`App.tsx`; the target has `tabIndex={-1}` and no focus ring, since it is a target and not a control). Test: `app.test.tsx` "skip link" fails without the fix (the hash became `#main`).
   - Checked and fine: Tab order follows the visual order (skip link, navbar, page). Each of the 24 stops on a freshly loaded Settings page has a visible focus indicator and none is covered by the sticky bar. The notification bell opens with Enter and Escape closes it with focus on the bell. The motion radios change with the arrow keys. A capability section opens with Enter and Tab then enters it. Focus leaves the page after the last control instead of getting trapped. No console errors.
-  - Not covered: the controls inside opened capability sections were not checked for a focus indicator (only that Tab reaches the first one); the Pet Panel and meeting detail pages were not walked by keyboard; no screen reader.
+  - Second pass over the pages the first one skipped, with a recording meeting, a failed meeting and an ended one seeded so the Pet Panel and the lists had real content. No defects found:
+    - Pet Panel: Enter on Fawkes opens it and moves focus to its heading. Tab runs through Close, Overview, the meeting links and the actions, then leaves the panel; it is a non-modal dialog by design. Escape closes it and focus returns to the Fawkes button.
+    - Meetings list and a meeting's detail page: every stop shows a focus indicator and nothing is covered or off-screen.
+    - Settings with every capability section opened: all 43 controls are reached, in page order, each with a focus indicator (the radio group is one stop by design).
+    - The "Skip to content" link overlaps the navbar when focused. That is intended: it slides in over the bar and nothing sits on top of it.
+  - Not covered: any screen reader, and a meeting detail page with a transcript and summary (the seeded meeting has none, since that needs a real Kage).
 ## Source documents
 
 - Post-MVP Roadmap v1.0 §18, §19

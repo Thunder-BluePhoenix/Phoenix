@@ -44,11 +44,11 @@
 Kage has no recording API: capture is done by the browser extension (user gesture) or the Meet bot, which upload audio to `POST /api/meetings` when the call ends. From Phoenix, `meeting.start { meet_url, title? }`:
 
 - requires the `meeting_recording` permission **and an explicit confirmation every time** (side effect `execute`);
-- runs `node <bot_path> <meet_url> --title … --backend <base_url>` with `KAGE_API_KEY` in the environment (not argv);
+- runs `node <bot_path> <meet_url> --title … --backend <base_url>` with `KAGE_API_KEY` in the environment (not argv). The bot runs under a small supervisor (`capabilities/kage/src/bot-supervisor.cjs`) that Core holds a stdin pipe to; if Core is killed, the OS closes the pipe and the supervisor stops the bot (SIGTERM, then SIGKILL after 5 s). Without it a killed Core left the bot recording as an orphan;
 - emits `kage.meeting.started` (WORKING "Joining …"), `kage.meeting.recording` when the bot prints `recording …` (RECORDING, no timeout), then `kage.capture.finished` (clears) on exit 0 or `kage.meeting.failed` with the bot's last stderr line;
 - allows one capture at a time.
 
-**No stop.** The bot has no signal handler: stopping it early loses the recording and can leave the macOS audio output on BlackHole. It stops by itself when the call ends or after `max_duration_min`. To stop sooner, remove the bot from the call. Disabling Kage or the emergency stop kills the bot (recording lost) and clears the indicator.
+**No stop.** The bot has no signal handler: stopping it early loses the recording and can leave the macOS audio output on BlackHole. It stops by itself when the call ends or after `max_duration_min`. To stop sooner, remove the bot from the call. Disabling Kage or the emergency stop kills the bot (recording lost) and clears the indicator. The same happens if Core dies: the recording is lost, and on restart Core shows no recording (see "Not recovered" in the Phase 20 notes).
 
 ## Archive and delete
 
