@@ -37,7 +37,7 @@ These are real and are not fixed in v0.1.
 4. **Meeting records created by an injected event** (see above) show up in the Meetings list with whatever title the sender chose. They have no transcript or summary. Same cause, same remedy as item 3.
 5. **Start on login registers the binary that is running.** A debug build registers the debug binary. Packaged builds have not been checked.
 6. **Windows has no OS secret storage** (`KeychainSecretStore` supports macOS and Linux). On Windows Core cannot store capability credentials.
-7. **No dependency audit.** The licence inventory covers direct dependencies only, and no vulnerability scan (`pnpm audit`, `cargo audit`) has been run or is part of CI.
+7. **Dependency scan covers what is on disk, not what ships.** `pnpm audit` and `cargo audit` ran clean on 2026-10-08 and now run in CI. They check the lockfiles against known advisories only, so an undisclosed flaw or a malicious release is not caught. Two `cargo audit` warnings (unmaintained `proc-macro-error`, unsound `glib 0.18`) are in the Linux GTK stack and are not in the macOS build; they must be revisited before a Linux build ships. Dev tooling was upgraded (Vitest 3 → 4.1.11) to clear two critical and two moderate advisories in the test runner.
 8. **The desktop window's Content-Security-Policy allows `http://127.0.0.1:*`** so it can reach Core on any port. It cannot reach other hosts.
 9. **Diagnostics redaction is a safety net, not the design.** The report is built from an allow-list; `redact()` runs over the result only to catch secret-shaped text. A new field added carelessly would still leak, which is why the test seeds real content and checks for it.
 

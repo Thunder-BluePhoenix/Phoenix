@@ -35,7 +35,7 @@ Prove the MVP is safe and reliable, then package and release Phoenix v0.1.
 - [ ] Observability: structured logs, capability health, event latency/failure, active tasks, Kage duration, WS reconnects (all present in `/api/health` and `/api/diagnostics`; Kage duration is derived from event timestamps, so it is only as accurate as the capability's clock; none of it is shown in the UI)
 - [x] Diagnostic export without secrets or raw meeting content (`GET /api/diagnostics`)
 - [ ] Package web + desktop builds with licence notices (not started)
-- [ ] Update dependency/asset licence inventory (direct dependencies and the app icon are listed; transitive Rust and npm dependencies are not scanned)
+- [x] Update dependency/asset licence inventory (npm production and dev packages, all 458 Rust crates, and the app icon; scanned 2026-10-08, plus `pnpm audit` and `cargo audit`)
 - [ ] Verify v0.1 Definition of Done checklist; tag release (checklist done above: 12 of 14 hold, 2 partial; no tag)
 
 ## Deliverables
@@ -73,7 +73,8 @@ Prove the MVP is safe and reliable, then package and release Phoenix v0.1.
 - Gate MVP → v0.2: core event/state/pet loop is stable.
 - Found by this phase: any holder of the session token could crash Core by posting a meeting-shaped event from an unregistered source (unhandled promise rejection). Fixed in `core/runtime/src/meetings.ts` with a regression test. Details in the security review.
 - `GET /api/diagnostics` is the diagnostic export. It lists structure and counts only; the test seeds a real secret, meeting title, participants, transcript and summary and asserts none appear.
-- Not done: packaging (signed web + desktop bundles with licence notices), a full dependency licence and vulnerability scan, and the release tag. Packaging needs decisions that are not mine to make: signing identities, which OSes ship in v0.1, and whether Windows ships without OS secret storage.
+- Not done: packaging (signed web + desktop bundles with licence notices), bundling third-party licence texts into release artefacts, and the release tag. Packaging needs decisions that are not mine to make: signing identities, which OSes ship in v0.1, and whether Windows ships without OS secret storage.
+- Dependency scan done 2026-10-08: no known vulnerabilities in npm or Rust dependencies; every licence is GPL-3.0 compatible (see `docs/licenses/INVENTORY.md`). Clearing 2 critical and 2 moderate advisories in Vitest needed the 3 → 4.1.11 upgrade; the suite passed unchanged. CI now has an `audit` job.
 
 ## Source documents
 

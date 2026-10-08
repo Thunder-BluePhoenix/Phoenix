@@ -58,6 +58,28 @@ jobs:
         run: cargo test --locked
         working-directory: apps/desktop/src-tauri
 
+  # Known-vulnerability scan. Fails on any advisory, so a new one shows up on the next push.
+  # cargo audit only warns (exit 0) for unmaintained/unsound crates, which today are Linux-only
+  # GTK crates that the macOS build does not contain (see docs/licenses/INVENTORY.md).
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: npm advisories
+        run: pnpm audit
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: Rust advisories
+        run: cargo audit
+        working-directory: apps/desktop/src-tauri
+
   secret-scan:
     runs-on: ubuntu-latest
     steps:
