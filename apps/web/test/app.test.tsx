@@ -69,6 +69,19 @@ describe("navbar Fawkes (US-01)", () => {
   });
 });
 
+describe("skip link", () => {
+  it("moves focus to the page content and leaves the route alone", () => {
+    window.location.hash = "#/settings";
+    setup();
+    // The hash is the router: following a plain "#main" link would turn the page into route "/main".
+    fireEvent.click(screen.getByRole("link", { name: "Skip to content" }));
+    expect(window.location.hash).toBe("#/settings");
+    expect(document.activeElement).toBe(screen.getByRole("main"));
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Settings");
+    window.location.hash = "";
+  });
+});
+
 describe("Pet Panel", () => {
   it("opens from Fawkes, shows state and tasks, closes with Escape and returns focus", () => {
     const { ws } = setup();

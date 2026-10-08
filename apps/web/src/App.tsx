@@ -19,6 +19,7 @@ export function App() {
   const avatar = useRef<FawkesAvatarHandle>(null);
   const route = useHashRoute();
   const meetingId = /^\/meetings\/(.+)$/.exec(route)?.[1];
+  const main = useRef<HTMLElement>(null);
 
   const closePanel = useCallback(() => {
     setPanelOpen(false);
@@ -27,7 +28,15 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <a className="skip-link" href="#main">
+      {/* Not a plain #main link: the hash is the router, so that would navigate to a route "main". */}
+      <a
+        className="skip-link"
+        href="#main"
+        onClick={(e) => {
+          e.preventDefault();
+          main.current?.focus();
+        }}
+      >
         Skip to content
       </a>
       <Navbar
@@ -40,7 +49,7 @@ export function App() {
         onToggleFawkes={() => (panelOpen ? closePanel() : setPanelOpen(true))}
       />
       {panelOpen && <PetPanel id={panelId} state={state} tasks={tasks} onClose={closePanel} />}
-      <main id="main" className="content">
+      <main id="main" ref={main} tabIndex={-1} className="content">
         {connection !== "unauthenticated" && route === "/settings" ? (
           <SettingsPage state={state} />
         ) : connection !== "unauthenticated" && route === "/meetings" ? (
