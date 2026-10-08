@@ -97,6 +97,21 @@ describe("registration", () => {
     ).toBe(ErrorCode.INVALID_REQUEST);
   });
 
+  it("applies the reserved-namespace rule to in-process modules too, not only to external ones", async () => {
+    // state_rules is cleared: otherwise its "demo.thinking" rule no longer matches a declared
+    // event and rejects the manifest for an unrelated reason.
+    const base = { ...manifest(), state_rules: [] };
+    // Positive control: the same manifest is accepted, so the rejections below are about events.
+    expect(await errCode(() => setup().manager.registerBuiltin(builtin({}, base)))).toBe("ok");
+    for (const events of [["security.*"], ["capability.failed"], ["pet.state.changed"]]) {
+      const { manager } = setup();
+      expect(await errCode(() => manager.registerBuiltin(builtin({}, { ...base, events })))).toBe(
+        ErrorCode.INVALID_REQUEST,
+      );
+      expect(manager.list()).toEqual([]);
+    }
+  });
+
   it("lists capabilities with permission disclosure", () => {
     const { manager } = setup();
     manager.registerBuiltin(builtin());
