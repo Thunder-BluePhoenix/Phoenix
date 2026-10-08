@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use tauri::menu::{CheckMenuItem, ContextMenu, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{
-    AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
+    AppHandle, Manager, PhysicalPosition, PhysicalSize, RunEvent, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_autostart::ManagerExt as _;
@@ -45,11 +45,21 @@ struct MenuItems {
 }
 
 impl Shell {
+    /// Changes a setting and writes it to disk.
     fn update(&self, change: impl FnOnce(&mut Settings)) {
         let mut settings = self.settings.lock();
         change(&mut settings);
         // Best effort: failing to remember a preference must never break the pet.
         let _ = settings::save(&self.settings_path, &settings);
+    }
+
+    /// Changes a setting in memory only; `flush` or the next `update` writes it.
+    fn remember(&self, change: impl FnOnce(&mut Settings)) {
+        change(&mut self.settings.lock());
+    }
+
+    fn flush(&self) {
+        let _ = settings::save(&self.settings_path, &self.settings.lock());
     }
 }
 
@@ -349,16 +359,27 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // The OS moved the window (keyboard, snap, display change): remember it.
+            // The OS moved the window (drag, keyboard, snap, display change). Remember the spot in
+            // memory only: this fires for every step of a drag, and writing the file each time is
+            // dozens of disk writes per second. It reaches the disk when the drag ends
+            // (`drag_finished`), when any setting changes, and on exit.
             if let WindowEvent::Moved(p) = event {
                 if window.label() == WINDOW_LABEL {
                     window
                         .app_handle()
                         .state::<Shell>()
-                        .update(|s| s.position = Some(Point { x: p.x, y: p.y }));
+                        .remember(|s| s.position = Some(Point { x: p.x, y: p.y }));
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Phoenix desktop");
+        .build(tauri::generate_context!())
+        .expect("error while building Phoenix desktop")
+        .run(|app, event| {
+            // Quit from the tray, the OS, or the last window closing: keep the latest position.
+            if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
+                if let Some(shell) = app.try_state::<Shell>() {
+                    shell.flush();
+                }
+            }
+        });
 }
