@@ -98,7 +98,7 @@ Not covered:
 
 Things observed:
 
-- When Kage reached `transcribed`, Fawkes already showed SUCCESS (from the event), but Phoenix's meeting record still said `transcribing` with no transcript for one more poll. It had caught up by the next sample two seconds later. The transcript is fetched after the event, so a freshly finished meeting can briefly show no transcript. The UI should not treat that as missing content.
+- When Kage reached `transcribed`, Fawkes showed SUCCESS straight away, but Phoenix's copy of the transcript arrived about a second later, because Phoenix fetches it after the event. The Meetings detail page showed nothing for that gap, which looked like missing content. Fixed: it now says "Fetching the transcript from Kage…" while it retries (up to 5 times, one second apart) and shows an error if the transcript never arrives. Watched in a real browser against the real Kage: `Transcribing…` (0.8 s) → `Transcript ready` with "Fetching the transcript…" (1.8 s) → transcript shown (2.8 s), no console errors. Covered by three tests in `apps/web/test/meetings.test.tsx`; the first two fail without the change.
 - Right after Kage went down, a check 5 s later still reported `healthy`; the next sample showed `unhealthy` with Fawkes in WARNING. Health is checked every 15 s, so detection can take that long.
 
 ## Source documents

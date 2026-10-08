@@ -310,7 +310,7 @@ function download(filename: string, text: string) {
 }
 
 export function MeetingDetail({ id, state }: { id: string; state: PetState }) {
-  const { meeting: m, transcript, summary, error, missing, reload } = useMeeting(id);
+  const { meeting: m, transcript, summary, error, missing, reload, content } = useMeeting(id);
   const { run, busy, error: actionError } = useAction();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -361,6 +361,16 @@ export function MeetingDetail({ id, state }: { id: string; state: PetState }) {
       )}
       {processing && (
         <p className="muted">Kage is still working on this meeting; this page updates by itself.</p>
+      )}
+      {content === "fetching" && (
+        <p className="muted" role="status">
+          Fetching the transcript from Kage…
+        </p>
+      )}
+      {content === "unavailable" && (
+        <p className="error-text" role="alert">
+          Phoenix could not fetch this meeting's transcript from Kage. It is still in Kage.
+        </p>
       )}
 
       {summary && <SummaryView summary={summary} />}

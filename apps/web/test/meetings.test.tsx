@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { toMarkdown } from "../src/components/Meetings";
 import { PhoenixClient } from "../src/core/client";
@@ -14,6 +14,7 @@ import { FakeWebSocket } from "./fake-ws";
 beforeEach(() => FakeWebSocket.reset());
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   window.location.hash = "";
 });
 
@@ -229,6 +230,62 @@ describe("Meeting detail (US-06)", () => {
   it("explains a meeting that is gone", async () => {
     setup("#/meetings/kage%3A9");
     expect(await screen.findByText(/not in Phoenix/)).toBeTruthy();
+  });
+
+  describe("a finished meeting whose transcript has not been fetched yet", () => {
+    const finished = (over: Partial<Meeting> = {}) =>
+      meeting({ status: "transcribed", has_transcript: false, has_summary: false, ...over });
+    const noSummary = () => new Response("{}", { status: 404 });
+
+    it("says it is fetching, then shows the transcript when it lands", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      let polls = 0;
+      setup("#/meetings/kage%3A1", {
+        // Kage said "transcribed" but Phoenix has not pulled the text yet; the 3rd look has it.
+        "GET /api/meetings/kage:1": () =>
+          ++polls < 3 ? finished() : finished({ has_transcript: true }),
+        "GET /api/meetings/kage:1/summary": noSummary,
+      });
+      expect(await screen.findByText("Fetching the transcript from Kage…")).toBeTruthy();
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.queryByText("Hello everyone.")).toBeNull();
+
+      await act(() => vi.advanceTimersByTimeAsync(2_000));
+      expect(await screen.findByText("Hello everyone.")).toBeTruthy();
+      expect(screen.queryByText("Fetching the transcript from Kage…")).toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("gives up after a few tries and tells the user instead of spinning forever", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      let polls = 0;
+      setup("#/meetings/kage%3A1", {
+        "GET /api/meetings/kage:1": () => (polls++, finished()),
+        "GET /api/meetings/kage:1/summary": noSummary,
+      });
+      expect(await screen.findByText("Fetching the transcript from Kage…")).toBeTruthy();
+
+      await act(() => vi.advanceTimersByTimeAsync(10_000));
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toMatch(/could not fetch .* transcript/);
+      expect(screen.queryByText("Fetching the transcript from Kage…")).toBeNull();
+
+      // It stopped asking: the first load plus five retries, no more.
+      const asked = polls;
+      await act(() => vi.advanceTimersByTimeAsync(10_000));
+      expect(polls).toBe(asked);
+      expect(asked).toBe(6);
+    });
+
+    it("says nothing for a meeting that is still being processed", async () => {
+      setup("#/meetings/kage%3A1", {
+        "GET /api/meetings/kage:1": () =>
+          meeting({ status: "transcribing", has_transcript: false, has_summary: false }),
+      });
+      expect(await screen.findByText(/Kage is still working/)).toBeTruthy();
+      expect(screen.queryByText("Fetching the transcript from Kage…")).toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
   });
 
   it("exports Markdown with summary, action items and transcript", () => {

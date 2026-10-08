@@ -198,6 +198,12 @@ export function useMeetings(archived = false) {
   );
 }
 
+const MAX_CONTENT_RETRIES = 5;
+const CONTENT_RETRY_MS = 1_000;
+
+/** Whether a finished meeting's transcript has arrived: `fetching` is normal for a second or two. */
+export type MeetingContent = "ready" | "fetching" | "unavailable";
+
 /** One meeting with its transcript and summary, kept live. */
 export function useMeeting(id: string) {
   const client = useClient();
@@ -208,6 +214,7 @@ export function useMeeting(id: string) {
   }>({ meeting: null, transcript: null, summary: null });
   const [error, setError] = useState<string | null>(null);
   const [missing, setMissing] = useState(false);
+  const [content, setContent] = useState<MeetingContent>("ready");
 
   const reload = useCallback(async () => {
     const path = `/api/meetings/${encodeURIComponent(id)}`;
@@ -235,10 +242,17 @@ export function useMeeting(id: string) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const load = async () => {
       const m = await reload();
-      // Content is fetched from Kage just after the status event; check back until it lands.
-      const done = m?.status === "ready" || m?.status === "transcribed";
-      if (!cancelled && m && done && !m.has_transcript && retries++ < 5) {
-        timer = setTimeout(() => void load(), 1_000);
+      if (cancelled) return;
+      // Content is fetched from the capability just after the status event; check back until
+      // it lands, and say so if it never does.
+      const waiting =
+        !!m && (m.status === "ready" || m.status === "transcribed") && !m.has_transcript;
+      if (waiting && retries < MAX_CONTENT_RETRIES) {
+        retries++;
+        setContent("fetching");
+        timer = setTimeout(() => void load(), CONTENT_RETRY_MS);
+      } else {
+        setContent(waiting ? "unavailable" : "ready");
       }
     };
     void load();
@@ -255,7 +269,7 @@ export function useMeeting(id: string) {
     };
   }, [client, reload]);
 
-  return { ...data, error, missing, reload };
+  return { ...data, error, missing, reload, content };
 }
 
 /** Current hash route without the leading "#" ("/" when empty). */
