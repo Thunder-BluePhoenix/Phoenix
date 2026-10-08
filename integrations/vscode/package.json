@@ -1,0 +1,48 @@
+{
+  "name": "phoenix-vscode",
+  "displayName": "Phoenix for VS Code",
+  "description": "Shows your workspace, task results and error counts to Phoenix so Fawkes can react.",
+  "version": "0.1.0",
+  "publisher": "phoenix-contributors",
+  "license": "GPL-3.0-or-later",
+  "private": true,
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In an untrusted workspace the extension does not read a session token from the workspace folder."
+    },
+    "virtualWorkspaces": false
+  },
+  "contributes": {
+    "configuration": {
+      "title": "Phoenix",
+      "properties": {
+        "phoenix.coreUrl": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Phoenix Core URL. Must be a loopback address. Empty: `$PHOENIX_CORE_URL`, else `http://127.0.0.1:4870`."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "phoenix.showStatus",
+        "title": "Phoenix: Show connection status"
+      }
+    ]
+  }
+}

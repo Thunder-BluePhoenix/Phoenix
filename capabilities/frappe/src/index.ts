@@ -307,6 +307,21 @@ export async function pingSite(
   }
 }
 
+/** One entry of the `sites` command's result (what a panel view renders). */
+export interface SiteView {
+  site: string;
+  bench: string;
+  url: string;
+  url_source: UrlSource;
+  status: "checking" | "healthy" | "unhealthy";
+  consecutive_failures: number;
+  last_checked_at?: string;
+  last_ok_at?: string;
+  response_ms?: number;
+  error?: string;
+  apps: string[];
+}
+
 /** What Phoenix remembers about one site's health. */
 export interface SiteHealth {
   /** True once a ping has completed. */
@@ -659,7 +674,7 @@ export function createFrappeCapability(options: FrappeOptions = {}) {
       void loop(ctx, r);
     },
     commands: {
-      async sites() {
+      async sites(): Promise<{ sites: SiteView[] }> {
         await run?.firstCycle;
         return {
           sites: snapshot().map((s) => ({
@@ -713,7 +728,7 @@ export function createFrappeCapability(options: FrappeOptions = {}) {
       const summary = `${sites.length - down.length}/${sites.length} sites healthy`;
       const message = problems.length ? `${summary}; ${problems.join("; ")}` : summary;
       const allDown = sites.length > 0 && down.length === sites.length;
-      if (allDown || (!sites.length && broken.length === benches.length)) {
+      if (allDown || broken.length === benches.length) {
         return { status: "unhealthy", message };
       }
       if (down.length || broken.length || !sites.length) {

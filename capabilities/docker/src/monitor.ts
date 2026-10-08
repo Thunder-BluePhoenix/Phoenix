@@ -45,7 +45,6 @@ const ACTIVE: Readonly<Record<string, true>> = { running: true, paused: true, re
 /** Exit codes `docker stop` / `docker kill` / a user's Ctrl-C produce: SIGKILL and SIGTERM. */
 const SIGNAL_EXITS: Readonly<Record<number, true>> = { 137: true, 143: true };
 
-
 /** Printable, bounded text from an untrusted value, with credentials redacted. */
 function text(value: unknown, max: number): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -56,7 +55,7 @@ function text(value: unknown, max: number): string | undefined {
   return safe.length > max ? safe.slice(0, max - 1) + "…" : safe;
 }
 
-/** Image references can carry `user:password@registry/…`; keep only what follows the `@`-less part. */
+/** Image references can carry registry credentials (`user:pass@host/img`); those are dropped. */
 function imageName(value: unknown): string {
   const raw = text(value, 400)?.replace(/^[^/@\s]*:[^/@\s]*@/, "");
   return raw && raw.length > 200 ? raw.slice(0, 199) + "…" : (raw ?? "unknown");
@@ -67,7 +66,8 @@ const EXIT = /^(?:Exited|Restarting) \((-?\d{1,5})\)/;
 
 /** Parses `GET /containers/json?all=true`. Entries that are not well-formed are skipped. */
 export function parseContainerList(raw: unknown): ContainerSnapshot[] {
-  if (!Array.isArray(raw)) throw new Error("Docker returned a container list in an unexpected format");
+  if (!Array.isArray(raw))
+    throw new Error("Docker returned a container list in an unexpected format");
   const out: ContainerSnapshot[] = [];
   for (const item of raw.slice(0, MAX_CONTAINERS) as unknown[]) {
     if (!isRecord(item)) continue;
@@ -75,7 +75,11 @@ export function parseContainerList(raw: unknown): ContainerSnapshot[] {
     if (typeof fullId !== "string" || !/^[0-9a-f]{12,64}$/.test(fullId)) continue;
     const id = fullId.slice(0, 12);
     const names = Array.isArray(item.Names) ? (item.Names as unknown[]) : [];
-    const name = text(names.find((n) => typeof n === "string"), 100)?.replace(/^\//, "") || id;
+    const name =
+      text(
+        names.find((n) => typeof n === "string"),
+        100,
+      )?.replace(/^\//, "") || id;
     const status = typeof item.Status === "string" ? item.Status : "";
     const healthText = HEALTH.exec(status)?.[1];
     const exit = EXIT.exec(status)?.[1];
@@ -198,11 +202,14 @@ export function diffContainers(
     }
     if (c.state === "running" && c.health === "unhealthy" && p?.health !== "unhealthy") {
       events.push(event("docker.container.unhealthy", c, "warning"));
-    } else if (p?.health === "unhealthy" && c.state === "running" && c.health !== "unhealthy") {
-      // A restart resets health to "starting"; either way the warning is over.
-      events.push(
-        event(c.health === "healthy" ? "docker.container.healthy" : "docker.container.started", c, "info"),
-      );
+    } else if (
+      c.state === "running" &&
+      c.health === "healthy" &&
+      (p?.health === "unhealthy" || p?.health === "starting")
+    ) {
+      // "starting" (after a restart) is not proof of recovery, so a warning stays until the
+      // container is healthy; the healthy event is what clears it.
+      events.push(event("docker.container.healthy", c, "info"));
     }
   }
   for (const p of Object.values(prev ?? {})) {

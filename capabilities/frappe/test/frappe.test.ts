@@ -16,6 +16,7 @@ import {
   resolveSiteUrl,
   type PingResult,
   type SiteHealth,
+  type SiteView,
 } from "../src";
 import {
   REMOTE_MARKER,
@@ -628,9 +629,7 @@ describe("frappe capability", () => {
     await h.enable("frappe");
     await clock.started();
     const op = await h.run("frappe", "sites");
-    const sites = (
-      op.result as { sites: { site: string; url: string; url_source: string; status: string }[] }
-    ).sites;
+    const { sites } = op.result as { sites: SiteView[] }; // the handler's declared return type
     expect(sites.map((s) => [s.site, s.url, s.url_source, s.status])).toEqual([
       ["host.localhost", viaHost.url, "host_name", "healthy"],
       ["over.localhost", mock.url, "override", "healthy"],
@@ -700,7 +699,7 @@ describe("frappe capability", () => {
     r.mock.serveOnly(["a.localhost"]);
     await r.tick();
     const op = await r.h.run("frappe", "sites");
-    expect(op.status).toBe("completed");
+    expect(op.status).toBe("succeeded");
     expect(op.result).toEqual({
       sites: [
         {
@@ -723,6 +722,7 @@ describe("frappe capability", () => {
           status: "healthy", // one failure so far: not yet reported
           consecutive_failures: 1,
           last_checked_at: expect.any(String),
+          last_ok_at: expect.any(String),
           response_ms: expect.any(Number),
           error: "HTTP 404",
           apps: ["frappe", "erpnext"],
@@ -730,14 +730,14 @@ describe("frappe capability", () => {
       ],
     });
     await r.tick();
-    const after = (await r.h.run("frappe", "sites")).result as { sites: { status: string }[] };
+    const afterOp = await r.h.run("frappe", "sites");
+    const after = afterOp.result as { sites: SiteView[] }; // handler's declared return type
     expect(after.sites.map((s) => s.status)).toEqual(["healthy", "unhealthy"]);
   });
 
   it("never lets anything from site_config.json or common_site_config.json out", async () => {
     const r = await rig({
       sites: [{ name: "a.localhost", host_name: "http://127.0.0.1:1" }, { name: "b.localhost" }],
-      config: { sites: { "a.localhost": undefined } },
     });
     // A third site whose config is not valid JSON (the parse error text would quote it).
     mkdirSync(join(r.bench, "sites", "broken.localhost"));
@@ -786,10 +786,11 @@ describe("frappe capability", () => {
     // Re-enabling starts fresh, hangs, and is then disabled mid-request.
     r.mock.setMode("hang");
     const events = r.h.events.length;
+    const abandoned = r.mock.closedEarly;
     await r.h.enable("frappe");
     await vi.waitFor(() => expect(r.mock.requests.length).toBe(requests + 1));
     await r.h.manager.disable("frappe");
-    await vi.waitFor(() => expect(r.mock.closedEarly).toBe(1));
+    await vi.waitFor(() => expect(r.mock.closedEarly).toBe(abandoned + 1));
     await r.h.drain();
     expect(r.h.events.slice(events).map((e) => e.event_type)).not.toContain(
       "frappe.site.unhealthy",

@@ -1,0 +1,191 @@
+[
+  {
+    "id": 5588128885,
+    "number": 338046,
+    "title": "active agent window session loses highlight after opening customizations",
+    "html_url": "https://github.com/microsoft/vscode/issues/338046",
+    "state": "open",
+    "state_reason": null,
+    "created_at": "2026-09-25T20:29:25Z",
+    "updated_at": "2026-10-08T19:25:56Z",
+    "closed_at": null,
+    "labels": [
+      {
+        "id": 316813364,
+        "name": "accessibility"
+      },
+      {
+        "id": 10081138493,
+        "name": "agents-window"
+      },
+      {
+        "id": 10270220154,
+        "name": "ai-customizations"
+      }
+    ],
+    "assignees": [
+      {
+        "id": 39639992,
+        "login": "dev-1",
+        "type": "User"
+      },
+      {
+        "id": 44439583,
+        "login": "dev-2",
+        "type": "User"
+      }
+    ]
+  },
+  {
+    "id": 5651755749,
+    "number": 338966,
+    "title": "Rethink the customization migration banner in the editor chat panel",
+    "html_url": "https://github.com/microsoft/vscode/issues/338966",
+    "state": "open",
+    "state_reason": null,
+    "created_at": "2026-09-30T19:17:17Z",
+    "updated_at": "2026-10-08T19:25:29Z",
+    "closed_at": null,
+    "labels": [
+      {
+        "id": 10270220154,
+        "name": "ai-customizations"
+      }
+    ],
+    "assignees": [
+      {
+        "id": 39639992,
+        "login": "dev-1",
+        "type": "User"
+      }
+    ]
+  },
+  {
+    "id": 4901662517,
+    "number": 326146,
+    "title": "Preserve option to keep current UI: The so-called Modern UI is disgusting and objectively inferior",
+    "html_url": "https://github.com/microsoft/vscode/issues/326146",
+    "state": "open",
+    "state_reason": null,
+    "created_at": "2026-07-16T11:46:18Z",
+    "updated_at": "2026-10-08T19:25:10Z",
+    "closed_at": null,
+    "labels": [
+      {
+        "id": 11459895404,
+        "name": "modernization"
+      }
+    ],
+    "assignees": [
+      {
+        "id": 7075677,
+        "login": "dev-3",
+        "type": "User"
+      },
+      {
+        "id": 25487940,
+        "login": "dev-4",
+        "type": "User"
+      }
+    ]
+  },
+  {
+    "id": 5635845724,
+    "number": 338750,
+    "title": "Agents window truncates custom agents",
+    "html_url": "https://github.com/microsoft/vscode/issues/338750",
+    "state": "open",
+    "state_reason": null,
+    "created_at": "2026-09-29T19:26:30Z",
+    "updated_at": "2026-10-08T19:24:20Z",
+    "closed_at": null,
+    "labels": [
+      {
+        "id": 10270220154,
+        "name": "ai-customizations"
+      }
+    ],
+    "assignees": [
+      {
+        "id": 39639992,
+        "login": "dev-1",
+        "type": "User"
+      }
+    ]
+  },
+  {
+    "id": 5767663948,
+    "number": 340566,
+    "title": "agentHost: preserve Codespaces tokens in remote sessions",
+    "html_url": "https://github.com/microsoft/vscode/pull/340566",
+    "state": "open",
+    "state_reason": null,
+    "created_at": "2026-10-08T19:24:51Z",
+    "updated_at": "2026-10-08T19:26:41Z",
+    "closed_at": null,
+    "labels": [],
+    "assignees": [
+      {
+        "id": 2230985,
+        "login": "dev-5",
+        "type": "User"
+      }
+    ],
+    "pull_request": {
+      "url": "https://api.github.com/repos/microsoft/vscode/pulls/340566"
+    }
+  },
+  {
+    "id": 5765606486,
+    "number": 340525,
+    "title": "test: tolerate extension download retry warnings in sanity tests",
+    "html_url": "https://github.com/microsoft/vscode/pull/340525",
+    "state": "open",
+    "state_reason": null,
+    "created_at": "2026-10-08T16:47:07Z",
+    "updated_at": "2026-10-08T19:24:18Z",
+    "closed_at": null,
+    "labels": [],
+    "assignees": [
+      {
+        "id": 12552271,
+        "login": "dev-6",
+        "type": "User"
+      }
+    ],
+    "pull_request": {
+      "url": "https://api.github.com/repos/microsoft/vscode/pulls/340525"
+    }
+  },
+  {
+    "id": 5767691976,
+    "number": 340569,
+    "title": "claude ate 100 credits to scan a file?",
+    "html_url": "https://github.com/microsoft/vscode/issues/340569",
+    "state": "open",
+    "state_reason": null,
+    "created_at": "2026-10-08T19:27:04Z",
+    "updated_at": "2026-10-08T19:27:04Z",
+    "closed_at": null,
+    "labels": [],
+    "assignees": []
+  },
+  {
+    "id": 5767676848,
+    "number": 340567,
+    "title": "Regression: Chat slash command suggestions no longer prioritize prefix matches over fuzzy matches",
+    "html_url": "https://github.com/microsoft/vscode/issues/340567",
+    "state": "open",
+    "state_reason": null,
+    "created_at": "2026-10-08T19:25:52Z",
+    "updated_at": "2026-10-08T19:26:42Z",
+    "closed_at": null,
+    "labels": [
+      {
+        "id": 12580738481,
+        "name": "new release"
+      }
+    ],
+    "assignees": []
+  }
+]

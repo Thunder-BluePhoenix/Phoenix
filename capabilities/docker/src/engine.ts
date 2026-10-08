@@ -64,7 +64,9 @@ export function dockerGet(
   options: DockerGetOptions = {},
 ): Promise<string> {
   if (!ALLOWED_PATHS.some((re) => re.test(path))) {
-    return Promise.reject(new DockerError("refused", `Phoenix does not request ${path} from Docker`));
+    return Promise.reject(
+      new DockerError("refused", `Phoenix does not request ${path} from Docker`),
+    );
   }
   const maxBytes = options.maxBytes ?? MAX_LIST_BYTES;
   const timeout = AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
@@ -72,7 +74,14 @@ export function dockerGet(
   const done = Promise.withResolvers<string>();
 
   const req = request(
-    { socketPath, path, method: "GET", headers: { accept: "application/json" }, agent: false, signal },
+    {
+      socketPath,
+      path,
+      method: "GET",
+      headers: { accept: "application/json" },
+      agent: false,
+      signal,
+    },
     (res) => {
       if (res.statusCode !== 200) {
         res.resume();
@@ -81,8 +90,8 @@ export function dockerGet(
       }
       const declared = Number(res.headers["content-length"] ?? 0);
       if (declared > maxBytes) {
-        res.destroy();
         done.reject(new DockerError("too_large", "Docker's reply is larger than Phoenix accepts"));
+        res.destroy();
         return;
       }
       const chunks: Buffer[] = [];
@@ -90,10 +99,11 @@ export function dockerGet(
       res.on("data", (chunk: Buffer) => {
         size += chunk.length;
         if (size > maxBytes) {
-          res.destroy();
+          // Reject before destroying: destroy() also fires the "aborted" handler below.
           done.reject(
             new DockerError("too_large", "Docker's reply is larger than Phoenix accepts"),
           );
+          res.destroy();
           return;
         }
         chunks.push(chunk);
@@ -139,7 +149,10 @@ function failure(
     );
   }
   if (code === "ENOENT" || code === "ECONNREFUSED" || code === "ENOTSOCK") {
-    return new DockerError("not_running", `Docker is not running (nothing is listening on ${socketPath})`);
+    return new DockerError(
+      "not_running",
+      `Docker is not running (nothing is listening on ${socketPath})`,
+    );
   }
   return new DockerError("http", `Could not talk to Docker${code ? ` (${code})` : ""}`);
 }

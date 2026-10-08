@@ -1,0 +1,91 @@
+[
+  {
+    "id": 5149342878,
+    "number": 330802,
+    "title": "New UI has a bad UX",
+    "html_url": "https://github.com/microsoft/vscode/issues/330802",
+    "state": "closed",
+    "state_reason": "completed",
+    "created_at": "2026-08-14T07:23:34Z",
+    "updated_at": "2026-10-08T19:23:33Z",
+    "closed_at": "2026-10-08T19:20:03Z",
+    "labels": [
+      {
+        "id": 11459895404,
+        "name": "modernization"
+      }
+    ],
+    "assignees": [
+      {
+        "id": 7075677,
+        "login": "dev-3",
+        "type": "User"
+      },
+      {
+        "id": 25487940,
+        "login": "dev-4",
+        "type": "User"
+      }
+    ]
+  },
+  {
+    "id": 3802191583,
+    "number": 287037,
+    "title": "Confusing OSC-8 vs. working hyperlink behavior.",
+    "html_url": "https://github.com/microsoft/vscode/issues/287037",
+    "state": "closed",
+    "state_reason": "duplicate",
+    "created_at": "2026-01-11T22:39:37Z",
+    "updated_at": "2026-10-08T19:19:12Z",
+    "closed_at": "2026-10-08T19:18:12Z",
+    "labels": [
+      {
+        "id": 366106217,
+        "name": "*duplicate"
+      }
+    ],
+    "assignees": [
+      {
+        "id": 62267334,
+        "login": "dev-7",
+        "type": "User"
+      }
+    ]
+  },
+  {
+    "id": 594970013,
+    "number": 94513,
+    "title": "Terminal canvas context loss is not handled",
+    "html_url": "https://github.com/microsoft/vscode/issues/94513",
+    "state": "closed",
+    "state_reason": "not_planned",
+    "created_at": "2020-04-06T09:53:04Z",
+    "updated_at": "2026-10-08T19:18:46Z",
+    "closed_at": "2026-10-08T19:18:46Z",
+    "labels": [
+      {
+        "id": 256129993,
+        "name": "bug"
+      },
+      {
+        "id": 286886536,
+        "name": "upstream"
+      },
+      {
+        "id": 1604923147,
+        "name": "upstream-issue-linked"
+      },
+      {
+        "id": 2174594138,
+        "name": "terminal-rendering"
+      }
+    ],
+    "assignees": [
+      {
+        "id": 62267334,
+        "login": "dev-7",
+        "type": "User"
+      }
+    ]
+  }
+]

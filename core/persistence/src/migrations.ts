@@ -152,4 +152,84 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX meetings_updated ON meetings (updated_at);
     `,
   },
+  {
+    version: 6,
+    name: "policy",
+    sql: `
+      CREATE TABLE policy_rules (
+        id TEXT PRIMARY KEY,
+        rule TEXT NOT NULL,             -- JSON, validated by @phoenix/policy on write and on read
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE policy_approvals (
+        id TEXT PRIMARY KEY,
+        tool_pattern TEXT NOT NULL,
+        environment TEXT NOT NULL,
+        resource TEXT NOT NULL,
+        actor_id TEXT,                  -- NULL = any agent
+        created_by TEXT NOT NULL,
+        created_at INTEGER NOT NULL,    -- epoch ms
+        expires_at INTEGER NOT NULL,    -- epoch ms; enforced at decision time
+        revoked_at INTEGER
+      );
+      CREATE INDEX policy_approvals_expiry ON policy_approvals (expires_at);
+    `,
+  },
+  {
+    version: 7,
+    name: "memory",
+    sql: `
+      CREATE TABLE memory_items (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,   -- FTS rowid; never reused
+        id TEXT NOT NULL UNIQUE,
+        dedupe_key TEXT NOT NULL UNIQUE,         -- stable identity of the source fact; blocks duplicates
+        source TEXT NOT NULL,                    -- capability that produced it ("git", "kage", "project-docs")
+        source_ref TEXT NOT NULL,                -- what it came from: event id / meeting id / file path
+        owner TEXT NOT NULL,
+        scope TEXT NOT NULL,                     -- "repo:<name>", "meeting:<id>", "path:<abs>", "global"
+        layer TEXT NOT NULL CHECK (layer IN ('working', 'episodic', 'project', 'preference')),
+        domain TEXT NOT NULL,                    -- git | meeting | project | preference | general
+        kind TEXT NOT NULL CHECK (kind IN ('fact', 'interpretation')),
+        text TEXT NOT NULL,                      -- '' once tombstoned
+        created_at TEXT NOT NULL,
+        observed_at TEXT NOT NULL,               -- when the thing happened (commit time, meeting start)
+        last_confirmed_at TEXT NOT NULL,         -- freshness: last time the source still said this
+        freshness_ttl_days INTEGER,              -- NULL = never goes stale
+        sensitivity TEXT NOT NULL CHECK (sensitivity IN ('public', 'internal', 'sensitive')),
+        provenance TEXT NOT NULL,                -- JSON: event id, meeting id, sha, model + provider ...
+        confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+        retention_days INTEGER,
+        expires_at TEXT,
+        deleted_at TEXT                          -- tombstone: content purged, dedupe_key kept so it is not re-captured
+      );
+      CREATE INDEX memory_items_domain_observed ON memory_items (domain, observed_at);
+      CREATE INDEX memory_items_source_ref ON memory_items (source, source_ref);
+      CREATE INDEX memory_items_scope ON memory_items (scope);
+      CREATE INDEX memory_items_expires ON memory_items (expires_at);
+
+      -- Lexical index (bm25). Contentless: the text lives only in memory_items, so a delete there
+      -- must delete here too; the triggers below make that impossible to forget.
+      CREATE VIRTUAL TABLE memory_fts USING fts5(
+        text, content = '', contentless_delete = 1, tokenize = 'porter unicode61'
+      );
+      CREATE TRIGGER memory_items_unindex_delete AFTER DELETE ON memory_items
+      BEGIN
+        DELETE FROM memory_fts WHERE rowid = old.seq;
+      END;
+      CREATE TRIGGER memory_items_unindex_update AFTER UPDATE OF text, deleted_at ON memory_items
+      BEGIN
+        DELETE FROM memory_fts WHERE rowid = old.seq;
+      END;
+
+      -- Per-source ingest state (for example the content hash of a project doc).
+      CREATE TABLE memory_sources (
+        source_key TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        ingested_at TEXT NOT NULL
+      );
+    `,
+  },
 ];
