@@ -39,11 +39,13 @@ import type {
   MemoryItemView,
   MemoryPageView,
   MemorySettingsView,
+  RetrievalInfoView,
 } from "@phoenix/api";
 import type { CapabilityManager } from "@phoenix/capability-manager";
 import type { EventBus } from "@phoenix/event-bus";
 import type { Logger } from "@phoenix/logging";
 import type { AuditLog } from "@phoenix/permissions";
+import type { RetrievalRuntime } from "./retrieval";
 import type { Database, MeetingStore, SettingsStore } from "@phoenix/persistence";
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
 
@@ -120,6 +122,18 @@ export interface MemoryRuntimeDeps {
   now?: () => Date;
 }
 
+/** What other Phoenix parts must do when memory changes under them. Set once, by the runtime. */
+export interface MemoryHooks {
+  /** Reviewed facts were forgotten: their meeting items must not stay accepted. */
+  rejectItems(itemIds: readonly string[]): void;
+  /** Sensitive meetings were allowed again: re-derive facts and items from the meeting store. */
+  meetingsAllowed(): void;
+  /** Sensitive meetings were switched off: whatever was derived from meetings must go. */
+  meetingsRevoked(): void;
+}
+
+const REVIEW_SOURCE = "meeting-review";
+
 export class MemoryRuntime implements MemoryApi {
   readonly store: MemoryStore;
   readonly pipeline: MemoryPipeline;
@@ -127,6 +141,8 @@ export class MemoryRuntime implements MemoryApi {
   private readonly viewer: Viewer;
   private readonly unsubscribe: () => void;
   private readonly stopMeetingSync: () => void;
+  private hooks: MemoryHooks | null = null;
+  private retrieval: RetrievalRuntime | null = null;
   private docChain: Promise<unknown> = Promise.resolve();
   private meetingSyncQueued = false;
   private closed = false;
@@ -176,6 +192,8 @@ export class MemoryRuntime implements MemoryApi {
   private isSourceEnabled(source: string): boolean {
     if (source === "git") return this.current().capture_git;
     if (source === "project-docs") return true;
+    // Facts made from items the user reviewed. Sensitive ones still need allow_sensitive_meetings.
+    if (source === REVIEW_SOURCE) return true;
     try {
       return this.d.capabilities.get(source).status === "enabled";
     } catch {
@@ -189,10 +207,17 @@ export class MemoryRuntime implements MemoryApi {
 
   // ── Startup and schedule ───────────────────────────────────────────────────
 
-  /** Expiry plus a docs refresh. Called at startup and by the hourly pruner. */
+  /** Wires the parts that depend on memory (they are built after it). */
+  attach(parts: { hooks: MemoryHooks; retrieval: RetrievalRuntime }): void {
+    this.hooks = parts.hooks;
+    this.retrieval = parts.retrieval;
+  }
+
+  /** Expiry, a docs refresh, then (when retrieval is on) embedding of what is new. */
   async maintain(): Promise<void> {
     this.expire();
     await this.syncDocs();
+    await this.retrieval?.index();
   }
 
   /** Tombstones memories whose retention ran out. */
@@ -298,37 +323,76 @@ export class MemoryRuntime implements MemoryApi {
     };
   }
 
-  search(query: { text: string; domain?: string; limit: number }): {
+  async search(query: { text: string; domain?: string; limit: number }): Promise<{
     items: (MemoryItemView & { score: number })[];
-  } {
+    retrieval: RetrievalInfoView;
+  }> {
     if (query.domain !== undefined && !isDomain(query.domain)) throw invalid("Unknown domain");
+    if (this.retrieval) {
+      const hybrid = await this.retrieval.searchMemory({
+        text: query.text,
+        viewer: this.viewer,
+        ...(query.domain ? { domain: query.domain } : {}),
+        limit: query.limit,
+      });
+      if (hybrid.hits !== null) {
+        return {
+          items: hybrid.hits.map((h) => ({ ...toView(h.item), score: h.score })),
+          retrieval: hybrid.info,
+        };
+      }
+    }
+    const info: RetrievalInfoView = this.retrieval?.lexicalInfo() ?? { mode: "lexical" };
     const match = buildMatchQuery(query.text);
-    if (match === null) return { items: [] };
+    if (match === null) return { items: [], retrieval: info };
     const hits = this.store.search({
       match,
       ...(query.domain ? { domain: query.domain } : {}),
       limit: query.limit,
       accept: this.accept,
     });
-    return { items: hits.map((h) => ({ ...toView(h.item), score: h.score })) };
+    return { items: hits.map((h) => ({ ...toView(h.item), score: h.score })), retrieval: info };
+  }
+
+  /** Item ids behind the reviewed facts this viewer can see (optionally just one fact). */
+  private reviewedItemIds(factId?: string): string[] {
+    const ids: string[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const page = this.store.list({ domain: "meeting", limit: 500, offset });
+      for (const f of page) {
+        const itemId = f.provenance.item_id;
+        if (f.source !== REVIEW_SOURCE || typeof itemId !== "string" || !canView(this.viewer, f)) {
+          continue;
+        }
+        if (factId === undefined || f.id === factId) ids.push(itemId);
+      }
+      if (page.length < 500) break;
+    }
+    return ids;
   }
 
   forget(id: string): boolean {
     const item = this.store.get(id);
     // Not visible to this viewer = does not exist, as far as the caller can tell.
     if (!item || item.deletedAt || !canView(this.viewer, item)) return false;
+    const reviewed = item.source === REVIEW_SOURCE ? this.reviewedItemIds(id) : [];
     const forgotten = this.store.forget(id);
-    if (forgotten) this.record("memory.forgotten", { count: 1 });
+    if (forgotten) {
+      this.record("memory.forgotten", { count: 1 });
+      this.hooks?.rejectItems(reviewed);
+    }
     return forgotten;
   }
 
   deleteAll(domain?: string): number {
     if (domain !== undefined && !isDomain(domain)) throw invalid("Unknown domain");
+    const reviewed = !domain || domain === "meeting" ? this.reviewedItemIds() : [];
     const deleted = this.store.forgetWhere({
       ...(domain ? { domain } : {}),
       accept: this.accept,
     });
     this.record("memory.deleted", { count: deleted, ...(domain ? { domain } : { all: true }) });
+    this.hooks?.rejectItems(reviewed);
     return deleted;
   }
 
@@ -433,11 +497,14 @@ export class MemoryRuntime implements MemoryApi {
     }
     this.expire();
     if (before.allow_sensitive_meetings !== next.allow_sensitive_meetings) {
-      if (next.allow_sensitive_meetings) this.syncMeetings();
-      else {
+      if (next.allow_sensitive_meetings) {
+        this.syncMeetings();
+        this.hooks?.meetingsAllowed();
+      } else {
         // Turning the permission off takes the meeting memories out, not just stops new ones.
         const removed = this.store.purge({ domain: "meeting" });
         this.record("memory.deleted", { count: removed, domain: "meeting", reason: "opt-out" });
+        this.hooks?.meetingsRevoked();
       }
     }
   }
@@ -454,15 +521,18 @@ export class MemoryRuntime implements MemoryApi {
   }
 
   async ask(question: string): Promise<MemoryAnswerView> {
-    const answer = await ask(
-      {
-        question,
-        viewer: this.viewer,
-        limit: ASK_LIMIT,
-        tokenBudget: ASK_TOKEN_BUDGET,
-      },
-      { engine: this.engine, generate: generateWith(this.d.ai) },
-    );
+    const request = {
+      question,
+      viewer: this.viewer,
+      limit: ASK_LIMIT,
+      tokenBudget: ASK_TOKEN_BUDGET,
+    };
+    const prepared = this.retrieval ? await this.retrieval.preparedEngine(request) : null;
+    const info: RetrievalInfoView = prepared?.info ?? { mode: "lexical" };
+    const answer = await ask(request, {
+      engine: prepared?.engine ?? this.engine,
+      generate: generateWith(this.d.ai),
+    });
     return {
       // Stored facts only: a model's earlier output (storedInterpretations) is never listed as one.
       facts: answer.facts.map((f) => ({
@@ -478,6 +548,7 @@ export class MemoryRuntime implements MemoryApi {
       processed_by: answer.model?.processedBy ?? null,
       ai_used: answer.interpretation !== null,
       note: answer.noInterpretationReason,
+      retrieval: info,
     };
   }
 }

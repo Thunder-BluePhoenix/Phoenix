@@ -93,6 +93,7 @@ export interface MemoryAnswerView {
   processed_by: string | null;
   ai_used: boolean;
   note: string | null;
+  retrieval: RetrievalInfoView;
 }
 
 /**
@@ -101,9 +102,10 @@ export interface MemoryAnswerView {
  */
 export interface MemoryApi {
   browse(query: { domain?: string; layer?: string; limit: number; offset: number }): MemoryPageView;
-  search(query: { text: string; domain?: string; limit: number }): {
+  search(query: { text: string; domain?: string; limit: number }): Promise<{
     items: (MemoryItemView & { score: number })[];
-  };
+    retrieval: RetrievalInfoView;
+  }>;
   /** False when the id is unknown or not visible to the caller (the two are indistinguishable). */
   forget(id: string): boolean;
   /** Returns how many memories were deleted. `domain` absent = every visible memory. */
@@ -111,6 +113,193 @@ export interface MemoryApi {
   settings(): MemorySettingsView;
   setSettings(input: unknown): Promise<MemorySettingsView>;
   ask(question: string): Promise<MemoryAnswerView>;
+}
+
+/** One reviewable decision, action item or other item taken from a meeting (Phase 35 contract). */
+export interface MeetingItemView {
+  id: string;
+  meeting_id: string;
+  kind: "decision" | "action_item" | "requirement" | "topic" | "project_ref";
+  text: string;
+  /** Action items only. */
+  owner: string | null;
+  due: string | null;
+  status: "proposed" | "accepted" | "edited" | "rejected";
+  /** "kage", "manual" or "ai:<provider>/<model>". */
+  extracted_by: string;
+  evidence: {
+    source: "transcript" | "summary";
+    quote: string;
+    segment_start?: number;
+    segment_end?: number;
+    char_start?: number;
+    char_end?: number;
+  } | null;
+  /** The wording before the first edit; null if never edited. */
+  original: { text: string; owner: string | null; due: string | null } | null;
+  created_at: string;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+}
+
+export interface MeetingItemListView {
+  meeting_id: string;
+  items: MeetingItemView[];
+  /** Over ALL items of the meeting, ignoring the status and kind filters. */
+  counts: Record<"proposed" | "accepted" | "edited" | "rejected", number>;
+}
+
+export interface MeetingReviewResultView {
+  item: MeetingItemView;
+  /** What the action did to memory: facts stored, and why memory refused an accepted item. */
+  memory: { stored: number; refused: string[] };
+}
+
+export interface MeetingExtractionView {
+  meeting_id: string;
+  has_transcript: boolean;
+  kage: { imported: number; duplicates: number; removed: number };
+  /** null when the meeting has no transcript. */
+  ai: {
+    stored: number;
+    /** Why no model was used, in words for the user; null when one was. */
+    unavailable: string | null;
+    stats: {
+      chunks: number;
+      chars_skipped: number;
+      proposed: number;
+      grounded: number;
+      dropped: Record<
+        "malformed" | "no_quote" | "quote_unusable" | "quote_not_found" | "text_not_supported",
+        number
+      >;
+      owners_dropped: number;
+      dues_dropped: number;
+      ignored_fields: number;
+      duplicates: number;
+      capped: number;
+      unparseable_chunks: number;
+      failed_chunks: number;
+    };
+  } | null;
+  counts: MeetingItemListView["counts"];
+}
+
+export interface MeetingHitView {
+  meeting_id: string;
+  /** The reviewed item behind the fact; null for facts from Kage's own summary. */
+  item_id: string | null;
+  memory_id: string;
+  text: string;
+  /** "reviewed": accepted in Phoenix. "kage": from Kage's summary, not reviewed here. */
+  origin: "reviewed" | "kage";
+  /** decision | action_item | summary ... */
+  part: string;
+  observed_at: string;
+  freshness: "fresh" | "stale";
+  score: number;
+}
+
+export interface MeetingSearchView {
+  query: string;
+  hits: MeetingHitView[];
+  total: number;
+  retrieval: RetrievalInfoView;
+}
+
+export interface MeetingAskView {
+  question: string;
+  /** Stored facts only, each with the meeting (and item) it came from. */
+  facts: {
+    ref: string;
+    text: string;
+    meeting_id: string;
+    item_id: string | null;
+    memory_id: string;
+    origin: "reviewed" | "kage";
+  }[];
+  /** Generated from the facts above; null when no AI was used. */
+  interpretation: string | null;
+  processed_by: string | null;
+  ai_used: boolean;
+  note: string | null;
+  retrieval: RetrievalInfoView;
+}
+
+/** How a search or ask found its facts (Phase 37). Additive on every retrieval response. */
+export interface RetrievalInfoView {
+  mode: "lexical" | "hybrid";
+  /** Why the vector half was not used, when retrieval is enabled but fell back. */
+  vector_skipped_reason?: string;
+  /** The vector scan hit its cap and left the oldest memories out. */
+  truncated?: boolean;
+}
+
+/** Review of meeting items, meeting search and questions. The service applies the viewer itself. */
+export interface MeetingReviewApi {
+  list(meetingId: string, filter: { status?: string; kind?: string }): MeetingItemListView;
+  extract(meetingId: string): Promise<MeetingExtractionView>;
+  add(
+    meetingId: string,
+    input: { kind: string; text: string; owner?: string | null; due?: string | null },
+  ): MeetingReviewResultView;
+  accept(itemId: string): MeetingReviewResultView;
+  reject(itemId: string): MeetingReviewResultView;
+  reopen(itemId: string): MeetingReviewResultView;
+  edit(
+    itemId: string,
+    change: { text: string; owner?: string | null; due?: string | null },
+  ): MeetingReviewResultView;
+  search(query: string, limit: number): Promise<MeetingSearchView>;
+  ask(question: string): Promise<MeetingAskView>;
+}
+
+export interface RetrievalSettingsView {
+  /** Off by default. Needs AI to be on as well: with AI off nothing is embedded. */
+  enabled: boolean;
+  provider: string;
+  model: string;
+  /** Reciprocal-rank-fusion constant (1-200). Default 20. */
+  k: number;
+  /** Weight of the vector list against the keyword list (0-5). Default 0.5. */
+  vector_weight: number;
+  /** "feature" = deterministic reranker; "none". The model reranker is not offered. */
+  reranker: "feature" | "none";
+}
+
+export interface RetrievalStatusView {
+  enabled: boolean;
+  /** True when search and ask use the vector index right now (enabled and AI on). */
+  active: boolean;
+  /** "retrieval_disabled" | "ai_disabled" when not active. */
+  inactive_reason: string | null;
+  provider: string;
+  model: string;
+  /** Vectors are only compared inside one space: `<provider>/<model>` (+ `#prefixed`). */
+  vector_space: string;
+  /** Memories with a vector in the active space / live memories in total. */
+  embedded: number;
+  total: number;
+  unembedded: number;
+  /** Memories whose embedding failed and is waiting to be retried. */
+  failures: number;
+  /** Vectors left from other embedding models (never used for search). */
+  other_models: { model: string; vectors: number }[];
+  payload_bytes: number;
+  last_run: {
+    at: string;
+    embedded: number;
+    failed: number;
+    remaining: number;
+    capped: boolean;
+    degraded: string[];
+  } | null;
+}
+
+export interface RetrievalApi {
+  settings(): RetrievalSettingsView;
+  setSettings(input: unknown): RetrievalSettingsView;
+  status(): RetrievalStatusView;
 }
 
 export interface AiStatusView {
@@ -285,6 +474,8 @@ export interface CoreServices {
     deleteAll(kind: unknown, confirm: unknown): unknown;
   };
   memory?: MemoryApi;
+  meetingReview?: MeetingReviewApi;
+  retrieval?: RetrievalApi;
   ai?: AiApi;
   agents?: AgentApi;
   petSettings?(): unknown;

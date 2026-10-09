@@ -604,6 +604,38 @@ export const MIGRATIONS: readonly Migration[] = [
     `,
   },
   {
+    version: 15,
+    name: "agent_links",
+    sql: `
+      -- Phase 34: which commits, CI runs, pull requests and tasks happened during which orchestrated
+      -- coding-agent session. A link says "observed during", never "written by". Rows hold ids and
+      -- the reason for the link (rule + inputs), never agent output or prompts.
+      CREATE TABLE agent_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT,                   -- NULL only while confidence = 'ambiguous'
+        kind TEXT NOT NULL CHECK (kind IN ('commit', 'ci_run', 'pr', 'task')),
+        ref TEXT NOT NULL,                 -- full sha, run id, pr number or the user's task reference
+        repo TEXT NOT NULL,                -- repository name (commit) or owner/name (ci_run, pr); '' for tasks
+        confidence TEXT NOT NULL CHECK (confidence IN
+          ('time+path', 'sha-match', 'branch-match', 'user', 'ambiguous')),
+        source TEXT NOT NULL,              -- id of the event (or command) that caused the link
+        why TEXT NOT NULL,                 -- JSON: the rule and the inputs it used
+        detail TEXT,                       -- JSON: latest facts about the linked thing (event type, conclusion)
+        candidates TEXT,                   -- JSON array of session ids; only for 'ambiguous'
+        created_at INTEGER NOT NULL,
+        resolved_at INTEGER                -- set on an ambiguous row once the user picked a session
+      );
+      -- One link per session and thing; redelivered events cannot duplicate it.
+      CREATE UNIQUE INDEX agent_links_unique
+        ON agent_links (session_id, kind, ref, repo) WHERE session_id IS NOT NULL;
+      -- One open ambiguity per thing.
+      CREATE UNIQUE INDEX agent_links_ambiguous
+        ON agent_links (kind, ref, repo) WHERE confidence = 'ambiguous' AND resolved_at IS NULL;
+      CREATE INDEX agent_links_session ON agent_links (session_id);
+      CREATE INDEX agent_links_ref ON agent_links (kind, ref);
+    `,
+  },
+  {
     version: 16,
     name: "plan_links",
     sql: `

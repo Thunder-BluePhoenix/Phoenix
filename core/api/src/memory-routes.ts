@@ -43,6 +43,10 @@ export function memoryRoutes(s: CoreServices): Route[] {
     if (!s.memory) throw new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, "Memory not found");
     return s.memory;
   };
+  const retrieval = () => {
+    if (!s.retrieval) throw new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, "Retrieval not found");
+    return s.retrieval;
+  };
   const ai = () => {
     if (!s.ai) throw new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, "AI settings not found");
     return s.ai;
@@ -69,6 +73,11 @@ export function memoryRoutes(s: CoreServices): Route[] {
         limit: ranged(url, "limit", 20, 1, MAX_SEARCH_RESULTS),
       });
     }),
+    route("GET", "/api/retrieval/settings", () => retrieval().settings()),
+    route("POST", "/api/retrieval/settings", async ({ body }) =>
+      retrieval().setSettings(expectObject(await body())),
+    ),
+    route("GET", "/api/retrieval/status", () => retrieval().status()),
     route("GET", "/api/memory/settings", () => memory().settings()),
     route("POST", "/api/memory/settings", async ({ body }) =>
       memory().setSettings(expectObject(await body())),

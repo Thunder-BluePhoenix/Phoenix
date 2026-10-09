@@ -3,6 +3,7 @@
 import { ErrorCode, isPermission, PhoenixError } from "@phoenix/protocol";
 import { expectBoolean, expectObject, intParam, route, type Route } from "./http";
 import { agentRoutes } from "./agent-routes";
+import { meetingReviewRoutes } from "./meeting-routes";
 import { memoryRoutes } from "./memory-routes";
 import type { CoreServices } from "./services";
 
@@ -155,6 +156,8 @@ export function buildRoutes(s: CoreServices): Route[] {
     ),
 
     // ── Meetings (Kage) ─────────────────────────────────────────────────────
+    // Before the generic `/api/meetings/:id` routes: "search" and "ask" are not meeting ids.
+    ...meetingReviewRoutes(s),
     route("GET", "/api/meetings", ({ url }) => ({
       meetings: meetings().list({
         archived: url.searchParams.get("archived") === "true",
