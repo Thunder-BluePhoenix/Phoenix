@@ -190,7 +190,7 @@ export class MeetingReviewRuntime implements MeetingReviewApi {
   }
 
   /** The Memory tab forgot reviewed facts: their items are rejected so none shows as accepted. */
-  private rejectForgotten(itemIds: readonly string[]): void {
+  rejectForgotten(itemIds: readonly string[]): void {
     for (const id of itemIds) {
       try {
         const item = this.service.items.get(id);

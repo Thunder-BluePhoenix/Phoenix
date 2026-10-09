@@ -706,4 +706,19 @@ export const MIGRATIONS: readonly Migration[] = [
       END;
     `,
   },
+  {
+    version: 17,
+    name: "graph_event_deletion",
+    sql: `
+      -- Phase 38: graph facts learned from an event cite its id. Event retention (deleteBefore), the
+      -- history limit (prune), uninstalling a capability without keeping its data and delete-all all
+      -- remove event rows, and none of them knows about the graph, so the database does it: the
+      -- provenance of exactly the deleted event goes, and an edge or node with no other source goes
+      -- with it (kg_provenance_*_orphan triggers, version 11). Facts other sources still support stay.
+      CREATE TRIGGER kg_event_deleted AFTER DELETE ON events
+      BEGIN
+        DELETE FROM kg_provenance WHERE source_kind = 'event' AND source_id = old.event_id;
+      END;
+    `,
+  },
 ];

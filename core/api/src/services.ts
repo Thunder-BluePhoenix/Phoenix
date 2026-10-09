@@ -302,6 +302,124 @@ export interface RetrievalApi {
   status(): RetrievalStatusView;
 }
 
+export interface GraphProvenanceView {
+  source_kind: "event" | "capability" | "memory" | "meeting" | "meeting_item" | "user";
+  source_id: string;
+  capability: string;
+  observed_at: string;
+  recorded_at: string;
+  confidence: number;
+  /** "rule" | "capability" | "user" | "ai:<model>". */
+  asserted_by: string;
+  scope: string;
+  domain: string;
+  sensitivity: "public" | "internal" | "sensitive";
+  detail: Record<string, string | number | boolean | null>;
+}
+
+export interface GraphNodeView {
+  /** `<Type>:<natural key>`, for example `Commit:owner/repo@<sha>`. */
+  id: string;
+  type: string;
+  key: string;
+  label: string;
+  /** "proposed" only when every assertion is from a model. */
+  status: "fact" | "proposed";
+  detail: Record<string, string | number | boolean | null>;
+  provenance: GraphProvenanceView[];
+}
+
+export interface GraphEdgeView {
+  id: string;
+  src: string;
+  rel: string;
+  dst: string;
+  status: "fact" | "proposed";
+  provenance: GraphProvenanceView[];
+}
+
+export interface GraphInspectionView {
+  node: GraphNodeView;
+  /** Newest observation first. */
+  origin: GraphProvenanceView[];
+  summary: { sources: number; assertors: string[]; capabilities: string[]; status: string };
+  visible_edges: number;
+}
+
+export interface GraphNeighborhoodView {
+  center: string;
+  nodes: GraphNodeView[];
+  edges: GraphEdgeView[];
+  truncated: boolean;
+}
+
+export interface GraphPathView {
+  nodes: GraphNodeView[];
+  hops: { from: string; to: string; direction: "forward" | "backward"; edge: GraphEdgeView }[];
+  /** One line per hop, built from graph facts only. */
+  text: string;
+}
+
+export type GraphTruncationView = Partial<
+  Record<"depth" | "fanout" | "visited" | "time" | "results", true>
+>;
+
+export type GraphAnswerView =
+  | { kind: "why"; subject: GraphNodeView | null; paths: GraphPathView[]; truncated: GraphTruncationView }
+  | {
+      kind: "which";
+      subject: GraphNodeView | null;
+      type: string;
+      results: { node: GraphNodeView; path: GraphPathView }[];
+      truncated: GraphTruncationView;
+    }
+  | {
+      kind: "who";
+      subject: GraphNodeView | null;
+      people: { person: GraphNodeView; paths: GraphPathView[] }[];
+      truncated: GraphTruncationView;
+    };
+
+export interface GraphAskView {
+  question: string;
+  /** Entities of the question that matched the graph exactly. Empty = no graph facts. */
+  seeds: GraphNodeView[];
+  /** Facts with their explanation paths. Never produced by a model. */
+  answers: GraphAnswerView[];
+  /** Memory text found for the same question (hybrid when retrieval is on), with citations. */
+  documents: { id: string; text: string; source: string; source_ref: string; score: number | null }[];
+  notes: string[];
+  retrieval: RetrievalInfoView;
+  /** Present only when narration was requested and AI is on; the paths above are always returned. */
+  narration: {
+    text: string;
+    /** False when the model's words were refused (it named something the path does not contain). */
+    narrated: boolean;
+    processed_by: string | null;
+  } | null;
+}
+
+export interface GraphStatusView {
+  /** Whole-graph row counts (not viewer-scoped). */
+  nodes: number;
+  edges: number;
+  provenance: number;
+  /** Nodes the viewer can see, by type. */
+  visible_nodes_by_type: Record<string, number>;
+  /** Commits backfilled from `git log` (author and files) since Core started. */
+  commits_backfilled: number;
+  last_ingest: { at: string; memories: number; meetings: number } | null;
+}
+
+export interface GraphApi {
+  status(): GraphStatusView;
+  inspect(nodeId: string): GraphInspectionView | null;
+  neighbors(nodeId: string, depth: number): GraphNeighborhoodView | null;
+  ask(question: string, options: { narrate: boolean }): Promise<GraphAskView>;
+  /** Removes the person and everything only they supported, and keeps them out of the graph. */
+  forgetPerson(name: string): { removed: { provenance: number; nodes: number; edges: number } };
+}
+
 export interface AiStatusView {
   enabled: boolean;
   preferred: string | null;
@@ -476,6 +594,7 @@ export interface CoreServices {
   memory?: MemoryApi;
   meetingReview?: MeetingReviewApi;
   retrieval?: RetrievalApi;
+  graph?: GraphApi;
   ai?: AiApi;
   agents?: AgentApi;
   petSettings?(): unknown;

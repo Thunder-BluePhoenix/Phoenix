@@ -36,8 +36,11 @@ import { AgentRuntime } from "./agents";
 import { AiRuntime } from "./ai";
 import { collectDiagnostics, type Diagnostics } from "./diagnostics";
 import { MemoryRuntime } from "./memory";
+import { GraphRuntime } from "./graph";
+import { MeetingReviewRuntime } from "./meeting-review";
 import { syncMeetings } from "./meetings";
 import { PrivacyService } from "./privacy";
+import { RetrievalRuntime } from "./retrieval";
 
 export interface PetSettings {
   /** "auto" follows the OS reduced-motion setting. */
@@ -97,6 +100,12 @@ export class PhoenixRuntime implements CoreServices {
   readonly privacy: PrivacyService;
   readonly ai: AiRuntime;
   readonly memory: MemoryRuntime;
+  /** Hybrid retrieval (Phase 37). Off until the user turns it on; needs AI on too. */
+  readonly retrieval: RetrievalRuntime;
+  /** Review of meeting decisions and action items (Phase 35). */
+  readonly meetingReview: MeetingReviewRuntime;
+  /** Knowledge graph and provenance (Phase 38). */
+  readonly graph: GraphRuntime;
   /**
    * The only path from an agent to a capability (Phase 30). Phase 31 hands this, and nothing
    * else, to the agent runtime.
@@ -199,6 +208,53 @@ export class PhoenixRuntime implements CoreServices {
       ...(options.memoryViewer ? { viewer: options.memoryViewer } : {}),
     });
 
+    this.retrieval = new RetrievalRuntime({
+      db: this.db,
+      store: this.memory.store,
+      settings: this.settings,
+      ai: this.ai.service,
+      embeddingProviders: () => this.ai.embeddingProviders(),
+      aiEnabled: () => this.ai.aiSettings().enabled,
+      audit: this.permissions.audit,
+      logger: this.logger,
+    });
+    this.meetingReview = new MeetingReviewRuntime({
+      db: this.db,
+      meetings: this.meetings,
+      memory: this.memory,
+      retrieval: this.retrieval,
+      audit: this.permissions.audit,
+      ai: this.ai.service,
+      aiEnabled: () => this.ai.aiSettings().enabled,
+      logger: this.logger,
+    });
+    this.graph = new GraphRuntime({
+      db: this.db,
+      bus: this.bus,
+      capabilities: this.capabilities,
+      store: this.memory.store,
+      meetings: this.meetings,
+      ai: this.ai.service,
+      aiEnabled: () => this.ai.aiSettings().enabled,
+      retrieval: this.retrieval,
+      viewer: () => this.memory.agentContext().viewer,
+      audit: this.permissions.audit,
+      logger: this.logger,
+      itemsOf: (meetingId) => this.meetingReview.service.items.list(meetingId),
+      meetingsAllowed: () => this.memory.settings().allow_sensitive_meetings,
+    });
+    this.memory.attach({
+      retrieval: this.retrieval,
+      hooks: {
+        rejectItems: (ids) => this.meetingReview.rejectForgotten(ids),
+        meetingsAllowed: () => {
+          this.meetingReview.resyncMemory();
+          this.graph.syncMeetings();
+        },
+        meetingsRevoked: () => this.graph.removeMeetingData(),
+      },
+    });
+
     const policyStore = new PolicyStore(this.db);
     const registry = new ToolRegistry({ manifests: enabledManifests(this.capabilities, this.db) });
     const policy = new PolicyEngine({
@@ -239,6 +295,9 @@ export class PhoenixRuntime implements CoreServices {
       capabilities: this.capabilities,
       audit: this.permissions.audit,
       memory: this.memory,
+      retrieval: this.retrieval,
+      graph: this.graph,
+      meetingItems: this.meetingReview.service.items,
       externalAi: () => this.ai.describeExternalProcessing(),
     });
 
@@ -287,10 +346,14 @@ export class PhoenixRuntime implements CoreServices {
     this.ticker.unref();
     this.privacy.prune();
     // Not awaited: reading a large docs folder must not delay the API coming up.
-    void this.memory.maintain();
+    void this.memory.maintain().then(() => {
+      this.graph.ingestMemory();
+      this.graph.syncMeetings();
+      this.meetingReview.importAll();
+    });
     this.pruner = setInterval(() => {
       this.privacy.prune();
-      void this.memory.maintain();
+      void this.memory.maintain().then(() => this.graph.ingestMemory());
     }, 3_600_000);
     this.pruner.unref();
     await this.capabilities.restore();
@@ -371,6 +434,9 @@ export class PhoenixRuntime implements CoreServices {
         meetings: this.meetings.count(),
         audit_entries: this.permissions.audit.count(),
       },
+      retrieval: this.retrieval.status(),
+      graph: this.graph.status(),
+      meetingItems: this.meetingReview.service.items,
     });
   }
 
@@ -381,6 +447,9 @@ export class PhoenixRuntime implements CoreServices {
       if (this.pruner) clearInterval(this.pruner);
       await this.api?.close();
       await this.agents.close();
+      await this.graph.close();
+      this.meetingReview.close();
+      await this.retrieval.close();
       await this.capabilities.close();
       this.stopMeetingSync();
       await this.memory.close();

@@ -3,6 +3,7 @@
 import { ErrorCode, isPermission, PhoenixError } from "@phoenix/protocol";
 import { expectBoolean, expectObject, intParam, route, type Route } from "./http";
 import { agentRoutes } from "./agent-routes";
+import { graphRoutes } from "./graph-routes";
 import { meetingReviewRoutes } from "./meeting-routes";
 import { memoryRoutes } from "./memory-routes";
 import type { CoreServices } from "./services";
@@ -199,6 +200,7 @@ export function buildRoutes(s: CoreServices): Route[] {
     }),
 
     ...memoryRoutes(s),
+    ...graphRoutes(s),
     ...agentRoutes(s),
 
     // ── Notifications ───────────────────────────────────────────────────────

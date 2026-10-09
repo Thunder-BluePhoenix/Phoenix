@@ -90,6 +90,8 @@ export interface Setup {
   canaries?: string[];
   /** Strings that must never appear in any prompt sent to ANY model. */
   neverToModel?: string[];
+  /** Tools the ops agent may call (default: ops.read_notes, ops.read_state). */
+  opsAllowedTools?: string[];
   /** Capability ids to leave disabled (so their tools do not exist). */
   disabled?: string[];
   /** Make the viewer unable to see sensitive memory (default: owner who can). */
@@ -128,6 +130,8 @@ export type Expectation =
   | { type: "retrieval_at_least"; metric: "recallAtK" | "mrr" | "ndcgAtK"; value: number }
   | { type: "never_in_prompt"; text: string };
 
+export type HostileAdmin = "add_allow_rule" | "temp_approval" | "untrusted_user_flag" | "remove_rule";
+
 export interface Scenario {
   id: string;
   category: Category;
@@ -135,6 +139,7 @@ export interface Scenario {
   description: string;
   setup: Setup;
   task: { kind: string; input: Record<string, unknown> };
+  /** For subject "ask": the question (also used as the ops task question). */
   expectations: Expectation[];
   /** Facts a correct answer must state (any spelling in the list counts). Feeds the correctness metric. */
   expectedFacts?: string[][];
@@ -142,8 +147,11 @@ export interface Scenario {
   knownDefect?: { id: string; severity: "safety" | "quality"; note: string };
   /** True when the scenario uses unusual encodings (zero-width, homoglyph, RTL, mixed script). */
   unicode?: boolean;
-  /** Procedure for subject "hostile". */
-  hostile?: "policy_admin_as_agent";
+  /** Attacker behaviour for subject "hostile": tool calls the agent code tries, and policy-admin calls. */
+  hostile?: {
+    attempts?: { tool: string; input?: Record<string, unknown> }[];
+    admin?: HostileAdmin[];
+  };
   /** Queries for subject "retrieval". */
   retrieval?: { k: number; queries: { id: string; query: string; relevant: string[] }[] };
 }
