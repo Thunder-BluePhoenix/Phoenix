@@ -9,6 +9,7 @@ import {
   PolicyError,
   type AuditedDecision,
   type PolicyAuditSink,
+  type PolicyDecision,
   type PolicyEngine,
   type ToolRequest,
 } from "@phoenix/policy";
@@ -86,6 +87,15 @@ export class ToolGateway {
     return this.registry.list();
   }
 
+  /**
+   * What the policy engine would decide for this call right now, without recording anything and
+   * without running anything. For showing a plan's expected risk; the real `call` decides again.
+   */
+  preview(call: ToolCall): PolicyDecision {
+    const tool = this.registry.get(call.tool);
+    return this.o.policy.evaluate(this.toRequest(call, tool?.contract));
+  }
+
   async call(call: ToolCall): Promise<ToolCallResult> {
     const tool = this.registry.get(call.tool);
     if (tool) this.checkInput(tool, call);
@@ -130,12 +140,12 @@ export class ToolGateway {
         tool ? `Denied: ${decision.reasons[0] ?? "policy"}` : "Unknown tool",
         decision.reasons,
         decision,
+        audited.auditId,
       );
     }
     const contract = tool.contract;
 
-    if (decision.effect === "require_approval")
-      await this.approve(call, contract, decision.reasons);
+    if (decision.effect === "require_approval") await this.approve(call, contract, audited);
 
     const output = await this.execute(audited, call, tool);
     return {
@@ -160,6 +170,7 @@ export class ToolGateway {
         "Denied by policy",
         proof.decision.reasons,
         proof.decision,
+        proof.auditId,
       );
     }
     const { contract } = tool;
@@ -176,6 +187,7 @@ export class ToolGateway {
             `${contract.name} did not finish within ${limit} ms; its outcome is unknown`,
             [ErrorCode.OPERATION_TIMEOUT],
             proof.decision,
+            proof.auditId,
           ),
         ),
       limit,
@@ -205,6 +217,7 @@ export class ToolGateway {
         `${contract.name} failed: ${op.error?.message ?? "unknown error"}`,
         [code],
         proof.decision,
+        proof.auditId,
       );
       this.outcome(proof, contract, call, "failed", { code });
       throw failed;
@@ -222,6 +235,7 @@ export class ToolGateway {
         `${contract.name} returned invalid output`,
         problems,
         proof.decision,
+        proof.auditId,
       );
     }
     this.outcome(proof, contract, call, "succeeded", { operationId: op.id });
@@ -283,8 +297,9 @@ export class ToolGateway {
   private async approve(
     call: ToolCall,
     contract: ToolContract,
-    reasons: readonly string[],
+    proof: AuditedDecision,
   ): Promise<void> {
+    const reasons = proof.decision.reasons;
     try {
       await this.o.approver.approve({
         contract,
@@ -296,6 +311,8 @@ export class ToolGateway {
         "APPROVAL_REJECTED",
         `Not approved: ${err instanceof Error ? err.message : String(err)}`,
         reasons,
+        proof.decision,
+        proof.auditId,
       );
     }
   }
@@ -321,6 +338,7 @@ export class ToolGateway {
       `${contract.name} failed: ${message.slice(0, 300)}`,
       [code],
       proof.decision,
+      proof.auditId,
     );
   }
 

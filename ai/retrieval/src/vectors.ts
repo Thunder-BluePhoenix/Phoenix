@@ -137,9 +137,9 @@ export class VectorStore {
 
   /** Width stored for a model, or null when it has no vectors. */
   dimOf(model: string): number | null {
-    const r = this.db.prepare("SELECT dim FROM memory_vectors WHERE model = ? LIMIT 1").get(model) as
-      | { dim: number }
-      | undefined;
+    const r = this.db
+      .prepare("SELECT dim FROM memory_vectors WHERE model = ? LIMIT 1")
+      .get(model) as { dim: number } | undefined;
     return r?.dim ?? null;
   }
 
@@ -149,7 +149,10 @@ export class VectorStore {
    * resurrect a deleted memory's vector. Returns how many were stored; all-or-nothing on error.
    * Throws VectorDimensionError / VectorError before writing anything.
    */
-  putMany(model: string, entries: readonly { id: string; text: string; vector: ArrayLike<number> }[]): number {
+  putMany(
+    model: string,
+    entries: readonly { id: string; text: string; vector: ArrayLike<number> }[],
+  ): number {
     if (entries.length === 0) return 0;
     const prepared = entries.map((e) => ({ ...e, normalized: normalize(e.vector) }));
     const first = prepared[0]!.normalized.length;
@@ -174,7 +177,15 @@ export class VectorStore {
         "DELETE FROM memory_vector_failures WHERE memory_id = ? AND model = ?",
       );
       for (const p of prepared) {
-        const r = insert.run(model, expected, new Uint8Array(p.normalized.buffer), stamp, p.id, p.text, stamp);
+        const r = insert.run(
+          model,
+          expected,
+          new Uint8Array(p.normalized.buffer),
+          stamp,
+          p.id,
+          p.text,
+          stamp,
+        );
         if (Number(r.changes) > 0) {
           stored++;
           clear.run(p.id, model);
@@ -203,7 +214,9 @@ export class VectorStore {
   /** Every model that has vectors, with its width and row count. */
   models(): ModelVectorStats[] {
     return this.db
-      .prepare("SELECT model, MIN(dim) AS dim, COUNT(*) AS count FROM memory_vectors GROUP BY model ORDER BY model")
+      .prepare(
+        "SELECT model, MIN(dim) AS dim, COUNT(*) AS count FROM memory_vectors GROUP BY model ORDER BY model",
+      )
       .all() as unknown as ModelVectorStats[];
   }
 
@@ -318,17 +331,18 @@ export class VectorStore {
    * first, scanning at most `maxScan`. A query whose width differs from the model's stored width
    * throws VectorDimensionError: vectors of different models are never compared.
    */
-  search(model: string, query: ArrayLike<number>, options: VectorSearchOptions): VectorSearchResult {
+  search(
+    model: string,
+    query: ArrayLike<number>,
+    options: VectorSearchOptions,
+  ): VectorSearchResult {
     const q = normalize(query);
     const dim = this.dimOf(model);
     if (dim === null) return { hits: [], scanned: 0, truncated: false };
     if (dim !== q.length) throw new VectorDimensionError(model, dim, q.length);
     const limit = Math.max(0, Math.floor(options.limit));
     const maxScan = options.maxScan ?? DEFAULT_MAX_SCAN;
-    const where = [
-      "m.deleted_at IS NULL",
-      "(m.expires_at IS NULL OR m.expires_at > ?)",
-    ];
+    const where = ["m.deleted_at IS NULL", "(m.expires_at IS NULL OR m.expires_at > ?)"];
     const params: string[] = [model, this.now().toISOString()];
     if (options.domain) {
       where.push("m.domain = ?");
@@ -342,11 +356,14 @@ export class VectorStore {
       where.push("m.observed_at < ?");
       params.push(options.observedBefore);
     }
+    // Newest-first order only matters when the cap can cut candidates off; sorting 20k rows costs
+    // about a third of the scan, so it is skipped when every vector of the model fits under the cap.
+    const ordered = this.count(model) > maxScan ? " ORDER BY m.seq DESC" : "";
     const rows = this.db
       .prepare(
         `SELECT m.id, m.scope, m.domain, m.sensitivity, v.vector
            FROM memory_items m JOIN memory_vectors v ON v.memory_id = m.id AND v.model = ?
-          WHERE ${where.join(" AND ")} ORDER BY m.seq DESC`,
+          WHERE ${where.join(" AND ")}${ordered}`,
       )
       .iterate(...params) as Iterable<SearchRow>;
 

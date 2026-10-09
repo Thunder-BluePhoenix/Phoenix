@@ -136,6 +136,137 @@ export interface AiApi {
   deleteSecret(): Promise<void>;
 }
 
+/** One task as listed. Stable snake_case JSON; the phase 31 doc is the contract. */
+export interface AgentTaskSummaryView {
+  id: string;
+  kind: string;
+  /** Latest run state: CREATED | READY | RUNNING | WAITING_APPROVAL | VERIFYING | COMPLETED | FAILED | CANCELLED. */
+  state: string;
+  title: string;
+  requested_by: string;
+  created_at: string;
+  updated_at: string;
+  failure_reason: string | null;
+}
+
+export interface AgentStepView {
+  seq: number;
+  kind: "stage" | "tool_call";
+  name: string;
+  status: string;
+  /** Ids, counts and names only. */
+  detail: Record<string, unknown>;
+  /** Audit record of the policy decision (tool calls). */
+  policy_audit_id: number | null;
+  decision: string | null;
+  risk: string | null;
+  /** Audit record written for the step itself (`agent.stage.<name>`). */
+  stage_audit_id: number | null;
+  started_at: string;
+  finished_at: string;
+}
+
+export interface AgentEvidenceView {
+  id: string;
+  kind: string;
+  source: string;
+  excerpt_hash: string;
+  excerpt: string;
+  truncated: boolean;
+}
+
+export interface AgentClaimView {
+  text: string;
+  evidence_ids: string[];
+  grounded: boolean;
+  origin: "rule" | "model";
+  note: string | null;
+}
+
+export interface AgentProposalView {
+  text: string;
+  rationale: string;
+  evidence_ids: string[];
+  /** Always true in Phase 31: nothing executes a proposal. */
+  advisory: true;
+  grounded: boolean;
+}
+
+export interface AgentTaskDetailView {
+  task: {
+    id: string;
+    kind: string;
+    input: Record<string, unknown>;
+    requested_by: string;
+    created_at: string;
+    correlation_id: string;
+  };
+  run: {
+    id: string;
+    state: string;
+    agent_id: string;
+    agent_version: string;
+    created_at: string;
+    updated_at: string;
+    failure_reason: string | null;
+  };
+  steps: AgentStepView[];
+  evidence: AgentEvidenceView[];
+  summary: string | null;
+  diagnosis: {
+    summary: string;
+    claims: AgentClaimView[];
+    /** Grounded claims / claims, computed by Phoenix. */
+    evidence_coverage: number;
+    /** What the model said about its own confidence, if anything. Not a measure. */
+    model_reported_confidence: string | null;
+    ai_used: boolean;
+  } | null;
+  proposals: AgentProposalView[];
+  ai_used: boolean;
+  /** "Ollama · llama3.2 · on this device" when a model contributed. */
+  processed_by: string | null;
+  model_calls: number;
+  verification: {
+    passed: boolean;
+    checks: { name: string; passed: boolean; detail: string; required: boolean }[];
+  } | null;
+  /** Every audit record this run wrote or caused (stage records and policy decisions). */
+  audit_ids: number[];
+}
+
+export interface AgentSettingsView {
+  enabled: boolean;
+  kinds: string[];
+  limits: {
+    max_steps: number;
+    max_tool_calls: number;
+    max_wall_ms: number;
+    max_active_runs: number;
+  };
+  active_runs: number;
+}
+
+/** What the confirmation prompt of a waiting agent run adds (all optional on the wire). */
+export interface ConfirmationContextView {
+  task_id: string;
+  risk: string;
+  target: string;
+  preview: string;
+  evidence_ids: string[];
+}
+
+/** Agent automation. Errors are PhoenixErrors; see the API contract in the phase 31 doc. */
+export interface AgentApi {
+  submit(request: { kind: unknown; input: unknown }): AgentTaskSummaryView;
+  list(query: { state?: string; limit: number }): { tasks: AgentTaskSummaryView[] };
+  get(id: string): AgentTaskDetailView | null;
+  cancel(id: string): { cancelled: boolean; state: string } | null;
+  settings(): AgentSettingsView;
+  setSettings(input: unknown): AgentSettingsView;
+  describeConfirmation(confirmationId: string): ConfirmationContextView | undefined;
+}
+
 /** Everything the API needs from Phoenix Core. */
 export interface CoreServices {
   config: PhoenixConfig;
@@ -155,6 +286,7 @@ export interface CoreServices {
   };
   memory?: MemoryApi;
   ai?: AiApi;
+  agents?: AgentApi;
   petSettings?(): unknown;
   setPetSettings?(input: unknown): unknown;
   /** Persists the user's sleep preference. */

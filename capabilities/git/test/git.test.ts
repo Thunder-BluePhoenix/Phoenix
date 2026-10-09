@@ -120,6 +120,7 @@ describe("git capability", () => {
     expect(h!.permissions.grants.missing("git", ["repository_access"])).toEqual([]);
     expect(h!.manager.get("git").commands).toEqual([
       expect.objectContaining({ name: "status", side_effect: "read" }),
+      expect.objectContaining({ name: "recent_commits", side_effect: "read" }),
     ]);
   });
 

@@ -1,0 +1,27 @@
+{
+  "items": 50000,
+  "dim": 768,
+  "buildSeconds": 11.4,
+  "databaseFileMB": 265.6,
+  "vectorPayloadMB": 153.6,
+  "vectorScanMs": {
+    "p50": 556.5,
+    "p95": 617.5
+  },
+  "vectorScanWithPermissionFilterMs": {
+    "p50": 524.5,
+    "p95": 578.9
+  },
+  "hybridRetrievalMs": {
+    "p50": 602.1,
+    "p95": 670.7
+  },
+  "hybridRetrievalNarrowViewerMs": {
+    "p50": 570.1,
+    "p95": 574.1
+  },
+  "lexicalOnlyMs": {
+    "p50": 41.7,
+    "p95": 52.9
+  }
+}

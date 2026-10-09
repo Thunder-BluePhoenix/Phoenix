@@ -15,9 +15,11 @@ export const MAX_SUBJECT = 200;
 export const MAX_PATH = 200;
 const GIT_LOG_TIMEOUT_MS = 15_000;
 
-/** A header line is RS + full commit id + US + author date + US + subject. */
-const HEADER = /^\u001e([0-9a-f]{40})\u001f([^\u001f]*)\u001f(.*)$/;
-const FORMAT = "--format=%x1e%H%x1f%aI%x1f%s";
+/** A header line is RS + full commit id + US + author date + US + committer date + US + subject. */
+const HEADER = /^\u001e([0-9a-f]{40})\u001f([^\u001f]*)\u001f([^\u001f]*)\u001f(.*)$/;
+const FORMAT = "--format=%x1e%H%x1f%aI%x1f%cI%x1f%s";
+/** A commit id, full or abbreviated. Hex only, so it can never read as an option or a revision expression. */
+const REF = /^[0-9a-f]{7,40}$/i;
 // The error git prints for a repository without commits (the command runs with LC_ALL=C).
 const NO_COMMITS = /does not have any commits yet|bad default revision|unknown revision/;
 const CONTROL = /[\u0000-\u001f\u007f]/;
@@ -29,6 +31,8 @@ export interface CommitSummary {
   subject: string;
   /** ISO 8601 (UTC), or null if git printed something unparseable. */
   author_date: string | null;
+  /** When the commit was applied here (differs from the author date after a rebase or cherry-pick). */
+  committer_date: string | null;
   /** Paths changed (0 for merge commits: git log shows no diff for them). */
   files_changed: number;
   /** At most {@link MAX_FILES} paths. */
@@ -37,6 +41,8 @@ export interface CommitSummary {
 
 export interface RecentCommits {
   repository: string;
+  /** Present only when a `ref` was asked for: whether that commit exists in this repository. */
+  ref?: { requested: string; found: boolean };
   commits: CommitSummary[];
   /** True when the repository has more commits than were returned. */
   truncated: boolean;
@@ -76,6 +82,14 @@ export function validatePathFilter(value: string): string {
   return value;
 }
 
+/** A commit id to start from: 7-40 hex characters, nothing else. */
+export function validateRef(value: unknown): string {
+  if (typeof value !== "string" || !REF.test(value)) {
+    throw new RecentCommitsError("ref must be a commit id of 7 to 40 hexadecimal characters");
+  }
+  return value.toLowerCase();
+}
+
 export function validateLimit(value: unknown): number {
   if (value === undefined) return DEFAULT_COMMITS;
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > MAX_COMMITS) {
@@ -102,11 +116,13 @@ export function parseLog(stdout: string): CommitSummary[] {
     if (header) {
       finish();
       const time = Date.parse(header[2]!);
+      const committed = Date.parse(header[3]!);
       current = {
         sha: header[1]!,
         short_sha: header[1]!.slice(0, 7),
-        subject: clip(header[3]!, MAX_SUBJECT),
+        subject: clip(header[4]!, MAX_SUBJECT),
         author_date: Number.isNaN(time) ? null : new Date(time).toISOString(),
+        committer_date: Number.isNaN(committed) ? null : new Date(committed).toISOString(),
         files_changed: 0,
         files: [],
       };
@@ -130,9 +146,21 @@ function isExecFailure(err: unknown): err is ExecFailure {
 export async function readRecentCommits(
   repoPath: string,
   repository: string,
-  options: { limit?: number; pathFilter?: string },
+  options: { limit?: number; pathFilter?: string; ref?: string },
 ): Promise<RecentCommits> {
   const limit = validateLimit(options.limit);
+  const ref = options.ref === undefined ? undefined : validateRef(options.ref);
+  if (ref !== undefined) {
+    // `ref` is hex only (validated above), so it cannot be read as an option or a revision range.
+    try {
+      await git(repoPath, ["cat-file", "-e", `${ref}^{commit}`], {
+        timeoutMs: GIT_LOG_TIMEOUT_MS,
+        env: { LC_ALL: "C" },
+      });
+    } catch {
+      return { repository, ref: { requested: ref, found: false }, commits: [], truncated: false };
+    }
+  }
   const pathFilter =
     options.pathFilter === undefined ? [] : [validatePathFilter(options.pathFilter)];
   const args = [
@@ -153,6 +181,8 @@ export async function readRecentCommits(
     "-n",
     String(limit + 1),
     "--end-of-options",
+    // With a ref, only commits reachable from it (its ancestors) are listed.
+    ...(ref !== undefined ? [ref] : []),
     ...(pathFilter.length ? ["--", ...pathFilter] : []),
   ];
   let stdout: string;
@@ -176,5 +206,10 @@ export async function readRecentCommits(
   if (stdout.trim() && !commits.length) {
     throw new RecentCommitsError("git log printed output this capability cannot read");
   }
-  return { repository, commits: commits.slice(0, limit), truncated: commits.length > limit };
+  return {
+    repository,
+    ...(ref !== undefined ? { ref: { requested: ref, found: true } } : {}),
+    commits: commits.slice(0, limit),
+    truncated: commits.length > limit,
+  };
 }

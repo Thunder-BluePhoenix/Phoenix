@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 import { ErrorCode, isPermission, PhoenixError } from "@phoenix/protocol";
 import { expectBoolean, expectObject, intParam, route, type Route } from "./http";
+import { agentRoutes } from "./agent-routes";
 import { memoryRoutes } from "./memory-routes";
 import type { CoreServices } from "./services";
 
@@ -195,6 +196,7 @@ export function buildRoutes(s: CoreServices): Route[] {
     }),
 
     ...memoryRoutes(s),
+    ...agentRoutes(s),
 
     // ── Notifications ───────────────────────────────────────────────────────
     route("GET", "/api/notifications", ({ url }) =>
@@ -233,8 +235,13 @@ export function buildRoutes(s: CoreServices): Route[] {
       s.permissions.revoke(params.capability!, perms as never);
       return { grants: s.permissions.grants.list(params.capability) };
     }),
+    // Additive: a confirmation raised for an agent run also carries risk, target, preview,
+    // task_id and evidence_ids. Every existing field is unchanged.
     route("GET", "/api/confirmations", () => ({
-      confirmations: s.permissions.pendingConfirmations(),
+      confirmations: s.permissions.pendingConfirmations().map((c) => {
+        const agent = s.agents?.describeConfirmation(c.id);
+        return agent ? { ...c, ...agent } : c;
+      }),
     })),
     route("POST", "/api/confirmations/:id", async ({ params, body }) => {
       const approve = expectBoolean(expectObject(await body()), "approve");

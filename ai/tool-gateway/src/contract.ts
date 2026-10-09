@@ -69,6 +69,8 @@ export class ToolGatewayError extends Error {
     readonly details: readonly string[] = [],
     /** The policy decision, when one was made before the failure. */
     readonly decision?: PolicyDecision,
+    /** Audit record of that decision, so a failed call can still be tied to its decision. */
+    readonly auditId?: number,
   ) {
     super(message);
   }

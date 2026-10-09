@@ -656,6 +656,68 @@ describe("outcomes", () => {
   });
 });
 
+describe("failed calls still name their policy decision's audit record", () => {
+  const decisionRow = (h: Harness, err: ToolGatewayError) =>
+    h.permissions.audit.list({ limit: 1000 }).find((e) => e.id === err.auditId);
+
+  it("denied", async () => {
+    const { gateway, admin, h } = await setup([mockCapability({ names: [] })]);
+    admin.addRule(user, {
+      id: "no-list",
+      effect: "deny",
+      match: { tool: "notes.list", actorKinds: ["agent"] },
+    });
+    const err = await failure(gateway.call(call("notes.list")));
+    expect(err.code).toBe("DENIED");
+    expect(decisionRow(h, err)).toMatchObject({
+      action: "policy.decision",
+      details: { tool: "notes.list", effect: "deny" },
+    });
+  });
+
+  it("approval rejected", async () => {
+    const { gateway, answer, h } = await setup([mockCapability({ names: [] })]);
+    const pending = failure(gateway.call(call("notes.save", { input: { title: "no" } })));
+    await answer(false);
+    const err = await pending;
+    expect(err.code).toBe("APPROVAL_REJECTED");
+    expect(decisionRow(h, err)).toMatchObject({
+      action: "policy.decision",
+      details: { tool: "notes.save", effect: "require_approval" },
+    });
+  });
+
+  it("execution failed", async () => {
+    const m = mockCapability({ names: [] });
+    m.commands!.list = () => {
+      throw new Error("boom");
+    };
+    const { gateway, h } = await setup([m]);
+    const err = await failure(gateway.call(call("notes.list")));
+    expect(err.code).toBe("EXECUTION_FAILED");
+    expect(decisionRow(h, err)).toMatchObject({
+      action: "policy.decision",
+      details: { tool: "notes.list", effect: "allow" },
+    });
+  });
+
+  it("invalid output", async () => {
+    const { gateway, h } = await setup([
+      mockCapability({ names: [] }, { output: { blob: "x".repeat(1024 * 1024 + 1) } }),
+    ]);
+    const err = await failure(gateway.call(call("notes.list")));
+    expect(err.code).toBe("INVALID_OUTPUT");
+    expect(decisionRow(h, err)).toMatchObject({ action: "policy.decision" });
+  });
+
+  it("a call that failed before any decision (unknown input) carries none", async () => {
+    const { gateway } = await setup([mockCapability({ names: [] })]);
+    const err = await failure(gateway.call(call("notes.save", { input: { nope: 1 } })));
+    expect(err.code).toBe("INVALID_INPUT");
+    expect(err.auditId).toBeUndefined();
+  });
+});
+
 describe("real end to end: git status through the gateway", () => {
   it("runs the real git capability against a throwaway repository, audited", async () => {
     const dir = mkdtempSync(join(tmpdir(), "phoenix-toolgw-"));
@@ -672,7 +734,7 @@ describe("real end to end: git status through the gateway", () => {
     s.h.manager.registerBuiltin(git);
     s.h.manager.configure("git", { repositories: [dir], poll_ms: 60_000 });
     await s.h.enable("git");
-    expect(s.registry.list().map((t) => t.name)).toEqual(["git.status"]);
+    expect(s.registry.list().map((t) => t.name)).toEqual(["git.recent_commits", "git.status"]);
 
     const result = await s.gateway.call(call("git.status"));
     expect(result.output).toMatchObject({

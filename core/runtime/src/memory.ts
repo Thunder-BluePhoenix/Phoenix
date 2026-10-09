@@ -253,6 +253,11 @@ export class MemoryRuntime implements MemoryApi {
     }
   }
 
+  /** What the agent runtime retrieves context with: the same engine and viewer `ask` uses. */
+  agentContext(): { engine: ContextEngine; viewer: Viewer } {
+    return { engine: this.engine, viewer: this.viewer };
+  }
+
   /** Backfill from commits already in a repository's history. Used by tools and tests. */
   captureCommits(commits: Parameters<typeof ingestCommits>[1]): IngestReport {
     return ingestCommits(this.pipeline, commits);

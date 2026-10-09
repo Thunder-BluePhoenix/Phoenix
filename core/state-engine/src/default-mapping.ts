@@ -18,6 +18,7 @@ export const EVENT_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "security.confirmation.resolved": "Request {payload.outcome}",
   "security.permission.denied": "{payload.capability} was not allowed to run {payload.command}",
   "security.kill_switch.disengaged": "Emergency stop released",
+  "agent_run.cancelled": "{payload.title} was cancelled",
   "git.commit.created": "New commit in {subject}",
   "git.merge_conflict_resolved": "Merge conflict resolved in {subject}",
   "git.branch.changed": "{subject} switched to {payload.to}",
@@ -83,6 +84,26 @@ export const DEFAULT_MAPPING: readonly MappingRule[] = [
     effect: { state: "SUCCESS", explain: "{payload.agent} finished", ttlMs: 5_000 },
   },
   { match: "agent.failed", effect: { state: "ERROR", explain: "{payload.agent} failed" } },
+
+  // Fawkes agent runs (Phase 31). One correlation id per run, so each event replaces the last.
+  {
+    match: "agent_run.started",
+    effect: { state: "THINKING", explain: "{payload.title}", timeoutMs: 30 * MIN },
+  },
+  {
+    match: "agent_run.thinking",
+    effect: { state: "THINKING", explain: "{payload.title}", timeoutMs: 30 * MIN },
+  },
+  {
+    match: "agent_run.waiting",
+    effect: { state: "WAITING", explain: "Approval needed: {payload.title}" },
+  },
+  {
+    match: "agent_run.completed",
+    effect: { state: "SUCCESS", explain: "{payload.title}: done", ttlMs: 8_000 },
+  },
+  { match: "agent_run.failed", effect: { state: "ERROR", explain: "{payload.title} failed" } },
+  { match: "agent_run.cancelled", effect: { clear: true } },
 
   // Deployments
   {

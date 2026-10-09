@@ -1,0 +1,397 @@
+{
+  "corpus": {
+    "git_commit": "9413132",
+    "note": "docs/**/*.md at this commit minus docs/gaps.md, plus the commit messages reachable from it"
+  },
+  "queries": [
+    {
+      "id": "E01",
+      "kind": "exact",
+      "split": "dev",
+      "query": "X-Frappe-Site-Name header",
+      "relevant": ["doc:phases/phase-23-frappe-erpnext-capability.md"]
+    },
+    {
+      "id": "E02",
+      "kind": "exact",
+      "split": "test",
+      "query": "include_prompt_title",
+      "relevant": [
+        "doc:capabilities/agents.md",
+        "doc:phases/phase-25-coding-agent-lifecycle-events.md"
+      ]
+    },
+    {
+      "id": "E03",
+      "kind": "exact",
+      "split": "dev",
+      "query": "macos-private-api feature",
+      "relevant": [
+        "doc:adr/ADR-0013-desktop-shell-tauri-v2.md",
+        "doc:phases/phase-14-floating-desktop-fawkes.md"
+      ]
+    },
+    {
+      "id": "E04",
+      "kind": "exact",
+      "split": "test",
+      "query": "validateReport unknown fields rejected",
+      "relevant": ["doc:capabilities/agents.md"]
+    },
+    {
+      "id": "E05",
+      "kind": "exact",
+      "split": "dev",
+      "query": "X-Phoenix-Capability-Token",
+      "relevant": ["doc:capabilities/model.md"]
+    },
+    {
+      "id": "E06",
+      "kind": "exact",
+      "split": "test",
+      "query": "BlackHole audio output",
+      "relevant": [
+        "doc:contracts/kage-api-v0.md",
+        "doc:phases/phase-15-kage-adapter-meeting-lifecycle.md",
+        "doc:phases/phase-20-hardening-and-v0-1-release.md"
+      ]
+    },
+    {
+      "id": "E07",
+      "kind": "exact",
+      "split": "dev",
+      "query": "DNS rebinding Host check",
+      "relevant": ["doc:security-review.md", "doc:phases/phase-06-core-api-http-websocket.md"]
+    },
+    {
+      "id": "E08",
+      "kind": "exact",
+      "split": "test",
+      "query": "KeychainSecretStore",
+      "relevant": [
+        "doc:security-review.md",
+        "doc:phases/phase-15-kage-adapter-meeting-lifecycle.md"
+      ]
+    },
+    {
+      "id": "E09",
+      "kind": "exact",
+      "split": "dev",
+      "query": "pnpm audit cargo audit",
+      "relevant": [
+        "doc:security-review.md",
+        "doc:licenses/INVENTORY.md",
+        "doc:phases/phase-20-hardening-and-v0-1-release.md"
+      ]
+    },
+    {
+      "id": "E10",
+      "kind": "exact",
+      "split": "test",
+      "query": "PostToolUse hook",
+      "relevant": ["doc:capabilities/agents.md"]
+    },
+    {
+      "id": "E11",
+      "kind": "exact",
+      "split": "dev",
+      "query": "Next.js",
+      "relevant": [
+        "doc:adr/ADR-0012-web-framework-react-vite.md",
+        "doc:phases/phase-00-decisions-and-adrs.md"
+      ]
+    },
+    {
+      "id": "E12",
+      "kind": "exact",
+      "split": "test",
+      "query": "Electron",
+      "relevant": ["doc:adr/ADR-0013-desktop-shell-tauri-v2.md"]
+    },
+    {
+      "id": "E13",
+      "kind": "exact",
+      "split": "dev",
+      "query": "GPL-3.0-only",
+      "relevant": ["doc:adr/ADR-0009-gpl-3-0-licensing.md"]
+    },
+    {
+      "id": "E14",
+      "kind": "exact",
+      "split": "test",
+      "query": "retain_data",
+      "relevant": ["doc:capabilities/model.md"]
+    },
+    {
+      "id": "E15",
+      "kind": "exact",
+      "split": "dev",
+      "query": "Skip to content link",
+      "relevant": ["doc:phases/phase-21-post-mvp-stabilization.md", "commit:0a1de1a"]
+    },
+    {
+      "id": "E16",
+      "kind": "exact",
+      "split": "test",
+      "query": "Lottie",
+      "relevant": [
+        "doc:adr/ADR-0018-fawkes-asset-format-and-licence.md",
+        "doc:phases/phase-00-decisions-and-adrs.md"
+      ]
+    },
+    {
+      "id": "E17",
+      "kind": "exact",
+      "split": "dev",
+      "query": "extractive_summary",
+      "relevant": ["doc:contracts/kage-api-v0.md"]
+    },
+    {
+      "id": "E18",
+      "kind": "exact",
+      "split": "test",
+      "query": "agent.progress ephemeral stall timer",
+      "relevant": ["doc:capabilities/agents.md"]
+    },
+    {
+      "id": "E19",
+      "kind": "exact",
+      "split": "dev",
+      "query": "database locking mechanism startup error handling",
+      "relevant": ["commit:31e0445", "doc:phases/phase-20-hardening-and-v0-1-release.md"]
+    },
+    {
+      "id": "E20",
+      "kind": "exact",
+      "split": "test",
+      "query": "bot supervisor Kage's bot lifecycle crash recovery",
+      "relevant": [
+        "commit:8ff6abb",
+        "doc:contracts/kage-api-v0.md",
+        "doc:phases/phase-20-hardening-and-v0-1-release.md"
+      ]
+    },
+    {
+      "id": "E21",
+      "kind": "exact",
+      "split": "dev",
+      "query": "maxConditions limit state engine",
+      "relevant": ["commit:a274a48"]
+    },
+    {
+      "id": "E22",
+      "kind": "exact",
+      "split": "test",
+      "query": "URL path segment decoding route handling",
+      "relevant": ["commit:5409626"]
+    },
+    {
+      "id": "E23",
+      "kind": "exact",
+      "split": "dev",
+      "query": "SupportSettings diagnostics report",
+      "relevant": ["commit:8bbf533"]
+    },
+    {
+      "id": "E24",
+      "kind": "exact",
+      "split": "test",
+      "query": "mock trackers GitHub Linear Jira local HTTP server",
+      "relevant": ["commit:bd60e96"]
+    },
+    {
+      "id": "P01",
+      "kind": "paraphrase",
+      "split": "dev",
+      "query": "Why was the heavyweight Chromium-based option rejected for the floating pet window?",
+      "relevant": ["doc:adr/ADR-0013-desktop-shell-tauri-v2.md"]
+    },
+    {
+      "id": "P02",
+      "kind": "paraphrase",
+      "split": "test",
+      "query": "How do we prevent third-party plugins from impersonating Phoenix's own notifications?",
+      "relevant": [
+        "doc:adr/ADR-0016-capability-authentication.md",
+        "doc:security-review.md",
+        "doc:capabilities/model.md"
+      ]
+    },
+    {
+      "id": "P03",
+      "kind": "paraphrase",
+      "split": "dev",
+      "query": "Which library renders the browser interface?",
+      "relevant": ["doc:adr/ADR-0012-web-framework-react-vite.md"]
+    },
+    {
+      "id": "P04",
+      "kind": "paraphrase",
+      "split": "test",
+      "query": "Where does the program keep private credentials on the computer?",
+      "relevant": [
+        "doc:adr/ADR-0014-persistence-sqlite-via-node-sqlite-secrets-in-os-keychain.md",
+        "doc:security-review.md"
+      ]
+    },
+    {
+      "id": "P05",
+      "kind": "paraphrase",
+      "split": "dev",
+      "query": "What happens to the audio file when a meeting is removed from Phoenix?",
+      "relevant": ["doc:contracts/kage-api-v0.md", "doc:phases/phase-16-meetings-ui.md"]
+    },
+    {
+      "id": "P06",
+      "kind": "paraphrase",
+      "split": "test",
+      "query": "How does the pet choose what to show when several things happen at once?",
+      "relevant": [
+        "doc:adr/ADR-0019-canonical-fawkes-states-and-priority.md",
+        "doc:phases/phase-05-state-engine.md"
+      ]
+    },
+    {
+      "id": "P07",
+      "kind": "paraphrase",
+      "split": "dev",
+      "query": "Can a misbehaving add-on that runs separately bring down the main server?",
+      "relevant": ["doc:capabilities/model.md"]
+    },
+    {
+      "id": "P08",
+      "kind": "paraphrase",
+      "split": "test",
+      "query": "How do I add support for a new build tool?",
+      "relevant": ["doc:capabilities/getting-started.md"]
+    },
+    {
+      "id": "P09",
+      "kind": "paraphrase",
+      "split": "dev",
+      "query": "Is the local server reachable from other machines on the network?",
+      "relevant": [
+        "doc:adr/ADR-0015-topology-local-only-core-bound-to-loopback.md",
+        "doc:security-review.md"
+      ]
+    },
+    {
+      "id": "P10",
+      "kind": "paraphrase",
+      "split": "test",
+      "query": "How is private meeting content kept away from online AI services?",
+      "relevant": [
+        "doc:security-review.md",
+        "doc:phases/phase-29-memory-governance-ux.md",
+        "doc:phases/phase-27-model-adapter-and-router.md"
+      ]
+    },
+    {
+      "id": "P11",
+      "kind": "paraphrase",
+      "split": "dev",
+      "query": "Why does a coding assistant's status vanish after being quiet for a long time?",
+      "relevant": ["doc:capabilities/agents.md"]
+    },
+    {
+      "id": "P12",
+      "kind": "paraphrase",
+      "split": "test",
+      "query": "How were repeated alerts for the same failing build made less annoying?",
+      "relevant": ["doc:phases/phase-21-post-mvp-stabilization.md", "commit:8953557"]
+    },
+    {
+      "id": "P13",
+      "kind": "paraphrase",
+      "split": "dev",
+      "query": "Which licence variant lets people use later versions of the GNU public licence?",
+      "relevant": ["doc:adr/ADR-0009-gpl-3-0-licensing.md"]
+    },
+    {
+      "id": "P14",
+      "kind": "paraphrase",
+      "split": "test",
+      "query": "How does an AI coding helper tell Phoenix it needs my attention?",
+      "relevant": [
+        "doc:capabilities/agents.md",
+        "doc:phases/phase-25-coding-agent-lifecycle-events.md"
+      ]
+    },
+    {
+      "id": "P15",
+      "kind": "paraphrase",
+      "split": "dev",
+      "query": "Which colour combinations were too faint to read?",
+      "relevant": ["doc:phases/phase-21-post-mvp-stabilization.md", "commit:e5e5d9c"]
+    },
+    {
+      "id": "P16",
+      "kind": "paraphrase",
+      "split": "test",
+      "query": "Which desktop shell was chosen and why can't it be sold in the Mac app store?",
+      "relevant": [
+        "doc:adr/ADR-0013-desktop-shell-tauri-v2.md",
+        "doc:phases/phase-14-floating-desktop-fawkes.md"
+      ]
+    },
+    {
+      "id": "P17",
+      "kind": "paraphrase",
+      "split": "dev",
+      "query": "Does Phoenix keep working with no internet?",
+      "relevant": ["doc:adr/ADR-0001-local-first-phoenix-runtime.md"]
+    },
+    {
+      "id": "P18",
+      "kind": "paraphrase",
+      "split": "test",
+      "query": "What stops a random website in my browser from talking to the local server?",
+      "relevant": ["doc:security-review.md", "doc:phases/phase-06-core-api-http-websocket.md"]
+    },
+    {
+      "id": "P19",
+      "kind": "paraphrase",
+      "split": "dev",
+      "query": "What do we do when a meeting has a transcript but the automatic summary could not be produced?",
+      "relevant": ["doc:contracts/kage-api-v0.md"]
+    },
+    {
+      "id": "P20",
+      "kind": "paraphrase",
+      "split": "test",
+      "query": "How does deleting a remembered fact make sure it is not stored again?",
+      "relevant": [
+        "doc:phases/phase-28-context-engine-and-memory-store.md",
+        "doc:phases/phase-29-memory-governance-ux.md"
+      ]
+    },
+    {
+      "id": "P21",
+      "kind": "paraphrase",
+      "split": "dev",
+      "query": "reduce the amount of saving to disk while the pet is dragged around",
+      "relevant": ["commit:297058c"]
+    },
+    {
+      "id": "P22",
+      "kind": "paraphrase",
+      "split": "test",
+      "query": "close live connections cleanly when the server shuts down",
+      "relevant": ["commit:2f0ff10"]
+    },
+    {
+      "id": "P23",
+      "kind": "paraphrase",
+      "split": "dev",
+      "query": "restrict the size of replies accepted from outside add-ons",
+      "relevant": ["commit:34c177d", "doc:security-review.md"]
+    },
+    {
+      "id": "P24",
+      "kind": "paraphrase",
+      "split": "test",
+      "query": "integration that lets the code editor send events to the pet",
+      "relevant": ["commit:ffa9691", "doc:phases/phase-24-docker-and-editor-capabilities.md"]
+    }
+  ]
+}

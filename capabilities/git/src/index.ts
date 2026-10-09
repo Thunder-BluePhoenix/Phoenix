@@ -23,6 +23,7 @@ interface RecentCommitsInput {
   repo_path?: string;
   limit?: number;
   path_filter?: string;
+  ref?: string;
 }
 
 function isRecentCommitsInput(v: unknown): v is RecentCommitsInput {
@@ -218,6 +219,12 @@ export function createGitCapability() {
                 maxLength: MAX_PATH,
                 description: "Only commits touching this repository-relative path",
               },
+              ref: {
+                type: "string",
+                pattern: "^[0-9a-fA-F]{7,40}$",
+                description:
+                  "Start from this commit and list only its ancestors (commits that led to it). The answer says whether the commit exists in this repository.",
+              },
             },
           },
         },
@@ -288,6 +295,7 @@ export function createGitCapability() {
         return readRecentCommits(path, basename(path), {
           ...(input.limit !== undefined ? { limit: input.limit } : {}),
           ...(input.path_filter !== undefined ? { pathFilter: input.path_filter } : {}),
+          ...(input.ref !== undefined ? { ref: input.ref } : {}),
         });
       },
     },

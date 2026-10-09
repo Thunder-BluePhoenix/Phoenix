@@ -1,0 +1,1999 @@
+{
+  "pinnedCommit": "9413132",
+  "corpus": {
+    "docFiles": 88,
+    "docChunks": 780,
+    "commits": 59,
+    "memories": 839
+  },
+  "embedding": {
+    "model": "ollama/nomic-embed-text#prefixed",
+    "items": 839,
+    "totalMs": 7797,
+    "msPerItem": 9.3,
+    "dim": 768,
+    "vectorPayloadBytes": 2577408,
+    "databaseFileBytes": 5816320
+  },
+  "tuned": {
+    "k": 20,
+    "vectorWeight": 0.5,
+    "featurePreset": "default"
+  },
+  "dev": {
+    "existing ContextEngine (lexical)": {
+      "n": 24,
+      "recall": 0.8333,
+      "mrr": 0.7431,
+      "ndcg": 0.735,
+      "exact": {
+        "n": 12,
+        "recall": 1,
+        "mrr": 1,
+        "ndcg": 0.9898
+      },
+      "paraphrase": {
+        "n": 12,
+        "recall": 0.6667,
+        "mrr": 0.4861,
+        "ndcg": 0.4802
+      },
+      "perQuery": [
+        {
+          "id": "E01",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E03",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E05",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E07",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E09",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E11",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E13",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E15",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E17",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E19",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E21",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E23",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P01",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P03",
+          "rank": 4,
+          "recall": 1
+        },
+        {
+          "id": "P05",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P07",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P09",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P11",
+          "rank": 4,
+          "recall": 1
+        },
+        {
+          "id": "P13",
+          "rank": 3,
+          "recall": 1
+        },
+        {
+          "id": "P15",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P17",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P19",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "P21",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P23",
+          "rank": 2,
+          "recall": 1
+        }
+      ]
+    },
+    "lexical (Retriever, bm25 only)": {
+      "n": 24,
+      "recall": 0.8333,
+      "mrr": 0.75,
+      "ndcg": 0.735,
+      "exact": {
+        "n": 12,
+        "recall": 1,
+        "mrr": 1,
+        "ndcg": 0.9898
+      },
+      "paraphrase": {
+        "n": 12,
+        "recall": 0.6667,
+        "mrr": 0.5,
+        "ndcg": 0.4802
+      },
+      "perQuery": [
+        {
+          "id": "E01",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E03",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E05",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E07",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E09",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E11",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E13",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E15",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E17",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E19",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E21",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E23",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P01",
+          "rank": 6,
+          "recall": 0
+        },
+        {
+          "id": "P03",
+          "rank": 4,
+          "recall": 1
+        },
+        {
+          "id": "P05",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P07",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P09",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P11",
+          "rank": 4,
+          "recall": 1
+        },
+        {
+          "id": "P13",
+          "rank": 3,
+          "recall": 1
+        },
+        {
+          "id": "P15",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P17",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P19",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "P21",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P23",
+          "rank": 2,
+          "recall": 1
+        }
+      ]
+    },
+    "vector only": {
+      "n": 24,
+      "recall": 0.6458,
+      "mrr": 0.6319,
+      "ndcg": 0.587,
+      "exact": {
+        "n": 12,
+        "recall": 0.7083,
+        "mrr": 0.6458,
+        "ndcg": 0.6193
+      },
+      "paraphrase": {
+        "n": 12,
+        "recall": 0.5833,
+        "mrr": 0.6181,
+        "ndcg": 0.5547
+      },
+      "perQuery": [
+        {
+          "id": "E01",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "E03",
+          "rank": 2,
+          "recall": 0.5
+        },
+        {
+          "id": "E05",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "E07",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "E09",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E11",
+          "rank": 4,
+          "recall": 0.5
+        },
+        {
+          "id": "E13",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "E15",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E17",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E19",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E21",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E23",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "P01",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P03",
+          "rank": 4,
+          "recall": 1
+        },
+        {
+          "id": "P05",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P07",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P09",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P11",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P13",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P15",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P17",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P19",
+          "rank": 6,
+          "recall": 0
+        },
+        {
+          "id": "P21",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P23",
+          "rank": 1,
+          "recall": 1
+        }
+      ]
+    },
+    "hybrid (RRF)": {
+      "n": 24,
+      "recall": 0.8125,
+      "mrr": 0.8208,
+      "ndcg": 0.771,
+      "exact": {
+        "n": 12,
+        "recall": 0.9583,
+        "mrr": 1,
+        "ndcg": 0.9508
+      },
+      "paraphrase": {
+        "n": 12,
+        "recall": 0.6667,
+        "mrr": 0.6417,
+        "ndcg": 0.5912
+      },
+      "perQuery": [
+        {
+          "id": "E01",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E03",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E05",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E07",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E09",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E11",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "E13",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E15",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E17",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E19",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E21",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E23",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P01",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P03",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "P05",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P07",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P09",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P11",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P13",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P15",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P17",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P19",
+          "rank": 5,
+          "recall": 1
+        },
+        {
+          "id": "P21",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P23",
+          "rank": 1,
+          "recall": 1
+        }
+      ]
+    },
+    "hybrid (RRF, untuned k=60, weight 1)": {
+      "n": 24,
+      "recall": 0.7292,
+      "mrr": 0.7573,
+      "ndcg": 0.6834,
+      "exact": {
+        "n": 12,
+        "recall": 0.8333,
+        "mrr": 0.873,
+        "ndcg": 0.7953
+      },
+      "paraphrase": {
+        "n": 12,
+        "recall": 0.625,
+        "mrr": 0.6417,
+        "ndcg": 0.5714
+      },
+      "perQuery": [
+        {
+          "id": "E01",
+          "rank": 7,
+          "recall": 0
+        },
+        {
+          "id": "E03",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E05",
+          "rank": 3,
+          "recall": 1
+        },
+        {
+          "id": "E07",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "E09",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E11",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "E13",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E15",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E17",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E19",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E21",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E23",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P01",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P03",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "P05",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P07",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P09",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P11",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P13",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P15",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P17",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P19",
+          "rank": 5,
+          "recall": 1
+        },
+        {
+          "id": "P21",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P23",
+          "rank": 1,
+          "recall": 1
+        }
+      ]
+    },
+    "hybrid + feature rerank (default)": {
+      "n": 24,
+      "recall": 0.8333,
+      "mrr": 0.7931,
+      "ndcg": 0.7785,
+      "exact": {
+        "n": 12,
+        "recall": 1,
+        "mrr": 1,
+        "ndcg": 0.9933
+      },
+      "paraphrase": {
+        "n": 12,
+        "recall": 0.6667,
+        "mrr": 0.5861,
+        "ndcg": 0.5637
+      },
+      "perQuery": [
+        {
+          "id": "E01",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E03",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E05",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E07",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E09",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E11",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E13",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E15",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E17",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E19",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E21",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E23",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P01",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P03",
+          "rank": 3,
+          "recall": 1
+        },
+        {
+          "id": "P05",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P07",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P09",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "P11",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P13",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P15",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P17",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P19",
+          "rank": 5,
+          "recall": 1
+        },
+        {
+          "id": "P21",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P23",
+          "rank": 1,
+          "recall": 1
+        }
+      ]
+    },
+    "hybrid + model rerank (llama3.2, top 8)": {
+      "n": 24,
+      "recall": 0.8125,
+      "mrr": 0.6264,
+      "ndcg": 0.6581,
+      "exact": {
+        "n": 12,
+        "recall": 0.9583,
+        "mrr": 0.7917,
+        "ndcg": 0.8412
+      },
+      "paraphrase": {
+        "n": 12,
+        "recall": 0.6667,
+        "mrr": 0.4611,
+        "ndcg": 0.4749
+      },
+      "perQuery": [
+        {
+          "id": "E01",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E03",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "E05",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E07",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E09",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "E11",
+          "rank": 2,
+          "recall": 0.5
+        },
+        {
+          "id": "E13",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E15",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "E17",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "E19",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E21",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E23",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P01",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P03",
+          "rank": 3,
+          "recall": 1
+        },
+        {
+          "id": "P05",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P07",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P09",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P11",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "P13",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "P15",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P17",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P19",
+          "rank": 5,
+          "recall": 1
+        },
+        {
+          "id": "P21",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "P23",
+          "rank": 2,
+          "recall": 1
+        }
+      ]
+    }
+  },
+  "test": {
+    "existing ContextEngine (lexical)": {
+      "n": 24,
+      "recall": 0.7778,
+      "mrr": 0.825,
+      "ndcg": 0.7536,
+      "exact": {
+        "n": 12,
+        "recall": 1,
+        "mrr": 1,
+        "ndcg": 1
+      },
+      "paraphrase": {
+        "n": 12,
+        "recall": 0.5556,
+        "mrr": 0.6501,
+        "ndcg": 0.5072
+      },
+      "perQuery": [
+        {
+          "id": "E02",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E04",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E06",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E08",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E10",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E12",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E14",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E16",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E18",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E20",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E22",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E24",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P02",
+          "rank": 1,
+          "recall": 0.333
+        },
+        {
+          "id": "P04",
+          "rank": 5,
+          "recall": 0.5
+        },
+        {
+          "id": "P06",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P08",
+          "rank": 3,
+          "recall": 1
+        },
+        {
+          "id": "P10",
+          "rank": 1,
+          "recall": 0.333
+        },
+        {
+          "id": "P12",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P14",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P16",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P18",
+          "rank": 7,
+          "recall": 0
+        },
+        {
+          "id": "P20",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P22",
+          "rank": 8,
+          "recall": 0
+        },
+        {
+          "id": "P24",
+          "rank": 1,
+          "recall": 1
+        }
+      ]
+    },
+    "lexical (Retriever, bm25 only)": {
+      "n": 24,
+      "recall": 0.7778,
+      "mrr": 0.825,
+      "ndcg": 0.7525,
+      "exact": {
+        "n": 12,
+        "recall": 1,
+        "mrr": 1,
+        "ndcg": 1
+      },
+      "paraphrase": {
+        "n": 12,
+        "recall": 0.5556,
+        "mrr": 0.6501,
+        "ndcg": 0.5049
+      },
+      "perQuery": [
+        {
+          "id": "E02",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E04",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E06",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E08",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E10",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E12",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E14",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E16",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E18",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E20",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E22",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E24",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P02",
+          "rank": 1,
+          "recall": 0.333
+        },
+        {
+          "id": "P04",
+          "rank": 5,
+          "recall": 0.5
+        },
+        {
+          "id": "P06",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P08",
+          "rank": 3,
+          "recall": 1
+        },
+        {
+          "id": "P10",
+          "rank": 1,
+          "recall": 0.333
+        },
+        {
+          "id": "P12",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P14",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P16",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P18",
+          "rank": 7,
+          "recall": 0
+        },
+        {
+          "id": "P20",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P22",
+          "rank": 8,
+          "recall": 0
+        },
+        {
+          "id": "P24",
+          "rank": 1,
+          "recall": 1
+        }
+      ]
+    },
+    "vector only": {
+      "n": 24,
+      "recall": 0.5903,
+      "mrr": 0.6597,
+      "ndcg": 0.5731,
+      "exact": {
+        "n": 12,
+        "recall": 0.5139,
+        "mrr": 0.5833,
+        "ndcg": 0.5237
+      },
+      "paraphrase": {
+        "n": 12,
+        "recall": 0.6667,
+        "mrr": 0.7361,
+        "ndcg": 0.6225
+      },
+      "perQuery": [
+        {
+          "id": "E02",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "E04",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "E06",
+          "rank": 1,
+          "recall": 0.667
+        },
+        {
+          "id": "E08",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "E10",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E12",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "E14",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "E16",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "E18",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E20",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E22",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E24",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P02",
+          "rank": 1,
+          "recall": 0.333
+        },
+        {
+          "id": "P04",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P06",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P08",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P10",
+          "rank": 1,
+          "recall": 0.667
+        },
+        {
+          "id": "P12",
+          "rank": 2,
+          "recall": 0.5
+        },
+        {
+          "id": "P14",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P16",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P18",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "P20",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P22",
+          "rank": 3,
+          "recall": 1
+        },
+        {
+          "id": "P24",
+          "rank": null,
+          "recall": 0
+        }
+      ]
+    },
+    "hybrid (RRF)": {
+      "n": 24,
+      "recall": 0.875,
+      "mrr": 0.8174,
+      "ndcg": 0.7893,
+      "exact": {
+        "n": 12,
+        "recall": 1,
+        "mrr": 0.8778,
+        "ndcg": 0.8951
+      },
+      "paraphrase": {
+        "n": 12,
+        "recall": 0.75,
+        "mrr": 0.7569,
+        "ndcg": 0.6834
+      },
+      "perQuery": [
+        {
+          "id": "E02",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E04",
+          "rank": 3,
+          "recall": 1
+        },
+        {
+          "id": "E06",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E08",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E10",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E12",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E14",
+          "rank": 5,
+          "recall": 1
+        },
+        {
+          "id": "E16",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E18",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E20",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E22",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E24",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P02",
+          "rank": 2,
+          "recall": 0.667
+        },
+        {
+          "id": "P04",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P06",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P08",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P10",
+          "rank": 1,
+          "recall": 0.333
+        },
+        {
+          "id": "P12",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P14",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P16",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P18",
+          "rank": 3,
+          "recall": 0.5
+        },
+        {
+          "id": "P20",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P22",
+          "rank": 4,
+          "recall": 1
+        },
+        {
+          "id": "P24",
+          "rank": 1,
+          "recall": 0.5
+        }
+      ]
+    },
+    "hybrid (RRF, untuned k=60, weight 1)": {
+      "n": 24,
+      "recall": 0.7986,
+      "mrr": 0.816,
+      "ndcg": 0.745,
+      "exact": {
+        "n": 12,
+        "recall": 0.875,
+        "mrr": 0.8611,
+        "ndcg": 0.824
+      },
+      "paraphrase": {
+        "n": 12,
+        "recall": 0.7222,
+        "mrr": 0.7708,
+        "ndcg": 0.6661
+      },
+      "perQuery": [
+        {
+          "id": "E02",
+          "rank": 1,
+          "recall": 0.5
+        },
+        {
+          "id": "E04",
+          "rank": 3,
+          "recall": 1
+        },
+        {
+          "id": "E06",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E08",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E10",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E12",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E14",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "E16",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E18",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E20",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E22",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E24",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P02",
+          "rank": 1,
+          "recall": 0.333
+        },
+        {
+          "id": "P04",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P06",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P08",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P10",
+          "rank": 1,
+          "recall": 0.333
+        },
+        {
+          "id": "P12",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P14",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P16",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P18",
+          "rank": 2,
+          "recall": 0.5
+        },
+        {
+          "id": "P20",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P22",
+          "rank": 4,
+          "recall": 1
+        },
+        {
+          "id": "P24",
+          "rank": 2,
+          "recall": 0.5
+        }
+      ]
+    },
+    "hybrid + feature rerank (default)": {
+      "n": 24,
+      "recall": 0.8958,
+      "mrr": 0.8785,
+      "ndcg": 0.8527,
+      "exact": {
+        "n": 12,
+        "recall": 1,
+        "mrr": 1,
+        "ndcg": 1
+      },
+      "paraphrase": {
+        "n": 12,
+        "recall": 0.7917,
+        "mrr": 0.7569,
+        "ndcg": 0.7054
+      },
+      "perQuery": [
+        {
+          "id": "E02",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E04",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E06",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E08",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E10",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E12",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E14",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E16",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E18",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E20",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E22",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E24",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P02",
+          "rank": 2,
+          "recall": 0.667
+        },
+        {
+          "id": "P04",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P06",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P08",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P10",
+          "rank": 1,
+          "recall": 0.333
+        },
+        {
+          "id": "P12",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P14",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P16",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P18",
+          "rank": 3,
+          "recall": 0.5
+        },
+        {
+          "id": "P20",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P22",
+          "rank": 4,
+          "recall": 1
+        },
+        {
+          "id": "P24",
+          "rank": 1,
+          "recall": 1
+        }
+      ]
+    },
+    "hybrid + model rerank (llama3.2, top 8)": {
+      "n": 24,
+      "recall": 0.875,
+      "mrr": 0.7306,
+      "ndcg": 0.743,
+      "exact": {
+        "n": 12,
+        "recall": 1,
+        "mrr": 0.7528,
+        "ndcg": 0.8131
+      },
+      "paraphrase": {
+        "n": 12,
+        "recall": 0.75,
+        "mrr": 0.7083,
+        "ndcg": 0.6729
+      },
+      "perQuery": [
+        {
+          "id": "E02",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E04",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E06",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E08",
+          "rank": 3,
+          "recall": 1
+        },
+        {
+          "id": "E10",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E12",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "E14",
+          "rank": 5,
+          "recall": 1
+        },
+        {
+          "id": "E16",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "E18",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E20",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "E22",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "E24",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P02",
+          "rank": 4,
+          "recall": 0.667
+        },
+        {
+          "id": "P04",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P06",
+          "rank": null,
+          "recall": 0
+        },
+        {
+          "id": "P08",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P10",
+          "rank": 1,
+          "recall": 0.333
+        },
+        {
+          "id": "P12",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P14",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "P16",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P18",
+          "rank": 4,
+          "recall": 0.5
+        },
+        {
+          "id": "P20",
+          "rank": 2,
+          "recall": 1
+        },
+        {
+          "id": "P22",
+          "rank": 1,
+          "recall": 1
+        },
+        {
+          "id": "P24",
+          "rank": 1,
+          "recall": 0.5
+        }
+      ]
+    }
+  },
+  "modelReranker": {
+    "calls": 48,
+    "fallbacks": 12
+  },
+  "latency": {
+    "note": "hybrid retrieval with the query embedding cached (no Ollama call), and the brute-force vector scan alone",
+    "hybridMsP50": 11.65,
+    "hybridMsP95": 14.09,
+    "vectorScanMsP50": 5.57,
+    "vectorScanMsP95": 7.93,
+    "queryEmbedMsMean": 13.3
+  }
+}

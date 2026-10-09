@@ -3,6 +3,7 @@
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Viewer } from "@phoenix/ai-memory";
+import type { AgentDefinition } from "@phoenix/ai-orchestrator";
 import type { FetchLike } from "@phoenix/ai-models";
 import {
   approverFromPermissions,
@@ -31,6 +32,7 @@ import {
 import { createEvent, ErrorCode, PhoenixError, PROTOCOL_VERSION } from "@phoenix/protocol";
 import { PolicyAdmin, PolicyEngine, PolicyStore } from "@phoenix/policy";
 import { StateEngine } from "@phoenix/state-engine";
+import { AgentRuntime } from "./agents";
 import { AiRuntime } from "./ai";
 import { collectDiagnostics, type Diagnostics } from "./diagnostics";
 import { MemoryRuntime } from "./memory";
@@ -71,6 +73,8 @@ export interface RuntimeOptions {
    * user, so this is the seam for a narrower view (and for the permission-scoping tests).
    */
   memoryViewer?: Viewer;
+  /** Further agent kinds (embedding, tests). Automation is still off until the user enables it. */
+  agents?: readonly AgentDefinition[];
 }
 
 /**
@@ -98,6 +102,11 @@ export class PhoenixRuntime implements CoreServices {
    * else, to the agent runtime.
    */
   readonly toolGateway: ToolGateway;
+  /**
+   * Agent automation (Phase 31): off until the user turns it on. Holds the tool gateway and
+   * nothing else that can reach a capability.
+   */
+  readonly agents: AgentRuntime;
   /**
    * Changes policy. Deliberately private and unused by any route: only code that holds the
    * runtime (never an agent, never a tool result) could reach it, and every method also refuses
@@ -205,6 +214,19 @@ export class PhoenixRuntime implements CoreServices {
       policy,
       audit: this.permissions.audit,
       approver: approverFromPermissions(this.permissions),
+      logger: this.logger,
+    });
+
+    this.agents = new AgentRuntime({
+      db: this.db,
+      settings: this.settings,
+      gateway: this.toolGateway,
+      permissions: this.permissions,
+      bus: this.bus,
+      memory: this.memory,
+      ai: this.ai.service,
+      aiEnabled: () => this.ai.aiSettings().enabled,
+      ...(options.agents ? { extraAgents: options.agents } : {}),
       logger: this.logger,
     });
 
@@ -358,6 +380,7 @@ export class PhoenixRuntime implements CoreServices {
       if (this.ticker) clearInterval(this.ticker);
       if (this.pruner) clearInterval(this.pruner);
       await this.api?.close();
+      await this.agents.close();
       await this.capabilities.close();
       this.stopMeetingSync();
       await this.memory.close();

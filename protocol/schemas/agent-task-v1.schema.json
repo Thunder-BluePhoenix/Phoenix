@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phoenix.dev/schemas/agent-task-v1.schema.json",
+  "title": "Phoenix typed agent objects v1",
+  "description": "Task, Agent, AgentRun, Plan, ToolRequest, ToolResult, Evidence, Verification and Diagnosis (ADR-0008). Every object rejects unknown fields. Risk is never a field of a Plan: only the policy engine assigns it.",
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}$" },
+    "isoTime": { "type": "string", "format": "date-time", "maxLength": 40 },
+    "text200": { "type": "string", "maxLength": 200 },
+    "toolName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}\\.[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$",
+      "maxLength": 130
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "input", "requestedBy", "createdAt", "correlationId"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,39}$" },
+        "input": { "type": "object" },
+        "requestedBy": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "createdAt": { "$ref": "#/$defs/isoTime" },
+        "correlationId": { "$ref": "#/$defs/id" }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "version"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,39}$" },
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" }
+      }
+    },
+    "agentRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "taskId", "agentId", "state", "createdAt", "updatedAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "taskId": { "$ref": "#/$defs/id" },
+        "agentId": { "$ref": "#/$defs/id" },
+        "state": {
+          "enum": [
+            "CREATED",
+            "READY",
+            "RUNNING",
+            "WAITING_APPROVAL",
+            "VERIFYING",
+            "COMPLETED",
+            "FAILED",
+            "CANCELLED"
+          ]
+        },
+        "createdAt": { "$ref": "#/$defs/isoTime" },
+        "updatedAt": { "$ref": "#/$defs/isoTime" },
+        "failureReason": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "planStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "tool", "input", "purpose"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0, "maximum": 99 },
+        "tool": { "$ref": "#/$defs/toolName" },
+        "input": { "type": "object" },
+        "purpose": { "$ref": "#/$defs/text200" }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steps"],
+      "properties": {
+        "steps": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/planStep" } }
+      }
+    },
+    "toolRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "input"],
+      "properties": {
+        "tool": { "$ref": "#/$defs/toolName" },
+        "input": { "type": "object" },
+        "stepIndex": { "type": "integer", "minimum": 0, "maximum": 99 }
+      }
+    },
+    "toolResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "ok"],
+      "properties": {
+        "tool": { "$ref": "#/$defs/toolName" },
+        "ok": { "type": "boolean" },
+        "operationId": { "type": "string", "maxLength": 100 },
+        "auditId": { "type": "integer", "minimum": 0 },
+        "decision": { "enum": ["allow", "deny", "require_approval"] },
+        "risk": { "enum": ["low", "medium", "high", "critical"] },
+        "errorCode": { "type": "string", "maxLength": 60 },
+        "errorMessage": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "source", "excerptHash", "excerpt", "truncated"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["tool_output", "memory", "commit", "log", "model"] },
+        "source": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "excerptHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "excerpt": { "type": "string", "maxLength": 4000 },
+        "truncated": { "type": "boolean" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "checks"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "checks": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "passed", "detail"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+              "passed": { "type": "boolean" },
+              "detail": { "type": "string", "maxLength": 500 },
+              "required": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "diagnosis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "claims", "evidenceCoverage", "aiUsed"],
+      "properties": {
+        "summary": { "type": "string", "maxLength": 2000 },
+        "claims": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["text", "evidenceIds", "grounded"],
+            "properties": {
+              "text": { "type": "string", "minLength": 1, "maxLength": 500 },
+              "evidenceIds": { "type": "array", "maxItems": 10, "items": { "$ref": "#/$defs/id" } },
+              "grounded": { "type": "boolean" },
+              "origin": { "enum": ["rule", "model"] },
+              "note": { "type": "string", "maxLength": 200 }
+            }
+          }
+        },
+        "evidenceCoverage": { "type": "number", "minimum": 0, "maximum": 1 },
+        "modelReportedConfidence": { "type": "string", "maxLength": 40 },
+        "aiUsed": { "type": "boolean" }
+      }
+    }
+  }
+}
