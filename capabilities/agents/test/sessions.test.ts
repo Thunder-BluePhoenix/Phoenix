@@ -15,7 +15,6 @@ import {
 } from "../src/sessions";
 import { cleanTempDirs, fakeLauncher, isAlive, managerFor, workspaceIn } from "./rig";
 
-const TSX = join(import.meta.dirname, "../../../node_modules/.bin/tsx");
 const PARENT = join(import.meta.dirname, "../testing/orphan-parent.ts");
 const FAKE = join(import.meta.dirname, "../testing/fake-agent.cjs");
 
@@ -262,7 +261,9 @@ describe("no orphan survives Core", () => {
 
   async function parentWith(mode: string) {
     const { workspace } = workspaceIn();
-    const parent = spawn(TSX, [PARENT, FAKE, workspace, mode], {
+    // `node --import tsx`, not the tsx binary: the binary forks a child, so killing it would not kill the parent.
+    const parent = spawn(process.execPath, ["--import", "tsx", PARENT, FAKE, workspace, mode], {
+      cwd: join(import.meta.dirname, "../../.."),
       stdio: ["ignore", "pipe", "ignore"],
     });
     children.push(parent);

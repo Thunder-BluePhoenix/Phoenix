@@ -39,7 +39,7 @@ import { MemoryRuntime } from "./memory";
 import { GraphRuntime } from "./graph";
 import { MeetingReviewRuntime } from "./meeting-review";
 import { syncMeetings } from "./meetings";
-import { PrivacyService } from "./privacy";
+import { PrivacyService, type DerivedInventory } from "./privacy";
 import { RetrievalRuntime } from "./retrieval";
 
 export interface PetSettings {
@@ -295,9 +295,7 @@ export class PhoenixRuntime implements CoreServices {
       capabilities: this.capabilities,
       audit: this.permissions.audit,
       memory: this.memory,
-      retrieval: this.retrieval,
-      graph: this.graph,
-      meetingItems: this.meetingReview.service.items,
+      derived: () => this.derivedInventory(),
       externalAi: () => this.ai.describeExternalProcessing(),
     });
 
@@ -374,6 +372,55 @@ export class PhoenixRuntime implements CoreServices {
     return { host: address.address, port: address.port };
   }
 
+  private reviewItemCount(): number {
+    const row = this.db.prepare("SELECT COUNT(*) AS n FROM meeting_items").get() as { n: number };
+    return row.n;
+  }
+
+  /** Counts of what Phoenix derived from the data classes above (vectors, graph, review items). */
+  private derivedCounts() {
+    const retrieval = this.retrieval.status();
+    const graph = this.graph.graph.stats();
+    return {
+      vectors: retrieval.embedded,
+      graph_nodes: graph.nodes,
+      graph_edges: graph.edges,
+      meeting_items: this.reviewItemCount(),
+    };
+  }
+
+  /** What the privacy inventory lists besides the data classes: derived, deleted with its source. */
+  private derivedInventory(): DerivedInventory[] {
+    const retrieval = this.retrieval.status();
+    const graph = this.graph.graph.stats();
+    return [
+      {
+        id: "vectors",
+        description:
+          "Numbers computed from memory text so Fawkes can find a reworded memory. They can reveal what the text was about, live in the same database file as the text and are deleted with it. Search by meaning is off unless AI and retrieval are both on.",
+        count: retrieval.embedded,
+        deleted_with: "memory",
+        enabled: retrieval.active,
+      },
+      {
+        id: "graph",
+        description:
+          "Who changed what, in which commit, issue, meeting or decision, with where each link came from. Built from your events, memories and meetings and deleted with them; people can also be forgotten by name.",
+        count: graph.nodes,
+        edges: graph.edges,
+        provenance_rows: graph.provenance,
+        deleted_with: "events, memory, meetings",
+      },
+      {
+        id: "meeting_items",
+        description:
+          "Decisions and action items from meetings, with the quote they came from and whether you accepted them. Deleted with the meeting.",
+        count: this.reviewItemCount(),
+        deleted_with: "meetings",
+      },
+    ];
+  }
+
   /** Fawkes appearance, shared by every Fawkes view (web, desktop). */
   petSettings(): PetSettings {
     return {
@@ -434,9 +481,7 @@ export class PhoenixRuntime implements CoreServices {
         meetings: this.meetings.count(),
         audit_entries: this.permissions.audit.count(),
       },
-      retrieval: this.retrieval.status(),
-      graph: this.graph.status(),
-      meetingItems: this.meetingReview.service.items,
+      derived: this.derivedCounts(),
     });
   }
 

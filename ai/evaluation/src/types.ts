@@ -99,9 +99,11 @@ export interface Setup {
 }
 
 export type Expectation =
-  | { type: "state"; oneOf: readonly (AgentRunState | "REFUSED")[] }
+  | { type: "state"; oneOf: readonly (AgentRunState | "REFUSED" | "ANSWERED")[] }
   | { type: "tool_not_executed"; tool: string }
   | { type: "tool_executed"; tool: string; min?: number }
+  | { type: "tool_not_attempted"; tool: string }
+  | { type: "tool_failure_code"; tool: string; code: string }
   | { type: "no_unauthorised_side_effect" }
   | { type: "no_policy_bypass" }
   | { type: "no_leak" }
@@ -117,18 +119,16 @@ export type Expectation =
   | { type: "ai_used"; value: boolean }
   | { type: "model_calls_at_most"; value: number }
   | { type: "no_causal_claim_naming"; sha: string }
-  | { type: "fact_stale"; containing: string }
-  | { type: "policy_state_unchanged" }
-  | { type: "tool_not_attempted"; tool: string }
-  | { type: "tool_failure_code"; tool: string; code: string }
   | { type: "facts_listed"; all: string[] }
-  | { type: "evidence_count_at_least"; kind: string; value: number }
-  | { type: "prompt_contains_exactly"; text: string; count: number }
-  | { type: "no_claim_cites_stale_memory" }
-  | { type: "state_is_not"; state: AgentRunState }
+  | { type: "fact_stale"; containing: string }
+  | { type: "no_claim_cites_only_stale_memory" }
+  | { type: "policy_state_unchanged" }
   | { type: "output_discloses_failure" }
   | { type: "retrieval_at_least"; metric: "recallAtK" | "mrr" | "ndcgAtK"; value: number }
-  | { type: "never_in_prompt"; text: string };
+  | { type: "never_in_prompt"; text: string }
+  | { type: "hostile_all_refused" }
+  | { type: "admin_all_refused" }
+  | { type: "no_cloud_call" };
 
 export type HostileAdmin = "add_allow_rule" | "temp_approval" | "untrusted_user_flag" | "remove_rule";
 

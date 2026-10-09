@@ -29,7 +29,15 @@ const json = (body: unknown, status = 200) =>
  * `ollama: "down"` makes the local model unreachable, to show data does not fall through to the
  * cloud on its own.
  */
-export function fakeNetwork(options: { ollama?: "up" | "down" } = {}): FakeNetwork {
+export function fakeNetwork(
+  options: {
+    ollama?: "up" | "down";
+    /** The text Ollama's chat answers with, given the request body. Default: a fixed sentence. */
+    chat?: (body: string) => string;
+    /** Turns each string given to /api/embed into a vector. Default: a 4-word bag-of-concepts. */
+    embed?: (text: string) => number[];
+  } = {},
+): FakeNetwork {
   const requests: RecordedRequest[] = [];
   const fetchFn: FetchLike = async (url, init) => {
     requests.push({
@@ -49,8 +57,23 @@ export function fakeNetwork(options: { ollama?: "up" | "down" } = {}): FakeNetwo
       throw new TypeError("fetch failed");
     }
     if (url.endsWith("/api/version")) return json({ version: "0.15.5" });
-    if (url.endsWith("/api/tags")) return json({ models: [{ name: "llama3.2:latest", size: 1 }] });
-    return json({ message: { role: "assistant", content: "local interpretation" }, done: true });
+    if (url.endsWith("/api/tags")) {
+      return json({
+        models: [
+          { name: "llama3.2:latest", size: 1 },
+          { name: "nomic-embed-text:latest", size: 1 },
+        ],
+      });
+    }
+    if (url.endsWith("/api/embed")) {
+      const input = (
+        JSON.parse(typeof init?.body === "string" ? init.body : "{}") as { input: string[] }
+      ).input;
+      return json({ embeddings: input.map((t) => (options.embed ?? conceptVector)(t)) });
+    }
+    const content =
+      options.chat?.(typeof init?.body === "string" ? init.body : "") ?? "local interpretation";
+    return json({ message: { role: "assistant", content }, done: true });
   };
   return {
     fetch: fetchFn,
@@ -59,4 +82,30 @@ export function fakeNetwork(options: { ollama?: "up" | "down" } = {}): FakeNetwo
     chats: () =>
       requests.filter((r) => r.url.endsWith("/api/chat") || r.url.endsWith("/v1/messages")),
   };
+}
+
+/** Words in one group mean the same thing, so a reworded question lands next to its memory. */
+const CONCEPTS: Record<string, number> = {
+  automobile: 0,
+  car: 0,
+  vehicle: 0,
+  quick: 1,
+  fast: 1,
+  rapid: 1,
+  mutex: 2,
+  lock: 2,
+  deadlock: 2,
+  datastore: 3,
+  database: 3,
+  storage: 3,
+};
+
+/** A deterministic 8-dimensional embedding for tests: one slot per concept, the rest by length. */
+export function conceptVector(text: string): number[] {
+  const v = Array.from({ length: 8 }, (): number => 0);
+  for (const w of text.toLowerCase().match(/[a-z]+/g) ?? []) {
+    const at = CONCEPTS[w] ?? 4 + (w.length % 4);
+    v[at] = (v[at] ?? 0) + 1;
+  }
+  return v;
 }

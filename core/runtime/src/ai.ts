@@ -81,6 +81,14 @@ export class AiRuntime implements AiApi {
     });
   }
 
+  /** Ids of the providers that can embed text. */
+  embeddingProviders(): string[] {
+    return this.registry
+      .list()
+      .filter((p) => p.capabilities.embed)
+      .map((p) => p.id);
+  }
+
   /** The stored settings, with anything malformed read as its safe default (off). */
   private stored(): StoredAiSettings {
     const raw = this.d.settings.get<Partial<StoredAiSettings> | null>(SETTINGS_KEY, null);

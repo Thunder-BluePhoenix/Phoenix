@@ -46,6 +46,13 @@ export interface Diagnostics {
   kill_switch: boolean;
   pet: { state: string; recording: boolean; active_tasks: number };
   counts: { events: number; notifications: number; meetings: number; audit_entries: number };
+  /** Counts only (Phase 35-38): never a memory, an item, a node label or a name. */
+  derived: {
+    vectors: number;
+    graph_nodes: number;
+    graph_edges: number;
+    meeting_items: number;
+  };
   bus: BusMetrics;
   websocket: WebSocketMetrics | null;
   capabilities: CapabilityDiagnostics[];
@@ -86,6 +93,7 @@ export interface DiagnosticsDeps {
   deadLetters: DeadLetterStore;
   audit: AuditLog;
   counts: Diagnostics["counts"];
+  derived: Diagnostics["derived"];
   now?: () => number;
 }
 
@@ -144,6 +152,7 @@ export function collectDiagnostics(d: DiagnosticsDeps): Diagnostics {
     kill_switch: d.health.kill_switch,
     pet: { ...d.health.pet, active_tasks: d.health.active_tasks },
     counts: d.counts,
+    derived: d.derived,
     bus: d.health.bus,
     websocket: d.health.websocket,
     capabilities: d.capabilities.list().map((c) => ({

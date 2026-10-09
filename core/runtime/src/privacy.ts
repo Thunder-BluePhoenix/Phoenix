@@ -32,6 +32,16 @@ const DESCRIPTIONS: Record<DataClass, string> = {
     "What Fawkes remembers: commit messages, project docs you listed and, if you allow it, meeting summaries. Retention is set per kind of memory in the memory settings.",
 };
 
+/** Data Phoenix computed from a data class (vectors, graph, review items): listed, never retained alone. */
+export interface DerivedInventory {
+  id: string;
+  description: string;
+  count: number;
+  /** The data class or classes whose deletion removes it. */
+  deleted_with: string;
+  [extra: string]: unknown;
+}
+
 export interface PrivacyDeps {
   dataDir: string;
   settings: SettingsStore;
@@ -47,6 +57,8 @@ export interface PrivacyDeps {
     /** Deletes every memory (and its index entries); returns how many. */
     deleteAll(): number;
   };
+  /** Derived data to list in the inventory, counted now. */
+  derived(): DerivedInventory[];
   /** One sentence about what is sent to AI providers, derived from the live AI settings. */
   externalAi(): string;
 }
@@ -165,6 +177,7 @@ export class PrivacyService {
           "Security record of permissions, approvals and deletions. Kept so actions stay accountable; never sent anywhere.",
         count: this.d.audit.count(),
       },
+      derived: this.d.derived(),
       credentials: this.d.capabilities
         .list()
         .flatMap((c) =>

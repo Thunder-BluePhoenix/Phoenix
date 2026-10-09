@@ -152,7 +152,7 @@ function cloudProvider(log: ModelLog): ModelProvider {
 export interface WorldOptions {
   setup: Setup;
   /** Agents beyond the CI agent; built with the world's model. */
-  extraAgents?: (w: Pick<World, "model" | "engine" | "viewer">) => AgentDefinition[];
+  extraAgents?: (w: Pick<World, "model" | "engine" | "viewer" | "admin">) => AgentDefinition[];
 }
 
 export async function buildWorld(options: WorldOptions): Promise<World> {
@@ -272,7 +272,7 @@ export async function buildWorld(options: WorldOptions): Promise<World> {
   const model: ModelCall = async (request, signal) =>
     (await ai.run({ kind: "generate", request, signal })).result;
 
-  const base = { model, engine, viewer };
+  const base = { model, engine, viewer, admin };
   const agents: AgentDefinition[] = [
     createCiFailureAgent({
       model,
