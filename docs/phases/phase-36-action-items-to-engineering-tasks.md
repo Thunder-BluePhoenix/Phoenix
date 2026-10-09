@@ -94,6 +94,53 @@ Gates, in order: the capability must be enabled; a write credential must be in t
 
 Construct `PlanService` in the runtime with the real `ToolGateway` and `AiService` (`generate: () => generateWith(ai)`), call `plans.recover()` at startup, add routes (suggested: `POST /api/meetings/items/:id/plan`, `GET /api/plans/:id`, `PATCH /api/plans/:id`, `POST /api/plans/:id/propose|approve|create|cancel`, `GET /api/plans/:id/preview`, `GET /api/meetings/:id/links`, `GET /api/task-links?system=&id=`), and a web approval panel that shows the plan with each statement's basis, the exact `preview` of what will be sent and the policy decision, a **default-off** "name the meeting in the created tasks" checkbox, and the per-task result. Set the write token and `api` URL in the capability settings; neither is set by default, so the commands are inert until the user sets them.
 
+## API contract
+
+All routes need the session token and are **user routes**: there is no tool, capability command or agent path to any of them (the tool registry lists no `plans.*` tool, and `approve`/`create` exist only as these HTTP handlers). Bodies are JSON objects with **exact keys** (an unknown field is 400). Errors are `{code, message, details}`: 400 invalid request (also: item not accepted, plan in the wrong status, stale hash), 404 unknown or not visible (indistinguishable), 409 `ACTION_REQUIRES_CONFIRMATION` (missing `confirm: true`) or `CAPABILITY_DISABLED` (planning is off, see below), 401 no token. JSON is snake_case.
+
+**Off by default.** Generating and creating work only when **AI is on** *and* the destination is configured: the `github` capability enabled with its `write_token` set (GitHub), or the `frappe` capability enabled with `write_token` set and the chosen site listed under its `api` config (Frappe). Otherwise `POST .../plan` and `POST .../create` answer **409 `CAPABILITY_DISABLED`** with `details: ["PLANNING_OFF", ...reasons]` and nothing is generated or sent. Reading, editing, proposing and cancelling existing plans always work. `GET /api/plans/status` says which condition is missing.
+
+**Plan** (`PlanView`):
+
+```json
+{
+  "id": "plan_…", "meeting_id": "kage:7", "item_id": "mi_…",
+  "target": "github | frappe",
+  "destination": { "system": "github", "repository": "owner/name" } | { "system": "frappe", "site": "erp.localhost" },
+  "status": "draft | proposed | approved | creating | created | failed | cancelled",
+  "content_hash": "<sha-256 hex of the content shown>",
+  "approved": { "hash": "…", "by": "owner", "at": "ISO" } | null,
+  "include_meeting_ref": false,
+  "title": "…", "generated_by": "rules | ai:<provider>/<model>", "not_ai_generated": true,
+  "summary": Statement, "acceptance_criteria": Statement[], "risks": Statement[], "open_questions": string[],
+  "tasks": [ { "title", "body", "labels": string[], "basis": "meeting|suggested|user", "item_id"?: string, "quote"?: string } ],
+  "frappe": null | { "doctype", "fields": [{ "label", "fieldtype", "required" }], "workflow_states": string[], "permissions": [{ "role", "read", "write", "create" }] },
+  "source": { "item_id", "meeting_id", "kind", "item_text", "owner": string|null, "due": string|null, "quote": string|null },
+  "created_at": "ISO", "updated_at": "ISO"
+}
+```
+
+`Statement` = `{ "text", "basis": "meeting|suggested|user", "item_id"?, "quote"? }`. `basis: "meeting"` carries the verbatim `quote`; **show the basis next to every statement** ("from the meeting" / "suggested by the model" / "written by you"). `content_hash` is what `approve` must echo back.
+
+**Run** (`TaskRunView`): `{ "task_index", "idempotency_key", "status": "pending|attempting|created|failed", "attempts", "external_id": string|null, "url": string|null, "error": string|null, "updated_at" }`. **Link** (`PlanLinkView`): `{ "id", "meeting_id", "item_id", "plan_id", "task_index", "system": "github|frappe", "external_id", "url", "approved_by", "approved_at", "created_at" }`. **Detail** (`PlanDetailView`) = `{ "plan": Plan, "runs": Run[], "links": Link[] }`.
+
+| Route | Body / query | Success |
+|---|---|---|
+| `GET /api/plans/status` | | 200 `{ "enabled": bool, "ai_enabled": bool, "reasons": string[], "destinations": { "github": { "capability_enabled": bool, "write_token_set": bool }, "frappe": { "capability_enabled": bool, "write_token_set": bool, "sites": string[] } } }`. `enabled` is true when AI is on and at least one destination is configured; `reasons` are sentences for the user when it is false. |
+| `POST /api/meeting-items/:id/plan` | `{ "destination": { "system": "github", "repository": "owner/name" } \| { "system": "frappe", "site": "…" } }` | **201** `{ "plan": Plan, "generation": { "stats": { "proposed", "grounded", "suggested", "ignored_fields", "design_dropped" }, "unavailable": string \| null } }`. The plan is a `draft`. 400 for an item that is not accepted or a kind that cannot be planned (topics, project references), or a malformed destination. Can take a minute with a local model. |
+| `GET /api/meetings/:id/plans` | | 200 `{ "meeting_id", "plans": [{ "id", "item_id", "target", "status", "title", "task_count", "created_at", "updated_at" }] }`, newest first. |
+| `GET /api/meetings/:id/links` | | 200 `{ "meeting_id", "links": Link[] }`: every task created from the meeting. |
+| `GET /api/task-links?system=&id=` | `system` ∈ github/frappe, `id` the issue number or Task name (1-200 chars) | 200 `{ "links": Link[] }`: the meeting, item and plan a task came from. Not meeting-scoped: it lists ids and urls only. |
+| `GET /api/plans/:id` | | 200 `Detail`. |
+| `GET /api/plans/:id/preview` | | 200 `{ "plan_id", "tasks": [{ "task_index", "tool": "github.issue.create \| frappe.task.create", "input": {…exactly what will be sent…}, "decision": { "effect", "risk", "reasons": string[], "matched": string[] } }] }`. Show it in the approval panel. |
+| `POST /api/plans/:id/edit` | any of `{ "title", "summary", "acceptance_criteria": string[], "tasks": [{ "title", "body", "labels"?: string[] }], "risks": string[], "open_questions": string[], "destination" }` (at least one key) | 200 `Detail`. **Always returns the plan to `draft` and clears the approval.** A plan cannot move between GitHub and Frappe (400). 400 when `creating`, `created` or `cancelled`. |
+| `POST /api/plans/:id/propose` | `{}` | 200 `Detail` (draft → proposed). |
+| `POST /api/plans/:id/approve` | `{ "hash": "<content_hash>", "include_meeting_ref"?: bool (default false) }` | 200 `Detail` (proposed → approved). 400 when the hash is not the current `content_hash` ("review it again"). `include_meeting_ref` names the meeting in the created tasks; default off, part of the approval. Audit `plan.approved`. |
+| `POST /api/plans/:id/create` | `{ "confirm": true }` | 200 `{ "plan", "runs", "links", "failure": null \| { "task_index", "message" } }`. Creates the tasks one at a time **as the user** through the tool gateway; stops at the first failure and leaves the plan `failed` (call again to retry with the same idempotency keys; a task that already exists is found by its key, not created twice). The request **stays open while each task waits for the user's confirmation** in `/api/confirmations` (capability `github`/`frappe`, command `issue.create`/`task.create`); do not block the UI on it. 409 `ACTION_REQUIRES_CONFIRMATION` without `confirm: true`. 400 when the plan is not `approved`/`failed` or its approval no longer matches its content. |
+| `POST /api/plans/:id/cancel` | `{}` | 200 `Detail` (draft/proposed/approved/failed → cancelled). 400 while `creating`. |
+
+**UI rules the contract implies.** Show the status gate (`/api/plans/status`) before offering "Make a plan". Show the basis of every statement and the `preview` (with the policy `decision`) before approval; the "name the meeting in the created tasks" box is **off** by default. Never offer approve for a plan whose hash changed; after any edit the plan is `draft` again. After `create`, show each run's `status`, `url` and `error`, and the links. The per-task confirmation prompts arrive through the normal confirmation flow.
+
 ## Source documents
 
 - Post-MVP Roadmap v1.0 §8

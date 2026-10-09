@@ -80,6 +80,11 @@ function setup(hash: string, routes: Parameters<typeof fakeApi>[0] = {}) {
     "GET /api/meetings/kage:1": () => meeting(),
     "GET /api/meetings/kage:1/summary": () => SUMMARY,
     "GET /api/meetings/kage:1/transcript": () => ({ text: "Hello everyone." }),
+    "GET /api/meetings/kage:1/items": () => ({
+      meeting_id: "kage:1",
+      items: [],
+      counts: { proposed: 0, accepted: 0, edited: 0, rejected: 0 },
+    }),
     ...routes,
   });
   const client = new PhoenixClient({

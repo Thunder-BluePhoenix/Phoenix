@@ -55,6 +55,20 @@ export interface Proposal {
   grounded: boolean;
 }
 
+/**
+ * Which model answered and what it used, as the model service reported it. A token count the
+ * service did not report is `"unknown"`, never an estimate. Ids, names and numbers only.
+ */
+export interface ModelProvenance {
+  provider: string;
+  model: string;
+  locality: "local" | "cloud";
+  /** Requests that produced this provenance. */
+  calls: number;
+  inputTokens: number | "unknown";
+  outputTokens: number | "unknown";
+}
+
 export interface Conclusion {
   summary: string;
   diagnosis?: Diagnosis;
@@ -65,6 +79,8 @@ export interface Conclusion {
   processedBy?: string;
   /** Model requests made during the run, accepted or not. */
   modelCalls: number;
+  /** Set when a model answered: its provenance and reported usage. Absent when none did. */
+  model?: ModelProvenance;
 }
 
 export interface VerifyResult {

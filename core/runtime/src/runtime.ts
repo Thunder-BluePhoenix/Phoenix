@@ -32,6 +32,7 @@ import {
 import { createEvent, ErrorCode, PhoenixError, PROTOCOL_VERSION } from "@phoenix/protocol";
 import { PolicyAdmin, PolicyEngine, PolicyStore } from "@phoenix/policy";
 import { StateEngine } from "@phoenix/state-engine";
+import type { AgentsServices } from "@phoenix/capability-agents";
 import { AgentRuntime } from "./agents";
 import { AiRuntime } from "./ai";
 import { collectDiagnostics, type Diagnostics } from "./diagnostics";
@@ -330,6 +331,33 @@ export class PhoenixRuntime implements CoreServices {
         }),
       );
     }
+  }
+
+  /**
+   * What the agents capability needs from Core to orchestrate coding-agent sessions. The context
+   * read goes through the tool gateway as an untrusted agent actor named after the session, so it is
+   * policy-checked and audited like every other agent read.
+   */
+  agentsServices(): AgentsServices {
+    return {
+      db: this.db,
+      events: this.bus,
+      audit: (record) => void this.permissions.audit.record(record),
+      isKillSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
+      context: {
+        assembler: this.memory.agentContext().engine,
+        fetch: async (request) =>
+          (
+            await this.toolGateway.call({
+              actor: { kind: "agent", id: `session:${request.session_id}`, trustedByUser: false },
+              tool: "agents.context.fetch",
+              input: request,
+              environment: "local",
+              dataClass: "internal",
+            })
+          ).output,
+      },
+    };
   }
 
   async start(): Promise<{ host: string; port: number }> {

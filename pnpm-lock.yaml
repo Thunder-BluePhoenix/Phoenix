@@ -778,6 +778,9 @@ importers:
       '@phoenix/state-engine':
         specifier: workspace:*
         version: link:../state-engine
+      '@phoenix/workflows':
+        specifier: workspace:*
+        version: link:../workflows
     devDependencies:
       '@types/ws':
         specifier: ^8.18.1

@@ -17,6 +17,7 @@ import { AutomationSettings } from "./AutomationSettings";
 import { AiSettings, MemorySettingsSection } from "./MemorySettings";
 import { Feedback } from "./Feedback";
 import { QuickActions } from "./Overview";
+import { RetrievalSettingsSection } from "./RetrievalSettings";
 
 /** Settings (PRD v2.0 §16, FR-014): Fawkes, notifications, capabilities, privacy, memory, AI. */
 export function SettingsPage({ state }: { state: PetState }) {
@@ -29,6 +30,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <PrivacySettings />
       <MemorySettingsSection />
       <AiSettings />
+      <RetrievalSettingsSection />
       <AutomationSettings />
       <SupportSettings />
       <div className="card">

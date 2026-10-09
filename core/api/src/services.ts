@@ -574,15 +574,359 @@ export interface ConfirmationContextView {
   evidence_ids: string[];
 }
 
+/**
+ * The observation of one agent run: which model answered, which context and tools it used, what
+ * the policy decided, how long each stage took and how it ended. Ids, names, counts, hashes and
+ * numbers only: never a prompt, memory text, tool output or evidence text. A token count the model
+ * service did not report is `"unknown"`, never an estimate.
+ */
+export interface AgentObservationView {
+  version: 1;
+  task_id: string;
+  run_id: string;
+  agent_id: string;
+  agent_version: string;
+  outcome: string;
+  failure_reason: string | null;
+  model: {
+    provider: string;
+    model: string;
+    locality: "local" | "cloud";
+    calls: number;
+    input_tokens: number | "unknown";
+    output_tokens: number | "unknown";
+  } | null;
+  /** SHA-256 of the agent's system prompt; null when Core does not know it. */
+  prompt_version: string | null;
+  /** SHA-256 over the sorted evidence ids and hashes. */
+  context_version: string;
+  /** Evidence by kind. */
+  sources: Record<string, number>;
+  memory_ids: string[];
+  tool_calls: {
+    tool: string;
+    status: string;
+    decision: string | null;
+    risk: string | null;
+    policy_audit_id: number | null;
+    audit_confirmed: boolean;
+  }[];
+  permission_decisions: Record<string, number>;
+  stages: { name: string; status: string; duration_ms: number; audit_id: number | null }[];
+  total_duration_ms: number;
+  tokens: { input: number | "unknown"; output: number | "unknown" };
+  /** Micro-dollars. 0 for a local model, `"unknown"` for a cloud model (Core has no price table). */
+  cost_micro_usd: number | "unknown";
+  cloud_calls: number;
+  ai_used: boolean;
+  evidence_coverage: number | null;
+  audit_ids: number[];
+}
+
 /** Agent automation. Errors are PhoenixErrors; see the API contract in the phase 31 doc. */
 export interface AgentApi {
   submit(request: { kind: unknown; input: unknown }): AgentTaskSummaryView;
   list(query: { state?: string; limit: number }): { tasks: AgentTaskSummaryView[] };
   get(id: string): AgentTaskDetailView | null;
   cancel(id: string): { cancelled: boolean; state: string } | null;
+  /** The harness observation of a task's run (Phase 33); null for an unknown task. */
+  observation(id: string): AgentObservationView | null;
   settings(): AgentSettingsView;
   setSettings(input: unknown): AgentSettingsView;
   describeConfirmation(confirmationId: string): ConfirmationContextView | undefined;
+}
+
+export type PlanDestinationView =
+  { system: "github"; repository: string } | { system: "frappe"; site: string };
+
+export interface PlanStatementView {
+  text: string;
+  basis: "meeting" | "suggested" | "user";
+  item_id?: string;
+  quote?: string;
+}
+
+/** One engineering plan (Phase 36). `content_hash` is what `approve` must echo back. */
+export interface PlanView {
+  id: string;
+  meeting_id: string;
+  item_id: string;
+  target: "github" | "frappe";
+  destination: PlanDestinationView;
+  status: "draft" | "proposed" | "approved" | "creating" | "created" | "failed" | "cancelled";
+  content_hash: string;
+  approved: { hash: string; by: string; at: string } | null;
+  include_meeting_ref: boolean;
+  title: string;
+  generated_by: string;
+  not_ai_generated: boolean;
+  summary: PlanStatementView;
+  acceptance_criteria: PlanStatementView[];
+  risks: PlanStatementView[];
+  open_questions: string[];
+  tasks: {
+    title: string;
+    body: string;
+    labels: string[];
+    basis: "meeting" | "suggested" | "user";
+    item_id?: string;
+    quote?: string;
+  }[];
+  frappe: {
+    doctype: string;
+    fields: { label: string; fieldtype: string; required: boolean }[];
+    workflow_states: string[];
+    permissions: { role: string; read: boolean; write: boolean; create: boolean }[];
+  } | null;
+  source: {
+    item_id: string;
+    meeting_id: string;
+    kind: string;
+    item_text: string;
+    owner: string | null;
+    due: string | null;
+    quote: string | null;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlanTaskRunView {
+  task_index: number;
+  idempotency_key: string;
+  status: "pending" | "attempting" | "created" | "failed";
+  attempts: number;
+  external_id: string | null;
+  url: string | null;
+  error: string | null;
+  updated_at: string;
+}
+
+export interface PlanLinkView {
+  id: string;
+  meeting_id: string;
+  item_id: string;
+  plan_id: string;
+  task_index: number;
+  system: "github" | "frappe";
+  external_id: string;
+  url: string;
+  approved_by: string;
+  approved_at: string;
+  created_at: string;
+}
+
+export interface PlanDetailView {
+  plan: PlanView;
+  runs: PlanTaskRunView[];
+  links: PlanLinkView[];
+}
+
+export interface PlanningStatusView {
+  /** AI is on and at least one destination is configured. */
+  enabled: boolean;
+  ai_enabled: boolean;
+  /** Sentences for the user when `enabled` is false. */
+  reasons: string[];
+  destinations: {
+    github: { capability_enabled: boolean; write_token_set: boolean };
+    frappe: { capability_enabled: boolean; write_token_set: boolean; sites: string[] };
+  };
+}
+
+export interface PlanEditInput {
+  title?: string;
+  summary?: string;
+  acceptance_criteria?: string[];
+  tasks?: { title: string; body: string; labels?: string[] }[];
+  risks?: string[];
+  open_questions?: string[];
+  destination?: PlanDestinationView;
+}
+
+/**
+ * Plans from accepted meeting items and the creation of their tasks (Phase 36). Every method is the
+ * signed-in user's own action; `approve` and `create` have no other caller than the session-token
+ * routes (no tool, no capability command). Errors are PhoenixErrors.
+ */
+export interface PlanningApi {
+  status(): PlanningStatusView;
+  generate(
+    itemId: string,
+    destination: PlanDestinationView,
+  ): Promise<{
+    plan: PlanView;
+    generation: {
+      stats: {
+        proposed: number;
+        grounded: number;
+        suggested: number;
+        ignored_fields: number;
+        design_dropped: number;
+      };
+      unavailable: string | null;
+    };
+  }>;
+  listForMeeting(meetingId: string): {
+    meeting_id: string;
+    plans: {
+      id: string;
+      item_id: string;
+      target: "github" | "frappe";
+      status: PlanView["status"];
+      title: string;
+      task_count: number;
+      created_at: string;
+      updated_at: string;
+    }[];
+  };
+  linksForMeeting(meetingId: string): { meeting_id: string; links: PlanLinkView[] };
+  linksForTask(system: "github" | "frappe", externalId: string): { links: PlanLinkView[] };
+  get(planId: string): PlanDetailView;
+  preview(planId: string): {
+    plan_id: string;
+    tasks: {
+      task_index: number;
+      tool: string;
+      input: Record<string, unknown>;
+      decision: { effect: string; risk: string; reasons: string[]; matched: string[] };
+    }[];
+  };
+  edit(planId: string, change: PlanEditInput): PlanDetailView;
+  propose(planId: string): PlanDetailView;
+  approve(planId: string, input: { hash: string; includeMeetingRef: boolean }): PlanDetailView;
+  create(planId: string): Promise<{
+    plan: PlanView;
+    runs: PlanTaskRunView[];
+    links: PlanLinkView[];
+    failure: { task_index: number; message: string } | null;
+  }>;
+  cancel(planId: string): PlanDetailView;
+}
+
+export interface WorkflowView {
+  id: string;
+  name: string;
+  enabled: boolean;
+  environment: "local" | "dev" | "staging" | "production";
+  version: number;
+  hash: string;
+  trigger: { event: string; where?: string };
+  authorisation_reasons: string[];
+  authorised: boolean;
+  problems: string[];
+}
+
+export interface WorkflowAuthorisationView {
+  id: string;
+  workflow_id: string;
+  definition_hash: string;
+  authorised_by: string;
+  authorised_at: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  revoked_by: string | null;
+  /** Not revoked, not expired and bound to the workflow's current hash. */
+  live: boolean;
+}
+
+export interface WorkflowRunSummaryView {
+  id: string;
+  workflow_id: string;
+  workflow_name: string;
+  status: string;
+  terminal: boolean;
+  correlation_id: string;
+  trigger_event_id: string;
+  chain_depth: number;
+  current_step: string | null;
+  reason: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface WorkflowRunView extends WorkflowRunSummaryView {
+  trigger: string;
+  steps: {
+    seq: number;
+    step_id: string;
+    phase: "step" | "compensation";
+    type: string;
+    status: string;
+    attempts: number;
+    destructive: boolean;
+    tool: string | null;
+    input: string | null;
+    output: string | null;
+    error: string | null;
+    started_at: string;
+    finished_at: string | null;
+  }[];
+}
+
+export interface WorkflowMetricsView {
+  runs_started: number;
+  runs_succeeded: number;
+  runs_failed: number;
+  runs_cancelled: number;
+  runs_rejected: number;
+  runs_interrupted: number;
+  runs_refused: number;
+  runs_compensated: number;
+  runs_needing_attention: number;
+  steps_succeeded: number;
+  steps_failed: number;
+  step_failure_rate: number;
+  duration: { p50: number; p90: number; p99: number; samples: number } | null;
+  approvals_waiting: number;
+  approvals_approved: number;
+  approvals_rejected: number;
+  approvals_expired: number;
+}
+
+/**
+ * Workflows (Phases 39-40). Every change is the signed-in user's own action (the runtime holds the
+ * only `WorkflowAdmin`); nothing a tool, an agent or a workflow step can call reaches it. Errors are
+ * PhoenixErrors; see the API contract in the phase 39 and 40 docs.
+ */
+export interface WorkflowsApi {
+  list(): WorkflowView[];
+  get(id: string): {
+    workflow: WorkflowView;
+    definition: unknown;
+    authorisations: WorkflowAuthorisationView[];
+    created_by: string | null;
+    created_at: string | null;
+    updated_by: string | null;
+    updated_at: string | null;
+  } | null;
+  validate(definition: unknown): {
+    valid: boolean;
+    problems: string[];
+    hash: string | null;
+    authorisation: { required: boolean; reasons: string[] } | null;
+  };
+  save(definition: unknown): {
+    created: boolean;
+    workflow: WorkflowView;
+    stored_enabled: boolean;
+    authorisation_required: boolean;
+    authorisation_reasons: string[];
+  };
+  setEnabled(id: string, enabled: boolean): WorkflowView;
+  authorise(id: string, input: { hash: string; expiresAt?: string }): {
+    authorisation: WorkflowAuthorisationView;
+    workflow: WorkflowView;
+  };
+  revoke(id: string): { revoked: number; workflow: WorkflowView };
+  start(id: string, payload: Record<string, unknown>): { run: WorkflowRunSummaryView };
+  cancelRun(runId: string): { cancelled: true; status: string };
+  listRuns(query: { workflowId?: string; status?: string; limit: number }): {
+    runs: WorkflowRunSummaryView[];
+  };
+  getRun(runId: string): WorkflowRunView | null;
+  metrics(): Record<string, WorkflowMetricsView>;
 }
 
 /** Everything the API needs from Phoenix Core. */
@@ -608,6 +952,8 @@ export interface CoreServices {
   graph?: GraphApi;
   ai?: AiApi;
   agents?: AgentApi;
+  planning?: PlanningApi;
+  workflows?: WorkflowsApi;
   petSettings?(): unknown;
   setPetSettings?(input: unknown): unknown;
   /** Persists the user's sleep preference. */

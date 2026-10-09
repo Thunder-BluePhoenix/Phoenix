@@ -361,3 +361,295 @@ export interface AgentTaskDetail {
   verification: AgentVerification | null;
   audit_ids: number[];
 }
+
+/** Phase 35: a decision, action item or other thing taken from a meeting, awaiting review. */
+export const MEETING_ITEM_STATUSES = ["proposed", "accepted", "edited", "rejected"] as const;
+export type MeetingItemStatus = (typeof MEETING_ITEM_STATUSES)[number];
+export type MeetingItemKind = "decision" | "action_item" | "requirement" | "topic" | "project_ref";
+
+export interface MeetingItem {
+  id: string;
+  meeting_id: string;
+  kind: MeetingItemKind;
+  text: string;
+  owner: string | null;
+  due: string | null;
+  status: MeetingItemStatus;
+  /** "kage", "manual" or "ai:<provider>/<model>". */
+  extracted_by: string;
+  evidence: {
+    source: "transcript" | "summary";
+    quote: string;
+    segment_start?: number;
+    segment_end?: number;
+    char_start?: number;
+    char_end?: number;
+  } | null;
+  original: { text: string; owner: string | null; due: string | null } | null;
+  created_at: string;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+}
+
+/** GET /api/meetings/:id/items. */
+export interface MeetingItemList {
+  meeting_id: string;
+  items: MeetingItem[];
+  counts: Record<MeetingItemStatus, number>;
+}
+
+/** Result of accept, reject, reopen and edit. */
+export interface MeetingReviewResult {
+  item: MeetingItem;
+  /** `refused` is non-empty when the item is accepted but memory refused to remember it. */
+  memory: { stored: number; refused: string[] };
+}
+
+/** POST /api/meetings/:id/items/extract. */
+export interface MeetingExtraction {
+  meeting_id: string;
+  has_transcript: boolean;
+  kage: { imported: number; duplicates: number; removed: number };
+  ai: {
+    stored: number;
+    unavailable: string | null;
+    stats: {
+      chars_skipped: number;
+      dropped: Record<string, number>;
+    };
+  } | null;
+  counts: MeetingItemList["counts"];
+}
+
+/** How a search or ask found its facts (Phase 37). */
+export interface RetrievalInfo {
+  mode: "lexical" | "hybrid";
+  vector_skipped_reason?: string;
+  truncated?: boolean;
+}
+
+export interface MeetingSearchHit {
+  meeting_id: string;
+  item_id: string | null;
+  memory_id: string;
+  text: string;
+  origin: "reviewed" | "kage";
+  part: string;
+  observed_at: string;
+  freshness: "fresh" | "stale";
+  score: number;
+}
+
+export interface MeetingSearchResult {
+  query: string;
+  hits: MeetingSearchHit[];
+  total: number;
+  retrieval: RetrievalInfo;
+}
+
+export interface MeetingAnswer {
+  question: string;
+  facts: {
+    ref: string;
+    text: string;
+    meeting_id: string;
+    item_id: string | null;
+    memory_id: string;
+    origin: "reviewed" | "kage";
+  }[];
+  interpretation: string | null;
+  processed_by: string | null;
+  ai_used: boolean;
+  note: string | null;
+  retrieval: RetrievalInfo;
+}
+
+/** Phase 38: where a graph node or edge came from. */
+export interface GraphProvenance {
+  source_kind: "event" | "capability" | "memory" | "meeting" | "meeting_item" | "user";
+  source_id: string;
+  capability: string;
+  observed_at: string;
+  recorded_at: string;
+  confidence: number;
+  /** "rule", "capability", "user" or "ai:<model>". */
+  asserted_by: string;
+  scope: string;
+  domain: string;
+  sensitivity: MemorySensitivity;
+  detail: Record<string, string | number | boolean | null>;
+}
+
+export interface GraphNode {
+  id: string;
+  type: string;
+  key: string;
+  label: string;
+  status: "fact" | "proposed";
+  detail: Record<string, string | number | boolean | null>;
+  provenance: GraphProvenance[];
+}
+
+export interface GraphEdge {
+  id: string;
+  src: string;
+  rel: string;
+  dst: string;
+  status: "fact" | "proposed";
+  provenance: GraphProvenance[];
+}
+
+/** GET /api/graph/nodes/:id. */
+export interface GraphInspection {
+  node: GraphNode;
+  origin: GraphProvenance[];
+  summary: { sources: number; assertors: string[]; capabilities: string[]; status: string };
+  visible_edges: number;
+}
+
+/** GET /api/graph/nodes/:id/neighbors. */
+export interface GraphNeighborhood {
+  center: string;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  truncated: boolean;
+}
+
+export interface GraphPath {
+  nodes: GraphNode[];
+  hops: { from: string; to: string; direction: "forward" | "backward"; edge: GraphEdge }[];
+  text: string;
+}
+
+export type GraphTruncation = Partial<
+  Record<"depth" | "fanout" | "visited" | "time" | "results", true>
+>;
+
+export type GraphAnswer =
+  | { kind: "why"; subject: GraphNode | null; paths: GraphPath[]; truncated: GraphTruncation }
+  | {
+      kind: "which";
+      subject: GraphNode | null;
+      type: string;
+      results: { node: GraphNode; path: GraphPath }[];
+      truncated: GraphTruncation;
+    }
+  | {
+      kind: "who";
+      subject: GraphNode | null;
+      people: { person: GraphNode; paths: GraphPath[] }[];
+      truncated: GraphTruncation;
+    };
+
+/** POST /api/graph/ask. */
+export interface GraphAsk {
+  question: string;
+  seeds: GraphNode[];
+  answers: GraphAnswer[];
+  documents: {
+    id: string;
+    text: string;
+    source: string;
+    source_ref: string;
+    score: number | null;
+  }[];
+  notes: string[];
+  retrieval: RetrievalInfo;
+}
+
+/** Phase 34: a coding-agent session Phoenix started (`session.list` / `session.get`). */
+export type OrchestratedState = "running" | "waiting" | "completed" | "failed" | "stopped";
+
+export interface OrchestratedSession {
+  id: string;
+  launcher: string;
+  workspace: string;
+  repository: string;
+  state: OrchestratedState;
+  started_at: string;
+  ended_at?: string;
+  exit_code?: number | null;
+  signal?: string | null;
+  stop_reason?: string;
+  failure?: string;
+  accepts_input: boolean;
+  messages_sent: number;
+}
+
+export interface AgentLink {
+  id: number;
+  session_id: string | null;
+  kind: "commit" | "ci_run" | "pr" | "task";
+  ref: string;
+  repo: string;
+  confidence: "time+path" | "sha-match" | "branch-match" | "user" | "ambiguous";
+  source: string;
+  why: Record<string, unknown>;
+  detail?: Record<string, unknown>;
+  candidates?: string[];
+  created_at: string;
+  resolved_at?: string;
+}
+
+export interface OrchestratedSessionList {
+  sessions: OrchestratedSession[];
+  ambiguous_links: AgentLink[];
+}
+
+export interface OrchestratedSessionDetail {
+  session: OrchestratedSession | null;
+  links: AgentLink[];
+  ambiguous: AgentLink[];
+  timeline: { at: string; kind: string; detail?: Record<string, unknown> }[];
+  output?: { stdout: string[]; stderr: string[] };
+}
+
+/** One launcher from the `agents` capability's config (a name, the fixed command and its folders). */
+export interface AgentLauncher {
+  command: string[];
+  cwd_roots: string[];
+}
+
+/** Phase 37: GET/POST /api/retrieval/settings. */
+export interface RetrievalSettings {
+  enabled: boolean;
+  provider: string;
+  model: string;
+  k: number;
+  vector_weight: number;
+  reranker: "feature" | "none";
+}
+
+/** GET /api/retrieval/status. */
+export interface RetrievalStatus {
+  enabled: boolean;
+  active: boolean;
+  inactive_reason: "retrieval_disabled" | "ai_disabled" | null;
+  provider: string;
+  model: string;
+  vector_space: string;
+  embedded: number;
+  total: number;
+  unembedded: number;
+  failures: number;
+  other_models: { model: string; vectors: number }[];
+  payload_bytes: number;
+  last_run: {
+    at: string;
+    embedded: number;
+    failed: number;
+    remaining: number;
+    capped: boolean;
+    degraded: string[];
+  } | null;
+}
+
+/** GET /api/graph/status. */
+export interface GraphStatus {
+  nodes: number;
+  edges: number;
+  provenance: number;
+  visible_nodes_by_type: Record<string, number>;
+  commits_backfilled: number;
+  last_ingest: { at: string; memories: number; meetings: number } | null;
+}

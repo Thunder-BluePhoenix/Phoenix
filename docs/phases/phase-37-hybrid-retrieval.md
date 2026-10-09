@@ -123,6 +123,14 @@ Why this may not generalise: 24 held-out queries, one corpus (this repository's 
 
 Only the third is a clear find that keyword search missed; the first two reorder results that were already roughly right. Three queries prove nothing about relevance; the benchmark above is the measurement.
 
+## Web UI
+
+"Smart search" on the Settings page (`RetrievalSettings.tsx`): the switch (`POST /api/retrieval/settings {enabled}`), a status list (state in words, index size embedded/total/waiting/failed and bytes, model, last build with age, the last run's `degraded` reasons as the fallback reason, old vectors from other models), and the consent text: embeddings are made on this computer, search questions are embedded as sensitive, stay local and go to the cloud only if the user chose that for sensitive data in the AI settings, and it needs AI on. Search and ask results show the `retrieval` note.
+
+**Gap:** Core has no rebuild route. "Update the index now" switches `enabled` off and on, which starts an incremental run (it embeds memories that have no vector yet; it cannot re-embed everything). It is disabled unless the status says `active`.
+
+**Checked:** `apps/web/test/retrieval-settings.test.tsx` (default off with the consent copy, on sends only `{enabled: true}`, status lines, AI-off state, Update disabled/enabled and off-then-on once, error and double click). Browser smoke against a real Core and local Ollama (`nomic-embed-text` only): the page showed "Smart search is on, but AI is off" and 0 of 5 indexed; after AI was turned on, Update indexed 5 of 5 memories (0 failed).
+
 ## Source documents
 
 - Technical Spec Suite 04–14 §08

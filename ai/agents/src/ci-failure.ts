@@ -22,6 +22,7 @@ import type { GenerateRequest, GenerateResult, PrivacyClass } from "@phoenix/ai-
 import {
   type AgentDefinition,
   type Conclusion,
+  type ModelProvenance,
   type Proposal,
   type RunContext,
   type ToolFailure,
@@ -109,6 +110,8 @@ interface RunData {
   notes: string[];
   contextPrivacy: PrivacyClass;
   modelCalls: number;
+  /** Which model answered and the usage it reported; null until one answered. */
+  modelUse: ModelProvenance | null;
   /** Evidence ids that are old memory: a claim resting only on these is not grounded. */
   staleEvidence: Record<string, true>;
 }
@@ -127,6 +130,7 @@ const freshData = (): RunData => ({
   notes: [],
   contextPrivacy: "internal",
   modelCalls: 0,
+  modelUse: null,
   staleEvidence: {},
 });
 
@@ -450,6 +454,28 @@ export function createCiFailureAgent(options: CiFailureAgentOptions = {}): Agent
     ];
   }
 
+  /**
+   * Adds one answered request to the run's model provenance. Token counts are the service's own;
+   * a count it did not report makes the total `"unknown"` for good (no estimate is invented).
+   */
+  function recordModelUse(d: RunData, result: GenerateResult): void {
+    const { provider, model, locality } = result.provenance;
+    const before = d.modelUse;
+    const add = (
+      sum: number | "unknown" | undefined,
+      reported: number | undefined,
+    ): number | "unknown" =>
+      sum === "unknown" || reported === undefined ? "unknown" : (sum ?? 0) + reported;
+    d.modelUse = {
+      provider,
+      model,
+      locality,
+      calls: (before?.calls ?? 0) + 1,
+      inputTokens: add(before?.inputTokens, result.usage?.inputTokens),
+      outputTokens: add(before?.outputTokens, result.usage?.outputTokens),
+    };
+  }
+
   async function askModel(
     rc: RunContext,
     d: RunData,
@@ -484,6 +510,7 @@ export function createCiFailureAgent(options: CiFailureAgentOptions = {}): Agent
       );
       return null;
     }
+    recordModelUse(d, result);
     // Kept in the trace so a reader can see what the model said, but it is not citable.
     rc.evidence.add({
       kind: "model",
@@ -698,6 +725,7 @@ export function createCiFailureAgent(options: CiFailureAgentOptions = {}): Agent
         aiUsed,
         ...(processedBy ? { processedBy } : {}),
         modelCalls: d.modelCalls,
+        ...(d.modelUse ? { model: d.modelUse } : {}),
       };
     },
 

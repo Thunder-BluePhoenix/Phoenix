@@ -137,7 +137,7 @@ a {
    cut off (7 px of it visible at 320 px) and could not be clicked. So the links move to a row of
    their own below. The state text stays available as Fawkes' accessible label and in the Pet
    Panel. */
-@media (max-width: 460px) {
+@media (max-width: 640px) {
   :root {
     --navbar-h: 88px;
   }
@@ -163,9 +163,24 @@ a {
   .nav-links a {
     padding: 4px 8px;
   }
+}
+@media (max-width: 460px) {
   .state-text,
   .brand-name {
     display: none;
+  }
+  .nav-links {
+    gap: 0;
+    flex-wrap: wrap;
+  }
+  .nav-links a {
+    padding: 4px 6px;
+  }
+}
+/* Four page links need about 300 px; below 340 px they wrap to a second row, so the navbar is taller. */
+@media (max-width: 340px) {
+  :root {
+    --navbar-h: 120px;
   }
 }
 .rec-dot {
@@ -1100,4 +1115,161 @@ code.break {
 }
 .approvals h3:focus {
   outline: 2px solid var(--focus);
+}
+
+/* ── Phases 34-38: review, provenance, agent sessions, retrieval ─────────── */
+.review-item {
+  border-left-width: 4px;
+}
+/* The status is written in words; the border style is a second, non-colour cue. */
+.review-proposed {
+  border-left-style: dashed;
+  border-left-color: var(--warning);
+}
+.review-edited {
+  border-left-style: dotted;
+  border-left-color: var(--info);
+}
+.review-accepted {
+  border-left-style: solid;
+  border-left-color: var(--success);
+}
+.review-rejected {
+  border-left-style: double;
+  border-left-width: 6px;
+  border-left-color: var(--danger);
+}
+.review-item:focus-visible {
+  outline-offset: 3px;
+}
+.review-item,
+.review > *,
+.provenance > *,
+.agent-sessions > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.review-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+  margin: 0 0 4px;
+}
+.review-status {
+  color: var(--text);
+}
+.review-notice {
+  border: 1px solid var(--warning);
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 0 0 8px;
+}
+.review-live:empty {
+  display: none;
+}
+.review-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.review-edit .field textarea,
+.review-edit .field input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.review-evidence {
+  margin: 6px 0;
+}
+.quote {
+  margin: 4px 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--border);
+  background: var(--bg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.evidence-list,
+.path-steps,
+.timeline {
+  padding-left: 20px;
+  margin: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.evidence-list {
+  list-style: none;
+  padding-left: 0;
+}
+.evidence {
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.edge-row {
+  list-style: none;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+.path {
+  margin: 6px 0;
+}
+.h4 {
+  font-size: 0.9rem;
+  margin: 10px 0 4px;
+}
+.start-meeting select,
+.start-meeting textarea,
+.start-meeting .field input {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+.start-meeting select option {
+  color: initial;
+}
+.memory-form textarea {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+.start-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.start-preview code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+/* Agent output is untrusted text: a fixed-height region that scrolls, never grows the page. */
+.agent-output {
+  max-height: 240px;
+  overflow: auto;
+  margin: 4px 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

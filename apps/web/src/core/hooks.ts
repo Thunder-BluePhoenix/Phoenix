@@ -10,12 +10,18 @@ import type {
   AiStatus,
   CapabilityView,
   Confirmation,
+  GraphInspection,
+  GraphNeighborhood,
+  GraphStatus,
   Meeting,
+  MeetingItemList,
   MemoryItem,
   MemoryList,
   MemorySearchHit,
   MemorySettings,
   Notification,
+  RetrievalSettings,
+  RetrievalStatus,
   StoredEvent,
   Summary,
   Transcript,
@@ -172,21 +178,28 @@ export function useNotifications() {
   return { items, unread, markRead, markAllRead };
 }
 
-/** Runs an API action and tracks busy/error state for a button. */
+/**
+ * Runs an API action and tracks busy/error state for a button. One call at a time: a second call
+ * while the first is in flight (a double click) sends nothing and returns undefined.
+ */
 export function useAction() {
   const client = useClient();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inFlight = useRef(false);
   const run = useCallback(
-    async (method: string, path: string, body: unknown = {}) => {
+    async <T = unknown>(method: string, path: string, body: unknown = {}) => {
+      if (inFlight.current) return undefined;
+      inFlight.current = true;
       setBusy(true);
       setError(null);
       try {
-        return await client.request(method, path, body);
+        return await client.request<T>(method, path, method === "GET" ? undefined : body);
       } catch (err) {
         setError(err instanceof ApiError ? err.message : "Request failed");
         return undefined;
       } finally {
+        inFlight.current = false;
         setBusy(false);
       }
     },
@@ -203,6 +216,63 @@ export function useMeetings(archived = false) {
     (j) => j.meetings,
     [],
     isMeetingEvent,
+  );
+}
+
+/** One meeting's decisions and action items (Phase 35), reloaded when Kage's data changes. */
+export function useMeetingItems(meetingId: string) {
+  return useLiveResource<MeetingItemList | null>(
+    `/api/meetings/${encodeURIComponent(meetingId)}/items`,
+    (j) => j,
+    null,
+    isMeetingEvent,
+  );
+}
+
+export function useRetrievalSettings() {
+  return useLiveResource<RetrievalSettings | null>(
+    "/api/retrieval/settings",
+    (j) => j,
+    null,
+    () => false,
+  );
+}
+
+export function useRetrievalStatus() {
+  return useLiveResource<RetrievalStatus | null>(
+    "/api/retrieval/status",
+    (j) => j,
+    null,
+    () => false,
+  );
+}
+
+export function useGraphStatus() {
+  return useLiveResource<GraphStatus | null>(
+    "/api/graph/status",
+    (j) => j,
+    null,
+    () => false,
+  );
+}
+
+/** Where one graph entity came from. `null` data with an error means unknown or not readable. */
+export function useGraphNode(nodeId: string) {
+  return useLiveResource<GraphInspection | null>(
+    `/api/graph/nodes/${encodeURIComponent(nodeId)}`,
+    (j) => j,
+    null,
+    () => false,
+  );
+}
+
+/** What is connected to an entity, one or two hops out. */
+export function useGraphNeighbors(nodeId: string, depth: 1 | 2) {
+  return useLiveResource<GraphNeighborhood | null>(
+    `/api/graph/nodes/${encodeURIComponent(nodeId)}/neighbors?depth=${depth}`,
+    (j) => j,
+    null,
+    () => false,
   );
 }
 
@@ -224,19 +294,22 @@ export function useCommandResult<T>(
   command: string,
   enabled: boolean,
   refreshOn: (eventType: string) => boolean,
+  input: unknown = {},
 ) {
   const client = useClient();
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const refreshRef = useRef(refreshOn);
   refreshRef.current = refreshOn;
+  // The caller passes a fresh object each render; only a change of content restarts the load.
+  const inputKey = JSON.stringify(input);
 
   const reload = useCallback(async () => {
     try {
       const started = await client.request<{ id: string }>(
         "POST",
         `/api/capabilities/${encodeURIComponent(capabilityId)}/commands/${encodeURIComponent(command)}`,
-        { input: {} },
+        { input: JSON.parse(inputKey) },
       );
       for (let check = 0; check < COMMAND_CHECKS; check++) {
         const op = await client.request<CommandOperation<T>>(
@@ -258,7 +331,7 @@ export function useCommandResult<T>(
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Phoenix Core is unreachable");
     }
-  }, [client, capabilityId, command]);
+  }, [client, capabilityId, command, inputKey]);
 
   useEffect(() => {
     if (!enabled) {
@@ -277,6 +350,123 @@ export function useCommandResult<T>(
   }, [client, enabled, reload]);
 
   return { data, error, reload };
+}
+
+/** Safety net only: the operation is normally re-read the moment Core announces a change. */
+const OPERATION_POLL_MS = 1_000;
+
+export type CommandRunState =
+  "idle" | "requesting" | "waiting" | "running" | "succeeded" | "failed";
+
+export interface CommandRun<T> {
+  state: CommandRunState;
+  result: T | null;
+  error: string | null;
+}
+
+const IDLE_RUN = { state: "idle", result: null, error: null } as const;
+
+/**
+ * Runs one capability command that may need the user's approval and follows it to the end:
+ * request, wait for the approval (the Approvals view shows it), run, result. One run at a time:
+ * `busy` stays true until the operation is over, so a second click, even while the approval is
+ * pending, sends nothing.
+ */
+export function useCommandAction<T = unknown>(capabilityId: string, command: string) {
+  const client = useClient();
+  const [current, setCurrent] = useState<CommandRun<T>>(IDLE_RUN);
+  const [operationId, setOperationId] = useState<string | null>(null);
+  const inFlight = useRef(false);
+
+  const submit = useCallback(
+    async (input: unknown) => {
+      if (inFlight.current) return;
+      inFlight.current = true;
+      setCurrent({ state: "requesting", result: null, error: null });
+      try {
+        const op = await client.request<{ id: string }>(
+          "POST",
+          `/api/capabilities/${encodeURIComponent(capabilityId)}/commands/${encodeURIComponent(command)}`,
+          { input },
+        );
+        setCurrent({ state: "waiting", result: null, error: null });
+        setOperationId(op.id);
+      } catch (err) {
+        inFlight.current = false;
+        setCurrent({
+          state: "failed",
+          result: null,
+          error: err instanceof ApiError ? err.message : "Request failed",
+        });
+      }
+    },
+    [client, capabilityId, command],
+  );
+
+  useEffect(() => {
+    if (!operationId) return;
+    let stopped = false;
+    let timer: number | undefined;
+    const finish = (next: CommandRun<T>) => {
+      inFlight.current = false;
+      setOperationId(null);
+      setCurrent(next);
+    };
+    const tick = async () => {
+      try {
+        const op = await client.request<CommandOperation<T>>(
+          "GET",
+          `/api/operations/${encodeURIComponent(operationId)}`,
+        );
+        if (stopped) return;
+        if (op.status === "succeeded") {
+          return finish({ state: "succeeded", result: op.result ?? null, error: null });
+        }
+        if (op.status === "failed" || op.status === "cancelled") {
+          return finish({
+            state: "failed",
+            result: null,
+            error: op.error?.message ?? "The request did not finish",
+          });
+        }
+        setCurrent({
+          state: op.status === "running" ? "running" : "waiting",
+          result: null,
+          error: null,
+        });
+      } catch (err) {
+        if (stopped) return;
+        return finish({
+          state: "failed",
+          result: null,
+          error: err instanceof ApiError ? err.message : "Phoenix Core is unreachable",
+        });
+      }
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => void tick(), OPERATION_POLL_MS);
+    };
+    void tick();
+    const off = client.eventCreated.on(({ event }) => {
+      if (
+        event.correlation_id === operationId ||
+        event.event_type.startsWith("security.confirmation.")
+      ) {
+        void tick();
+      }
+    });
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+      off();
+    };
+  }, [client, operationId]);
+
+  const reset = useCallback(() => {
+    if (!inFlight.current) setCurrent(IDLE_RUN);
+  }, []);
+  const busy =
+    current.state === "requesting" || current.state === "waiting" || current.state === "running";
+  return { ...current, busy, submit, reset };
 }
 
 const MAX_CONTENT_RETRIES = 5;

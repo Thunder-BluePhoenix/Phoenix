@@ -5,7 +5,7 @@
 | Stage | Stage 6 — Meeting → Engineering (v0.6) |
 | Release target | v0.6 |
 | Priority | High |
-| Status | 🟨 Library built and wired into Core (routes below); the web review panel is not built yet |
+| Status | 🟨 Library built and wired into Core (routes below); the web review panel is on the meeting page (see Web UI) |
 | Depends on | [Phase 33 — AI Evaluation Harness & v0.4 Release](phase-33-ai-evaluation-harness.md), [Phase 16 — Meetings UI & Recording Indicator](phase-16-meetings-ui.md) |
 | Unblocks | [Phase 36 — Action Items → Engineering Tasks](phase-36-action-items-to-engineering-tasks.md) |
 
@@ -132,6 +132,17 @@ All routes need the session token. Request bodies are JSON objects with **exact 
 `ai` is `null` when the meeting has no transcript; `ai.unavailable` is a sentence for the user when no model was used (AI off, no provider allowed to see transcripts, provider down). The UI SHOULD show `chars_skipped > 0` ("part of this transcript was not analysed") and the sum of `dropped` ("n suggestions were discarded because their quote is not in the transcript").
 
 **UI rules the contract implies.** Show the evidence quote next to every AI or Kage item; label `extracted_by`; an item's memory fact exists only while it is `accepted`; after `memory.refused` is non-empty say the fact is not remembered yet; after the Memory tab forgets a fact its item shows `rejected`.
+
+## Web UI
+
+Mounted on the meeting detail page (`#/meetings/<id>`, `MeetingItems.tsx`) and the Meetings page (`MeetingSearch.tsx`).
+
+- **Review.** Every item shows kind, state in words (never colour alone: the left border style also differs), who found it (Kage, you, `ai:<model>`), the stored quote, the extracted wording after an edit, and the meeting. Accept, Edit, Reject and Reopen appear only where the transition table allows them. The edit form applies the API's rules (1-500 characters of text, owner and due 80, owner and due only on action items) and focuses the wording box when it opens. `memory.refused` is announced only for an accepted item. A filter by state shows the counts from the API.
+- **Search and ask** over meetings, with the `retrieval` note (keywords only, or hybrid, and why the vector half was skipped). Facts come first, a generated interpretation is labelled as such.
+- **States.** "AI is off" disables the AI extraction button and says why; "Meeting content is not allowed in memory" (`allow_sensitive_meetings` off) is shown on the review panel and the search box, with a link to Settings. The extraction report says what Kage and the model added, how much transcript was not analysed, and how many suggestions were discarded.
+- **Quotes are data.** They render as React text children of a `<blockquote>`; the page uses no `dangerouslySetInnerHTML`.
+- **Double click.** `useAction` is single-flight (a second call while one is running sends nothing).
+- **Checked:** `apps/web/test/meeting-review.test.tsx`, `meeting-search.test.tsx` (hostile quote, double click on Accept, Reject, Search and Ask, validation, empty/AI-off/not-allowed/error states). Mutation: rendering the quote with `dangerouslySetInnerHTML` fails the hostile-quote test; removing the single-flight guard fails the double-click tests; weakening the 500-character check fails the validation test. Browser smoke against a real Core and a meeting written into its database: the items were listed from Kage's summary, a double click on Accept made one `POST`, an edit with empty text showed the API-style error, a hostile `<img onerror>` decision produced no `img` element, rejected and edited states showed in the counts, search said "not allowed" until `allow_sensitive_meetings` was turned on and then found the reviewed and Kage items.
 
 ## Source documents
 

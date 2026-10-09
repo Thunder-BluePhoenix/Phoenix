@@ -50,6 +50,27 @@ Make workflows stop safely, require authorisation for production, and roll back 
 - Reliability: `test/stress.test.ts` (seeded; 700+ runs, 7 simulated crashes by closing and reopening the SQLite file, kill-switch toggles, tool errors, timeouts) asserts the invariants from the roadmap.
 - Not done: the v0.8 release itself and the gate checkbox.
 
+## API contract
+
+Same conventions as the [phase 39 contract](phase-39-workflow-engine.md#api-contract) (session token, user routes only, exact keys, snake_case, `{code, message, details}` errors). **Authorising and revoking are user-only**: `WorkflowAdmin` is built by the API layer for requests that carry the session token; the engine, the tool gateway and agents hold none, and no tool or capability command reaches it.
+
+**Authorisation** (`WorkflowAuthorisationView`): `{ "id": "wfa_…", "workflow_id", "definition_hash", "authorised_by": "user:owner", "authorised_at": ISO, "expires_at": ISO|null, "revoked_at": ISO|null, "revoked_by": string|null, "live": bool }`. `live` is true when it is not revoked, not expired **and** `definition_hash` equals the workflow's current hash.
+
+**Metrics** (`WorkflowMetricsView`, per workflow id): `{ "runs_started", "runs_succeeded", "runs_failed", "runs_cancelled", "runs_rejected", "runs_interrupted", "runs_refused", "runs_compensated", "runs_needing_attention", "steps_succeeded", "steps_failed", "step_failure_rate": 0-1, "duration": null | { "p50", "p90", "p99", "samples" } (milliseconds), "approvals_waiting", "approvals_approved", "approvals_rejected", "approvals_expired" }`.
+
+| Route | Body / query | Success |
+|---|---|---|
+| `POST /api/workflows/:id/authorise` | `{ "hash": "<Workflow.hash the user reviewed>", "expires_at"?: ISO string }` | 200 `{ "authorisation": Authorisation, "workflow": Workflow }`. **The authorisation covers exactly the content with that hash.** 400 `HASH_MISMATCH` when `hash` is not the stored definition's current hash ("the definition changed; review it again"), 400 `INVALID_REQUEST` when `expires_at` is not in the future or is more than 90 days away, 400 `INVALID_DEFINITION` when the stored definition no longer validates, 404 unknown. Audited (`workflow.authorised`: hash, reasons, expiry; `workflow.authorise.refused` for any non-user caller). Allowed for any workflow, required only where `authorisation_reasons` is non-empty. |
+| `POST /api/workflows/:id/revoke` | `{}` | 200 `{ "revoked": <count of live authorisations ended>, "workflow": Workflow }`. Runs already in flight stop at their next step (`reason: "the user's authorisation was revoked…"`, status `cancelled`). Audited (`workflow.authorisation.revoked`). |
+| `GET /api/workflows/metrics` | | 200 `{ "metrics": { "<workflow id>": Metrics } }`; a workflow that never ran has no entry. |
+| `GET /api/workflows/:id` | | (phase 39) lists `authorisations` newest first, each with `live`. |
+
+**What the kill switch does to the routes.** While the emergency stop is engaged: `POST /api/workflows/:id/runs` answers 403 `SECURITY_POLICY_BLOCKED` (`RUN_REFUSED`, reason "Emergency stop is engaged") and records a `refused` run; every active run is cancelled with no undo attempt (a run with succeeded steps that declared an undo ends `failed_needs_attention`); waiting approvals are rejected; bus triggers are refused. Engaging it is `POST /api/security/kill-switch`.
+
+**Restart.** Starting Core runs `engine.recover()` before the engine listens: every run a previous process left `queued`, `running`, `waiting_approval` or `compensating` becomes `interrupted` (nothing to undo) or `failed_needs_attention` (a call's outcome is unknown, or a declared undo was still owed), with a `workflow.result` event and an audit record `workflow.run.recovered`. Nothing is resumed and no tool is called at startup. `PhoenixRuntime.stop()` stops the engine (abandons running work, writes nothing more) before the database closes.
+
+**Gaps recorded by the wiring** (also in the gaps register): a user cancel does not run declared undo steps (it is handled like the kill switch: safest, nothing invented); `ToolGateway.call` takes no cancellation signal, so a cancelled call may still complete in the capability and is then recorded as unknown.
+
 ## Source documents
 
 - Post-MVP Roadmap v1.0 §10.2

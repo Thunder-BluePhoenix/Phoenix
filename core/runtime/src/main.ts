@@ -39,7 +39,7 @@ try {
     config,
     logger,
     ...(secrets ? { secrets } : {}),
-    capabilities: builtinCapabilities(config.env),
+    capabilities: builtinCapabilities(config.env, () => runtime.agentsServices()),
   });
 } catch (err) {
   fail(err, { port: config.port, dataDir: config.dataDir });

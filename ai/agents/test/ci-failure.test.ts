@@ -187,6 +187,69 @@ describe("AI on: a model helps with the diagnosis, and its output is checked by 
   const answer = (claims: unknown[], extra: Record<string, unknown> = {}) =>
     JSON.stringify({ claims, ...extra });
 
+  it("records which model answered; tokens the service did not report are 'unknown', not invented", async () => {
+    const { trace } = await run({ ai: true }, (r) => {
+      seedCommits(r);
+      r.probe.answer = () =>
+        answer([{ text: "The secret-scan job failed in the gitleaks step.", evidence: ["E2"] }]);
+    });
+    expect(trace.conclusion!.model).toEqual({
+      provider: "fake",
+      model: "fake-1",
+      locality: "local",
+      calls: 1,
+      inputTokens: "unknown",
+      outputTokens: "unknown",
+    });
+  });
+
+  it("copies the token usage the service reported", async () => {
+    const reply = answer([
+      { text: "The secret-scan job failed in the gitleaks step.", evidence: ["E2"] },
+    ]);
+    const { trace } = await run({
+      ai: true,
+      model: async () => ({
+        text: reply,
+        provenance: {
+          provider: "ollama",
+          model: "llama3.2",
+          locality: "local",
+          processedBy: "Ollama · llama3.2 · on this device",
+        },
+        usage: { inputTokens: 321, outputTokens: 45 },
+      }),
+    });
+    expect(trace.conclusion!.model).toEqual({
+      provider: "ollama",
+      model: "llama3.2",
+      locality: "local",
+      calls: 1,
+      inputTokens: 321,
+      outputTokens: 45,
+    });
+  });
+
+  it("reports one count as unknown when the service gave only the other", async () => {
+    const reply = answer([
+      { text: "The secret-scan job failed in the gitleaks step.", evidence: ["E2"] },
+    ]);
+    const { trace } = await run({
+      ai: true,
+      model: async () => ({
+        text: reply,
+        provenance: { provider: "ollama", model: "llama3.2", locality: "local", processedBy: "x" },
+        usage: { outputTokens: 7 },
+      }),
+    });
+    expect(trace.conclusion!.model).toMatchObject({ inputTokens: "unknown", outputTokens: 7 });
+  });
+
+  it("has no model provenance when no model answered", async () => {
+    const { trace } = await run({ ai: false }, seedCommits);
+    expect(trace.conclusion!.model).toBeUndefined();
+  });
+
   it("a grounded answer is kept, labelled as model output, with coverage computed by Phoenix", async () => {
     const { rig, trace } = await run({ ai: true }, (r) => {
       seedCommits(r);

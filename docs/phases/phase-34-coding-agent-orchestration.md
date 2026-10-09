@@ -152,6 +152,19 @@ Final re-run results are in the summary returned with this phase. Two mutations 
 
 Listed in the gaps returned with this phase (they are copied into `docs/gaps.md` by the parent).
 
+## Web UI
+
+`#/agents` (`AgentSessions.tsx`, nav link "Agents"): lists sessions and ambiguous links (`session.list`), starts a session, and `#/agents/<session id>` shows one (`session.get` with 200 output lines). Everything goes through the generic command route and the Approvals view's confirmation flow (`useCommandAction` follows the operation until it ends and re-reads it when Core announces a change).
+
+- **Start** is two steps: a form validated like the command schema, then "Check this before you start", which shows the launcher, the exact fixed command, the workspace, the folders the launcher may use and the prompt length (not the prompt, not `env_allow`). Nothing is requested until "Start the session…"; Core then asks for approval and the approval card appears in place. A second click while the request or approval is pending sends nothing.
+- **Detail:** state in words, timeline, linked commits/CI/PRs with the rule and confidence, ambiguous links with one button per candidate session (`link.resolve`), send message, hand over notes (`context.handoff`), stop. Controls are disabled once the session is over.
+- **Output is untrusted:** it renders as text children of a `<pre>` with `max-height: 240px; overflow: auto` and `tabindex="0"`; nothing in it becomes markup or an event.
+- Off states: capability off, no launcher configured (the launchers are read from the capability's config), errors from a refused or failed command.
+
+**Gap:** the page reads launchers from `GET /api/capabilities` config; there is no way to edit them except the capability settings form.
+
+**Checked:** `apps/web/test/agent-sessions.test.tsx` (23 cases: list, off/no-launcher states, validation, preview before request, approval flow through the Approvals view, double click on Start, Send, Stop and Resolve, hostile output). Mutation: submitting at the review step (no preview) fails the preview test. Browser smoke against a real Core with the fake agent: the preview showed the real launcher path and workspace and made no request; a double click on Start left exactly one pending confirmation; Approve in the UI started session `ph-…` which showed "Waiting for your input" with the agent's output; a message sent through the UI (with approval) made the fake agent finish with exit code 0, shown in the timeline.
+
 ## Source documents
 
 - Post-MVP Roadmap v1.0 §7

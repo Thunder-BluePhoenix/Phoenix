@@ -7,6 +7,7 @@
 // it on (`agents.enabled`, ADR-0010: autonomy is earned); turning it off, or engaging the kill
 // switch, cancels every active run.
 import { createCiFailureAgent, type ModelCall } from "@phoenix/ai-agents";
+import { buildObservation, type RunObservation } from "@phoenix/ai-evaluation";
 import type { AiService } from "@phoenix/ai-models";
 import {
   approvalFeed,
@@ -22,6 +23,7 @@ import {
 import type { ToolGateway } from "@phoenix/ai-tool-gateway";
 import type {
   AgentApi,
+  AgentObservationView,
   AgentSettingsView,
   AgentTaskDetailView,
   AgentTaskSummaryView,
@@ -29,7 +31,7 @@ import type {
 } from "@phoenix/api";
 import type { EventBus } from "@phoenix/event-bus";
 import type { Logger } from "@phoenix/logging";
-import type { PermissionGateway } from "@phoenix/permissions";
+import type { AuditEntry, PermissionGateway } from "@phoenix/permissions";
 import type { Database, SettingsStore } from "@phoenix/persistence";
 import { createEvent, ErrorCode, isAgentRunState, PhoenixError } from "@phoenix/protocol";
 import type { MemoryRuntime } from "./memory";
@@ -178,6 +180,46 @@ export class AgentRuntime implements AgentApi {
     return { cancelled, state: after?.run.state ?? trace.run.state };
   }
 
+  observation(id: string): AgentObservationView | null {
+    const trace = this.orchestrator.trace(id);
+    if (!trace) return null;
+    const conclusion = conclusionOf(trace);
+    const reported = conclusion?.model;
+    const observation = buildObservation({
+      trace,
+      audit: this.auditRows(trace.auditIds),
+      // Tokens the service did not report are 0 here and shown as "unknown" by `observationView`.
+      model: reported
+        ? {
+            provider: reported.provider,
+            model: reported.model,
+            locality: reported.locality,
+            calls: reported.calls,
+            inputTokens: reported.inputTokens === "unknown" ? 0 : reported.inputTokens,
+            outputTokens: reported.outputTokens === "unknown" ? 0 : reported.outputTokens,
+          }
+        : null,
+    });
+    return observationView(observation, reported);
+  }
+
+  /** The audit rows a trace names, read by id (the log may hold far more than a page). */
+  private auditRows(ids: readonly number[]): AuditEntry[] {
+    if (ids.length === 0) return [];
+    const rows = this.d.db
+      .prepare(`SELECT * FROM audit_log WHERE id IN (${ids.map(() => "?").join(",")})`)
+      .all(...ids) as Record<string, string | number | null>[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      ts: String(r.ts),
+      actor: String(r.actor),
+      action: String(r.action),
+      ...(r.capability_id ? { capabilityId: String(r.capability_id) } : {}),
+      decision: r.decision as AuditEntry["decision"],
+      details: JSON.parse(String(r.details)) as Record<string, unknown>,
+    }));
+  }
+
   settings(): AgentSettingsView {
     const l = this.orchestrator.limits;
     return {
@@ -224,6 +266,61 @@ export class AgentRuntime implements AgentApi {
         }
       : undefined;
   }
+}
+
+/** snake_case view of an observation; unreported token counts and their cost stay "unknown". */
+function observationView(
+  o: RunObservation,
+  reported: Conclusion["model"],
+): AgentObservationView {
+  const input = reported?.inputTokens ?? 0;
+  const output = reported?.outputTokens ?? 0;
+  return {
+    version: 1,
+    task_id: o.taskId,
+    run_id: o.runId,
+    agent_id: o.agentId,
+    agent_version: o.agentVersion,
+    outcome: o.outcome,
+    failure_reason: o.failureReason,
+    model: reported
+      ? {
+          provider: reported.provider,
+          model: reported.model,
+          locality: reported.locality,
+          calls: reported.calls,
+          input_tokens: reported.inputTokens,
+          output_tokens: reported.outputTokens,
+        }
+      : null,
+    prompt_version: o.promptVersion,
+    context_version: o.contextVersion,
+    sources: o.sources,
+    memory_ids: o.memoryIds,
+    tool_calls: o.toolCalls.map((t) => ({
+      tool: t.tool,
+      status: t.status,
+      decision: t.decision,
+      risk: t.risk,
+      policy_audit_id: t.policyAuditId,
+      audit_confirmed: t.auditConfirmed,
+    })),
+    permission_decisions: o.permissionDecisions,
+    stages: o.stages.map((st) => ({
+      name: st.name,
+      status: st.status,
+      duration_ms: st.durationMs,
+      audit_id: st.auditId,
+    })),
+    total_duration_ms: o.totalDurationMs,
+    tokens: { input, output },
+    // Core has no price table: a local model is free, a cloud model's cost is not known here.
+    cost_micro_usd: reported?.locality === "cloud" ? "unknown" : 0,
+    cloud_calls: o.cloudCalls,
+    ai_used: o.aiUsed,
+    evidence_coverage: o.evidenceCoverage,
+    audit_ids: o.auditIds,
+  };
 }
 
 function conclusionOf(trace: TaskTrace): Conclusion | null {

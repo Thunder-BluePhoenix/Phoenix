@@ -6,6 +6,8 @@ import { useClient } from "../core/context";
 import { useAction, useCapabilities, useMeeting, useMeetings } from "../core/hooks";
 import type { ActionItem, Meeting, PetState, Summary, Transcript } from "../core/types";
 import { Approvals } from "./Approvals";
+import { MeetingItemsReview } from "./MeetingItems";
+import { MeetingSearch } from "./MeetingSearch";
 
 /** Phoenix lifecycle status → label; `step` marks processing progress (of 3). */
 const STATUS: Record<string, { label: string; step?: number }> = {
@@ -179,6 +181,7 @@ export function MeetingsPage({ state }: { state: PetState }) {
       <h1>Meetings</h1>
       <RecordingBanner recording={state.recording} />
       <StartMeeting />
+      <MeetingSearch />
       <div className="list-head">
         <h2 className="h3">{archived ? "Archived meetings" : "Recent meetings"}</h2>
         <button type="button" className="btn" onClick={() => setArchived(!archived)}>
@@ -374,6 +377,12 @@ export function MeetingDetail({ id, state }: { id: string; state: PetState }) {
       )}
 
       {summary && <SummaryView summary={summary} />}
+      <MeetingItemsReview meetingId={m.id} hasTranscript={m.has_transcript} />
+      <p className="small">
+        <a href={`#/provenance/${encodeURIComponent(`Meeting:${m.id}`)}`}>
+          Where this meeting's decisions are connected to
+        </a>
+      </p>
       {transcript && <TranscriptView transcript={transcript} />}
 
       <section aria-labelledby="storage-h" className="card">

@@ -138,6 +138,14 @@ All routes need the session token; JSON is snake_case; bodies have exact keys (u
 
 **Real run** (Core booted with `PHOENIX_DATA_DIR`, git capability watching this repository, 4 real commit events through `POST /api/events`): *which commits touched `core/api/src/server.ts`* returned 3 commits, each path citing a `git` event; *who touched it* returned `Person:thunder-bluephoenix`; a commit node's origin chain read `event / git / capability`; a meeting inserted through the same tables the Kage sync writes (no real Kage was running) produced `Meeting`, `Decision` and two `Person` nodes whose provenance is `sensitive`, and `why Meeting:kage:real1` returned the decision with `--DECIDED_IN-->` and (with `narrate`) a llama3.2 sentence that passed the identifier check. Delete-all events took the event-sourced rows out (102 nodes to 66), delete-all memory emptied the graph and the vectors, deleting the meeting removed its nodes.
 
+## Web UI
+
+`#/provenance` (`Provenance.tsx`, nav link "Provenance"): a question box (`POST /api/graph/ask`) that lists the entities found as links, graph facts as numbered text steps (relation, direction, confidence, "suggested, not a fact" for AI-only edges) with Core's own path line under each, retrieved documents apart, and a note naming the bound that cut an answer short. `#/provenance/<node id>`: what the entity is, whether it is a fact, "Where it came from" (sources, assertors) and "What it is connected to" as text lists ("Connected from" / "Connected to"; one or two steps out). Every node and edge has a "Why do you think this?" button (`aria-expanded`) that lists the evidence: `<source_kind>:<source_id>`, assertor in words, confidence, capability, sensitivity, the stored quote or "No quote is stored", and the flat detail fields, all as text. There is no canvas.
+
+Limits found: Core returns no quote for a provenance row beyond `detail.text` / `detail.title`, so a meeting row says "No quote is stored for this evidence" unless the ingestion wrote one; edges that do not touch the entity (what depth 2 can return) are listed under "Further out" (not seen in the smoke, where depth 2 added none).
+
+**Checked:** `apps/web/test/provenance.test.tsx` (14 cases: empty graph, error, hostile label, quote and document as text, AI-suggested node, evidence list, depth 2, unknown node, double click). Browser smoke against a real Core with a meeting and three decisions: "why Meeting:kage:7" listed three DECIDED_IN steps with 100% confidence, the evidence list showed `meeting_item:` and `meeting:` ids with sensitivity, a decision whose text was `<img src=x onerror=alert(1)>` produced no `img` element, and the page did not overflow at 320, 360, 460 and 768 px.
+
 ## Source documents
 
 - Post-MVP Roadmap v1.0 §9

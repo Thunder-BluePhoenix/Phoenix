@@ -24,6 +24,12 @@ export function formatSince(iso: string, now: number = Date.now()): string {
   return `${Math.round(h / 24)} d`;
 }
 
+/** "just now", "3 min ago", "2 h ago": formatSince as a complete phrase. */
+export function formatAgo(iso: string, now: number = Date.now()): string {
+  const since = formatSince(iso, now);
+  return since === "just now" ? since : `${since} ago`;
+}
+
 export const SEVERITY_LABEL: Record<string, string> = {
   info: "Info",
   success: "Success",

@@ -71,6 +71,11 @@ export function agentRoutes(s: CoreServices): Route[] {
       if (!detail) throw notFound();
       return detail;
     }),
+    route("GET", "/api/agent/tasks/:id/observation", ({ params }) => {
+      const observation = agents().observation(params.id!);
+      if (!observation) throw notFound();
+      return observation;
+    }),
     route("POST", "/api/agent/tasks/:id/cancel", async ({ params, body }) => {
       exactKeys(expectObject(await body()), []);
       const result = agents().cancel(params.id!);

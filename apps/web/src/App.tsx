@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { AgentSessionDetail, AgentSessionsPage } from "./components/AgentSessions";
 import type { FawkesAvatarHandle } from "./components/FawkesAvatar";
 import { MeetingDetail, MeetingsPage } from "./components/Meetings";
 import { Navbar } from "./components/Navbar";
+import { ProvenanceNode, ProvenancePage } from "./components/Provenance";
 import { SettingsPage } from "./components/Settings";
 import { isTabId, PetPanel } from "./components/PetPanel";
 import { useConnection, useDisplayedState, useTasks } from "./core/context";
@@ -19,6 +21,8 @@ export function App() {
   const avatar = useRef<FawkesAvatarHandle>(null);
   const route = useHashRoute();
   const meetingId = /^\/meetings\/(.+)$/.exec(route)?.[1];
+  const agentId = /^\/agents\/(.+)$/.exec(route)?.[1];
+  const provenanceId = /^\/provenance\/(.+)$/.exec(route)?.[1];
   const main = useRef<HTMLElement>(null);
   // "#/panel/<tab>" opens the Pet Panel on that tab: how the floating desktop pet sends you to
   // the approval it is waiting for (its own window is too small to hold the panel).
@@ -72,6 +76,14 @@ export function App() {
           <MeetingsPage state={state} />
         ) : connection !== "unauthenticated" && meetingId ? (
           <MeetingDetail key={meetingId} id={decodeURIComponent(meetingId)} state={state} />
+        ) : connection !== "unauthenticated" && route === "/provenance" ? (
+          <ProvenancePage />
+        ) : connection !== "unauthenticated" && provenanceId ? (
+          <ProvenanceNode key={provenanceId} nodeId={decodeURIComponent(provenanceId)} />
+        ) : connection !== "unauthenticated" && route === "/agents" ? (
+          <AgentSessionsPage />
+        ) : connection !== "unauthenticated" && agentId ? (
+          <AgentSessionDetail key={agentId} sessionId={decodeURIComponent(agentId)} />
         ) : (
           <Home connection={connection} />
         )}

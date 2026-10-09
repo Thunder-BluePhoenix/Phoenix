@@ -38,7 +38,8 @@
     "@phoenix/persistence": "workspace:*",
     "@phoenix/policy": "workspace:*",
     "@phoenix/protocol": "workspace:*",
-    "@phoenix/state-engine": "workspace:*"
+    "@phoenix/state-engine": "workspace:*",
+    "@phoenix/workflows": "workspace:*"
   },
   "devDependencies": {
     "ws": "^8.18.0",

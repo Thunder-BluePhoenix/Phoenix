@@ -7,6 +7,7 @@
 // `WorkflowAdmin`, which only the user-authenticated API layer is given.
 import { matchesPattern } from "@phoenix/event-bus";
 import { silentLogger, type Logger } from "@phoenix/logging";
+import type { Actor } from "@phoenix/policy";
 import { createEvent, type PhoenixEvent } from "@phoenix/protocol";
 import { boundRecord, boundValue } from "./bound";
 import { realSleep, DEFAULT_CONCURRENCY, DEFAULT_RATE, type EngineDeps } from "./engine-types";
@@ -19,7 +20,13 @@ import { Semaphore } from "./semaphore";
 import { MAX_REFUSED_RECORDS } from "./engine-types";
 import type { DefinitionRead, RunRecord } from "./store";
 import { transaction } from "./store";
-import { LIMITS, type RunStatus, type ToolCatalog, type WorkflowDefinition } from "./types";
+import {
+  LIMITS,
+  WorkflowError,
+  type RunStatus,
+  type ToolCatalog,
+  type WorkflowDefinition,
+} from "./types";
 import { catalogFromGateway } from "./engine-types";
 import { requiresAuthorisation, validateDefinition } from "./validate";
 import {
@@ -366,18 +373,26 @@ export class WorkflowEngine {
     return undefined;
   }
 
-  private consider(read: Extract<DefinitionRead, { ok: true }>, event: PhoenixEvent): void {
+  /**
+   * Records and, unless refused, schedules one run for `event`. Every gate lives in `refusalFor`;
+   * bus triggers and `startManual` both pass through here. Undefined = nothing was recorded (the
+   * same event was seen before, or too many refusals were recorded in this window).
+   */
+  private consider(
+    read: Extract<DefinitionRead, { ok: true }>,
+    event: PhoenixEvent,
+    id: string = this.newId(),
+  ): RunRecord | undefined {
     const def = read.definition;
     const depth = this.chainDepthOf(event);
     const refusal = this.refusalFor(read, event, depth);
-    const id = this.newId();
     const rate = this.d.rate ?? DEFAULT_RATE;
     if (
       refusal !== undefined &&
       this.d.store.countRefusedSince(def.id, this.now() - rate.windowMs) >= MAX_REFUSED_RECORDS
     ) {
       this.logger.warn("too many refused workflow runs; not recording more", { workflow: def.id });
-      return;
+      return undefined;
     }
     const inserted = this.d.store.insertRun({
       id,
@@ -391,14 +406,114 @@ export class WorkflowEngine {
       now: this.now(),
     });
     // The same event for the same workflow was seen before: nothing starts, nothing is recorded.
-    if (!inserted) return;
+    if (!inserted) return undefined;
     const run = this.d.store.getRun(id);
-    if (!run) return;
+    if (!run) return undefined;
     if (refusal !== undefined) {
       this.announceRefusal(run, refusal);
-      return;
+      return run;
     }
     this.schedule(run, requiresAuthorisation(def, this.catalog).required);
+    return run;
+  }
+
+  // ── User actions ─────────────────────────────────────────────────────────
+  // Held only by the runtime's user-route wrapper. Both refuse every actor that is not a trusted
+  // user and audit who asked; neither is reachable from a workflow step, the tool gateway or an
+  // agent (none of them is given the engine).
+
+  /**
+   * Starts one run of `workflowId` for the user, with a synthetic trigger event. It passes the
+   * same gates as a bus-triggered run (enabled, emergency stop, rate limit, valid against the live
+   * tools, authorisation bound to the definition hash); a refusal is recorded like a refused
+   * trigger and returned with `refused` set. `trigger.where` is not evaluated: the user chose to
+   * run it and supplied the payload.
+   */
+  startManual(
+    by: Actor,
+    workflowId: string,
+    payload: Record<string, unknown> = {},
+  ): { run: RunSummary; refused: boolean } {
+    this.requireUser(by, "workflow.run.start");
+    if (this.stopped) throw new WorkflowError("INVALID_REQUEST", "The workflow engine is stopped");
+    const read = this.d.store.readDefinition(workflowId);
+    if (!read) throw new WorkflowError("NOT_FOUND", `No workflow "${workflowId}"`);
+    if (!read.ok)
+      throw new WorkflowError(
+        "INVALID_DEFINITION",
+        "The stored definition cannot be read",
+        read.problems,
+      );
+    if (!read.definition.enabled)
+      throw new WorkflowError("INVALID_REQUEST", "The workflow is disabled", ["WORKFLOW_DISABLED"]);
+    const id = this.newId();
+    this.userAudit(by, "workflow.run.started_by_user", { workflow: workflowId, run: id });
+    const event = createEvent({
+      event_id: `manual_${crypto.randomUUID().replaceAll("-", "")}`,
+      event_type: "workflow.manual",
+      source: "user",
+      severity: "info",
+      payload,
+    });
+    const run = this.consider(read, event, id);
+    if (!run)
+      throw new WorkflowError("LIMIT_REACHED", "Too many refused runs were recorded; try later");
+    return { run: summarise(run), refused: run.status === "refused" };
+  }
+
+  /**
+   * Stops one run that is executing in this process. Like the emergency stop it does not run the
+   * declared undo steps (nothing is invented here): a run with succeeded steps that declared an
+   * undo ends `failed_needs_attention` naming them. Its pending approval is withdrawn.
+   */
+  cancelRun(by: Actor, runId: string): { status: RunStatus } {
+    this.requireUser(by, "workflow.run.cancel");
+    const run = this.d.store.getRun(runId);
+    if (!run) throw new WorkflowError("NOT_FOUND", `No run "${runId}"`);
+    const state = this.active[runId];
+    if (!state)
+      throw new WorkflowError("INVALID_REQUEST", "The run is not active", ["RUN_NOT_ACTIVE"]);
+    this.userAudit(by, "workflow.run.cancelled_by_user", {
+      workflow: run.workflowId,
+      run: runId,
+    });
+    state.cancel = { reason: "cancelled by the user", compensate: false };
+    state.abort.abort();
+    return { status: run.status };
+  }
+
+  private requireUser(by: Actor, action: string): void {
+    if (by?.kind === "user" && by.trustedByUser === true && by.id.length > 0) return;
+    this.userAudit(
+      by ?? { kind: "agent", id: "unknown", trustedByUser: false },
+      `${action}.refused`,
+      { reason: "Only an authenticated user can start or cancel workflow runs" },
+      "denied",
+    );
+    throw new WorkflowError(
+      "NOT_USER_ACTOR",
+      "Only an authenticated user can start or cancel workflow runs",
+    );
+  }
+
+  /** Audits a user action. A failed audit write refuses the action: nothing unrecorded happens. */
+  private userAudit(
+    by: Actor,
+    action: string,
+    details: Record<string, unknown>,
+    decision: "info" | "denied" = "info",
+  ): void {
+    try {
+      this.d.audit.record({
+        actor: `${by.kind}:${by.id}`.slice(0, 120),
+        action,
+        decision,
+        details,
+      });
+    } catch (err) {
+      if (decision === "denied") return;
+      throw new WorkflowError("AUDIT_FAILED", "The action could not be recorded", [String(err)]);
+    }
   }
 
   private announceRefusal(run: RunRecord, reason: string): void {
