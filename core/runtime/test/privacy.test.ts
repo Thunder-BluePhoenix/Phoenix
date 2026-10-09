@@ -128,11 +128,15 @@ describe("derived data in the inventory (Phases 35-38)", () => {
       "vectors",
       "graph",
       "meeting_items",
+      "plans",
+      "workflow_runs",
     ]);
     expect(inv.derived).toEqual([
       expect.objectContaining({ id: "vectors", count: 0, deleted_with: "memory", enabled: false }),
       expect.objectContaining({ id: "graph", count: 0, edges: 0, provenance_rows: 0 }),
       expect.objectContaining({ id: "meeting_items", count: 0, deleted_with: "meetings" }),
+      expect.objectContaining({ id: "plans", count: 0, deleted_with: "meetings" }),
+      expect.objectContaining({ id: "workflow_runs", count: 0, deleted_with: "nothing yet" }),
     ]);
     // With AI off the sentence is unchanged: nothing is sent anywhere.
     expect(inv.external_ai).toBe("AI is off; nothing is sent to AI providers.");

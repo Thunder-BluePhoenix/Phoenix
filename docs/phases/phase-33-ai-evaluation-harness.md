@@ -72,8 +72,9 @@ meant only that the cited id exists; D3 a succeeded run was summarised as a fail
 gate FAILED, and they were fixed in `ai/agents`; see the release-gates doc. Real `llama3.2` on categories a, b, g:
 23 of 23 pass the model-independent checks, 4 deviate from the scripted behaviour (details in the release-gates doc).
 
-Not done: the release itself (not cut, boxes below not ticked); the `observation` API route; wiring observations into
-the runtime; a human-labelled evaluation set; real-model runs of the other categories. See `docs/gaps.md`.
+**Observation route (wired into Core).** `GET /api/agent/tasks/:id/observation` (session token; 404 for an unknown task) returns the harness observation of a task's run, built on request from what Core persisted: `{ version, task_id, run_id, agent_id, agent_version, outcome, failure_reason, model: null | { provider, model, locality, calls, input_tokens, output_tokens }, prompt_version, context_version, sources, memory_ids, tool_calls[], permission_decisions, stages[], total_duration_ms, tokens: { input, output }, cost_micro_usd, cloud_calls, ai_used, evidence_coverage, audit_ids }`: ids, names, counts, hashes and numbers only, never evidence, prompt, model or tool text. The CI-failure agent records the model that answered and the usage the model service reported (`Conclusion.model`); a token count the service did not report is the string `"unknown"`, never an estimate, and `cost_micro_usd` is `0` for a local model and `"unknown"` for a cloud one (Core has no price table). `prompt_version` is `null`: Core does not hand the agent's system prompt to the observation. Observations are built per request and not stored.
+
+Not done: the release itself (not cut, boxes below not ticked); persisting observations from the runtime; a human-labelled evaluation set; real-model runs of the other categories. See `docs/gaps.md`.
 
 ---
 Back to [TRACKER](TRACKER.md)

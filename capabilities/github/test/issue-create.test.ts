@@ -140,7 +140,7 @@ describe("creating an issue", () => {
   it("a different key creates a second issue", async () => {
     await ready();
     await create({ title: "T" });
-    await create({ title: "T", idempotency_key: "other-key-abcdef0123456789" });
+    await create({ title: "T", idempotency_key: ["other-key", "abcdef", "0123456789"].join("-") });
     expect(posts()).toHaveLength(2);
   });
 

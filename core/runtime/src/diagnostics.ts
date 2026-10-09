@@ -52,6 +52,8 @@ export interface Diagnostics {
     graph_nodes: number;
     graph_edges: number;
     meeting_items: number;
+    plans: number;
+    workflow_runs: number;
   };
   bus: BusMetrics;
   websocket: WebSocketMetrics | null;

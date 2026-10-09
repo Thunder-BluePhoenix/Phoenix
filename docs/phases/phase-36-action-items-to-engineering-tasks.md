@@ -5,7 +5,7 @@
 | Stage | Stage 6 — Meeting → Engineering (v0.6) |
 | Release target | v0.6 |
 | Priority | High |
-| Status | 🟨 Library built and tested against local mocks; not wired into Core or the web app; never run against a real GitHub or Frappe |
+| Status | 🟨 Library built and tested against local mocks; wired into Core (routes below, tested through the HTTP API against the local mock GitHub and mock Frappe); there is no web panel yet; never run against a real GitHub or Frappe |
 | Depends on | [Phase 35 — Kage Decisions & Action-Item Extraction](phase-35-kage-decisions-and-action-items.md), [Phase 22 — GitHub & CI/CD Capability](phase-22-github-and-cicd-capability.md), [Phase 23 — Frappe / ERPNext Capability](phase-23-frappe-erpnext-capability.md) |
 | Unblocks | [Phase 37 — Hybrid Retrieval (Lexical + Vector + Rerank)](phase-37-hybrid-retrieval.md) |
 
@@ -90,9 +90,9 @@ Gates, in order: the capability must be enabled; a write credential must be in t
 
 `plan_links` stores meeting ↔ item ↔ plan ↔ task (`system`, `external_id`, `url`) with who approved and when. `linksForMeeting`, `linksForItem`, `linksForPlan` and `linksForTask(system, externalId)` read it both ways. Deleting a meeting (`MeetingStore.delete` / `deleteBefore`, which write a tombstone) deletes its plans, task state and links in the database through a trigger (tested, including with other meetings' plans left alone). **What was already created in GitHub or Frappe is not touched**; Phoenix simply forgets which meeting it came from. The plan content is itself derived from the meeting, which is why it is deleted rather than kept.
 
-### Wiring still to do (parent)
+### Wired into Core
 
-Construct `PlanService` in the runtime with the real `ToolGateway` and `AiService` (`generate: () => generateWith(ai)`), call `plans.recover()` at startup, add routes (suggested: `POST /api/meetings/items/:id/plan`, `GET /api/plans/:id`, `PATCH /api/plans/:id`, `POST /api/plans/:id/propose|approve|create|cancel`, `GET /api/plans/:id/preview`, `GET /api/meetings/:id/links`, `GET /api/task-links?system=&id=`), and a web approval panel that shows the plan with each statement's basis, the exact `preview` of what will be sent and the policy decision, a **default-off** "name the meeting in the created tasks" checkbox, and the per-task result. Set the write token and `api` URL in the capability settings; neither is set by default, so the commands are inert until the user sets them.
+`core/runtime/src/planning.ts` (`PlanningRuntime`, exposed as `PhoenixRuntime.planning`; `recover()` runs at construction) and `core/api/src/plan-routes.ts`; tests in `core/runtime/test/plans.test.ts`. The route table is the API contract below; the list that follows is the original wiring plan, kept for the web panel requirements. Construct `PlanService` in the runtime with the real `ToolGateway` and `AiService` (`generate: () => generateWith(ai)`), call `plans.recover()` at startup, add routes (suggested: `POST /api/meetings/items/:id/plan`, `GET /api/plans/:id`, `PATCH /api/plans/:id`, `POST /api/plans/:id/propose|approve|create|cancel`, `GET /api/plans/:id/preview`, `GET /api/meetings/:id/links`, `GET /api/task-links?system=&id=`), and a web approval panel that shows the plan with each statement's basis, the exact `preview` of what will be sent and the policy decision, a **default-off** "name the meeting in the created tasks" checkbox, and the per-task result. Set the write token and `api` URL in the capability settings; neither is set by default, so the commands are inert until the user sets them.
 
 ## API contract
 

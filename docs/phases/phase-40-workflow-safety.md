@@ -5,7 +5,7 @@
 | Stage | Stage 8 — Automation & Workflows (v0.8) |
 | Release target | v0.8 |
 | Priority | High |
-| Status | 🟨 Safety layer built and tested in-process (seeded stress run, mutation checks); release v0.8 not cut, gate not marked (see [gaps register](../gaps.md)) |
+| Status | 🟨 Safety layer built and tested in-process (seeded stress run, mutation checks) and wired into Core (routes below); release v0.8 not cut, gate not marked (see [gaps register](../gaps.md)) |
 | Depends on | [Phase 39 — Workflow Engine](phase-39-workflow-engine.md) |
 | Unblocks | [Phase 41 — SDK Stabilisation & Developer Docs](phase-41-sdk-stabilization-and-docs.md) |
 

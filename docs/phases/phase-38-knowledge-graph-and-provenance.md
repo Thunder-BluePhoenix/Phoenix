@@ -5,7 +5,7 @@
 | Stage | Stage 7 — Knowledge Graph (v0.7) |
 | Release target | v0.7 |
 | Priority | High |
-| Status | 🟨 Built, measured and wired into Core; the value gate is **not met** by the graph alone; the provenance view in the web app is not built |
+| Status | 🟨 Built, measured and wired into Core; the value gate is **not met** by the graph alone; the provenance view is built in the web app (`#/provenance`) |
 | Depends on | [Phase 37 — Hybrid Retrieval (Lexical + Vector + Rerank)](phase-37-hybrid-retrieval.md) |
 | Unblocks | [Phase 39 — Workflow Engine](phase-39-workflow-engine.md) |
 

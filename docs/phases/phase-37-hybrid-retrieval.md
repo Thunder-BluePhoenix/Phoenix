@@ -5,7 +5,7 @@
 | Stage | Stage 7 — Knowledge Graph (v0.7) |
 | Release target | v0.7 |
 | Priority | High |
-| Status | 🟨 Built, measured and wired into Core (off by default); the Settings UI and an eval-harness hook are not built |
+| Status | 🟨 Built, measured and wired into Core (off by default); the Settings section is built (web UI); there is no rebuild route and no eval-harness hook |
 | Depends on | [Phase 36 — Action Items → Engineering Tasks](phase-36-action-items-to-engineering-tasks.md) |
 | Unblocks | [Phase 38 — Knowledge Graph & Provenance](phase-38-knowledge-graph-and-provenance.md) |
 

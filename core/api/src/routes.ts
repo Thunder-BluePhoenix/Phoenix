@@ -6,6 +6,8 @@ import { agentRoutes } from "./agent-routes";
 import { graphRoutes } from "./graph-routes";
 import { meetingReviewRoutes } from "./meeting-routes";
 import { memoryRoutes } from "./memory-routes";
+import { planRoutes } from "./plan-routes";
+import { workflowRoutes } from "./workflow-routes";
 import type { CoreServices } from "./services";
 
 const notFound = (what: string) =>
@@ -159,6 +161,7 @@ export function buildRoutes(s: CoreServices): Route[] {
     // ── Meetings (Kage) ─────────────────────────────────────────────────────
     // Before the generic `/api/meetings/:id` routes: "search" and "ask" are not meeting ids.
     ...meetingReviewRoutes(s),
+    ...planRoutes(s),
     route("GET", "/api/meetings", ({ url }) => ({
       meetings: meetings().list({
         archived: url.searchParams.get("archived") === "true",
@@ -202,6 +205,7 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...memoryRoutes(s),
     ...graphRoutes(s),
     ...agentRoutes(s),
+    ...workflowRoutes(s),
 
     // ── Notifications ───────────────────────────────────────────────────────
     route("GET", "/api/notifications", ({ url }) =>

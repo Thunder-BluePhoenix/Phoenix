@@ -39,9 +39,11 @@ import { collectDiagnostics, type Diagnostics } from "./diagnostics";
 import { MemoryRuntime } from "./memory";
 import { GraphRuntime } from "./graph";
 import { MeetingReviewRuntime } from "./meeting-review";
+import { PlanningRuntime } from "./planning";
 import { syncMeetings } from "./meetings";
 import { PrivacyService, type DerivedInventory } from "./privacy";
 import { RetrievalRuntime } from "./retrieval";
+import { WorkflowsRuntime } from "./workflows";
 
 export interface PetSettings {
   /** "auto" follows the OS reduced-motion setting. */
@@ -117,6 +119,18 @@ export class PhoenixRuntime implements CoreServices {
    * nothing else that can reach a capability.
    */
   readonly agents: AgentRuntime;
+  /**
+   * Engineering plans and task creation (Phase 36). Holds the tool gateway but is reached only by
+   * session-token user routes: nothing an agent or a capability can call exposes `approve` or
+   * `create`. Off until AI and a destination are configured.
+   */
+  readonly planning: PlanningRuntime;
+  /**
+   * Event-driven workflows (Phases 39-40). The engine calls tools only through `toolGateway`, as
+   * the workflow system actor; changing or authorising a workflow is reachable only from the
+   * session-token routes. Stopped by `stop()`; interrupted runs are reconciled at `start()`.
+   */
+  readonly workflows: WorkflowsRuntime;
   /**
    * Changes policy. Deliberately private and unused by any route: only code that holds the
    * runtime (never an agent, never a tool result) could reach it, and every method also refuses
@@ -288,6 +302,32 @@ export class PhoenixRuntime implements CoreServices {
       logger: this.logger,
     });
 
+    this.planning = new PlanningRuntime({
+      db: this.db,
+      items: this.meetingReview.service,
+      meetings: this.meetings,
+      gateway: this.toolGateway,
+      capabilities: this.capabilities,
+      audit: this.permissions.audit,
+      ai: this.ai.service,
+      aiEnabled: () => this.ai.aiSettings().enabled,
+      actor: () => {
+        const { viewer } = this.memory.agentContext();
+        return { id: viewer.id, viewer };
+      },
+      logger: this.logger,
+    });
+
+    this.workflows = new WorkflowsRuntime({
+      db: this.db,
+      bus: this.bus,
+      gateway: this.toolGateway,
+      permissions: this.permissions,
+      ai: this.ai.service,
+      context: this.memory.agentContext().engine,
+      logger: this.logger,
+    });
+
     this.privacy = new PrivacyService({
       dataDir: this.config.dataDir,
       settings: this.settings,
@@ -384,6 +424,8 @@ export class PhoenixRuntime implements CoreServices {
     }, 3_600_000);
     this.pruner.unref();
     await this.capabilities.restore();
+    // After the capabilities are back, so the tool catalog is complete when triggers arrive.
+    this.workflows.start();
 
     this.bus.publish(
       createEvent({
@@ -406,7 +448,12 @@ export class PhoenixRuntime implements CoreServices {
     return row.n;
   }
 
-  /** Counts of what Phoenix derived from the data classes above (vectors, graph, review items). */
+  private tableCount(table: "plans" | "workflow_runs"): number {
+    const row = this.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number };
+    return row.n;
+  }
+
+  /** Counts of what Phoenix derived from the data classes above (vectors, graph, review items, plans, workflow runs). */
   private derivedCounts() {
     const retrieval = this.retrieval.status();
     const graph = this.graph.graph.stats();
@@ -415,6 +462,8 @@ export class PhoenixRuntime implements CoreServices {
       graph_nodes: graph.nodes,
       graph_edges: graph.edges,
       meeting_items: this.reviewItemCount(),
+      plans: this.tableCount("plans"),
+      workflow_runs: this.tableCount("workflow_runs"),
     };
   }
 
@@ -446,6 +495,20 @@ export class PhoenixRuntime implements CoreServices {
           "Decisions and action items from meetings, with the quote they came from and whether you accepted them. Deleted with the meeting.",
         count: this.reviewItemCount(),
         deleted_with: "meetings",
+      },
+      {
+        id: "plans",
+        description:
+          "Engineering plans drafted from accepted meeting items (what you reviewed, approved and which GitHub issues or Frappe tasks were created from them). Deleted with the meeting; what was already created in GitHub or Frappe is not touched.",
+        count: this.tableCount("plans"),
+        deleted_with: "meetings",
+      },
+      {
+        id: "workflow_runs",
+        description:
+          "History of workflow runs: the trigger event (redacted and cut short), each step's status and a redacted, cut-short copy of its input and output. Not deleted by any data class yet: it is kept until Phoenix is reset.",
+        count: this.tableCount("workflow_runs"),
+        deleted_with: "nothing yet",
       },
     ];
   }
@@ -521,6 +584,7 @@ export class PhoenixRuntime implements CoreServices {
       if (this.pruner) clearInterval(this.pruner);
       await this.api?.close();
       await this.agents.close();
+      await this.workflows.close();
       await this.graph.close();
       this.meetingReview.close();
       await this.retrieval.close();

@@ -5,7 +5,7 @@
 | Stage | Stage 8 — Automation & Workflows (v0.8) |
 | Release target | v0.8 |
 | Priority | High |
-| Status | 🟨 Engine built and tested in-process (real SQLite, PermissionGateway, CapabilityManager, ToolGateway, EventBus; one real run with Ollama `llama3.2`); not wired into Core and no UI yet (see [gaps register](../gaps.md)) |
+| Status | 🟨 Engine built and tested in-process (real SQLite, PermissionGateway, CapabilityManager, ToolGateway, EventBus; one real run with Ollama `llama3.2`); wired into Core (routes in the phase-40 doc); no web view yet (see [gaps register](../gaps.md)) |
 | Depends on | [Phase 38 — Knowledge Graph & Provenance](phase-38-knowledge-graph-and-provenance.md) |
 | Unblocks | [Phase 40 — Workflow Safety & v0.8 Release](phase-40-workflow-safety.md) |
 
@@ -43,11 +43,12 @@ Let users define event-driven WHEN / IF / THEN workflows.
 - Only `WorkflowAdmin` (user actor, audited) writes definitions; the engine has a `WorkflowStore` with no such method.
 - Run history API for a UI: `engine.listRuns`, `engine.getRun(runId)` (per-step status; inputs/outputs redacted and truncated), `engine.listWorkflows()`.
 - Example workflow: `test/example.test.ts` (approve and reject paths, restart recovery) and `deployFailedWorkflow()` in `test/fixtures.ts`.
-- Not done: Core wiring, API routes and the workflow UI (list, run history, status). See the gaps register and the shared edits listed in the hand-off.
+- Wired into Core: `core/runtime/src/workflows.ts` (`PhoenixRuntime.workflows`) and `core/api/src/workflow-routes.ts`; tests in `core/runtime/test/workflows.test.ts` and `core/workflows/test/manual.test.ts`. The engine gained `startManual` and `cancelRun` (user actor only, same gates as a trigger).
+- Not done: the workflow UI (list, run history, status) is built separately.
 
 ## API contract
 
-All routes need the session token and are **user routes**: they are the only way to change a workflow, and nothing an agent, a workflow step, a model or a capability can call reaches them (the tool registry lists no `workflows.*` tool). Bodies are JSON objects with **exact keys** (an unknown field is 400). Errors are `{code, message, details}`; for a `WorkflowError` the first detail is its code (`INVALID_DEFINITION`, `NOT_FOUND`, `VERSION_CONFLICT`, `LIMIT_REACHED`, `INVALID_REQUEST`) followed by the problems: 400 invalid request or definition, 403 `SECURITY_POLICY_BLOCKED` (a refused start, emergency stop engaged), 404 unknown workflow or run, 401 no token. JSON is snake_case; timestamps are ISO strings.
+All routes need the session token and are **user routes**: they are the only way to change a workflow, and nothing an agent, a workflow step, a model or a capability can call reaches them (the tool registry lists no `workflows.*` tool). Bodies are JSON objects with **exact keys** (an unknown field is 400). Errors are `{code, message, details}`; for a `WorkflowError` `details` is its code (`INVALID_DEFINITION`, `VERSION_CONFLICT`, `LIMIT_REACHED`) followed by the problems, except that `INVALID_REQUEST` errors carry only their own marker (`WORKFLOW_DISABLED`, `RUN_NOT_ACTIVE`, `HASH_MISMATCH`): 400 invalid request or definition, 403 `SECURITY_POLICY_BLOCKED` (a refused start, emergency stop engaged), 404 unknown workflow or run, 401 no token. JSON is snake_case; timestamps are ISO strings.
 
 **Workflow** (`WorkflowView`):
 

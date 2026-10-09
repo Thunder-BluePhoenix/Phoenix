@@ -6,9 +6,10 @@ useDefault = true
 
 [allowlist]
 regexTarget = "line"
-description = "Fake credentials once used literally in log-redaction tests (now built at runtime in protocol/testing/fake-secrets.ts). Only these exact values are allowed."
+description = "Fake credentials once used literally in tests, now built at runtime (protocol/testing/fake-secrets.ts, or joined from parts). The last entry is an idempotency key in capabilities/github/test/issue-create.test.ts, committed in 4d9c6b9. Only these exact values are allowed."
 regexes = [
   '''Bearer abcdefghijklmnop''',
   '''ghp_abcdefghijklmnopqrstuvwxyz0123''',
   '''sk-abcdefghijklmnopqrstuvwx''',
+  '''other-key-abcdef0123456789''',
 ]

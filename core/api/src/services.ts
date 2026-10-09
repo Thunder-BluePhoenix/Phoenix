@@ -915,12 +915,15 @@ export interface WorkflowsApi {
     authorisation_reasons: string[];
   };
   setEnabled(id: string, enabled: boolean): WorkflowView;
-  authorise(id: string, input: { hash: string; expiresAt?: string }): {
+  authorise(
+    id: string,
+    input: { hash: string; expiresAt?: string },
+  ): {
     authorisation: WorkflowAuthorisationView;
     workflow: WorkflowView;
   };
   revoke(id: string): { revoked: number; workflow: WorkflowView };
-  start(id: string, payload: Record<string, unknown>): { run: WorkflowRunSummaryView };
+  startRun(id: string, payload: Record<string, unknown>): { run: WorkflowRunSummaryView };
   cancelRun(runId: string): { cancelled: true; status: string };
   listRuns(query: { workflowId?: string; status?: string; limit: number }): {
     runs: WorkflowRunSummaryView[];

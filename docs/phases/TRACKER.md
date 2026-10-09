@@ -17,15 +17,15 @@ Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still 
 | Stage 1 — MVP Foundation | v0.1 | 00–20 (21) | 18/21 |
 | Stage 2 — Useful Fawkes (v0.2) | v0.2 | 21–26 (6) | 0/6 |
 | Stage 3 — Memory & Context (v0.3) | v0.3 | 27–29 (3) | 0/3 |
-| Stage 4 — Fawkes Becomes an Agent (v0.4) | v0.4 | 30–33 (4) | 0/4 |
+| Stage 4 — Fawkes Becomes an Agent (v0.4) | v0.4 | 30–33 (4) | 2/4 |
 | Stage 5 — Developer-Agent Orchestration (v0.5) | v0.5 | 34 (1) | 0/1 |
 | Stage 6 — Meeting → Engineering (v0.6) | v0.6 | 35–36 (2) | 0/2 |
-| Stage 7 — Knowledge Graph (v0.7) | v0.7 | 37–38 (2) | 0/2 |
+| Stage 7 — Knowledge Graph (v0.7) | v0.7 | 37–38 (2) | 1/2 |
 | Stage 8 — Automation & Workflows (v0.8) | v0.8 | 39–40 (2) | 0/2 |
 | Stage 9 — Capability Ecosystem (v0.9) | v0.9 | 41–42 (2) | 0/2 |
 | Stage 10 — Developer Operating Layer (v1.0) | v1.0 | 43–44 (2) | 0/2 |
 | Stage 11 — AI Evolution (v1.1 → v2.0) | v1.1 → v2.0 | 45–55 (11) | 0/11 |
-| **Total** | | **56** | **18/56** |
+| **Total** | | **56** | **21/56** |
 
 ## Stage 1 — MVP Foundation
 
@@ -83,9 +83,9 @@ Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
 | 30 | [Policy Gateway & Tool Gateway](phase-30-policy-and-tool-gateway.md) | v0.4 | Critical | 29 | 🟨 | | Policy + tool gateway built and constructed in Core; no agent uses it yet (Phase 31) |
-| 31 | [Agent Runtime & First Vertical Slice](phase-31-agent-runtime-first-vertical-slice.md) | v0.4 | Critical | 30 | ⬜ | | |
-| 32 | [Fawkes Chat & Approval UX](phase-32-fawkes-chat-and-approval-ux.md) | v0.4 | High | 31 | ⬜ | | |
-| 33 | [AI Evaluation Harness & v0.4 Release](phase-33-ai-evaluation-harness.md) | v0.4 | High | 31 | ⬜ | | |
+| 31 | [Agent Runtime & First Vertical Slice](phase-31-agent-runtime-first-vertical-slice.md) | v0.4 | Critical | 30 | ✅ | | Agent runtime and CI-failure agent; real GitHub, git and Ollama runs; found and fixed a commit-causality defect; gaps in gaps.md |
+| 32 | [Fawkes Chat & Approval UX](phase-32-fawkes-chat-and-approval-ux.md) | v0.4 | High | 31 | ✅ | | Chat, current task, approval cards, automation setting; tested with fakes plus a real-browser check; gaps in gaps.md |
+| 33 | [AI Evaluation Harness & v0.4 Release](phase-33-ai-evaluation-harness.md) | v0.4 | High | 31 | 🟨 | | Harness and 66 offline scenarios; v0.4 gate PASSES after D1-D3 were fixed; release not cut (owner sign-off); 3 criteria open |
 
 **Stage gate:** Agent actions are controlled and auditable.
 
@@ -93,7 +93,7 @@ Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still 
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 34 | [Coding-Agent Orchestration](phase-34-coding-agent-orchestration.md) | v0.5 | High | 33, 25 | ⬜ | | |
+| 34 | [Coding-Agent Orchestration](phase-34-coding-agent-orchestration.md) | v0.5 | High | 33, 25 | 🟨 | | Built; verified against a fake agent and a real Core; never run against a real coding agent; v0.5 not cut |
 
 **Stage gate:** Agent lifecycle and external events can be correlated.
 
@@ -101,8 +101,8 @@ Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still 
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 35 | [Kage Decisions & Action-Item Extraction](phase-35-kage-decisions-and-action-items.md) | v0.6 | High | 33, 16 | ⬜ | | |
-| 36 | [Action Items → Engineering Tasks](phase-36-action-items-to-engineering-tasks.md) | v0.6 | High | 35, 22, 23 | ⬜ | | |
+| 35 | [Kage Decisions & Action-Item Extraction](phase-35-kage-decisions-and-action-items.md) | v0.6 | High | 33, 16 | 🟨 | | Extraction, review states, search/ask, review panel on the meeting page; real-model path not exercised in the browser; 1 criterion open |
+| 36 | [Action Items → Engineering Tasks](phase-36-action-items-to-engineering-tasks.md) | v0.6 | High | 35, 22, 23 | 🟨 | | Plans and task creation wired into Core, user-only routes; verified only against local GitHub/Frappe mocks; no web panel yet; 2 criteria open |
 
 **Stage gate:** Meeting artifacts can become structured engineering context.
 
@@ -110,8 +110,8 @@ Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still 
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 37 | [Hybrid Retrieval (Lexical + Vector + Rerank)](phase-37-hybrid-retrieval.md) | v0.7 | High | 36 | ⬜ | | |
-| 38 | [Knowledge Graph & Provenance](phase-38-knowledge-graph-and-provenance.md) | v0.7 | High | 37 | ⬜ | | |
+| 37 | [Hybrid Retrieval (Lexical + Vector + Rerank)](phase-37-hybrid-retrieval.md) | v0.7 | High | 36 | ✅ | | Hybrid retrieval wired into Core and Settings (off by default); recall@5 up, MRR gain within noise; no rebuild route (see gaps.md) |
+| 38 | [Knowledge Graph & Provenance](phase-38-knowledge-graph-and-provenance.md) | v0.7 | High | 37 | 🟨 | | Graph and provenance view built; pre-registered value gate NOT met by the graph alone; 3 criteria open |
 
 **Stage gate:** Graph/hybrid retrieval proves measurable value.
 
@@ -119,8 +119,8 @@ Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still 
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 39 | [Workflow Engine](phase-39-workflow-engine.md) | v0.8 | High | 38 | ⬜ | | |
-| 40 | [Workflow Safety & v0.8 Release](phase-40-workflow-safety.md) | v0.8 | High | 39 | ⬜ | | |
+| 39 | [Workflow Engine](phase-39-workflow-engine.md) | v0.8 | High | 38 | 🟨 | | Engine wired into Core with routes; no web view for workflows yet; 1 criterion open |
+| 40 | [Workflow Safety & v0.8 Release](phase-40-workflow-safety.md) | v0.8 | High | 39 | 🟨 | | Safety layer wired into Core (user-only authorise, kill switch, restart reconciliation); v0.8 not cut; 2 criteria open |
 
 **Stage gate:** Workflow execution is reliable and safe.
 

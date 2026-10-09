@@ -269,10 +269,7 @@ export class AgentRuntime implements AgentApi {
 }
 
 /** snake_case view of an observation; unreported token counts and their cost stay "unknown". */
-function observationView(
-  o: RunObservation,
-  reported: Conclusion["model"],
-): AgentObservationView {
+function observationView(o: RunObservation, reported: Conclusion["model"]): AgentObservationView {
   const input = reported?.inputTokens ?? 0;
   const output = reported?.outputTokens ?? 0;
   return {
