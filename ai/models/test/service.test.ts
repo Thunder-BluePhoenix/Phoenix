@@ -83,6 +83,16 @@ const fail = (status: number, retryAfterMs?: number) => () =>
     }),
   );
 
+describe("registry", () => {
+  it("only resolves registered ids, never Object.prototype members", () => {
+    const registry = createDefaultProviders({});
+    for (const id of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+      expect(registry.get(id), id).toBeUndefined();
+    }
+    expect(registry.get("ollama")?.id).toBe("ollama");
+  });
+});
+
 describe("disabled", () => {
   it("every entry point rejects with AiDisabledError and the network sees zero requests", async () => {
     const f = fakeFetch(() => json({}));
@@ -216,9 +226,7 @@ describe("gate: no silent external transmission", () => {
       .run(gen({ request: { ...gen().request, privacy: "sensitive" } }))
       .catch((x: unknown) => x);
     expect(e).toBeInstanceOf(NoProviderError);
-    expect((e as NoProviderError).details.join(" ")).toMatch(
-      /sensitive data stays on this device/,
-    );
+    expect((e as NoProviderError).details.join(" ")).toMatch(/sensitive data stays on this device/);
     expect(f.requests).toHaveLength(0);
   });
 
@@ -318,11 +326,15 @@ describe("gate: no silent external transmission", () => {
     it("a local answer for sensitive data writes no cloud audit record", async () => {
       const { registry } = network();
       const { sent, auditCloudSend } = sink();
-      const out = await buildAudited(registry, { auditCloudSend }, {
-        public: true,
-        internal: true,
-        sensitive: false,
-      }).run(ask());
+      const out = await buildAudited(
+        registry,
+        { auditCloudSend },
+        {
+          public: true,
+          internal: true,
+          sensitive: false,
+        },
+      ).run(ask());
       expect(out.provider).toBe("ollama");
       expect(sent).toEqual([]);
     });
@@ -727,7 +739,9 @@ describe("status", () => {
   it("shows per-class access so the UI can explain what is allowed", async () => {
     const local = fakeProvider({ id: "ollama", locality: "local" });
     const cloud = fakeProvider({ id: "anthropic", locality: "cloud" });
-    const r = rig([local, cloud], { cloudOptIn: { public: true, internal: false, sensitive: false } });
+    const r = rig([local, cloud], {
+      cloudOptIn: { public: true, internal: false, sensitive: false },
+    });
     const s = await r.service.status();
     const a = s.providers.find((p) => p.id === "anthropic")!;
     expect(a.access.public.allowed).toBe(true);

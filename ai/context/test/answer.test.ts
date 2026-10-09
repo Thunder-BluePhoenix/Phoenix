@@ -151,12 +151,14 @@ describe("ask", () => {
       "q?",
       [
         {
+          id: "mem_1",
           ref: "M1",
           text: "t",
           domain: "git",
           source: "git",
           sourceRef: "x",
           observedAt: "2026-01-01T00:00:00.000Z",
+          sensitivity: "internal",
           freshness: "fresh",
           provenance: {},
         },
@@ -258,7 +260,10 @@ describe("ask through AiService", () => {
     for (const p of providers) registry.register(p);
     return new AiService({ registry, policy: { allowed: () => true }, settings: () => settings });
   }
-  const ON: AiSettings = { enabled: true, cloudOptIn: { public: true, internal: true } };
+  const ON: AiSettings = {
+    enabled: true,
+    cloudOptIn: { public: true, internal: true, sensitive: false },
+  };
 
   it("sensitive context only ever reaches the local provider, never the cloud one", async () => {
     const r = seeded();

@@ -5,7 +5,7 @@
 | Stage | Stage 2 — Useful Fawkes (v0.2) |
 | Release target | v0.2 |
 | Priority | High |
-| Status | 🟨 Built and tested against a real Core with recorded hook payloads; never driven by a live Claude Code session; Pet Panel list and runtime registration pending (see Implementation notes) |
+| Status | 🟨 Built, registered in Core and tested with recorded hook payloads; never driven by a live Claude Code session; Pet Panel agent list not built (see [gaps register](../gaps.md)) |
 | Depends on | [Phase 21 — Post-MVP Stabilisation](phase-21-post-mvp-stabilization.md) |
 | Unblocks | [Phase 26 — Issue Tracker Capabilities & v0.2 Release](phase-26-issue-tracker-capabilities.md), [Phase 34 — Coding-Agent Orchestration](phase-34-coding-agent-orchestration.md) |
 

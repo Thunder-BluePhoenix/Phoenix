@@ -60,11 +60,11 @@ Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
 | 21 | [Post-MVP Stabilisation](phase-21-post-mvp-stabilization.md) | v0.2 | Critical | 20 | 🟨 | | Started early on decision-free items: hostile-event robustness test, repeated-failure notification noise; telemetry is blocked on a decision |
-| 22 | [GitHub & CI/CD Capability](phase-22-github-and-cicd-capability.md) | v0.2 | High | 21 | ⬜ | | |
-| 23 | [Frappe / ERPNext Capability](phase-23-frappe-erpnext-capability.md) | v0.2 | High | 21 | ⬜ | | |
-| 24 | [Docker & Editor Capabilities](phase-24-docker-and-editor-capabilities.md) | v0.2 | Medium | 21 | ⬜ | | |
-| 25 | [Coding-Agent Lifecycle Events](phase-25-coding-agent-lifecycle-events.md) | v0.2 | High | 21 | ⬜ | | |
-| 26 | [Issue Tracker Capabilities & v0.2 Release](phase-26-issue-tracker-capabilities.md) | v0.2 | Medium | 22, 23, 24, 25 | ⬜ | | |
+| 22 | [GitHub & CI/CD Capability](phase-22-github-and-cicd-capability.md) | v0.2 | High | 21 | ✅ | | Real failed CI run mapped to ERROR with its link; review and deployment events only against mocks. Gaps: [gaps.md](../gaps.md) |
+| 23 | [Frappe / ERPNext Capability](phase-23-frappe-erpnext-capability.md) | v0.2 | High | 21 | 🟨 | | Discovery, health and site ERROR done; build/migration/deploy/restart events not possible read-only; never run against a real site |
+| 24 | [Docker & Editor Capabilities](phase-24-docker-and-editor-capabilities.md) | v0.2 | Medium | 21 | 🟨 | | Docker run against a real daemon; VS Code extension never loaded in a real VS Code; build events not observable |
+| 25 | [Coding-Agent Lifecycle Events](phase-25-coding-agent-lifecycle-events.md) | v0.2 | High | 21 | 🟨 | | Observe-only; hook adapter built from the Claude Code binary's strings, never driven by a live session; Pet Panel list pending |
+| 26 | [Issue Tracker Capabilities & v0.2 Release](phase-26-issue-tracker-capabilities.md) | v0.2 | Medium | 22, 23, 24, 25 | 🟨 | | Issues capability (GitHub real, Linear/Jira docs-only); v0.2 gate test passes; release not cut |
 
 **Stage gate:** Multiple integrations operate through the capability model.
 
@@ -72,9 +72,9 @@ Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still 
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 27 | [Model Adapter & Router](phase-27-model-adapter-and-router.md) | v0.3 | High | 26 | ⬜ | | |
-| 28 | [Context Engine & Basic Memory Store](phase-28-context-engine-and-memory-store.md) | v0.3 | High | 27 | ⬜ | | |
-| 29 | [Memory Governance & Inspection UX](phase-29-memory-governance-ux.md) | v0.3 | High | 28 | ⬜ | | |
+| 27 | [Model Adapter & Router](phase-27-model-adapter-and-router.md) | v0.3 | High | 26 | 🟨 | | Ollama run for real; Anthropic never contacted; AI off by default |
+| 28 | [Context Engine & Basic Memory Store](phase-28-context-engine-and-memory-store.md) | v0.3 | High | 27 | 🟨 | | Lexical memory + context engine; ran on this repo's real history and real Ollama |
+| 29 | [Memory Governance & Inspection UX](phase-29-memory-governance-ux.md) | v0.3 | High | 28 | 🟨 | | Memory UI checked in a real browser; sensitive cloud opt-in is deliberate and audited; v0.3 not released |
 
 **Stage gate:** Memory is permission-aware and inspectable.
 
@@ -82,7 +82,7 @@ Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still 
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 30 | [Policy Gateway & Tool Gateway](phase-30-policy-and-tool-gateway.md) | v0.4 | Critical | 29 | ⬜ | | |
+| 30 | [Policy Gateway & Tool Gateway](phase-30-policy-and-tool-gateway.md) | v0.4 | Critical | 29 | 🟨 | | Policy + tool gateway built and constructed in Core; no agent uses it yet (Phase 31) |
 | 31 | [Agent Runtime & First Vertical Slice](phase-31-agent-runtime-first-vertical-slice.md) | v0.4 | Critical | 30 | ⬜ | | |
 | 32 | [Fawkes Chat & Approval UX](phase-32-fawkes-chat-and-approval-ux.md) | v0.4 | High | 31 | ⬜ | | |
 | 33 | [AI Evaluation Harness & v0.4 Release](phase-33-ai-evaluation-harness.md) | v0.4 | High | 31 | ⬜ | | |

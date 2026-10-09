@@ -304,6 +304,7 @@ a {
 
 .tabs {
   display: flex;
+  flex-wrap: wrap; /* four tabs are wider than a 320 px screen's panel */
   gap: 4px;
   margin: 12px 0 8px;
   border-bottom: 1px solid var(--border);
@@ -824,6 +825,8 @@ code.break {
 .memory-facts li {
   border-bottom: 1px solid var(--border);
   padding-bottom: 10px;
+  min-width: 0; /* a flex item defaults to min-content, so one long unbroken word widened the panel */
+  overflow-wrap: anywhere;
 }
 .memory-item > .btn {
   margin-top: 4px;
@@ -837,6 +840,8 @@ code.break {
   flex-wrap: wrap;
   gap: 4px 8px;
   align-items: baseline;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .mem-badge {
   font-size: 11px;

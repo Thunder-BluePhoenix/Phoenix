@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 import { ErrorCode, isPermission, PhoenixError } from "@phoenix/protocol";
 import { expectBoolean, expectObject, intParam, route, type Route } from "./http";
+import { memoryRoutes } from "./memory-routes";
 import type { CoreServices } from "./services";
 
 const notFound = (what: string) =>
@@ -192,6 +193,8 @@ export function buildRoutes(s: CoreServices): Route[] {
       const b = expectObject(await body());
       return privacy().deleteAll(b.data, b.confirm);
     }),
+
+    ...memoryRoutes(s),
 
     // ── Notifications ───────────────────────────────────────────────────────
     route("GET", "/api/notifications", ({ url }) =>

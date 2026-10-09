@@ -69,14 +69,17 @@ At the same time, a meeting tracker asks Kage for the transcript and summary and
 
 ## Where things live in the code
 
-| Folder          | What is inside                                                          |
-| --------------- | ----------------------------------------------------------------------- |
-| `protocol/`     | The shared language: event shapes, error codes, pet states              |
-| `core/`         | The server and its parts (API, bus, state engine, permissions, storage) |
-| `capabilities/` | Kage, Git, Terminal and a mock for testing                              |
-| `sdk/`          | Toolkit for building a new capability                                   |
-| `pet/`          | Fawkes: states, animations, art                                         |
-| `apps/web/`     | The screen you look at                                                  |
-| `apps/desktop/` | Floating Fawkes on your desktop (not built yet)                         |
+| Folder          | What is inside                                                                  |
+| --------------- | ------------------------------------------------------------------------------- |
+| `protocol/`     | The shared language: event shapes, error codes, pet states                      |
+| `core/`         | The server and its parts (API, bus, state engine, permissions, policy, storage) |
+| `ai/`           | Memory, the context engine, model providers and the tool gateway                |
+| `capabilities/` | Kage, Git, Terminal, Docker, Frappe, Agents, Issues and a mock                  |
+| `sdk/`          | Toolkit for building a new capability                                           |
+| `pet/`          | Fawkes: states, animations, art                                                 |
+| `apps/web/`     | The screen you look at                                                          |
+| `apps/desktop/` | Floating Fawkes on your desktop (not built yet)                                 |
 
 `core/runtime` is the piece that starts everything and connects the parts together.
+
+**Memory and AI.** Core remembers git commits, the markdown files you list and (only if you allow it) meeting summaries, in the same SQLite file as everything else, with a lexical index. You can browse, search, forget and delete it, and set how long each kind is kept. AI is off until you turn it on; it then uses Ollama on this device. Nothing goes to a cloud provider unless you grant external processing and opt in for that kind of data, and sensitive data has its own separate opt-in (`docs/security-review.md`). The runtime builds one tool gateway (`runtime.toolGateway`) that agents will use in Phase 31; no route exposes it or the policy rules.

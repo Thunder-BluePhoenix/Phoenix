@@ -1,0 +1,105 @@
+{
+  "total_count": 4,
+  "workflow_runs": [
+    {
+      "id": 37145498780,
+      "name": "CI",
+      "head_branch": "claude/upbeat-faraday-qor262",
+      "head_sha": "a4ef8a44ea85e0e78161a10caeabfc54ec476bca",
+      "path": ".github/workflows/ci.yml",
+      "display_title": "Claude/upbeat faraday qor262",
+      "run_number": 11,
+      "event": "pull_request",
+      "status": "completed",
+      "conclusion": "failure",
+      "workflow_id": 374041406,
+      "url": "https://api.github.com/repos/Thunder-BluePhoenix/Phoenix/actions/runs/37145498780",
+      "html_url": "https://github.com/Thunder-BluePhoenix/Phoenix/actions/runs/37145498780",
+      "pull_requests": [],
+      "created_at": "2026-10-03T18:47:02Z",
+      "updated_at": "2026-10-03T18:47:54Z",
+      "run_started_at": "2026-10-03T18:47:02Z",
+      "run_attempt": 1,
+      "actor": {
+        "login": "Thunder-BluePhoenix",
+        "type": "User",
+        "html_url": "https://github.com/Thunder-BluePhoenix"
+      }
+    },
+    {
+      "id": 37145038229,
+      "name": "CI",
+      "head_branch": "claude/upbeat-faraday-qor262",
+      "head_sha": "f36167bf85673f935fcfa2735df4b6b0810e5c12",
+      "path": ".github/workflows/ci.yml",
+      "display_title": "Phase 13: capability SDK, mock capability and event simulator",
+      "run_number": 8,
+      "event": "push",
+      "status": "completed",
+      "conclusion": "failure",
+      "workflow_id": 374041406,
+      "url": "https://api.github.com/repos/Thunder-BluePhoenix/Phoenix/actions/runs/37145038229",
+      "html_url": "https://github.com/Thunder-BluePhoenix/Phoenix/actions/runs/37145038229",
+      "pull_requests": [],
+      "created_at": "2026-10-03T18:39:45Z",
+      "updated_at": "2026-10-03T18:40:36Z",
+      "run_started_at": "2026-10-03T18:39:45Z",
+      "run_attempt": 1,
+      "actor": {
+        "login": "Thunder-BluePhoenix",
+        "type": "User",
+        "html_url": "https://github.com/Thunder-BluePhoenix"
+      }
+    },
+    {
+      "id": 37827195337,
+      "name": "CI",
+      "head_branch": "main",
+      "head_sha": "a27fd846f5bc48a5835c32cbbcd9459ebf8c9c50",
+      "path": ".github/workflows/ci.yml",
+      "display_title": "feat: enhance security review with findings on event forgery and deni\u2026",
+      "run_number": 26,
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success",
+      "workflow_id": 374041406,
+      "url": "https://api.github.com/repos/Thunder-BluePhoenix/Phoenix/actions/runs/37827195337",
+      "html_url": "https://github.com/Thunder-BluePhoenix/Phoenix/actions/runs/37827195337",
+      "pull_requests": [],
+      "created_at": "2026-10-08T18:49:03Z",
+      "updated_at": "2026-10-08T18:50:22Z",
+      "run_started_at": "2026-10-08T18:49:03Z",
+      "run_attempt": 1,
+      "actor": {
+        "login": "Thunder-BluePhoenix",
+        "type": "User",
+        "html_url": "https://github.com/Thunder-BluePhoenix"
+      }
+    },
+    {
+      "id": 37145291084,
+      "name": "CI",
+      "head_branch": "claude/upbeat-faraday-qor262",
+      "head_sha": "a4ef8a44ea85e0e78161a10caeabfc54ec476bca",
+      "path": ".github/workflows/ci.yml",
+      "display_title": "Make secret-scan exemption survive history rewrites",
+      "run_number": 10,
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success",
+      "workflow_id": 374041406,
+      "url": "https://api.github.com/repos/Thunder-BluePhoenix/Phoenix/actions/runs/37145291084",
+      "html_url": "https://github.com/Thunder-BluePhoenix/Phoenix/actions/runs/37145291084",
+      "pull_requests": [],
+      "created_at": "2026-10-03T18:43:45Z",
+      "updated_at": "2026-10-03T18:44:32Z",
+      "run_started_at": "2026-10-03T18:43:45Z",
+      "run_attempt": 1,
+      "actor": {
+        "login": "Thunder-BluePhoenix",
+        "type": "User",
+        "html_url": "https://github.com/Thunder-BluePhoenix"
+      }
+    }
+  ]
+}

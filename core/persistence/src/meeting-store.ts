@@ -86,7 +86,25 @@ function toMeeting(r: Row): Meeting {
 
 /** Phoenix's local record of meetings produced by meeting capabilities (Kage). */
 export class MeetingStore {
+  private readonly listeners: (() => void)[] = [];
+
   constructor(private readonly db: Database) {}
+
+  /**
+   * Calls `listener` after a summary is stored, a meeting is archived or a meeting is deleted:
+   * anything derived from meetings (the memory index) re-syncs from it. Returns an unsubscribe.
+   */
+  onChange(listener: () => void): () => void {
+    this.listeners.push(listener);
+    return () => {
+      const at = this.listeners.indexOf(listener);
+      if (at >= 0) this.listeners.splice(at, 1);
+    };
+  }
+
+  private changed(): void {
+    for (const listener of [...this.listeners]) listener();
+  }
 
   static id(capabilityId: string, externalId: string): string {
     return `${capabilityId}:${externalId}`;
@@ -138,6 +156,7 @@ export class MeetingStore {
     this.db
       .prepare("UPDATE meetings SET summary = ? WHERE id = ? AND deleted_at IS NULL")
       .run(JSON.stringify(summary), id);
+    this.changed();
   }
 
   list(options: { archived?: boolean; limit?: number } = {}): Meeting[] {
@@ -169,6 +188,7 @@ export class MeetingStore {
     this.db
       .prepare("UPDATE meetings SET archived_at = ? WHERE id = ? AND deleted_at IS NULL")
       .run(archived ? new Date().toISOString() : null, id);
+    this.changed();
     return this.get(id);
   }
 
@@ -180,7 +200,9 @@ export class MeetingStore {
            summary = NULL, deleted_at = ? WHERE id = ? AND deleted_at IS NULL`,
       )
       .run(new Date().toISOString(), id);
-    return Number(r.changes) > 0;
+    const deleted = Number(r.changes) > 0;
+    if (deleted) this.changed();
+    return deleted;
   }
 
   count(): number {

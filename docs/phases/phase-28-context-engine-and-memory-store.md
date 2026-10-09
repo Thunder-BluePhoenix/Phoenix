@@ -5,7 +5,7 @@
 | Stage | Stage 3 — Memory & Context (v0.3) |
 | Release target | v0.3 |
 | Priority | High |
-| Status | 🟨 In progress (packages built and tested; runtime wiring and API outstanding) |
+| Status | 🟨 Built, tested and wired into Core with git, meeting and doc ingestion; ran against this repo's real history and real Ollama (see [gaps register](../gaps.md)) |
 | Depends on | [Phase 27 — Model Adapter & Router](phase-27-model-adapter-and-router.md) |
 | Unblocks | [Phase 29 — Memory Governance & Inspection UX](phase-29-memory-governance-ux.md) |
 

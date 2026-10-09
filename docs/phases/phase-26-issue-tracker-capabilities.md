@@ -5,7 +5,7 @@
 | Stage | Stage 2 — Useful Fawkes (v0.2) |
 | Release target | v0.2 |
 | Priority | Medium |
-| Status | ⬜ Not started |
+| Status | 🟨 Issue capability built and registered; Linear and Jira never run against the real services; v0.2 release not cut (see [gaps register](../gaps.md)) |
 | Depends on | [Phase 22 — GitHub & CI/CD Capability](phase-22-github-and-cicd-capability.md), [Phase 23 — Frappe / ERPNext Capability](phase-23-frappe-erpnext-capability.md), [Phase 24 — Docker & Editor Capabilities](phase-24-docker-and-editor-capabilities.md), [Phase 25 — Coding-Agent Lifecycle Events](phase-25-coding-agent-lifecycle-events.md) |
 | Unblocks | [Phase 27 — Model Adapter & Router](phase-27-model-adapter-and-router.md) |
 
@@ -26,9 +26,9 @@ Add Jira / Linear / GitHub Issues awareness and close out v0.2.
 
 ## Tasks
 
-- [ ] Issue assigned / status changed events for one or more trackers
-- [ ] Verify ≥3 integrations share the same event protocol
-- [ ] Per-capability enable/disable verified for all
+- [x] Issue assigned / status changed events for one or more trackers (GitHub Issues verified on live responses; Linear and Jira only against mocks)
+- [x] Verify ≥3 integrations share the same event protocol (`core/runtime/test/v02-gate.test.ts`: agents, frappe and docker through a real runtime; `github`, `issues` and `git` follow the same manifest and event rules by construction, not by this test)
+- [ ] Per-capability enable/disable verified for all (verified for agents, frappe, docker, git in the gate test; each capability's own suite covers its enable/disable; no single test enables and disables all nine)
 - [ ] Release v0.2
 
 ## Deliverables
@@ -38,9 +38,9 @@ Add Jira / Linear / GitHub Issues awareness and close out v0.2.
 
 ## Exit criteria
 
-- [ ] ≥3 integrations on one protocol
-- [ ] Source + severity distinguishable
-- [ ] Capability failure never crashes Phoenix
+- [x] ≥3 integrations on one protocol (see above)
+- [x] Source + severity distinguishable (every event from agents/frappe/docker carries its own `source` and one of four severities, asserted in the gate test; no new web rendering was checked in a browser)
+- [x] Capability failure never crashes Phoenix (gate test: a missing repository and a Frappe site that goes down and recovers; Core answers throughout and nothing is disabled; breaking the Frappe event makes the test fail)
 - [ ] Gate v0.2 → v0.3 met
 
 ## Source documents

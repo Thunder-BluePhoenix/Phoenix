@@ -5,7 +5,7 @@
 | Stage | Stage 3 — Memory & Context (v0.3) |
 | Release target | v0.3 |
 | Priority | High |
-| Status | 🟨 In progress (package built and tested; runtime wiring and Anthropic live check outstanding) |
+| Status | 🟨 Built, tested and wired into Core (AI off by default); Ollama run for real, Anthropic never contacted (see [gaps register](../gaps.md)) |
 | Depends on | [Phase 26 — Issue Tracker Capabilities & v0.2 Release](phase-26-issue-tracker-capabilities.md) |
 | Unblocks | [Phase 28 — Context Engine & Basic Memory Store](phase-28-context-engine-and-memory-store.md) |
 

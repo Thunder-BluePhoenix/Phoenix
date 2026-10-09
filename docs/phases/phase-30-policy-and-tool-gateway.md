@@ -5,7 +5,7 @@
 | Stage | Stage 4 — Fawkes Becomes an Agent (v0.4) |
 | Release target | v0.4 |
 | Priority | Critical |
-| Status | 🟨 Built and tested in-process; not yet wired into Core |
+| Status | 🟨 Built, tested in-process and constructed in Core as `runtime.toolGateway`; no agent uses it yet and no route exposes it (see [gaps register](../gaps.md)) |
 | Depends on | [Phase 29 — Memory Governance & Inspection UX](phase-29-memory-governance-ux.md) |
 | Unblocks | [Phase 31 — Agent Runtime & First Vertical Slice](phase-31-agent-runtime-first-vertical-slice.md) |
 

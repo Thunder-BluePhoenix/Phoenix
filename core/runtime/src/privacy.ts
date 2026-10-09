@@ -8,11 +8,18 @@ import type { EventStore, MeetingStore, SettingsStore } from "@phoenix/persisten
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
 
 /** Data classes the user can set retention for and delete. */
-export const DATA_CLASSES = ["events", "notifications", "meetings"] as const;
+export const DATA_CLASSES = ["events", "notifications", "meetings", "memory"] as const;
 export type DataClass = (typeof DATA_CLASSES)[number];
 
+/**
+ * Classes with one retention number here. Memory is not one of them: its retention is set per
+ * layer (working, episodic, project, preference) in the memory settings.
+ */
+export type RetainedClass = Exclude<DataClass, "memory">;
+const RETAINED_CLASSES: readonly RetainedClass[] = ["events", "notifications", "meetings"];
+
 /** Days to keep each class; null keeps it until deleted (bounded by count limits). */
-export type Retention = Record<DataClass, number | null>;
+export type Retention = Record<RetainedClass, number | null>;
 
 const RETENTION_KEY = "privacy.retention";
 const DEFAULT_RETENTION: Retention = { events: null, notifications: null, meetings: null };
@@ -21,6 +28,8 @@ const DESCRIPTIONS: Record<DataClass, string> = {
   events: "What capabilities reported: commands, builds, meetings, Git.",
   notifications: "Alerts Fawkes showed you.",
   meetings: "Phoenix's copy of details, transcripts and summaries (recordings stay in Kage).",
+  memory:
+    "What Fawkes remembers: commit messages, project docs you listed and, if you allow it, meeting summaries. Retention is set per kind of memory in the memory settings.",
 };
 
 export interface PrivacyDeps {
@@ -31,6 +40,15 @@ export interface PrivacyDeps {
   meetings: MeetingStore;
   capabilities: CapabilityManager;
   audit: AuditLog;
+  memory: {
+    /** Memories the owner can see. */
+    count(): number;
+    retentionByLayer(): Record<string, number | null>;
+    /** Deletes every memory (and its index entries); returns how many. */
+    deleteAll(): number;
+  };
+  /** One sentence about what is sent to AI providers, derived from the live AI settings. */
+  externalAi(): string;
 }
 
 /** What Phoenix stores, for how long, and deleting it (PRD v2.0 §19, FR-014). */
@@ -47,13 +65,22 @@ export class PrivacyService {
     }
     const next = this.retention();
     for (const [key, value] of Object.entries(input)) {
-      if (!(DATA_CLASSES as readonly string[]).includes(key)) {
-        throw new PhoenixError(ErrorCode.INVALID_REQUEST, `Unknown data class "${key}"`);
+      if (key === "memory") {
+        throw new PhoenixError(
+          ErrorCode.INVALID_REQUEST,
+          "Memory retention is set per kind of memory in the memory settings",
+        );
+      }
+      if (!(RETAINED_CLASSES as readonly string[]).includes(key)) {
+        throw new PhoenixError(
+          ErrorCode.INVALID_REQUEST,
+          `Unknown data class "${key.slice(0, 40)}"`,
+        );
       }
       if (value !== null && !(Number.isInteger(value) && value >= 1 && value <= 3650)) {
         throw new PhoenixError(ErrorCode.INVALID_REQUEST, `"${key}" must be 1-3650 days or null`);
       }
-      next[key as DataClass] = value as number | null;
+      next[key as RetainedClass] = value as number | null;
     }
     this.d.settings.set(RETENTION_KEY, next);
     this.d.audit.record({
@@ -67,7 +94,7 @@ export class PrivacyService {
   }
 
   /** Applies retention now. Returns how many records each class lost. */
-  prune(now = Date.now()): Record<DataClass, number> {
+  prune(now = Date.now()): Record<RetainedClass, number> {
     const r = this.retention();
     const cutoff = (days: number | null) =>
       days === null ? null : new Date(now - days * 86_400_000).toISOString();
@@ -100,7 +127,9 @@ export class PrivacyService {
         ? this.d.events.deleteBefore()
         : kind === "notifications"
           ? this.d.notifications.deleteBefore()
-          : this.d.meetings.deleteBefore();
+          : kind === "meetings"
+            ? this.d.meetings.deleteBefore()
+            : this.d.memory.deleteAll();
     this.d.audit.record({
       actor: by,
       action: "privacy.data.deleted",
@@ -116,14 +145,20 @@ export class PrivacyService {
       events: this.d.events.count(),
       notifications: this.d.notifications.count(),
       meetings: this.d.meetings.count(),
+      memory: this.d.memory.count(),
     };
+    const layers = this.d.memory.retentionByLayer();
+    const kept = Object.values(layers);
+    // One number for the row: the longest any kind of memory is kept (null = some kind forever).
+    const longest = kept.includes(null) ? null : Math.max(...(kept as number[]));
     return {
       location: resolve(this.d.dataDir),
       data: DATA_CLASSES.map((id) => ({
         id,
         description: DESCRIPTIONS[id],
         count: counts[id],
-        retention_days: r[id],
+        retention_days: id === "memory" ? longest : r[id],
+        ...(id === "memory" ? { retention_by_layer: layers } : {}),
       })),
       audit_log: {
         description:
@@ -137,7 +172,7 @@ export class PrivacyService {
         )
         .map((c) => ({ ...c, stored_in: "OS keychain" })),
       telemetry: "none",
-      external_ai: "Phoenix has no AI features yet; nothing is sent to AI providers.",
+      external_ai: this.d.externalAi(),
     };
   }
 }

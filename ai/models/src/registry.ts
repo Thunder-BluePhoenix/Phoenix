@@ -11,7 +11,7 @@ export class ProviderRegistry {
   private readonly byId: Record<string, ModelProvider> = {};
 
   register(provider: ModelProvider): void {
-    if (this.byId[provider.id] !== undefined) {
+    if (Object.hasOwn(this.byId, provider.id)) {
       throw new PhoenixError(
         ErrorCode.INVALID_REQUEST,
         `Provider ${provider.id} is already registered`,
@@ -21,7 +21,8 @@ export class ProviderRegistry {
   }
 
   get(id: string): ModelProvider | undefined {
-    return this.byId[id];
+    // Own keys only: "__proto__" or "constructor" must not resolve to an Object.prototype member.
+    return Object.hasOwn(this.byId, id) ? this.byId[id] : undefined;
   }
 
   /** Providers in id order, so plans do not depend on registration order. */

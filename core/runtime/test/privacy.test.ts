@@ -47,6 +47,7 @@ describe("privacy API", () => {
       "events",
       "notifications",
       "meetings",
+      "memory",
     ]);
     expect(count(inv, "events")).toBeGreaterThan(0);
     expect(count(inv, "notifications")).toBeGreaterThan(0); // the build failure notified
@@ -55,6 +56,8 @@ describe("privacy API", () => {
       { capability: "kage", name: "api_key", stored_in: "OS keychain" },
     ]);
     expect(inv.telemetry).toBe("none");
+    // Phase 29: the sentence is derived from the AI settings, so with AI off it says so.
+    expect(inv.external_ai).toBe("AI is off; nothing is sent to AI providers.");
     expect(JSON.stringify(inv)).not.toContain("k-123");
   });
 
@@ -89,17 +92,17 @@ describe("privacy API", () => {
     expect(
       (await api("POST", "/api/privacy/delete", { data: "audit_log", confirm: true })).status,
     ).toBe(400);
-    for (const data of ["events", "notifications", "meetings"]) {
+    for (const data of ["events", "notifications", "meetings", "memory"]) {
       const r = await api("POST", "/api/privacy/delete", { data, confirm: true });
       expect(r.status).toBe(200);
     }
     const inv = (await api("GET", "/api/privacy")).json;
-    expect(inv.data.map((d: { count: number }) => d.count)).toEqual([0, 0, 0]);
+    expect(inv.data.map((d: { count: number }) => d.count)).toEqual([0, 0, 0, 0]);
     expect((await api("GET", "/api/meetings")).json.meetings).toEqual([]);
     const audit = (await api("GET", "/api/audit")).json.entries;
     expect(
       audit.filter((e: { action: string }) => e.action === "privacy.data.deleted"),
-    ).toHaveLength(3);
+    ).toHaveLength(4);
   });
 });
 

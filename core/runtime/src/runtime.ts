@@ -2,6 +2,14 @@
 // Copyright (C) 2026 Phoenix contributors
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Viewer } from "@phoenix/ai-memory";
+import type { FetchLike } from "@phoenix/ai-models";
+import {
+  approverFromPermissions,
+  enabledManifests,
+  ToolGateway,
+  ToolRegistry,
+} from "@phoenix/ai-tool-gateway";
 import { ApiServer, generateSessionToken, type CoreServices } from "@phoenix/api";
 import { CapabilityManager, type CapabilityModule } from "@phoenix/capability-manager";
 import type { PhoenixConfig } from "@phoenix/config";
@@ -21,8 +29,11 @@ import {
   type SecretStore,
 } from "@phoenix/persistence";
 import { createEvent, ErrorCode, PhoenixError, PROTOCOL_VERSION } from "@phoenix/protocol";
+import { PolicyAdmin, PolicyEngine, PolicyStore } from "@phoenix/policy";
 import { StateEngine } from "@phoenix/state-engine";
+import { AiRuntime } from "./ai";
 import { collectDiagnostics, type Diagnostics } from "./diagnostics";
+import { MemoryRuntime } from "./memory";
 import { syncMeetings } from "./meetings";
 import { PrivacyService } from "./privacy";
 
@@ -49,6 +60,17 @@ export interface RuntimeOptions {
   capabilities?: readonly CapabilityModule[];
   /** OS secret storage for capability credentials. Without it, secrets cannot be set. */
   secrets?: SecretStore;
+  /** Network used by the AI providers. Tests pass a counting fake; production uses global fetch. */
+  fetch?: FetchLike;
+  /** Ollama base URL (loopback only). Defaults to http://127.0.0.1:11434. */
+  ollamaUrl?: string;
+  /** Anthropic base URL; tests only. */
+  anthropicUrl?: string;
+  /**
+   * Who the memory browser, search and ask run as. Defaults to the device owner. Core has one
+   * user, so this is the seam for a narrower view (and for the permission-scoping tests).
+   */
+  memoryViewer?: Viewer;
 }
 
 /**
@@ -69,6 +91,19 @@ export class PhoenixRuntime implements CoreServices {
   readonly notifications: NotificationService;
   readonly meetings: MeetingStore;
   readonly privacy: PrivacyService;
+  readonly ai: AiRuntime;
+  readonly memory: MemoryRuntime;
+  /**
+   * The only path from an agent to a capability (Phase 30). Phase 31 hands this, and nothing
+   * else, to the agent runtime.
+   */
+  readonly toolGateway: ToolGateway;
+  /**
+   * Changes policy. Deliberately private and unused by any route: only code that holds the
+   * runtime (never an agent, never a tool result) could reach it, and every method also refuses
+   * any actor that is not a trusted user.
+   */
+  private readonly policyAdmin: PolicyAdmin;
   readonly token: string;
   private pruner: NodeJS.Timeout | null = null;
   private readonly stopMeetingSync: () => void;
@@ -134,6 +169,45 @@ export class PhoenixRuntime implements CoreServices {
       logger: this.logger,
     });
 
+    this.ai = new AiRuntime({
+      settings: this.settings,
+      permissions: this.permissions,
+      logger: this.logger,
+      ...(options.secrets ? { secrets: options.secrets } : {}),
+      ...(options.fetch ? { fetch: options.fetch } : {}),
+      ...(options.ollamaUrl ? { ollamaUrl: options.ollamaUrl } : {}),
+      ...(options.anthropicUrl ? { anthropicUrl: options.anthropicUrl } : {}),
+    });
+    this.memory = new MemoryRuntime({
+      db: this.db,
+      settings: this.settings,
+      bus: this.bus,
+      meetings: this.meetings,
+      capabilities: this.capabilities,
+      audit: this.permissions.audit,
+      ai: this.ai.service,
+      logger: this.logger,
+      ...(options.memoryViewer ? { viewer: options.memoryViewer } : {}),
+    });
+
+    const policyStore = new PolicyStore(this.db);
+    const registry = new ToolRegistry({ manifests: enabledManifests(this.capabilities, this.db) });
+    const policy = new PolicyEngine({
+      store: policyStore,
+      audit: this.permissions.audit,
+      isKillSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
+      isKnownTool: (tool) => registry.has(tool),
+    });
+    this.policyAdmin = new PolicyAdmin({ store: policyStore, audit: this.permissions.audit });
+    this.toolGateway = new ToolGateway({
+      host: this.capabilities,
+      registry,
+      policy,
+      audit: this.permissions.audit,
+      approver: approverFromPermissions(this.permissions),
+      logger: this.logger,
+    });
+
     this.privacy = new PrivacyService({
       dataDir: this.config.dataDir,
       settings: this.settings,
@@ -142,6 +216,8 @@ export class PhoenixRuntime implements CoreServices {
       meetings: this.meetings,
       capabilities: this.capabilities,
       audit: this.permissions.audit,
+      memory: this.memory,
+      externalAi: () => this.ai.describeExternalProcessing(),
     });
 
     this.bus.subscribe("state-engine", "*", (event) => {
@@ -188,7 +264,12 @@ export class PhoenixRuntime implements CoreServices {
     this.ticker = setInterval(() => this.state.tick(), this.options.tickMs ?? 1_000);
     this.ticker.unref();
     this.privacy.prune();
-    this.pruner = setInterval(() => this.privacy.prune(), 3_600_000);
+    // Not awaited: reading a large docs folder must not delay the API coming up.
+    void this.memory.maintain();
+    this.pruner = setInterval(() => {
+      this.privacy.prune();
+      void this.memory.maintain();
+    }, 3_600_000);
     this.pruner.unref();
     await this.capabilities.restore();
 
@@ -279,6 +360,7 @@ export class PhoenixRuntime implements CoreServices {
       await this.api?.close();
       await this.capabilities.close();
       this.stopMeetingSync();
+      await this.memory.close();
       this.notifications.close();
       this.permissions.close();
       await this.bus.drain();

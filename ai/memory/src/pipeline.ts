@@ -242,7 +242,11 @@ export interface PipelineDeps {
   store: MemoryStore;
   policy: MemoryPolicy;
   owner: string;
-  retentionDays?: Record<MemoryLayer, number | null>;
+  /**
+   * Days to keep each layer. A function is read on every capture, so a retention change applies
+   * to the next capture without rebuilding the pipeline.
+   */
+  retentionDays?: Record<MemoryLayer, number | null> | (() => Record<MemoryLayer, number | null>);
 }
 
 /** Runs captures through every stage and counts what happened. */
@@ -263,7 +267,7 @@ export class MemoryPipeline {
     if (!candidate.ok) return this.reject(candidate.reason);
     const classified = classifyStage(candidate.value, {
       owner: this.deps.owner,
-      retentionDays: this.deps.retentionDays ?? DEFAULT_RETENTION_DAYS,
+      retentionDays: this.retentionDays(),
     });
     if (!classified.ok) return this.reject(classified.reason);
     const decision = this.deps.policy.canStore(classified.value.item);
@@ -279,6 +283,12 @@ export class MemoryPipeline {
       this.counts[result.status]++;
     }
     return result;
+  }
+
+  private retentionDays(): Record<MemoryLayer, number | null> {
+    const configured = this.deps.retentionDays;
+    if (configured === undefined) return DEFAULT_RETENTION_DAYS;
+    return typeof configured === "function" ? configured() : configured;
   }
 
   /** A copy of the counters since this pipeline was created. */

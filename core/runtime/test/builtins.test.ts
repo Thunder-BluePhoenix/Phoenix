@@ -19,10 +19,11 @@ describe("built-in capabilities", () => {
   it("registers every first-party capability, installed and not enabled", async () => {
     const core = await startCore({}, { capabilities: builtinCapabilities("dev") });
     stop = () => core.runtime.stop();
-    const listed = (await core.api("GET", "/api/capabilities")).json.capabilities as CapabilityRow[];
+    const listed = (await core.api("GET", "/api/capabilities")).json
+      .capabilities as CapabilityRow[];
     const ids = listed.map((c) => c.id).sort();
     expect(ids).toEqual(
-      ["agents", "docker", "frappe", "git", "issues", "kage", "mock", "terminal"].sort(),
+      ["agents", "docker", "frappe", "git", "github", "issues", "kage", "mock", "terminal"].sort(),
     );
     expect(listed.every((c) => c.status === "installed")).toBe(true);
   });
@@ -30,6 +31,6 @@ describe("built-in capabilities", () => {
   it("leaves the demo capability out of production", () => {
     const ids = builtinCapabilities("prod").map((m) => m.manifest.id);
     expect(ids).not.toContain("mock");
-    expect(ids).toEqual(expect.arrayContaining(["docker", "frappe", "agents", "issues"]));
+    expect(ids).toEqual(expect.arrayContaining(["docker", "frappe", "agents", "issues", "github"]));
   });
 });

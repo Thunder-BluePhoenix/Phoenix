@@ -27,6 +27,8 @@ import type {
 import type { TimeWindow } from "./time";
 
 export interface AnswerFact {
+  /** The memory item's id, so a UI can show or forget exactly this fact. */
+  id: string;
   /** Reference the interpretation may cite: "M1", "M2", ... */
   ref: string;
   text: string;
@@ -34,6 +36,7 @@ export interface AnswerFact {
   source: string;
   sourceRef: string;
   observedAt: string;
+  sensitivity: PrivacyClass;
   freshness: Freshness;
   provenance: MemoryProvenance;
 }
@@ -66,12 +69,14 @@ export interface Answer {
 }
 
 const toFact = (item: ContextItem, ref: string): AnswerFact => ({
+  id: item.id,
   ref,
   text: item.text,
   domain: item.domain,
   source: item.source,
   sourceRef: item.sourceRef,
   observedAt: item.observedAt,
+  sensitivity: item.sensitivity,
   freshness: item.freshness,
   provenance: item.provenance,
 });

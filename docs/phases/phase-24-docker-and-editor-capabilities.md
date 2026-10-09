@@ -5,7 +5,7 @@
 | Stage | Stage 2 — Useful Fawkes (v0.2) |
 | Release target | v0.2 |
 | Priority | Medium |
-| Status | 🟨 Built; Docker and VS Code never run against the real thing (see Implementation notes) |
+| Status | 🟨 Built and registered in Core. Docker run against a real daemon (Colima); the VS Code extension has never been loaded in a real VS Code (see [gaps register](../gaps.md)) |
 | Depends on | [Phase 21 — Post-MVP Stabilisation](phase-21-post-mvp-stabilization.md) |
 | Unblocks | [Phase 26 — Issue Tracker Capabilities & v0.2 Release](phase-26-issue-tracker-capabilities.md) |
 

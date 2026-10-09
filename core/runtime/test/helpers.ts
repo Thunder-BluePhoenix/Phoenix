@@ -9,9 +9,31 @@ import { defaults, type PhoenixConfig } from "@phoenix/config";
 import { silentLogger, type Logger } from "@phoenix/logging";
 import type { SecretStore } from "@phoenix/persistence";
 import WebSocket from "ws";
-import { PhoenixRuntime } from "../src";
+import { PhoenixRuntime, type RuntimeOptions } from "../src";
 
 export const TOKEN = "test-token-0123456789";
+
+export interface ApiResponse {
+  status: number;
+  headers: Headers;
+  json: any;
+}
+
+export type ApiCall = (
+  method: string,
+  path: string,
+  body?: unknown,
+  headers?: Record<string, string>,
+) => Promise<ApiResponse>;
+
+/** A running Core plus a client that already carries the session token. */
+export interface TestCore {
+  runtime: PhoenixRuntime;
+  port: number;
+  base: string;
+  api: ApiCall;
+  dataDir: string;
+}
 
 export async function startCore(
   overrides: Partial<PhoenixConfig> = {},
@@ -20,8 +42,9 @@ export async function startCore(
     capabilities?: CapabilityModule[];
     secrets?: SecretStore;
     logger?: Logger;
+    runtime?: Partial<RuntimeOptions>;
   } = {},
-) {
+): Promise<TestCore> {
   const dataDir = mkdtempSync(join(tmpdir(), "phoenix-core-"));
   const runtime = new PhoenixRuntime({
     config: { ...defaults("dev"), port: 0, dataDir, ...overrides },
@@ -31,16 +54,12 @@ export async function startCore(
     writeTokenFile: opts.writeTokenFile ?? false,
     capabilities: opts.capabilities ?? [],
     ...(opts.secrets ? { secrets: opts.secrets } : {}),
+    ...opts.runtime,
   });
   const { port } = await runtime.start();
   const base = `http://127.0.0.1:${port}`;
 
-  const api = async (
-    method: string,
-    path: string,
-    body?: unknown,
-    headers: Record<string, string> = {},
-  ) => {
+  const api: ApiCall = async (method, path, body, headers = {}) => {
     const res = await fetch(base + path, {
       method,
       headers: {

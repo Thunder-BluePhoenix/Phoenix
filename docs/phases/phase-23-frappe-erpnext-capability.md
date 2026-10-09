@@ -5,7 +5,7 @@
 | Stage | Stage 2 — Useful Fawkes (v0.2) |
 | Release target | v0.2 |
 | Priority | High |
-| Status | 🟨 Partial — discovery, health polling and site ERROR mapping done; bench restart / build / migration / deploy events not implemented (see Notes) |
+| Status | 🟨 Partial: discovery, health polling and site ERROR mapping done and registered in Core; bench restart, build, migration and deploy events not implemented; never run against a real Frappe site (see [gaps register](../gaps.md)) |
 | Depends on | [Phase 21 — Post-MVP Stabilisation](phase-21-post-mvp-stabilization.md) |
 | Unblocks | [Phase 26 — Issue Tracker Capabilities & v0.2 Release](phase-26-issue-tracker-capabilities.md), [Phase 36 — Action Items → Engineering Tasks](phase-36-action-items-to-engineering-tasks.md) |
 

@@ -73,6 +73,31 @@ export interface ListQuery {
   includeDeleted?: boolean;
 }
 
+/** The fields a permission check looks at. A MemoryItem satisfies it. */
+export type Viewable = Pick<MemoryItem, "scope" | "domain" | "sensitivity">;
+
+export interface BrowseQuery {
+  /** Page filter. */
+  domain?: MemoryDomain;
+  layer?: MemoryLayer;
+  limit: number;
+  offset: number;
+  /**
+   * Permission filter. It is applied to EVERY candidate before anything is counted, so `total`,
+   * `counts` and the page never reflect an item the caller may not see.
+   */
+  accept: (item: Viewable) => boolean;
+}
+
+export interface BrowsePage {
+  /** Newest observed first. */
+  items: MemoryItem[];
+  /** Visible live items matching `domain` and `layer`. */
+  total: number;
+  /** Visible live items per domain matching `layer` (ignores `domain`, so filter chips can show it). */
+  counts: Record<string, number>;
+}
+
 interface Row {
   seq: number;
   id: string;
@@ -256,6 +281,77 @@ export class MemoryStore {
   }
 
   /**
+   * A page of live, unexpired memories the caller may see, with the totals for it. The permission
+   * filter runs over a narrow projection first (no text is read for items that are not on the
+   * page), then only the page's rows are loaded in full.
+   */
+  browse(q: BrowseQuery): BrowsePage {
+    const where = ["deleted_at IS NULL", "(expires_at IS NULL OR expires_at > ?)"];
+    const params: string[] = [this.stamp()];
+    if (q.layer) {
+      where.push("layer = ?");
+      params.push(q.layer);
+    }
+    const counts: Record<string, number> = {};
+    const pageSeqs: number[] = [];
+    let total = 0;
+    const candidates = this.db
+      .prepare(
+        `SELECT seq, domain, scope, sensitivity FROM memory_items WHERE ${where.join(" AND ")}
+         ORDER BY observed_at DESC, seq DESC`,
+      )
+      .iterate(...params) as Iterable<Pick<Row, "seq" | "domain" | "scope" | "sensitivity">>;
+    for (const c of candidates) {
+      if (!q.accept(c)) continue;
+      counts[c.domain] = (counts[c.domain] ?? 0) + 1;
+      if (q.domain && c.domain !== q.domain) continue;
+      if (total >= q.offset && pageSeqs.length < q.limit) pageSeqs.push(c.seq);
+      total++;
+    }
+    return { items: this.bySeq(pageSeqs), total, counts };
+  }
+
+  /**
+   * Tombstones every live item the caller may see (optionally one domain), expired-but-not-yet-
+   * tombstoned items included. Returns how many. Text, provenance and index entries go; the
+   * dedupe keys stay, so deleted facts are not captured again.
+   */
+  forgetWhere(q: { domain?: MemoryDomain; accept: (item: Viewable) => boolean }): number {
+    const rows = this.db
+      .prepare(
+        `SELECT seq, domain, scope, sensitivity FROM memory_items WHERE deleted_at IS NULL${q.domain ? " AND domain = ?" : ""}`,
+      )
+      .all(...(q.domain ? [q.domain] : [])) as unknown as Pick<
+      Row,
+      "seq" | "domain" | "scope" | "sensitivity"
+    >[];
+    const stamp = this.stamp();
+    let forgotten = 0;
+    this.transaction(() => {
+      const update = this.db.prepare(
+        "UPDATE memory_items SET text = '', provenance = '{}', deleted_at = ? WHERE seq = ? AND deleted_at IS NULL",
+      );
+      for (const r of rows) if (q.accept(r)) forgotten += Number(update.run(stamp, r.seq).changes);
+    });
+    return forgotten;
+  }
+
+  /**
+   * Retention is a setting per memory layer: every live item of the layer now expires `days` after
+   * it was stored (null = never). Items already past that point expire on the next `expire()`.
+   */
+  setLayerRetention(layer: MemoryLayer, days: number | null): void {
+    this.db
+      .prepare(
+        `UPDATE memory_items SET retention_days = ?,
+           expires_at = CASE WHEN ? IS NULL THEN NULL
+                        ELSE strftime('%Y-%m-%dT%H:%M:%fZ', created_at, '+' || ? || ' days') END
+         WHERE layer = ? AND deleted_at IS NULL`,
+      )
+      .run(days, days, days, layer);
+  }
+
+  /**
    * The user deletes one memory. The text, provenance and index entry are purged; a tombstone
    * keeps the dedupe key so the same fact is not captured again.
    */
@@ -299,6 +395,17 @@ export class MemoryStore {
         "UPDATE memory_items SET last_confirmed_at = ? WHERE source = ? AND source_ref = ? AND deleted_at IS NULL",
       )
       .run(this.stamp(), source, sourceRef);
+  }
+
+  /** Live items that have not passed their expiry: what the browser can show. */
+  countUnexpired(): number {
+    const stamp = this.stamp();
+    const r = this.db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM memory_items WHERE deleted_at IS NULL AND (expires_at IS NULL OR expires_at > ?)",
+      )
+      .get(stamp) as unknown as { n: number };
+    return r.n;
   }
 
   count(options: { includeDeleted?: boolean } = {}): number {
@@ -373,6 +480,17 @@ export class MemoryStore {
       if (out.length >= q.limit) break;
     }
     return out;
+  }
+
+  /** Full rows for the given seqs, in the order given. */
+  private bySeq(seqs: readonly number[]): MemoryItem[] {
+    if (seqs.length === 0) return [];
+    const rows = this.db
+      .prepare(`SELECT * FROM memory_items WHERE seq IN (${seqs.map(() => "?").join(",")})`)
+      .all(...seqs) as unknown as Row[];
+    const bySeq: Record<number, Row> = {};
+    for (const r of rows) bySeq[r.seq] = r;
+    return seqs.flatMap((seq) => (bySeq[seq] ? [toItem(bySeq[seq])] : []));
   }
 
   private liveRows(filter: SourceFilter): Row[] {

@@ -4,6 +4,7 @@ import { createAgentsCapability } from "@phoenix/capability-agents";
 import { createDockerCapability } from "@phoenix/capability-docker";
 import { createFrappeCapability } from "@phoenix/capability-frappe";
 import { createGitCapability } from "@phoenix/capability-git";
+import { createGithubCapability } from "@phoenix/capability-github";
 import { createIssuesCapability } from "@phoenix/capability-issues";
 import { createKageCapability } from "@phoenix/capability-kage";
 import { mockCapability } from "@phoenix/capability-mock";
@@ -21,6 +22,7 @@ export function builtinCapabilities(env: PhoenixConfig["env"]): CapabilityModule
   return [
     createKageCapability(),
     createGitCapability(),
+    createGithubCapability(),
     terminalCapability,
     createDockerCapability(),
     createFrappeCapability(),

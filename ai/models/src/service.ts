@@ -226,7 +226,13 @@ export class AiService {
     settings: AiSettings,
     purpose: string,
   ) {
-    const gate = checkGate(provider.locality, privacy, this.deps.policy, settings.cloudOptIn, purpose);
+    const gate = checkGate(
+      provider.locality,
+      privacy,
+      this.deps.policy,
+      settings.cloudOptIn,
+      purpose,
+    );
     if (gate.allowed && provider.locality === "cloud" && privacy === "sensitive") {
       // Fail closed: a sensitive cloud send that cannot be recorded does not happen.
       if (!this.deps.auditCloudSend) {
@@ -267,7 +273,9 @@ export class AiService {
       health,
       policy: this.deps.policy,
       // Without an audit sink the router must not even plan a sensitive cloud send.
-      cloudOptIn: sensitiveCloud ? settings.cloudOptIn : { ...settings.cloudOptIn, sensitive: false },
+      cloudOptIn: sensitiveCloud
+        ? settings.cloudOptIn
+        : { ...settings.cloudOptIn, sensitive: false },
     };
   }
 

@@ -71,7 +71,13 @@ export function route(task: RouteTask, state: RouterState): RoutePlan {
   for (const p of providers) {
     const base = { providerId: p.id, label: p.label, locality: p.locality };
     // 1. Privacy gate: a hard rule, evaluated before anything else so its reason is the one shown.
-    const gate = checkGate(p.locality, task.privacy, state.policy, state.cloudOptIn, task.purpose ?? "");
+    const gate = checkGate(
+      p.locality,
+      task.privacy,
+      state.policy,
+      state.cloudOptIn,
+      task.purpose ?? "",
+    );
     if (!gate.allowed) {
       refused.push({ ...base, reasons: [], refusedBecause: gate.reason });
       continue;
