@@ -133,6 +133,7 @@ describe("manifest and configuration", () => {
     expect(view.secrets).toEqual([expect.objectContaining({ name: "token", set: true })]);
     expect(view.commands).toEqual([
       expect.objectContaining({ name: "status", side_effect: "read" }),
+      expect.objectContaining({ name: "ci.failure_details", side_effect: "read" }),
     ]);
     expect(JSON.stringify(view)).not.toContain(MOCK_TOKEN);
     expect(() =>

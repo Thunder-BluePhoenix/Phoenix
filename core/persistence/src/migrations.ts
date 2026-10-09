@@ -232,4 +232,47 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 10,
+    name: "retrieval_vectors",
+    sql: `
+      -- Phase 37: embeddings for hybrid retrieval, kept in SQLite with no extension. Vectors are
+      -- L2-normalised Float32 little-endian blobs, so cosine similarity is a dot product. A row
+      -- belongs to exactly one embedding model; a model change never mixes with another's rows.
+      -- There is deliberately no foreign key: the triggers below are the single mechanism that
+      -- removes a vector when its memory goes away (like the FTS triggers in version 7), and they
+      -- keep working if a connection opens with foreign_keys off.
+      CREATE TABLE memory_vectors (
+        memory_id TEXT NOT NULL,
+        model TEXT NOT NULL,                     -- "<provider>/<model>", as the router reported it
+        dim INTEGER NOT NULL CHECK (dim > 0),
+        vector BLOB NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (memory_id, model),
+        CHECK (length(vector) = dim * 4)
+      ) WITHOUT ROWID;
+      CREATE INDEX memory_vectors_model ON memory_vectors (model);
+
+      -- Items whose embedding failed: retried with backoff, never dropped, never block capture.
+      CREATE TABLE memory_vector_failures (
+        memory_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        attempts INTEGER NOT NULL,
+        last_error TEXT NOT NULL,
+        next_attempt_at TEXT NOT NULL,
+        PRIMARY KEY (memory_id, model)
+      ) WITHOUT ROWID;
+
+      CREATE TRIGGER memory_items_unvector_delete AFTER DELETE ON memory_items
+      BEGIN
+        DELETE FROM memory_vectors WHERE memory_id = old.id;
+        DELETE FROM memory_vector_failures WHERE memory_id = old.id;
+      END;
+      CREATE TRIGGER memory_items_unvector_update AFTER UPDATE OF text, deleted_at ON memory_items
+      BEGIN
+        DELETE FROM memory_vectors WHERE memory_id = old.id;
+        DELETE FROM memory_vector_failures WHERE memory_id = old.id;
+      END;
+    `,
+  },
 ];

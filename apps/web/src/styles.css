@@ -295,6 +295,11 @@ a {
 .warning-text {
   color: var(--warning-text);
 }
+/* An agent waiting for the user is the one state here that needs action: stronger than muted. */
+.agent-waiting {
+  color: var(--warning-text);
+  font-weight: 600;
+}
 .pet-panel {
   width: min(420px, calc(100vw - 32px));
 }

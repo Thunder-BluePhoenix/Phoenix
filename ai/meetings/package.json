@@ -1,0 +1,19 @@
+{
+  "name": "@phoenix/ai-meetings",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@phoenix/ai-context": "workspace:*",
+    "@phoenix/ai-memory": "workspace:*",
+    "@phoenix/ai-models": "workspace:*",
+    "@phoenix/event-bus": "workspace:*",
+    "@phoenix/logging": "workspace:*",
+    "@phoenix/persistence": "workspace:*",
+    "@phoenix/protocol": "workspace:*"
+  }
+}

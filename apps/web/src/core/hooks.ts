@@ -203,6 +203,79 @@ export function useMeetings(archived = false) {
   );
 }
 
+interface CommandOperation<T> {
+  status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+  result?: T;
+  error?: { message: string };
+}
+
+const COMMAND_CHECKS = 40;
+const COMMAND_CHECK_MS = 150;
+
+/**
+ * Runs a capability's read command and keeps its result fresh: again whenever an event whose type
+ * matches `refreshOn` arrives. `enabled` is false while the capability is off, so nothing is called.
+ */
+export function useCommandResult<T>(
+  capabilityId: string,
+  command: string,
+  enabled: boolean,
+  refreshOn: (eventType: string) => boolean,
+) {
+  const client = useClient();
+  const [data, setData] = useState<T | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const refreshRef = useRef(refreshOn);
+  refreshRef.current = refreshOn;
+
+  const reload = useCallback(async () => {
+    try {
+      const started = await client.request<{ id: string }>(
+        "POST",
+        `/api/capabilities/${encodeURIComponent(capabilityId)}/commands/${encodeURIComponent(command)}`,
+        { input: {} },
+      );
+      for (let check = 0; check < COMMAND_CHECKS; check++) {
+        const op = await client.request<CommandOperation<T>>(
+          "GET",
+          `/api/operations/${encodeURIComponent(started.id)}`,
+        );
+        if (op.status === "succeeded") {
+          setData(op.result ?? null);
+          setError(null);
+          return;
+        }
+        if (op.status === "failed" || op.status === "cancelled") {
+          setError(op.error?.message ?? "The request did not finish");
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, COMMAND_CHECK_MS));
+      }
+      setError("The request is taking too long");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Phoenix Core is unreachable");
+    }
+  }, [client, capabilityId, command]);
+
+  useEffect(() => {
+    if (!enabled) {
+      setData(null);
+      return;
+    }
+    void reload();
+    const offEvent = client.eventCreated.on(({ event }) => {
+      if (refreshRef.current(event.event_type)) void reload();
+    });
+    const offStatus = client.statusChanged.on((s) => s === "online" && void reload());
+    return () => {
+      offEvent();
+      offStatus();
+    };
+  }, [client, enabled, reload]);
+
+  return { data, error, reload };
+}
+
 const MAX_CONTENT_RETRIES = 5;
 const CONTENT_RETRY_MS = 1_000;
 

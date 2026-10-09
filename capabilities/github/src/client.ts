@@ -8,6 +8,9 @@ export const GITHUB_API = "https://api.github.com";
 /** Largest response read. A page of 20 pull requests is ~400 KB; this is a ceiling, not a target. */
 export const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 15_000;
+/** Largest job log downloaded; a longer one is skipped (the failed steps are the evidence). */
+export const MAX_LOG_BYTES = 4 * 1024 * 1024;
+const LOOPBACK = /^(127\.0\.0\.1|localhost|\[::1\])$/;
 const MAX_ETAGS = 500;
 
 /** Unauthenticated GitHub allows 60 requests/hour; stay under 50 (and 304s count there). */
@@ -110,7 +113,11 @@ export function nextDelay(i: DelayInput): number {
  * Reads a body but stops (and cancels the connection) once it passes `maxBytes`; the whole read
  * also has to finish within `timeoutMs`, so a body that drips one byte at a time is cut off.
  */
-async function readCapped(res: Response, maxBytes: number, timeoutMs: number): Promise<string> {
+export async function readCapped(
+  res: Response,
+  maxBytes: number,
+  timeoutMs: number,
+): Promise<string> {
   const declared = Number(res.headers.get("content-length") ?? 0);
   if (declared > maxBytes) {
     await res.body?.cancel();
@@ -145,6 +152,8 @@ export interface GithubClientOptions {
   baseUrl?: string;
   token?: string | undefined;
   maxBytes?: number;
+  /** Largest job log downloaded (default 4 MiB). */
+  maxLogBytes?: number;
   timeoutMs?: number;
   /** Aborts in-flight requests (the capability was disabled). */
   signal?: AbortSignal;
@@ -162,13 +171,17 @@ export class GithubClient {
   /** Lowest quota and any Retry-After seen since the poller last reset it (once per cycle). */
   rate: RateLimitInfo = {};
   private readonly baseUrl: string;
+  private readonly baseHost: string;
   private readonly maxBytes: number;
+  private readonly maxLogBytes: number;
   private readonly timeoutMs: number;
   private readonly etags: Record<string, string> = {};
 
   constructor(private readonly options: GithubClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? GITHUB_API).replace(/\/$/, "");
+    this.baseHost = URL.canParse(this.baseUrl) ? new URL(this.baseUrl).hostname : "";
     this.maxBytes = options.maxBytes ?? MAX_RESPONSE_BYTES;
+    this.maxLogBytes = options.maxLogBytes ?? MAX_LOG_BYTES;
     this.timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
   }
 
@@ -264,5 +277,73 @@ export class GithubClient {
       this.etags[path] = fresh;
     }
     return { value, rate };
+  }
+
+  /**
+   * GET of a job-log endpoint, which answers 302 to a short-lived signed URL on another host.
+   * The API request carries the token; the redirect target is fetched WITHOUT any credentials
+   * (the signature in its URL is the credential), over https only, no further redirects, and
+   * under the same size and time caps as every other body. Returns the raw log text; throws
+   * a GithubError (never containing the token or the signed URL) on any failure.
+   */
+  async getLog(path: string): Promise<string> {
+    const signal = () =>
+      this.options.signal
+        ? AbortSignal.any([this.options.signal, AbortSignal.timeout(this.timeoutMs)])
+        : AbortSignal.timeout(this.timeoutMs);
+    const headers: Record<string, string> = {
+      accept: "application/vnd.github+json",
+      "x-github-api-version": "2022-11-28",
+      "user-agent": "phoenix-github-capability",
+    };
+    if (this.options.token) headers.authorization = `Bearer ${this.options.token}`;
+    this.calls++;
+    let res: Response;
+    try {
+      res = await fetch(this.baseUrl + path, {
+        method: "GET",
+        headers,
+        redirect: "manual",
+        signal: signal(),
+      });
+    } catch {
+      throw new GithubError("network", "GitHub is unreachable");
+    }
+    if (res.status >= 300 && res.status < 400) {
+      const target = this.blobUrl(res.headers.get("location"));
+      await res.body?.cancel().catch(() => {});
+      if (!target) throw new GithubError("invalid", "GitHub sent an unusable log location");
+      try {
+        res = await fetch(target, {
+          method: "GET",
+          headers: { "user-agent": "phoenix-github-capability" },
+          redirect: "error",
+          signal: signal(),
+        });
+      } catch {
+        throw new GithubError("network", "The job log could not be downloaded");
+      }
+    }
+    if (res.status < 200 || res.status > 299) {
+      await res.body?.cancel().catch(() => {});
+      throw new GithubError("http", `Job log request answered HTTP ${res.status}`);
+    }
+    return readCapped(res, this.maxLogBytes, this.timeoutMs);
+  }
+
+  /** An https URL, or plain http to loopback when the API itself is on loopback (tests, dev). */
+  private blobUrl(location: string | null): string | undefined {
+    if (!location || location.length > 4096) return undefined;
+    let url: URL;
+    try {
+      url = new URL(location);
+    } catch {
+      return undefined;
+    }
+    if (url.username || url.password) return undefined;
+    if (url.protocol === "https:") return url.href;
+    return url.protocol === "http:" && LOOPBACK.test(url.hostname) && LOOPBACK.test(this.baseHost)
+      ? url.href
+      : undefined;
   }
 }

@@ -8,9 +8,11 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@phoenix/ai-agents": "workspace:*",
     "@phoenix/ai-context": "workspace:*",
     "@phoenix/ai-memory": "workspace:*",
     "@phoenix/ai-models": "workspace:*",
+    "@phoenix/ai-orchestrator": "workspace:*",
     "@phoenix/ai-tool-gateway": "workspace:*",
     "@phoenix/api": "workspace:*",
     "@phoenix/capability-agents": "workspace:*",

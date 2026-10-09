@@ -4,13 +4,30 @@
 // Git capability (Phase 17): watches the repositories the user selected and
 // emits git.* events for commits, branch switches, dirty working trees and
 // merge conflicts. Read-only: it only ever runs `git status` and `git log`.
-import { execFile } from "node:child_process";
-import { basename, isAbsolute } from "node:path";
-import { promisify } from "node:util";
+import { basename, isAbsolute, resolve } from "node:path";
 import { redact } from "@phoenix/logging";
 import { defineCapability, type CapabilityContext, type HealthResult } from "@phoenix/sdk";
+import { git } from "./exec";
+import {
+  DEFAULT_COMMITS,
+  MAX_COMMITS,
+  MAX_PATH,
+  readRecentCommits,
+  RecentCommitsError,
+} from "./recent-commits";
 
-const run = promisify(execFile);
+export * from "./recent-commits";
+
+/** The `recent_commits` input; the manager's schema has checked the types. */
+interface RecentCommitsInput {
+  repo_path?: string;
+  limit?: number;
+  path_filter?: string;
+}
+
+function isRecentCommitsInput(v: unknown): v is RecentCommitsInput {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
 
 export interface RepoStatus {
   path: string;
@@ -27,16 +44,6 @@ export interface RepoStatus {
 export type RepoState = RepoStatus | { path: string; name: string; error: string };
 
 type GitEvent = Parameters<CapabilityContext["emit"]>[0];
-
-async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await run("git", ["-C", cwd, ...args], {
-    timeout: 5_000,
-    maxBuffer: 4 * 1024 * 1024,
-    // Never take the index lock: Phoenix must not get in the way of the user's own git commands.
-    env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-  });
-  return stdout;
-}
 
 /** Reads one repository with a single `git status --porcelain=v2 --branch`. */
 export async function readStatus(path: string): Promise<RepoStatus> {
@@ -172,7 +179,7 @@ export function createGitCapability() {
       license: "GPL-3.0-or-later",
       events: ["git.*"],
       permissions: ["repository_access"],
-      data_categories: ["repository metadata", "commit messages"],
+      data_categories: ["repository metadata", "commit messages", "changed file paths"],
       healthcheck: { interval_ms: 5_000 },
       commands: [
         {
@@ -180,6 +187,39 @@ export function createGitCapability() {
           description: "Current branch, changes and conflicts of each watched repository",
           side_effect: "read",
           permissions: ["repository_access"],
+        },
+        {
+          name: "recent_commits",
+          description:
+            "The most recent commits of a watched repository: short hash, subject, date and changed paths (no author names or emails). Read-only (git log only).",
+          side_effect: "read",
+          permissions: ["repository_access"],
+          timeout_ms: 20_000,
+          input_schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              repo_path: {
+                type: "string",
+                minLength: 1,
+                maxLength: 4096,
+                description:
+                  "Absolute path of a watched repository; optional when exactly one is watched",
+              },
+              limit: {
+                type: "integer",
+                minimum: 1,
+                maximum: MAX_COMMITS,
+                default: DEFAULT_COMMITS,
+              },
+              path_filter: {
+                type: "string",
+                minLength: 1,
+                maxLength: MAX_PATH,
+                description: "Only commits touching this repository-relative path",
+              },
+            },
+          },
         },
       ],
       config_schema: {
@@ -222,6 +262,33 @@ export function createGitCapability() {
             .map((p) => repos.get(p))
             .filter(Boolean),
         };
+      },
+      async recent_commits(input, ctx) {
+        if (!isRecentCommitsInput(input)) throw new RecentCommitsError("Input must be an object");
+        const watched = paths(ctx);
+        let path: string | undefined;
+        if (input.repo_path === undefined) {
+          if (watched.length !== 1) {
+            throw new RecentCommitsError(
+              watched.length
+                ? "repo_path is required when several repositories are watched"
+                : "No repositories selected",
+            );
+          }
+          path = watched[0];
+        } else {
+          // Only exact matches of what the user configured; never a path the caller made up.
+          const wanted = resolve(input.repo_path);
+          path = watched.find((p) => resolve(p) === wanted);
+          if (!path || !isAbsolute(input.repo_path)) {
+            throw new RecentCommitsError("repo_path is not one of the watched repositories");
+          }
+        }
+        if (!path) throw new RecentCommitsError("No repositories selected");
+        return readRecentCommits(path, basename(path), {
+          ...(input.limit !== undefined ? { limit: input.limit } : {}),
+          ...(input.path_filter !== undefined ? { pathFilter: input.path_filter } : {}),
+        });
       },
     },
     health(ctx): HealthResult {

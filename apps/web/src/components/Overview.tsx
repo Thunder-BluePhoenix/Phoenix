@@ -5,6 +5,7 @@ import { useState } from "react";
 import { formatSince, SIDE_EFFECT_LABEL } from "../core/format";
 import { useAction, useConfirmations, useKillSwitch } from "../core/hooks";
 import type { ActiveTask, Confirmation, PetState } from "../core/types";
+import { AgentsGlance, FrappeSites } from "./Integrations";
 import { MeetingsGlance } from "./Meetings";
 
 /** How many tasks the panel lists before "Show all": enough to see what is happening, few enough
@@ -58,6 +59,8 @@ export function Overview({ state, tasks }: { state: PetState; tasks: ActiveTask[
         <h3 id="tasks-h">Active tasks</h3>
         <TaskList tasks={tasks} />
       </section>
+      <AgentsGlance />
+      <FrappeSites />
       <MeetingsGlance />
       <QuickActions state={state} />
     </div>

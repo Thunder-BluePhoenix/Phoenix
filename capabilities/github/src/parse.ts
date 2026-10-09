@@ -195,6 +195,123 @@ export function parseJobs(body: unknown): WorkflowJob[] {
   });
 }
 
+/** Longest list of jobs / steps taken from one response; GitHub pages at 30 jobs, ~100 steps. */
+const MAX_PARSED_JOBS = 100;
+const MAX_PARSED_STEPS = 200;
+const FULL_SHA = /^[0-9a-f]{40}$/i;
+
+/** One workflow run with everything a failure report needs. */
+export interface RunDetail {
+  id: number;
+  name: string;
+  url: string;
+  status: string;
+  conclusion: string | null;
+  branch: string;
+  /** Full 40-hex commit id, lower-case. */
+  headSha: string;
+  shortSha: string;
+  event: string;
+  attempt: number;
+  /** ISO 8601, or null when GitHub sent none. */
+  createdAt: string | null;
+}
+
+export interface JobStep {
+  name: string;
+  number: number;
+  conclusion: string | null;
+}
+
+export interface JobWithSteps {
+  /** Needed to ask for the job's log; never shown. */
+  id: number | undefined;
+  name: string;
+  url: string | undefined;
+  conclusion: string | null;
+  steps: JobStep[];
+}
+
+export interface JobsWithSteps {
+  /** Jobs in the run according to GitHub (at least as many as were parsed). */
+  total: number;
+  jobs: JobWithSteps[];
+}
+
+function outcome(v: unknown): string | null {
+  return clean(v, 40) ?? null;
+}
+
+function parseRunDetailItem(raw: unknown): RunDetail | null {
+  if (!isRecord(raw)) return null;
+  const runId = id(raw.id);
+  const url = link(raw.html_url);
+  const status = clean(raw.status, 40);
+  const sha = typeof raw.head_sha === "string" ? raw.head_sha : "";
+  if (runId === undefined || !url || !status || !FULL_SHA.test(sha)) return null;
+  const created = time(raw.created_at);
+  return {
+    id: runId,
+    name: clean(raw.name) ?? "Workflow",
+    url,
+    status,
+    conclusion: outcome(raw.conclusion),
+    branch: clean(raw.head_branch) ?? "unknown",
+    headSha: sha.toLowerCase(),
+    shortSha: sha.slice(0, 7).toLowerCase(),
+    event: clean(raw.event, 40) ?? "unknown",
+    attempt: id(raw.run_attempt) ?? 1,
+    createdAt: created === undefined ? null : new Date(created).toISOString(),
+  };
+}
+
+/** GET /repos/{repo}/actions/runs/{id}. Throws unless the body is a usable run. */
+export function parseRunDetail(body: unknown): RunDetail {
+  const run = parseRunDetailItem(body);
+  if (!run) throw new Error("GitHub sent an unexpected response shape");
+  return run;
+}
+
+/** GET /repos/{repo}/actions/runs, with the detail of {@link parseRunDetail}; skips unusable entries. */
+export function parseRunDetails(body: unknown): RunDetail[] {
+  return items(body, "workflow_runs").flatMap((r) => parseRunDetailItem(r) ?? []);
+}
+
+/** GET /repos/{repo}/actions/runs/{id}/jobs including each job's steps. */
+export function parseJobsWithSteps(body: unknown): JobsWithSteps {
+  const jobs = items(body, "jobs")
+    .slice(0, MAX_PARSED_JOBS)
+    .flatMap((raw): JobWithSteps[] => {
+      if (!isRecord(raw)) return [];
+      const steps = Array.isArray(raw.steps) ? raw.steps.slice(0, MAX_PARSED_STEPS) : [];
+      return [
+        {
+          id: id(raw.id),
+          name: clean(raw.name) ?? "(unnamed job)",
+          url: link(raw.html_url),
+          conclusion: outcome(raw.conclusion),
+          steps: steps.flatMap((s): JobStep[] =>
+            isRecord(s)
+              ? [
+                  {
+                    name: clean(s.name) ?? "(unnamed step)",
+                    number: id(s.number) ?? 0,
+                    conclusion: outcome(s.conclusion),
+                  },
+                ]
+              : [],
+          ),
+        },
+      ];
+    });
+  const declared = isRecord(body) ? body.total_count : undefined;
+  const total =
+    typeof declared === "number" && Number.isSafeInteger(declared) && declared > jobs.length
+      ? declared
+      : jobs.length;
+  return { total, jobs };
+}
+
 /** GET /repos/{repo}/deployments. */
 export function parseDeployments(body: unknown): Deployment[] {
   return items(body).flatMap((raw) => {

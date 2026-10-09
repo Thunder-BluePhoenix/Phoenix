@@ -24,6 +24,7 @@ import {
   type GithubEvent,
   type PrSeen,
 } from "./events";
+import { ciFailureDetails } from "./ci-failure";
 import {
   parseDeploymentStatuses,
   parseDeployments,
@@ -37,6 +38,7 @@ import {
   type PullRequest,
 } from "./parse";
 
+export * from "./ci-failure";
 export * from "./client";
 export * from "./events";
 export * from "./parse";
@@ -131,6 +133,18 @@ function settings(ctx: CapabilityContext): Settings {
     pollMs: typeof poll_ms === "number" ? Math.max(poll_ms, MIN_POLL_MS) : DEFAULT_POLL_MS,
     apiUrl: typeof api_url === "string" ? api_url : undefined,
   };
+}
+
+/** What the `ci.failure_details` command accepts; the manager's schema has checked the types. */
+interface FailureInput {
+  repository: string;
+  run_id?: number;
+}
+
+function isFailureInput(v: unknown): v is FailureInput {
+  return (
+    typeof v === "object" && v !== null && "repository" in v && typeof v.repository === "string"
+  );
 }
 
 /** A fresh capability instance (its own watcher state); Phoenix Core uses `githubCapability`. */
@@ -347,7 +361,7 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
       name: "GitHub",
       version: "0.1.0",
       description:
-        "Pull requests, review requests, GitHub Actions runs and deployments from the repositories you pick. Read-only. The token is optional: without one only public repositories work, at GitHub's low unauthenticated rate limit (60 requests per hour).",
+        "Pull requests, review requests, GitHub Actions runs and deployments from the repositories you pick, plus failure details (failed jobs, steps, log tail) of any run on request. Read-only (GET only). The token is optional: without one only public repositories work, at GitHub's low unauthenticated rate limit (60 requests per hour).",
       license: "GPL-3.0-or-later",
       homepage: "https://github.com/Thunder-BluePhoenix/Phoenix",
       events: ["github.*"],
@@ -357,6 +371,8 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
         "repository names",
         "pull request titles and authors",
         "CI run names and results",
+        "CI job and step names and results",
+        "CI log excerpts (secret-redacted)",
         "deployment environments",
       ],
       healthcheck: { interval_ms: 15_000 },
@@ -373,6 +389,23 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
           description: "Open pull requests and the latest CI run of each watched repository",
           side_effect: "read",
           permissions: ["network", "external_api"],
+        },
+        {
+          name: "ci.failure_details",
+          description:
+            "Why a GitHub Actions run failed: the run, its failed jobs and failed steps, and (with a token) the tail of the first failed job's log. Any repository; newest failed run unless run_id is given. Read-only (GET only).",
+          side_effect: "read",
+          permissions: ["network", "external_api"],
+          timeout_ms: 60_000,
+          input_schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["repository"],
+            properties: {
+              repository: { type: "string", pattern: REPOSITORY_PATTERN },
+              run_id: { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+            },
+          },
         },
       ],
       config_schema: {
@@ -466,6 +499,28 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
           ...(viewer ? { viewer } : {}),
           repositories: settings(ctx).repositories.map((r) => views[r] ?? { repository: r }),
         };
+      },
+      async "ci.failure_details"(input, ctx) {
+        if (!isFailureInput(input) || !REPOSITORY_RE.test(input.repository)) {
+          throw new GithubError("invalid", 'repository must be "owner/name"');
+        }
+        const { repository, run_id } = input;
+        if (run_id !== undefined && (!Number.isSafeInteger(run_id) || run_id < 1)) {
+          throw new GithubError("invalid", "run_id must be a positive integer");
+        }
+        const { apiUrl } = settings(ctx);
+        // Its own client: no shared ETags or request counters with the poller.
+        const http = new GithubClient({
+          ...(apiUrl ? { baseUrl: apiUrl } : {}),
+          token: await ctx.secret("token"),
+          signal: ctx.signal,
+        });
+        try {
+          return await ciFailureDetails(http, repository, run_id);
+        } catch (err) {
+          if (err instanceof GithubError) throw err;
+          throw new GithubError("http", "Unexpected error while reading GitHub");
+        }
       },
     },
     health(ctx): HealthResult {

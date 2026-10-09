@@ -29,6 +29,10 @@ export interface MockData {
   statuses: Record<number, unknown[]>;
   reviews: Record<number, unknown[]>;
   jobs: Record<number, unknown[]>;
+  /** Answers GET /actions/runs/{id}; falls back to the entry of `runs` with that id. */
+  runDetails: Record<number, unknown>;
+  /** Job id -> Location of the 302 that GET /actions/jobs/{id}/logs answers (404 when absent). */
+  logRedirects: Record<number, string>;
 }
 
 export interface MockControl {
@@ -55,6 +59,8 @@ export async function startMockGithub(): Promise<MockGithub> {
     statuses: {},
     reviews: {},
     jobs: {},
+    runDetails: {},
+    logRedirects: {},
   };
   const requests: RecordedRequest[] = [];
   const missingRepos: string[] = [];
@@ -78,10 +84,31 @@ export async function startMockGithub(): Promise<MockGithub> {
     if (!m) return undefined;
     const rest = m[3]!;
     if (rest === "actions/runs") {
-      return { total_count: data.runs.length, workflow_runs: data.runs };
+      const wanted = url.searchParams.get("status");
+      const runs = wanted
+        ? data.runs.filter(
+            (r) =>
+              typeof r === "object" &&
+              r !== null &&
+              (("conclusion" in r && r.conclusion === wanted) ||
+                ("status" in r && r.status === wanted)),
+          )
+        : data.runs;
+      return { total_count: runs.length, workflow_runs: runs };
     }
     const jobs = /^actions\/runs\/(\d+)\/jobs$/.exec(rest);
-    if (jobs) return { total_count: 0, jobs: data.jobs[Number(jobs[1])] ?? [] };
+    if (jobs) {
+      const list = data.jobs[Number(jobs[1])] ?? [];
+      return { total_count: list.length, jobs: list };
+    }
+    const detail = /^actions\/runs\/(\d+)$/.exec(rest);
+    if (detail) {
+      const runId = Number(detail[1]);
+      return (
+        data.runDetails[runId] ??
+        data.runs.find((r) => typeof r === "object" && r !== null && "id" in r && r.id === runId)
+      );
+    }
     if (rest === "pulls") return data.pulls;
     const reviews = /^pulls\/(\d+)\/reviews$/.exec(rest);
     if (reviews) return data.reviews[Number(reviews[1])] ?? [];
@@ -111,6 +138,19 @@ export async function startMockGithub(): Promise<MockGithub> {
       return send(res, 401, { message: "Bad credentials" });
     }
     const repo = /^\/repos\/([^/]+\/[^/]+)\//.exec(path)?.[1];
+    // The log endpoint answers 302 to a signed URL on another host (a blob server in tests).
+    const logJob = /^\/repos\/[^/]+\/[^/]+\/actions\/jobs\/(\d+)\/logs$/.exec(path)?.[1];
+    if (logJob !== undefined) {
+      const location =
+        repo && missingRepos.includes(repo) ? undefined : data.logRedirects[Number(logJob)];
+      if (location === undefined) {
+        record(404);
+        return send(res, 404, { message: "Not Found" });
+      }
+      record(302);
+      res.writeHead(302, { location });
+      return void res.end();
+    }
     const body = repo && missingRepos.includes(repo) ? undefined : route(path);
     if (body === undefined) {
       record(404);

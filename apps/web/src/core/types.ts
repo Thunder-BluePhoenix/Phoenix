@@ -205,3 +205,30 @@ export interface AiStatus {
   external_processing_granted: boolean;
   providers: AiProviderStatus[];
 }
+
+/** One entry of the agents capability's `list` command (Phase 25). */
+export interface AgentSession {
+  agent: string;
+  agent_id: string;
+  workspace: string;
+  repository: string;
+  state: "started" | "working" | "waiting" | "idle" | "completed" | "failed";
+  reason?: string;
+  task?: string;
+  since: string;
+  updated_at: string;
+}
+
+/** One entry of the frappe capability's `sites` command (Phase 23). */
+export interface FrappeSite {
+  site: string;
+  bench: string;
+  url: string;
+  status: "checking" | "healthy" | "unhealthy";
+  consecutive_failures: number;
+  last_checked_at?: string;
+  last_ok_at?: string;
+  response_ms?: number;
+  error?: string;
+  apps: string[];
+}

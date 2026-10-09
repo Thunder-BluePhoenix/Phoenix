@@ -1,0 +1,32 @@
+{
+  "name": "@phoenix/ai-agents",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@phoenix/ai-context": "workspace:*",
+    "@phoenix/ai-memory": "workspace:*",
+    "@phoenix/ai-models": "workspace:*",
+    "@phoenix/ai-orchestrator": "workspace:*",
+    "@phoenix/ai-tool-gateway": "workspace:*",
+    "@phoenix/capability-manager": "workspace:*",
+    "@phoenix/event-bus": "workspace:*",
+    "@phoenix/logging": "workspace:*",
+    "@phoenix/permissions": "workspace:*",
+    "@phoenix/persistence": "workspace:*",
+    "@phoenix/policy": "workspace:*",
+    "@phoenix/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@phoenix/capability-git": "workspace:*",
+    "@phoenix/capability-github": "workspace:*",
+    "@phoenix/config": "workspace:*",
+    "@phoenix/sdk": "workspace:*",
+    "@phoenix/sdk-testing": "workspace:*",
+    "@phoenix/state-engine": "workspace:*"
+  }
+}
