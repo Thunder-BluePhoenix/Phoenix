@@ -39,3 +39,21 @@ export const SIDE_EFFECT_LABEL: Record<string, string> = {
   external: "Acts on an external service",
   production: "Changes production",
 };
+
+/**
+ * An http(s) URL that is safe to link to, or null. A source reference is data from memory, so it is
+ * only ever linked when it parses as a plain http(s) URL without embedded credentials; everything
+ * else (file paths, commit ids, `javascript:` and `data:` URLs) stays text.
+ */
+export function safeHttpUrl(ref: string | null | undefined): string | null {
+  if (!ref || ref.length > 2048 || /\s/.test(ref)) return null;
+  let url: URL;
+  try {
+    url = new URL(ref);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  if (url.username || url.password) return null;
+  return url.href;
+}

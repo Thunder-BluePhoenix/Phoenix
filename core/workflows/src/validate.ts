@@ -62,8 +62,7 @@ interface Graph {
 function buildGraph(def: WorkflowDefinition, problems: string[]): Graph {
   const indexOf: Record<string, number> = Object.create(null) as Record<string, number>;
   def.steps.forEach((s, i) => {
-    if (s.id === END || isForbiddenKey(s.id))
-      problems.push(`/steps/${i}/id "${s.id}" is reserved`);
+    if (s.id === END || isForbiddenKey(s.id)) problems.push(`/steps/${i}/id "${s.id}" is reserved`);
     else if (Object.hasOwn(indexOf, s.id)) problems.push(`/steps/${i}/id "${s.id}" is used twice`);
     else indexOf[s.id] = i;
   });

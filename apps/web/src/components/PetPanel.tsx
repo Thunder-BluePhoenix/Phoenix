@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { ActiveTask, PetState } from "../core/types";
 import { ActivityFeed } from "./ActivityFeed";
 import { CapabilityList } from "./CapabilityList";
+import { Chat } from "./Chat";
 import { MemoryPanel } from "./MemoryPanel";
 import { Overview } from "./Overview";
 
@@ -12,21 +13,26 @@ export interface PetPanelProps {
   state: PetState;
   tasks: ActiveTask[];
   onClose: () => void;
+  /** Tab shown first, for example when the desktop pet opens Phoenix at "#/panel/overview". */
+  initialTab?: TabId;
 }
 
-const TABS = [
+export const TABS = [
   { id: "overview", label: "Overview" },
+  { id: "chat", label: "Chat" },
   { id: "activity", label: "Activity" },
   { id: "capabilities", label: "Capabilities" },
   { id: "memory", label: "Memory" },
 ] as const;
-type TabId = (typeof TABS)[number]["id"];
+export type TabId = (typeof TABS)[number]["id"];
+
+export const isTabId = (v: string | undefined): v is TabId => TABS.some((t) => t.id === v);
 
 /** Pet Panel (PRD v2.0 §5.3): current state, approvals, tasks, activity, capabilities, actions. */
-export function PetPanel({ id, state, tasks, onClose }: PetPanelProps) {
+export function PetPanel({ id, state, tasks, onClose, initialTab = "overview" }: PetPanelProps) {
   const heading = useRef<HTMLHeadingElement>(null);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const [tab, setTab] = useState<TabId>("overview");
+  const [tab, setTab] = useState<TabId>(initialTab);
 
   useEffect(() => heading.current?.focus(), []);
   useEffect(() => {
@@ -104,6 +110,7 @@ export function PetPanel({ id, state, tasks, onClose }: PetPanelProps) {
         className="tabpanel"
       >
         {tab === "overview" && <Overview state={state} tasks={tasks} />}
+        {tab === "chat" && <Chat />}
         {tab === "activity" && <ActivityFeed />}
         {tab === "capabilities" && <CapabilityList />}
         {tab === "memory" && <MemoryPanel />}

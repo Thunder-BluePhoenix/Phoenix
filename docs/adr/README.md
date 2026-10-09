@@ -22,5 +22,6 @@
 | [ADR-0018](ADR-0018-fawkes-asset-format-and-licence.md)                              | Fawkes asset format and licence                                      | Accepted                 |
 | [ADR-0019](ADR-0019-canonical-fawkes-states-and-priority.md)                         | Canonical Fawkes states and priority                                 | Accepted                 |
 | [ADR-0020](ADR-0020-knowledge-graph-store.md)                                        | Knowledge graph store: a property graph on SQLite tables             | Accepted                 |
+| [ADR-0021](ADR-0021-workflow-engine.md)                                              | Workflow engine: data-only workflows over the tool gateway           | Accepted                 |
 
 New ADRs: copy the structure of an existing one, take the next number, and add it to this table.

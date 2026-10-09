@@ -10,9 +10,12 @@
   "dependencies": {
     "@phoenix/ai-agents": "workspace:*",
     "@phoenix/ai-context": "workspace:*",
+    "@phoenix/ai-knowledge-graph": "workspace:*",
+    "@phoenix/ai-meetings": "workspace:*",
     "@phoenix/ai-memory": "workspace:*",
     "@phoenix/ai-models": "workspace:*",
     "@phoenix/ai-orchestrator": "workspace:*",
+    "@phoenix/ai-retrieval": "workspace:*",
     "@phoenix/ai-tool-gateway": "workspace:*",
     "@phoenix/capability-manager": "workspace:*",
     "@phoenix/event-bus": "workspace:*",
@@ -21,5 +24,17 @@
     "@phoenix/persistence": "workspace:*",
     "@phoenix/policy": "workspace:*",
     "@phoenix/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@phoenix/ai-knowledge-graph": "workspace:*",
+    "@phoenix/ai-meetings": "workspace:*",
+    "@phoenix/ai-retrieval": "workspace:*",
+    "@phoenix/capability-git": "workspace:*",
+    "@phoenix/capability-github": "workspace:*",
+    "@phoenix/config": "workspace:*",
+    "@phoenix/event-bus": "workspace:*",
+    "@phoenix/sdk": "workspace:*",
+    "@phoenix/sdk-testing": "workspace:*",
+    "@phoenix/state-engine": "workspace:*"
   }
 }

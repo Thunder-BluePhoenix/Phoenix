@@ -63,6 +63,13 @@ export interface Confirmation {
   permissions: string[];
   requestedAt: string;
   expiresAt: string;
+  /** Optional, present only for a request raised by an active agent run (Phase 31). */
+  task_id?: string;
+  risk?: AgentRisk;
+  target?: string;
+  /** What the tool does and its redacted input; at most 300 characters. */
+  preview?: string;
+  evidence_ids?: string[];
 }
 
 export interface CapabilityView {
@@ -231,4 +238,126 @@ export interface FrappeSite {
   response_ms?: number;
   error?: string;
   apps: string[];
+}
+
+export type AgentRisk = "low" | "medium" | "high" | "critical";
+
+export const AGENT_RUN_STATES = [
+  "CREATED",
+  "READY",
+  "RUNNING",
+  "WAITING_APPROVAL",
+  "VERIFYING",
+  "COMPLETED",
+  "FAILED",
+  "CANCELLED",
+] as const;
+export type AgentRunState = (typeof AGENT_RUN_STATES)[number];
+
+/** GET/POST /api/agent/settings. */
+export interface AgentSettings {
+  enabled: boolean;
+  kinds: string[];
+  limits: {
+    max_steps: number;
+    max_tool_calls: number;
+    max_wall_ms: number;
+    max_active_runs: number;
+  };
+  active_runs: number;
+}
+
+/** One task in POST /api/agent/tasks and GET /api/agent/tasks. */
+export interface AgentTaskSummary {
+  id: string;
+  kind: string;
+  state: AgentRunState;
+  title: string;
+  requested_by: string;
+  created_at: string;
+  updated_at: string;
+  failure_reason: string | null;
+}
+
+export interface AgentStep {
+  seq: number;
+  kind: "stage" | "tool_call";
+  name: string;
+  status: string;
+  detail: Record<string, unknown>;
+  policy_audit_id: number | null;
+  decision: "allow" | "require_approval" | "deny" | null;
+  risk: AgentRisk | null;
+  stage_audit_id: number | null;
+  started_at: string;
+  finished_at: string;
+}
+
+export interface AgentEvidence {
+  id: string;
+  kind: string;
+  source: string;
+  excerpt_hash: string;
+  excerpt: string;
+  truncated: boolean;
+}
+
+export interface AgentClaim {
+  text: string;
+  evidence_ids: string[];
+  grounded: boolean;
+  origin: "rule" | "model";
+  note: string | null;
+}
+
+export interface AgentProposal {
+  text: string;
+  rationale: string;
+  evidence_ids: string[];
+  advisory: boolean;
+  grounded: boolean;
+}
+
+export interface AgentDiagnosis {
+  summary: string;
+  evidence_coverage: number;
+  model_reported_confidence: string | null;
+  ai_used: boolean;
+  claims: AgentClaim[];
+}
+
+export interface AgentVerification {
+  passed: boolean;
+  checks: { name: string; passed: boolean; detail: string; required: boolean }[];
+}
+
+/** GET /api/agent/tasks/:id. */
+export interface AgentTaskDetail {
+  task: {
+    id: string;
+    kind: string;
+    input: Record<string, unknown>;
+    requested_by: string;
+    created_at: string;
+    correlation_id: string;
+  };
+  run: {
+    id: string;
+    state: AgentRunState;
+    agent_id: string;
+    agent_version: string;
+    created_at: string;
+    updated_at: string;
+    failure_reason: string | null;
+  };
+  steps: AgentStep[];
+  evidence: AgentEvidence[];
+  summary: string | null;
+  diagnosis: AgentDiagnosis | null;
+  proposals: AgentProposal[];
+  ai_used: boolean;
+  processed_by: string | null;
+  model_calls: number;
+  verification: AgentVerification | null;
+  audit_ids: number[];
 }

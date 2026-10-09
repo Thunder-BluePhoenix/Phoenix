@@ -128,7 +128,7 @@ describe("Approvals (US-07)", () => {
     openPanel();
     expect(await screen.findByText("GitHub: Create an issue")).toBeTruthy();
     expect(screen.getByText(/Acts on an external service/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve: GitHub: Create an issue" }));
     await waitFor(() =>
       expect(api.posts("/api/confirmations/conf_1")[0]?.body).toEqual({ approve: true }),
     );
@@ -234,8 +234,10 @@ describe("tabs", () => {
     openPanel();
     tab("Overview").focus();
     fireEvent.keyDown(tab("Overview"), { key: "ArrowRight" });
+    expect(tab("Chat").getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(tab("Chat"));
+    fireEvent.keyDown(tab("Chat"), { key: "ArrowRight" });
     expect(tab("Activity").getAttribute("aria-selected")).toBe("true");
-    expect(document.activeElement).toBe(tab("Activity"));
     fireEvent.keyDown(tab("Activity"), { key: "End" });
     expect(tab("Memory").getAttribute("aria-selected")).toBe("true");
     fireEvent.keyDown(tab("Memory"), { key: "ArrowLeft" });

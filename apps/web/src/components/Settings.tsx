@@ -13,6 +13,7 @@ import {
   type PetSettings,
 } from "../core/hooks";
 import type { CapabilityView, JsonSchema, PetState } from "../core/types";
+import { AutomationSettings } from "./AutomationSettings";
 import { AiSettings, MemorySettingsSection } from "./MemorySettings";
 import { Feedback } from "./Feedback";
 import { QuickActions } from "./Overview";
@@ -28,6 +29,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <PrivacySettings />
       <MemorySettingsSection />
       <AiSettings />
+      <AutomationSettings />
       <SupportSettings />
       <div className="card">
         <QuickActions state={state} />

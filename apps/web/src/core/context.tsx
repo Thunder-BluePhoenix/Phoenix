@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
+import { chatStoreFor } from "./chat-store";
 import { displayedState, type PhoenixClient } from "./client";
 import type { ActiveTask, ConnectionStatus, PetState } from "./types";
 
@@ -52,7 +60,23 @@ export function useTasks(): ActiveTask[] {
   return tasks;
 }
 
-/** What Fawkes should display, accounting for connectivity (OFFLINE mode, ADR-0019). */
+/** True while the user is composing a chat message and no request is in flight. */
+function useListening(): boolean {
+  const store = chatStoreFor(useClient());
+  return useSyncExternalStore(store.subscribe, () => store.getSnapshot().listening);
+}
+
+/**
+ * What Fawkes should display, accounting for connectivity (OFFLINE mode, ADR-0019), plus one
+ * client-side state: LISTENING while the user is writing a message. It is shown only over IDLE, so
+ * it can never hide an error, an approval request, recording or real work, and it is a display
+ * of this page only: Core is not told (nothing typed leaves the page before Send).
+ */
 export function useDisplayedState(): PetState {
-  return displayedState(usePetState(), useConnection());
+  const shown = displayedState(usePetState(), useConnection());
+  const listening = useListening();
+  if (listening && shown.state === "IDLE") {
+    return { ...shown, state: "LISTENING", explanation: "Listening: you are writing a message" };
+  }
+  return shown;
 }

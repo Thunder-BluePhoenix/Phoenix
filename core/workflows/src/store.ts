@@ -110,6 +110,11 @@ const parse = (text: unknown): Value | null => {
 export class WorkflowStore {
   constructor(private readonly db: Database) {}
 
+  /** For `transaction()` around several store calls. */
+  get database(): Database {
+    return this.db;
+  }
+
   // ── Definitions ───────────────────────────────────────────────────────────
 
   /**
@@ -234,11 +239,10 @@ export class WorkflowStore {
     return transaction(this.db, () => {
       const r = this.db
         .prepare(
-          `UPDATE workflow_runs SET status = ?, reason = ?, updated_at = ?, finished_at = ?,
-             started_at = COALESCE(started_at, ?)
+          `UPDATE workflow_runs SET status = ?, reason = ?, updated_at = ?, finished_at = ?
            WHERE id = ? AND finished_at IS NULL`,
         )
-        .run(status, reason, now, now, now, run.id);
+        .run(status, reason, now, now, run.id);
       if (Number(r.changes) === 0) return false;
       for (const name of counters) this.bump(run.workflowId, name);
       return true;
@@ -557,13 +561,14 @@ export class WorkflowAdminStore {
       .run(a.id, a.workflowId, a.definitionHash, a.authorisedBy, a.authorisedAt, a.expiresAt);
   }
 
-  /** Revokes every live authorisation of a workflow. Returns how many were revoked. */
+  /** Revokes every live (not revoked, not expired) authorisation of a workflow; returns how many. */
   revokeAuthorisations(workflowId: string, by: string, now: number): number {
     const r = this.db
       .prepare(
-        "UPDATE workflow_authorisations SET revoked_at = ?, revoked_by = ? WHERE workflow_id = ? AND revoked_at IS NULL",
+        `UPDATE workflow_authorisations SET revoked_at = ?, revoked_by = ?
+         WHERE workflow_id = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)`,
       )
-      .run(now, by, workflowId);
+      .run(now, by, workflowId, now);
     return Number(r.changes);
   }
 }

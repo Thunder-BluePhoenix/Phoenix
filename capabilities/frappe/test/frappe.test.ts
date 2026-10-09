@@ -429,13 +429,18 @@ describe("frappe capability", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it("asks for filesystem_read and network only, and every command is read-only", async () => {
+  it("asks for filesystem_read, network and external_api, and only task.create writes", async () => {
     const r = await rig();
     const view = r.h.manager.get("frappe");
-    expect(view.permissions.map((p) => p.permission)).toEqual(["filesystem_read", "network"]);
+    expect(view.permissions.map((p) => p.permission)).toEqual([
+      "filesystem_read",
+      "network",
+      "external_api",
+    ]);
     expect(view.commands).toEqual([
       expect.objectContaining({ name: "sites", side_effect: "read" }),
       expect.objectContaining({ name: "benches", side_effect: "read" }),
+      expect.objectContaining({ name: "task.create", side_effect: "external" }),
     ]);
   });
 

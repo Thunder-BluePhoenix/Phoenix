@@ -34,7 +34,7 @@ export function fakeApi(routes: Record<string, Handler> = {}) {
         status: 404,
       });
     }
-    const result = handler(body, url);
+    const result = await handler(body, url);
     if (result instanceof Response) return result;
     return new Response(JSON.stringify(result ?? {}), { status: 200 });
   }) as unknown as typeof fetch;

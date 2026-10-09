@@ -126,14 +126,18 @@ const rawPull = (number: number, over: Record<string, unknown> = {}) => ({
 });
 
 describe("manifest and configuration", () => {
-  it("asks for network + external_api, keeps the token out of config, is read-only", async () => {
+  it("asks for network + external_api, keeps tokens out of config; only issue.create writes", async () => {
     await ready();
     const view = h!.manager.get("github");
     expect(view.permissions.map((p) => p.permission)).toEqual(["network", "external_api"]);
-    expect(view.secrets).toEqual([expect.objectContaining({ name: "token", set: true })]);
+    expect(view.secrets).toEqual([
+      expect.objectContaining({ name: "token", set: true }),
+      expect.objectContaining({ name: "write_token", set: false }),
+    ]);
     expect(view.commands).toEqual([
       expect.objectContaining({ name: "status", side_effect: "read" }),
       expect.objectContaining({ name: "ci.failure_details", side_effect: "read" }),
+      expect.objectContaining({ name: "issue.create", side_effect: "external" }),
     ]);
     expect(JSON.stringify(view)).not.toContain(MOCK_TOKEN);
     expect(() =>

@@ -3,8 +3,8 @@
 //
 // GitHub capability (Phase 22): polls the repositories the user selected for pull requests,
 // reviews, GitHub Actions runs and deployments, and turns changes into github.* events.
-// Read-only: it only ever issues GET requests. Issues are deliberately not covered here; the
-// issue-tracker capability (Phase 26) owns them.
+// Read-only except for ONE explicit command, `issue.create` (Phase 36, see issues.ts): it uses its
+// own `write_token` secret and always asks for confirmation. The poller only ever issues GET.
 import { defineCapability, type CapabilityContext, type HealthResult } from "@phoenix/sdk";
 import {
   GithubClient,
@@ -26,6 +26,16 @@ import {
 } from "./events";
 import { ciFailureDetails } from "./ci-failure";
 import {
+  createIssue,
+  IDEMPOTENCY_KEY_PATTERN,
+  MAX_ISSUE_BODY,
+  MAX_ISSUE_LABELS,
+  MAX_ISSUE_TITLE,
+  MAX_LABEL,
+  WRITE_TOKEN_SECRET,
+  type IssueInput,
+} from "./issues";
+import {
   parseDeploymentStatuses,
   parseDeployments,
   parseJobs,
@@ -41,6 +51,7 @@ import {
 export * from "./ci-failure";
 export * from "./client";
 export * from "./events";
+export * from "./issues";
 export * from "./parse";
 
 export const DEFAULT_POLL_MS = 30_000;
@@ -139,6 +150,20 @@ function settings(ctx: CapabilityContext): Settings {
 interface FailureInput {
   repository: string;
   run_id?: number;
+}
+
+/** What `issue.create` accepts; the manager's schema has checked the types. */
+function isIssueInput(v: unknown): v is IssueInput {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    "repository" in v &&
+    typeof v.repository === "string" &&
+    "title" in v &&
+    typeof v.title === "string" &&
+    "idempotency_key" in v &&
+    typeof v.idempotency_key === "string"
+  );
 }
 
 function isFailureInput(v: unknown): v is FailureInput {
@@ -361,7 +386,7 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
       name: "GitHub",
       version: "0.1.0",
       description:
-        "Pull requests, review requests, GitHub Actions runs and deployments from the repositories you pick, plus failure details (failed jobs, steps, log tail) of any run on request. Read-only (GET only). The token is optional: without one only public repositories work, at GitHub's low unauthenticated rate limit (60 requests per hour).",
+        "Pull requests, review requests, GitHub Actions runs and deployments from the repositories you pick, plus failure details (failed jobs, steps, log tail) of any run on request. Watching is read-only (GET only). The one command that writes, issue.create, creates a GitHub issue only when you confirm it, using a separate write_token. The read token is optional: without one only public repositories work, at GitHub's low unauthenticated rate limit (60 requests per hour).",
       license: "GPL-3.0-or-later",
       homepage: "https://github.com/Thunder-BluePhoenix/Phoenix",
       events: ["github.*"],
@@ -381,6 +406,11 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
           name: "token",
           description:
             "GitHub personal access token, optional. A fine-grained token with read-only access to Pull requests, Actions and Deployments (and Metadata) is enough. Without it only public repositories work, at 60 requests per hour, and review requests for you cannot be detected.",
+        },
+        {
+          name: WRITE_TOKEN_SECRET,
+          description:
+            "GitHub token that may create issues (fine-grained: Issues read and write). Used only by issue.create after you confirm; the read token is never used for writing. Leave empty and Phoenix cannot write to GitHub.",
         },
       ],
       commands: [
@@ -404,6 +434,30 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
             properties: {
               repository: { type: "string", pattern: REPOSITORY_PATTERN },
               run_id: { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+            },
+          },
+        },
+        {
+          name: "issue.create",
+          description:
+            "Creates a GitHub issue in a repository. WRITES to GitHub and always asks for your confirmation. Needs the write_token secret. Safe to repeat with the same idempotency_key: an issue that already carries the key is returned instead of creating a second one.",
+          side_effect: "external",
+          permissions: ["network", "external_api"],
+          timeout_ms: 60_000,
+          input_schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["repository", "title", "idempotency_key"],
+            properties: {
+              repository: { type: "string", pattern: REPOSITORY_PATTERN },
+              title: { type: "string", minLength: 1, maxLength: MAX_ISSUE_TITLE },
+              body: { type: "string", maxLength: MAX_ISSUE_BODY },
+              labels: {
+                type: "array",
+                maxItems: MAX_ISSUE_LABELS,
+                items: { type: "string", minLength: 1, maxLength: MAX_LABEL },
+              },
+              idempotency_key: { type: "string", pattern: IDEMPOTENCY_KEY_PATTERN },
             },
           },
         },
@@ -520,6 +574,21 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
         } catch (err) {
           if (err instanceof GithubError) throw err;
           throw new GithubError("http", "Unexpected error while reading GitHub");
+        }
+      },
+      async "issue.create"(input, ctx) {
+        if (!isIssueInput(input) || !REPOSITORY_RE.test(input.repository)) {
+          throw new GithubError("invalid", 'repository must be "owner/name"');
+        }
+        try {
+          return await createIssue(input, {
+            baseUrl: settings(ctx).apiUrl,
+            token: await ctx.secret(WRITE_TOKEN_SECRET),
+            signal: ctx.signal,
+          });
+        } catch (err) {
+          if (err instanceof GithubError) throw err;
+          throw new GithubError("http", "Unexpected error while creating the GitHub issue");
         }
       },
     },

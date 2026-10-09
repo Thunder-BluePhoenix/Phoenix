@@ -603,4 +603,75 @@ export const MIGRATIONS: readonly Migration[] = [
       ) WITHOUT ROWID;
     `,
   },
+  {
+    version: 16,
+    name: "plan_links",
+    sql: `
+      -- Phase 36: engineering plans made from accepted meeting items, the creation state of each
+      -- task, and the links meeting <-> item <-> plan <-> created task. A plan is a PROPOSAL until
+      -- the user approves its exact content (approved_hash = hash of content at approval time).
+      CREATE TABLE plans (
+        id TEXT PRIMARY KEY,
+        meeting_id TEXT NOT NULL,         -- meetings.id; no foreign key: meetings are only tombstoned
+        item_id TEXT NOT NULL,            -- meeting_items.id the plan was made from
+        target TEXT NOT NULL CHECK (target IN ('github', 'frappe')),
+        status TEXT NOT NULL CHECK (status IN
+          ('draft', 'proposed', 'approved', 'creating', 'created', 'failed', 'cancelled')),
+        content TEXT NOT NULL,            -- JSON EngineeringPlan (sensitive: derived from a meeting)
+        content_hash TEXT NOT NULL,       -- hash of content as it is now
+        approved_hash TEXT,               -- the hash the user approved; creation requires equality
+        approved_by TEXT,
+        approved_at TEXT,
+        include_meeting_ref INTEGER NOT NULL DEFAULT 0 CHECK (include_meeting_ref IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX plans_meeting ON plans (meeting_id);
+      CREATE INDEX plans_item ON plans (item_id);
+
+      -- One row per task of a plan. idempotency_key is fixed BEFORE the capability is called and
+      -- never changes, so a retry after a crash asks the capability for the same key.
+      CREATE TABLE plan_task_runs (
+        plan_id TEXT NOT NULL REFERENCES plans (id) ON DELETE CASCADE,
+        task_index INTEGER NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'attempting', 'created', 'failed')),
+        attempts INTEGER NOT NULL DEFAULT 0,
+        external_id TEXT,
+        url TEXT,
+        error TEXT,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (plan_id, task_index)
+      ) WITHOUT ROWID;
+
+      -- The traceability record, written when a task exists: who approved it and when.
+      CREATE TABLE plan_links (
+        id TEXT PRIMARY KEY,
+        meeting_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        plan_id TEXT NOT NULL REFERENCES plans (id) ON DELETE CASCADE,
+        task_index INTEGER NOT NULL,
+        system TEXT NOT NULL,             -- 'github' | 'frappe'
+        external_id TEXT NOT NULL,        -- issue number / Task name
+        url TEXT NOT NULL,
+        approved_by TEXT NOT NULL,
+        approved_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE (plan_id, task_index)
+      );
+      CREATE INDEX plan_links_meeting ON plan_links (meeting_id);
+      CREATE INDEX plan_links_task ON plan_links (system, external_id);
+
+      -- Deleting a meeting (a tombstone) removes every plan made from it, its task state and its
+      -- links in the database itself. What was already created in GitHub/Frappe is not touched;
+      -- Phoenix just stops remembering which meeting it came from.
+      CREATE TRIGGER plans_meeting_deleted AFTER UPDATE OF deleted_at ON meetings
+      WHEN new.deleted_at IS NOT NULL
+      BEGIN
+        DELETE FROM plan_links WHERE meeting_id = new.id;
+        DELETE FROM plan_task_runs WHERE plan_id IN (SELECT id FROM plans WHERE meeting_id = new.id);
+        DELETE FROM plans WHERE meeting_id = new.id;
+      END;
+    `,
+  },
 ];

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 //
-// Frappe / ERPNext capability (Phase 23). Read-only: it never runs `bench`, never writes to a
-// bench and never talks to a database. It
+// Frappe / ERPNext capability (Phase 23). Read-only EXCEPT the one explicit, always-confirmed
+// `task.create` command (Phase 36, src/tasks.ts), which creates a Task document on a site the
+// user listed under `api`. Everything else never runs `bench`, never writes to a bench and never
+// talks to a database. It
 //   * discovers the benches the user selected (sites/apps.txt, the site directories, the web
 //     server port from sites/common_site_config.json), and
 //   * polls every site's `/api/method/ping`, turning transitions into frappe.site.* events.
@@ -26,6 +28,10 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import { redact } from "@phoenix/logging";
 import { defineCapability, type CapabilityContext, type HealthResult } from "@phoenix/sdk";
 import { isRecord } from "./guards";
+import { errorCode, normalizeOrigin, readCapped, SITE_NAME } from "./http";
+import { API_CONFIG_SCHEMA, createTask, TASK_COMMAND, TASK_SECRET } from "./tasks";
+
+export { normalizeOrigin };
 
 /** Consecutive failed pings before a site is reported unhealthy (a restart blip is not an outage). */
 export const FAILURE_THRESHOLD = 2;
@@ -38,7 +44,6 @@ const MAX_SITES_PER_BENCH = 50;
 const MAX_APPS = 100;
 const MAX_CONCURRENCY = 8;
 const MAX_ERROR_CHARS = 200;
-const SITE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,148}$/;
 const APP_NAME = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}$/;
 
 type FrappeEvent = Parameters<CapabilityContext["emit"]>[0];
@@ -88,20 +93,6 @@ function parseJsonObject(text: string | undefined): Record<string, unknown> | un
   try {
     const value: unknown = JSON.parse(text);
     return isRecord(value) ? value : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** The origin of an http(s) URL (host_name may omit the scheme, as Frappe's get_url allows). */
-export function normalizeOrigin(value: string, assumeHttp = false): string | undefined {
-  const text = value.trim();
-  if (!text || text.length > 300 || /\s/.test(text)) return undefined;
-  const withScheme = assumeHttp && !/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? `http://${text}` : text;
-  try {
-    const url = new URL(withScheme);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
-    return url.origin;
   } catch {
     return undefined;
   }
@@ -221,36 +212,6 @@ export function resolveSiteUrl(
 
 export type PingResult =
   { ok: true; ms: number } | { ok: false; ms: number; error: string; status?: number };
-
-function errorCode(err: unknown): string | undefined {
-  const cause = isRecord(err) ? err.cause : undefined;
-  const code = isRecord(cause) ? cause.code : isRecord(err) ? err.code : undefined;
-  return typeof code === "string" && /^[A-Z0-9_]{3,40}$/.test(code) ? code : undefined;
-}
-
-/** Reads at most `max` bytes; null when the body is larger. */
-async function readCapped(res: Response, max: number): Promise<string | null> {
-  const declared = Number(res.headers.get("content-length") ?? 0);
-  if (declared > max) {
-    await res.body?.cancel();
-    return null;
-  }
-  if (!res.body) return "";
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > max) {
-      await reader.cancel();
-      return null;
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks).toString("utf8");
-}
 
 /**
  * GETs `<base>/api/method/ping` and checks for Frappe's `{"message":"pong"}`. Never throws; the
@@ -598,11 +559,19 @@ export function createFrappeCapability(options: FrappeOptions = {}) {
       id: "frappe",
       name: "Frappe / ERPNext",
       version: "0.1.0",
-      description: "Watches the health of the sites in your local Frappe benches.",
+      description:
+        "Watches the health of the sites in your local Frappe benches (read-only), and, only when you ask and confirm, creates a Task on a site you configured.",
       license: "GPL-3.0-or-later",
       events: ["frappe.bench.*", "frappe.site.*"],
-      permissions: ["filesystem_read", "network"],
-      data_categories: ["bench paths", "site names", "installed app names", "site health"],
+      permissions: ["filesystem_read", "network", "external_api"],
+      secrets: [TASK_SECRET],
+      data_categories: [
+        "bench paths",
+        "site names",
+        "installed app names",
+        "site health",
+        "task subjects and descriptions you create",
+      ],
       healthcheck: { interval_ms: 5_000 },
       commands: [
         {
@@ -617,6 +586,7 @@ export function createFrappeCapability(options: FrappeOptions = {}) {
           side_effect: "read",
           permissions: ["filesystem_read"],
         },
+        TASK_COMMAND,
       ],
       config_schema: {
         type: "object",
@@ -637,6 +607,7 @@ export function createFrappeCapability(options: FrappeOptions = {}) {
               "Only http(s); redirects are not followed.",
           },
           poll_ms: { type: "integer", minimum: 250, maximum: 300_000 },
+          api: API_CONFIG_SCHEMA,
           timeout_ms: { type: "integer", minimum: 250, maximum: 30_000 },
         },
       },
@@ -674,6 +645,7 @@ export function createFrappeCapability(options: FrappeOptions = {}) {
       void loop(ctx, r);
     },
     commands: {
+      "task.create": createTask,
       async sites(): Promise<{ sites: SiteView[] }> {
         await run?.firstCycle;
         return {

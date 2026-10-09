@@ -2,11 +2,13 @@
 // Copyright (C) 2026 Phoenix contributors
 import { visualFor } from "@phoenix/pet-states";
 import { useState } from "react";
-import { formatSince, SIDE_EFFECT_LABEL } from "../core/format";
-import { useAction, useConfirmations, useKillSwitch } from "../core/hooks";
-import type { ActiveTask, Confirmation, PetState } from "../core/types";
+import { formatSince } from "../core/format";
+import { useAction, useKillSwitch } from "../core/hooks";
+import type { ActiveTask, PetState } from "../core/types";
+import { Approvals } from "./Approvals";
 import { AgentsGlance, FrappeSites } from "./Integrations";
 import { MeetingsGlance } from "./Meetings";
+import { CurrentTask } from "./TaskView";
 
 /** How many tasks the panel lists before "Show all": enough to see what is happening, few enough
  *  that the actions below (Pause Fawkes, Emergency stop) never end up thousands of pixels away. */
@@ -55,6 +57,7 @@ export function Overview({ state, tasks }: { state: PetState; tasks: ActiveTask[
         </p>
       )}
       <Approvals />
+      <CurrentTask />
       <section aria-labelledby="tasks-h">
         <h3 id="tasks-h">Active tasks</h3>
         <TaskList tasks={tasks} />
@@ -64,55 +67,6 @@ export function Overview({ state, tasks }: { state: PetState; tasks: ActiveTask[
       <MeetingsGlance />
       <QuickActions state={state} />
     </div>
-  );
-}
-
-export function Approvals() {
-  const { data: pending, error } = useConfirmations();
-  if (error) return <p className="error-text">{error}</p>;
-  if (pending.length === 0) return null;
-  return (
-    <section aria-labelledby="approvals-h" className="approvals">
-      <h3 id="approvals-h">Needs your approval</h3>
-      <ul className="card-list">
-        {pending.map((c) => (
-          <ApprovalCard key={c.id} confirmation={c} />
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-function ApprovalCard({ confirmation: c }: { confirmation: Confirmation }) {
-  const { run, busy, error } = useAction();
-  const decide = (approve: boolean) =>
-    run("POST", `/api/confirmations/${encodeURIComponent(c.id)}`, { approve });
-  return (
-    <li className="card approval">
-      <p className="approval-summary">{c.summary}</p>
-      <p className="muted small">
-        {c.capabilityId} · {SIDE_EFFECT_LABEL[c.sideEffect] ?? c.sideEffect}
-        {c.permissions.length > 0 && <> · uses {c.permissions.join(", ")}</>}
-      </p>
-      <div className="button-row">
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={busy}
-          onClick={() => void decide(true)}
-        >
-          Approve
-        </button>
-        <button type="button" className="btn" disabled={busy} onClick={() => void decide(false)}>
-          Reject
-        </button>
-      </div>
-      {error && (
-        <p className="error-text" role="alert">
-          {error}
-        </p>
-      )}
-    </li>
   );
 }
 

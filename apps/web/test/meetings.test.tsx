@@ -182,8 +182,8 @@ describe("Meetings page", () => {
         },
       }),
     );
-    const approve = await screen.findByRole("button", { name: "Approve" });
-    expect(screen.getByText(/uses meeting_recording/)).toBeTruthy();
+    const approve = await screen.findByRole("button", { name: /^Approve:/ });
+    expect(screen.getByText("meeting_recording")).toBeTruthy();
     fireEvent.click(approve);
     await waitFor(() =>
       expect(api.posts("/api/confirmations/conf1")[0]?.body).toEqual({ approve: true }),

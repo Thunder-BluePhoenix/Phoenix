@@ -13,9 +13,13 @@ import type { DesktopShell } from "./shell";
 export const BUBBLE_MS = 8_000;
 export const FLOATING_SIZE = 96;
 
-/** The in-app page that explains a state: meetings for Kage, otherwise the home page. */
+/**
+ * The in-app page that explains a state: meetings for Kage, the Pet Panel's Overview (where the
+ * approvals are listed) when Fawkes is waiting for a decision, otherwise the home page.
+ */
 export function routeFor(state: PetState): string {
-  return state.source === "kage" || state.recording ? "/meetings" : "/";
+  if (state.source === "kage" || state.recording) return "/meetings";
+  return state.state === "WAITING" ? "/panel/overview" : "/";
 }
 
 /** The speech-bubble text for the current state, or null when Fawkes has nothing to say. */

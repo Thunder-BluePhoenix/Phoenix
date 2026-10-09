@@ -73,6 +73,12 @@ export interface EngineDeps {
   audit: PolicyAuditSink;
   /** Read before every step and every tool call: the emergency stop. */
   isKillSwitchEngaged: () => boolean;
+  /**
+   * Called when the engine gives up on a tool call that is still running (step timeout, stop).
+   * The runtime wires it to withdraw that call's pending confirmation. The capability itself is
+   * not interrupted: its outcome is recorded as unknown.
+   */
+  abandon?: (tool: string) => void;
   /** Absent = `ai` steps fail (the workflow cannot use AI that is not configured). */
   ai?: AiStep;
   /** Absent = `lookup` steps fail. */

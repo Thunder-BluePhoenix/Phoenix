@@ -108,6 +108,12 @@ importers:
       '@phoenix/ai-context':
         specifier: workspace:*
         version: link:../context
+      '@phoenix/ai-knowledge-graph':
+        specifier: workspace:*
+        version: link:../knowledge-graph
+      '@phoenix/ai-meetings':
+        specifier: workspace:*
+        version: link:../meetings
       '@phoenix/ai-memory':
         specifier: workspace:*
         version: link:../memory
@@ -117,6 +123,9 @@ importers:
       '@phoenix/ai-orchestrator':
         specifier: workspace:*
         version: link:../orchestrator
+      '@phoenix/ai-retrieval':
+        specifier: workspace:*
+        version: link:../retrieval
       '@phoenix/ai-tool-gateway':
         specifier: workspace:*
         version: link:../tool-gateway
@@ -141,6 +150,25 @@ importers:
       '@phoenix/protocol':
         specifier: workspace:*
         version: link:../../protocol
+    devDependencies:
+      '@phoenix/capability-git':
+        specifier: workspace:*
+        version: link:../../capabilities/git
+      '@phoenix/capability-github':
+        specifier: workspace:*
+        version: link:../../capabilities/github
+      '@phoenix/config':
+        specifier: workspace:*
+        version: link:../../core/config
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+      '@phoenix/state-engine':
+        specifier: workspace:*
+        version: link:../../core/state-engine
 
   ai/knowledge-graph:
     dependencies:
@@ -269,6 +297,61 @@ importers:
         specifier: workspace:*
         version: link:../../core/state-engine
 
+  ai/planning:
+    dependencies:
+      '@phoenix/ai-meetings':
+        specifier: workspace:*
+        version: link:../meetings
+      '@phoenix/ai-memory':
+        specifier: workspace:*
+        version: link:../memory
+      '@phoenix/ai-models':
+        specifier: workspace:*
+        version: link:../models
+      '@phoenix/ai-tool-gateway':
+        specifier: workspace:*
+        version: link:../tool-gateway
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/permissions':
+        specifier: workspace:*
+        version: link:../../core/permissions
+      '@phoenix/persistence':
+        specifier: workspace:*
+        version: link:../../core/persistence
+      '@phoenix/policy':
+        specifier: workspace:*
+        version: link:../../core/policy
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+    devDependencies:
+      '@phoenix/capability-frappe':
+        specifier: workspace:*
+        version: link:../../capabilities/frappe
+      '@phoenix/capability-github':
+        specifier: workspace:*
+        version: link:../../capabilities/github
+      '@phoenix/capability-manager':
+        specifier: workspace:*
+        version: link:../../core/capability-manager
+      '@phoenix/config':
+        specifier: workspace:*
+        version: link:../../core/config
+      '@phoenix/event-bus':
+        specifier: workspace:*
+        version: link:../../core/event-bus
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+      '@phoenix/state-engine':
+        specifier: workspace:*
+        version: link:../../core/state-engine
+
   ai/retrieval:
     dependencies:
       '@phoenix/ai-context':
@@ -356,13 +439,25 @@ importers:
       '@phoenix/logging':
         specifier: workspace:*
         version: link:../../core/logging
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
       '@phoenix/sdk':
         specifier: workspace:*
         version: link:../../sdk/capability
     devDependencies:
+      '@phoenix/config':
+        specifier: workspace:*
+        version: link:../../core/config
+      '@phoenix/event-bus':
+        specifier: workspace:*
+        version: link:../../core/event-bus
       '@phoenix/sdk-testing':
         specifier: workspace:*
         version: link:../../sdk/testing
+      '@phoenix/state-engine':
+        specifier: workspace:*
+        version: link:../../core/state-engine
 
   capabilities/docker:
     dependencies:
@@ -596,6 +691,15 @@ importers:
       '@phoenix/ai-context':
         specifier: workspace:*
         version: link:../../ai/context
+      '@phoenix/ai-evaluation':
+        specifier: workspace:*
+        version: link:../../ai/evaluation
+      '@phoenix/ai-knowledge-graph':
+        specifier: workspace:*
+        version: link:../../ai/knowledge-graph
+      '@phoenix/ai-meetings':
+        specifier: workspace:*
+        version: link:../../ai/meetings
       '@phoenix/ai-memory':
         specifier: workspace:*
         version: link:../../ai/memory
@@ -605,6 +709,12 @@ importers:
       '@phoenix/ai-orchestrator':
         specifier: workspace:*
         version: link:../../ai/orchestrator
+      '@phoenix/ai-planning':
+        specifier: workspace:*
+        version: link:../../ai/planning
+      '@phoenix/ai-retrieval':
+        specifier: workspace:*
+        version: link:../../ai/retrieval
       '@phoenix/ai-tool-gateway':
         specifier: workspace:*
         version: link:../../ai/tool-gateway

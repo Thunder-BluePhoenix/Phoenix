@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "./client";
 import { useClient } from "./context";
 import type {
+  AgentSettings,
+  AgentTaskDetail,
+  AgentTaskSummary,
   AiStatus,
   CapabilityView,
   Confirmation,
@@ -570,5 +573,40 @@ export function useAiStatus() {
     (j) => j,
     null,
     () => false,
+  );
+}
+
+const isAgentRunEvent = (t: string) => t.startsWith("agent_run.");
+/** A run's detail also changes while an approval it waits for is decided. */
+const isAgentTaskEvent = (t: string) =>
+  isAgentRunEvent(t) || t.startsWith("security.confirmation.");
+
+/** Automation settings (off by default). Refreshes when a run starts or ends (the active count). */
+export function useAgentSettings() {
+  return useLiveResource<AgentSettings | null>(
+    "/api/agent/settings",
+    (j) => j,
+    null,
+    isAgentRunEvent,
+  );
+}
+
+/** Newest agent tasks, kept live by `agent_run.*` events (no polling). */
+export function useAgentTasks(limit = 5) {
+  return useLiveResource<AgentTaskSummary[] | null>(
+    `/api/agent/tasks?limit=${limit}`,
+    (j) => j.tasks,
+    null,
+    isAgentRunEvent,
+  );
+}
+
+/** One task with its steps, evidence and conclusion, kept live by `agent_run.*` and approval events. */
+export function useAgentTask(id: string) {
+  return useLiveResource<AgentTaskDetail | null>(
+    `/api/agent/tasks/${encodeURIComponent(id)}`,
+    (j) => j,
+    null,
+    isAgentTaskEvent,
   );
 }

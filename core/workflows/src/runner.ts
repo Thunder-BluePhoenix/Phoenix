@@ -10,14 +10,9 @@ import { ToolGatewayError } from "@phoenix/ai-tool-gateway";
 import { createEvent, type PhoenixEvent } from "@phoenix/protocol";
 import { buildAiMessages, parseAiOutput, AI_PURPOSE, DEFAULT_AI_TOKENS } from "./ai-step";
 import { boundValue } from "./bound";
-import {
-  type EngineDeps,
-  realSleep,
-  type Sleeper,
-  type WorkflowToolGateway,
-} from "./engine-types";
+import { type EngineDeps, realSleep, type Sleeper, type WorkflowToolGateway } from "./engine-types";
 import { evaluateCondition, type Value } from "./expr";
-import { compiledExpression, renderInput, renderText } from "./render";
+import { compiledExpression, compiledTemplate, renderInput, renderText } from "./render";
 import { Halted, RunCancelled, StepFailure, type RunState } from "./run-state";
 import type {
   ActionStep,
@@ -51,6 +46,12 @@ export interface PreparedAction {
   facts: ToolFacts;
   destructive: boolean;
   input: Value;
+  /**
+   * True when the input is exactly what the workflow's author wrote. An input built from run data
+   * (an event payload, a tool result, a model answer) was "derived from content the user did not
+   * write", so the policy engine is told `trustedByUser: false` and asks for approval.
+   */
+  authored: boolean;
 }
 
 export interface RunnerDeps {
@@ -60,23 +61,24 @@ export interface RunnerDeps {
   ai: EngineDeps["ai"];
   lookup: EngineDeps["lookup"];
   sleep: Sleeper;
+  abandon: ((tool: string) => void) | undefined;
   approvalWaitMs: number;
   warn: (message: string, fields?: Record<string, unknown>) => void;
 }
 
 /** The actor every workflow tool call carries: its id IS the run's correlation id. */
-export function workflowActor(state: RunState) {
-  return {
-    kind: "system" as const,
-    id: state.run.correlationId,
-    // Workflows act on events, not on a direct request from the user, so policy treats every
-    // call as "not asked for by the user" (non-low risk always needs an approval).
-    trustedByUser: false,
-  };
+export function workflowActor(state: RunState, trusted: boolean) {
+  return { kind: "system" as const, id: state.run.correlationId, trustedByUser: trusted };
 }
 
-export function evalContext(state: RunState) {
-  return state.ctx;
+/** True when a JSON input reads run data (event, tool output, AI output) through a placeholder. */
+export function hasPlaceholders(value: unknown, depth = 0): boolean {
+  if (depth > 8) return true;
+  if (typeof value === "string") return compiledTemplate(value).some((p) => typeof p !== "string");
+  if (Array.isArray(value)) return value.some((v: unknown) => hasPlaceholders(v, depth + 1));
+  if (value !== null && typeof value === "object")
+    return Object.values(value).some((v: unknown) => hasPlaceholders(v, depth + 1));
+  return false;
 }
 
 export class StepRunner {
@@ -100,6 +102,8 @@ export class StepRunner {
       severity,
       subject: state.def.id,
       correlation_id: state.run.correlationId,
+      // Read by the engine's loop protection: events a run emits carry how deep the chain is.
+      metadata: { workflow_depth: state.run.chainDepth },
       causation_id: state.run.triggerEventId.slice(0, 200),
       ...(extra.requiresAction ? { requires_action: true } : {}),
       payload: { workflow: state.def.id, run: state.run.id, ...payload },
@@ -166,7 +170,13 @@ export class StepRunner {
     const destructive = isDestructive(facts);
     if (destructive && !state.approved)
       throw new StepFailure(`${label}: ${tool} changes state and no approval step has succeeded`);
-    return { tool, facts, destructive, input: renderInput(input, evalContext(state)) };
+    return {
+      tool,
+      facts,
+      destructive,
+      input: renderInput(input, state.ctx),
+      authored: !hasPlaceholders(input),
+    };
   }
 
   /** Calls the tool through the gateway (retrying only idempotent tools) and returns its output. */
@@ -189,7 +199,7 @@ export class StepRunner {
           (signal) =>
             this.d.gateway.call(
               {
-                actor: workflowActor(state),
+                actor: workflowActor(state, prepared.authored),
                 tool: prepared.tool,
                 input: prepared.input,
                 environment: state.def.environment,
@@ -207,6 +217,11 @@ export class StepRunner {
         );
         return { output: boundValue(result.output), attempts: attempt };
       } catch (err) {
+        const gone =
+          err instanceof RunCancelled ||
+          err instanceof Halted ||
+          (err instanceof StepFailure && err.status === "timed_out");
+        if (gone) this.d.abandon?.(prepared.tool);
         const failure = this.asFailure(err, prepared);
         if (!(failure.retryable && attempt <= extra)) throw failure;
         await this.pause(state, (options.retry?.backoff_ms ?? 0) * attempt);
@@ -236,13 +251,14 @@ export class StepRunner {
       const message = `${prepared.tool}: ${err.message}`.slice(0, 300);
       if (err.code === "TIMEOUT")
         return new StepFailure(message, "timed_out", true, prepared.destructive);
-      if (err.code === "EXECUTION_FAILED")
-        return new StepFailure(message, "failed", true);
+      if (err.code === "EXECUTION_FAILED") return new StepFailure(message, "failed", true);
       if (err.code === "APPROVAL_REJECTED") return new StepFailure(message, "rejected");
       return new StepFailure(message);
     }
     if (err instanceof RunCancelled || err instanceof Halted) throw err;
-    return new StepFailure(`${prepared.tool}: ${err instanceof Error ? err.message : "failed"}`.slice(0, 300));
+    return new StepFailure(
+      `${prepared.tool}: ${err instanceof Error ? err.message : "failed"}`.slice(0, 300),
+    );
   }
 
   // ── Other step types ─────────────────────────────────────────────────────
@@ -250,27 +266,32 @@ export class StepRunner {
   condition(state: RunState, step: ConditionStep): StepResult {
     let verdict: boolean;
     try {
-      verdict = evaluateCondition(compiledExpression(step.if), evalContext(state));
+      verdict = evaluateCondition(compiledExpression(step.if), state.ctx);
     } catch {
       throw new StepFailure(`condition ${step.id} could not be evaluated`);
     }
     const index = state.indexOf[step.id] ?? 0;
     const following = state.def.steps[index + 1]?.id ?? "end";
-    return { output: { matched: verdict }, next: verdict ? (step.then ?? following) : (step.else ?? "end") };
+    return {
+      output: { matched: verdict },
+      next: verdict ? (step.then ?? following) : (step.else ?? "end"),
+    };
   }
 
   async lookup(state: RunState, step: LookupStep): Promise<StepResult> {
-    if (state.def.declares.context !== true) throw new StepFailure("context lookup is not declared");
+    if (state.def.declares.context !== true)
+      throw new StepFailure("context lookup is not declared");
     const lookup = this.d.lookup;
     if (!lookup) throw new StepFailure("context lookup is not available");
-    const query = renderText(step.query, evalContext(state));
+    const query = renderText(step.query, state.ctx);
     const items = await this.bounded(
       state,
       step.timeout_ms ?? DEFAULT_LOOKUP_TIMEOUT_MS,
       (signal) => lookup({ query, limit: step.limit, signal }),
       () => new StepFailure("context lookup timed out", "timed_out", true),
     ).catch((err: unknown) => {
-      if (err instanceof StepFailure || err instanceof RunCancelled || err instanceof Halted) throw err;
+      if (err instanceof StepFailure || err instanceof RunCancelled || err instanceof Halted)
+        throw err;
       throw new StepFailure("context lookup failed", "failed", true);
     });
     return { output: { items: boundValue(items.slice(0, step.limit)) } };
@@ -280,7 +301,7 @@ export class StepRunner {
     if (!state.def.declares.ai) throw new StepFailure("this workflow does not declare AI use");
     const ai = this.d.ai;
     if (!ai) throw new StepFailure("AI is not available");
-    const ctx = evalContext(state);
+    const ctx = state.ctx;
     const records: Record<string, string> = {};
     for (const [name, template] of Object.entries(step.data ?? {}))
       records[name] = renderText(template, ctx);
@@ -300,17 +321,23 @@ export class StepRunner {
         }),
       () => new StepFailure("AI step timed out", "timed_out", true),
     ).catch((err: unknown) => {
-      if (err instanceof StepFailure || err instanceof RunCancelled || err instanceof Halted) throw err;
+      if (err instanceof StepFailure || err instanceof RunCancelled || err instanceof Halted)
+        throw err;
       const name = err instanceof Error ? err.name : "error";
       throw new StepFailure(`AI step failed (${name})`, "failed", true);
     });
     const parsed = parseAiOutput(reply.text, step.output);
-    if (!parsed.ok) throw new StepFailure(`AI answer was rejected: ${parsed.problems.join("; ")}`.slice(0, 300), "failed", true);
+    if (!parsed.ok)
+      throw new StepFailure(
+        `AI answer was rejected: ${parsed.problems.join("; ")}`.slice(0, 300),
+        "failed",
+        true,
+      );
     return { output: parsed.value, processedBy: reply.processedBy.slice(0, 200) };
   }
 
   notify(state: RunState, step: NotifyStep): StepResult {
-    const ctx = evalContext(state);
+    const ctx = state.ctx;
     const event = this.event(
       state,
       "workflow.notify",
@@ -327,7 +354,7 @@ export class StepRunner {
   }
 
   result(state: RunState, step: ResultStep): StepResult {
-    const summary = renderText(step.summary, evalContext(state)).slice(0, 500);
+    const summary = renderText(step.summary, state.ctx).slice(0, 500);
     const event = this.event(
       state,
       "workflow.result",
@@ -335,7 +362,10 @@ export class StepRunner {
       { step: step.id, outcome: step.outcome, summary },
     );
     if (!this.emit(event)) throw new StepFailure("the result event was refused");
-    return { output: { outcome: step.outcome, summary }, finish: { outcome: step.outcome, summary } };
+    return {
+      output: { outcome: step.outcome, summary },
+      finish: { outcome: step.outcome, summary },
+    };
   }
 
   /** Dispatch for the simple (non-action, non-approval) step types. */

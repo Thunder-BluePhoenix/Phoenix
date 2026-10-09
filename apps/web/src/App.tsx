@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { useCallback, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { FawkesAvatarHandle } from "./components/FawkesAvatar";
 import { MeetingDetail, MeetingsPage } from "./components/Meetings";
 import { Navbar } from "./components/Navbar";
 import { SettingsPage } from "./components/Settings";
-import { PetPanel } from "./components/PetPanel";
+import { isTabId, PetPanel } from "./components/PetPanel";
 import { useConnection, useDisplayedState, useTasks } from "./core/context";
 import { useHashRoute } from "./core/hooks";
 
@@ -20,6 +20,13 @@ export function App() {
   const route = useHashRoute();
   const meetingId = /^\/meetings\/(.+)$/.exec(route)?.[1];
   const main = useRef<HTMLElement>(null);
+  // "#/panel/<tab>" opens the Pet Panel on that tab: how the floating desktop pet sends you to
+  // the approval it is waiting for (its own window is too small to hold the panel).
+  const requestedTab = /^\/panel\/([a-z]+)$/.exec(route)?.[1];
+  const panelRoute = isTabId(requestedTab) ? requestedTab : undefined;
+  useEffect(() => {
+    if (panelRoute) setPanelOpen(true);
+  }, [route, panelRoute]);
 
   const closePanel = useCallback(() => {
     setPanelOpen(false);
@@ -48,7 +55,16 @@ export function App() {
         route={route}
         onToggleFawkes={() => (panelOpen ? closePanel() : setPanelOpen(true))}
       />
-      {panelOpen && <PetPanel id={panelId} state={state} tasks={tasks} onClose={closePanel} />}
+      {panelOpen && (
+        <PetPanel
+          key={panelRoute ? route : "panel"}
+          id={panelId}
+          state={state}
+          tasks={tasks}
+          onClose={closePanel}
+          {...(panelRoute ? { initialTab: panelRoute } : {})}
+        />
+      )}
       <main id="main" ref={main} tabIndex={-1} className="content">
         {connection !== "unauthenticated" && route === "/settings" ? (
           <SettingsPage state={state} />

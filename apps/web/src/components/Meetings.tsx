@@ -5,7 +5,7 @@ import { ApiError } from "../core/client";
 import { useClient } from "../core/context";
 import { useAction, useCapabilities, useMeeting, useMeetings } from "../core/hooks";
 import type { ActionItem, Meeting, PetState, Summary, Transcript } from "../core/types";
-import { Approvals } from "./Overview";
+import { Approvals } from "./Approvals";
 
 /** Phoenix lifecycle status → label; `step` marks processing progress (of 3). */
 const STATUS: Record<string, { label: string; step?: number }> = {

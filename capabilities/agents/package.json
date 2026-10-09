@@ -9,9 +9,13 @@
   },
   "dependencies": {
     "@phoenix/logging": "workspace:*",
+    "@phoenix/protocol": "workspace:*",
     "@phoenix/sdk": "workspace:*"
   },
   "devDependencies": {
-    "@phoenix/sdk-testing": "workspace:*"
+    "@phoenix/config": "workspace:*",
+    "@phoenix/event-bus": "workspace:*",
+    "@phoenix/sdk-testing": "workspace:*",
+    "@phoenix/state-engine": "workspace:*"
   }
 }

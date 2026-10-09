@@ -906,3 +906,198 @@ code.break {
   margin-top: 6px;
   padding-top: 6px;
 }
+
+/* ── Chat, current task and approvals (Phase 32) ─────────────────────────── */
+.chat,
+.current-task,
+.task-body,
+.approvals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.chat > *,
+.task-body > *,
+.approvals > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.chat textarea,
+.memory-form input[type="text"] {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  min-width: 0;
+  width: 100%;
+  resize: vertical;
+}
+.chat-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 340px;
+  overflow: auto;
+}
+.chat-msg {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+/* The speaker is written out ("You" / "Fawkes"); the side and border only reinforce it. */
+.chat-user {
+  background: var(--bg);
+  margin-left: 16px;
+}
+.chat-fawkes {
+  background: var(--surface);
+  margin-right: 8px;
+  border-left: 3px solid var(--info);
+}
+.chat-who {
+  margin: 0 0 2px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.pet-panel .chat-msg .card {
+  margin-top: 4px;
+}
+
+.task-card {
+  min-width: 0;
+}
+.task-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+.task-section h5 {
+  margin: 8px 0 4px;
+  font-size: 13px;
+}
+.task-steps {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+.task-steps li {
+  overflow-wrap: anywhere;
+}
+.task-evidence-list,
+.task-claims {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.task-evidence {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* A cited item gets a thick dashed frame as well as the "selected" word: not colour alone. */
+.task-evidence.is-cited {
+  border: 2px dashed var(--info);
+}
+.task-evidence summary {
+  cursor: pointer;
+}
+.task-excerpt {
+  margin: 4px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  max-height: 220px;
+  overflow: auto;
+}
+.task-hash {
+  overflow-wrap: anywhere;
+}
+.task-claims li {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.badge-warn {
+  color: var(--warning-text);
+  border-color: var(--warning);
+  border-style: dashed;
+}
+.mem-badge {
+  margin-right: 4px;
+  display: inline-block;
+}
+
+.approval-facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin: 4px 0;
+}
+.approval-facts dt {
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.approval-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* A missing fact is flagged in words, and underlined so it does not rely on colour. */
+.approval-missing {
+  color: var(--warning-text);
+  font-weight: 600;
+  text-decoration: underline dotted;
+}
+.risk-badge {
+  display: inline-block;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 4px;
+  border: 2px solid var(--border);
+}
+.risk-low {
+  color: var(--success-text);
+  border-style: solid;
+}
+.risk-medium {
+  color: var(--warning-text);
+  border-style: dashed;
+}
+.risk-high {
+  color: var(--danger-text);
+  border-style: double;
+  border-width: 4px;
+}
+.risk-critical {
+  color: var(--danger-text);
+  border-style: solid;
+  border-width: 4px;
+  text-transform: uppercase;
+}
+.approval:focus-visible {
+  outline-offset: 3px;
+}
+.approval-understand {
+  margin-top: 6px;
+  align-items: flex-start;
+}
+.approval-live:empty {
+  display: none;
+}
+.approvals h3:focus {
+  outline: 2px solid var(--focus);
+}
