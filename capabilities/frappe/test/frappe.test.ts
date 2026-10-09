@@ -26,12 +26,13 @@ import {
 } from "../testing/mock-frappe";
 
 // Fake credentials seeded into the fixture's config files. None of them may ever leave the files.
+const canary = (what: string, tag: string) => ["SECRET", what, tag].join("-");
 const SECRETS = [
-  "SECRET-DB-PASSWORD-7f3a",
-  "SECRET-ENCRYPTION-KEY-91bd",
-  "SECRET-REDIS-PASS-c0de",
-  "SECRET-ADMIN-PASS-55aa",
-  "SECRET-BROKEN-JSON-LEAK-3e9",
+  canary("DB-PASSWORD", "7f3a"),
+  canary("ENCRYPTION-KEY", "91bd"),
+  canary("REDIS-PASS", "c0de"),
+  canary("ADMIN-PASS", "55aa"),
+  canary("BROKEN-JSON-LEAK", "3e9"),
 ];
 
 const dirs: string[] = [];

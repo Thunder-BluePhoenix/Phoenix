@@ -18,6 +18,7 @@ import {
   GIT_LOG_FORMAT,
   type DocReader,
 } from "../src";
+import { FAKE_AWS_KEY } from "../../../protocol/testing/fake-secrets";
 import { rig } from "./helpers";
 
 describe("git ingestor", () => {
@@ -354,7 +355,7 @@ describe("docs ingestor", () => {
   it("retries refused chunks next run instead of remembering the file as done", async () => {
     const r = rig();
     const fs = fakeFs({
-      [A]: "# A\ntext with AKIAABCDEFGHIJKLMNOP key\n-----BEGIN PRIVATE KEY-----\n",
+      [A]: `# A\ntext with ${FAKE_AWS_KEY} key\n-----BEGIN PRIVATE KEY-----\n`,
     });
     const first = await run(r, fs, [A]);
     expect(first.rejected).toEqual([{ reason: "contains_private_key", count: 1 }]);

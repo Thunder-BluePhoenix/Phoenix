@@ -30,6 +30,9 @@ function runCli(file: string, args: string[], env: Record<string, string>, stdin
   let stderr = "";
   child.stdout.on("data", (c: Buffer) => (stdout += c));
   child.stderr.on("data", (c: Buffer) => (stderr += c));
+  // The hook stops reading once input passes its size cap and exits, so writes to its stdin can
+  // hit a closed pipe (EPIPE). That is the behaviour under test, not a failure of the harness.
+  child.stdin.on("error", () => {});
   if (stdin === undefined) child.stdin.end();
   else child.stdin.end(stdin);
   return new Promise<Outcome>((resolve) =>

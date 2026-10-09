@@ -19,7 +19,7 @@ Thanks for helping build Phoenix and Fawkes.
 
 1. Pick a phase from the [tracker](docs/phases/TRACKER.md) and read its phase file.
 2. Make changes with tests.
-3. Run `pnpm check` (typecheck, licence headers, formatting, tests).
+3. Run `pnpm check` (typecheck, licence headers, formatting, tests), then `scripts/secret-scan.sh` (needs Docker). It runs the same pinned gitleaks scan CI runs, over history and over your uncommitted files. Build fake credentials in tests at runtime (`protocol/testing/fake-secrets.ts`); a token-shaped literal fails CI even when it is obviously fake.
 4. Open a pull request that references the phase and lists which exit criteria it covers.
 
 ## Architecture changes

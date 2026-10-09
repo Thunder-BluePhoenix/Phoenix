@@ -10,9 +10,10 @@ import {
   scopeMatches,
   type Viewer,
 } from "../src";
+import { FAKE_AWS_KEY } from "../../../protocol/testing/fake-secrets";
 import { capture, rig } from "./helpers";
 
-const AWS = "AKIAABCDEFGHIJKLMNOP";
+const AWS = FAKE_AWS_KEY;
 const GH = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
 
 describe("classify", () => {
