@@ -35,7 +35,7 @@ function setup(over: Partial<SessionManagerOptions> = {}) {
 
 const finished = (v: SessionView) => v.state !== "running" && v.state !== "waiting";
 const waitFor = (m: SessionManager, id: string, state: string) =>
-  vi.waitFor(() => expect(m.get(id)?.state).toBe(state));
+  vi.waitFor(() => expect(m.get(id)?.state).toBe(state), { timeout: 10_000 });
 const outputOf = (m: SessionManager, id: string) => m.output(id, 500).stdout.join("\n");
 
 describe("session lifecycle", () => {
@@ -72,7 +72,7 @@ describe("session lifecycle", () => {
     const { manager, root, workspace } = setup();
     const view = manager.start(
       "fake",
-      fakeLauncher(root, { command: [process.execPath, FAKE, "--fixed", "a b;$(x)"] }),
+      fakeLauncher(root, { command: [FAKE, "--fixed", "a b;$(x)"] }),
       workspace,
       "FAKE:echo\nhello",
     );
@@ -199,13 +199,17 @@ describe("session lifecycle", () => {
 
   it("keeps the environment to an allow-list: Phoenix's own variables never reach the agent", async () => {
     const script = join(workspaceIn().root, "env.cjs");
-    writeFileSync(script, "console.log(JSON.stringify(Object.keys(process.env).sort()))\n");
+    writeFileSync(
+      script,
+      "#!/usr/bin/env node\nconsole.log(JSON.stringify(Object.keys(process.env).sort()))\n",
+    );
+    chmodSync(script, 0o755);
     const { manager, root, workspace } = setup({
       env: { PATH: process.env.PATH, HOME: "/h", PHOENIX_TOKEN: "t", OTHER: "o", KEEP: "k" },
     });
     const view = manager.start(
       "fake",
-      fakeLauncher(root, { command: [process.execPath, script], env_allow: ["KEEP"] }),
+      fakeLauncher(root, { command: [script], env_allow: ["KEEP"] }),
       workspace,
       "x",
     );

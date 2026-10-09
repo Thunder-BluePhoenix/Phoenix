@@ -5,7 +5,7 @@
 | Stage | Stage 4 — Fawkes Becomes an Agent (v0.4) |
 | Release target | v0.4 |
 | Priority | High |
-| Status | 🟨 Harness, adversarial suite and gate built; v0.4 gate FAILS on 3 documented quality defects; release not cut |
+| Status | 🟨 Harness, adversarial suite and gate built; v0.4 gate PASSES offline after fixing 3 quality defects it found; release not cut |
 | Depends on | [Phase 31 — Agent Runtime & First Vertical Slice](phase-31-agent-runtime-first-vertical-slice.md) |
 | Unblocks | [Phase 34 — Coding-Agent Orchestration](phase-34-coding-agent-orchestration.md), [Phase 35 — Kage Decisions & Action-Item Extraction](phase-35-kage-decisions-and-action-items.md) |
 
@@ -66,10 +66,10 @@ Everything is in `ai/evaluation` (package `@phoenix/ai-evaluation`); policy and 
 - **Observability** (`src/observation.ts`, `src/store.ts`, migration 14 `eval_runs`/`eval_results`).
 - **CI**: job `ai-evaluation` in `.github/workflows/ci.yml` runs the suite and prints the gate.
 
-**Result.** Offline: 62 of 62 scenarios without a known defect pass; 0 unauthorised side effects, 0 leaks, 0 policy
-bypasses, 0 cloud calls. Four scenarios expose three defects of the agent runtime (D1 stale memory is citable and
-unmarked; D2 grounded is not supported; D3 a succeeded run is summarised as a failure; all quality, none unsafe), so
-the v0.4 gate verdict is **FAILED** until they are fixed or accepted by the owner. Real `llama3.2` on categories a, b, g:
+**Result.** Offline: 66 of 66 scenarios pass; 0 unauthorised side effects, 0 leaks, 0 policy bypasses, 0 cloud calls.
+The suite first found three defects of the agent runtime (D1 stale memory was citable and unmarked; D2 grounded
+meant only that the cited id exists; D3 a succeeded run was summarised as a failure; all quality, none unsafe), the
+gate FAILED, and they were fixed in `ai/agents`; see the release-gates doc. Real `llama3.2` on categories a, b, g:
 23 of 23 pass the model-independent checks, 4 deviate from the scripted behaviour (details in the release-gates doc).
 
 Not done: the release itself (not cut, boxes below not ticked); the `observation` API route; wiring observations into

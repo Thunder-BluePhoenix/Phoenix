@@ -30,7 +30,7 @@ export function workspaceIn(): { root: string; workspace: string } {
 }
 
 export const fakeLauncher = (root: string, over: Partial<LauncherSpec> = {}): LauncherSpec => ({
-  command: [process.execPath, FAKE_AGENT],
+  command: [FAKE_AGENT],
   cwd_roots: [root],
   waiting_prompts: ["(y/n)"],
   ...over,

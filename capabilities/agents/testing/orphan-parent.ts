@@ -26,7 +26,7 @@ const manager = new SessionManager({
 
 const session = manager.start(
   "fake",
-  { command: [process.execPath, agentPath], cwd_roots: [workspace] },
+  { command: [agentPath], cwd_roots: [workspace] },
   workspace,
   `FAKE:${mode}\ntask`,
 );

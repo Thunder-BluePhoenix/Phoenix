@@ -820,12 +820,26 @@ describe("stale memory is marked as stale and cannot ground a claim alone", () =
       r.probe.answer = (req) =>
         JSON.stringify({
           claims: [
-            { text: 'The job "secret-scan" failed.', evidence: ["E2", ...memoryClaim(req)] },
+            { text: 'The job "secret-scan" failed.', evidence: ["E3", ...memoryClaim(req)] },
           ],
         });
     });
     const model = trace.conclusion!.diagnosis!.claims.filter((c) => c.origin === "model");
     expect(model[0]).toMatchObject({ grounded: true });
+  });
+
+  it("a stale note cannot lend its identifiers to a claim whose fresh evidence does not contain them", async () => {
+    const { trace } = await run(staleNote(200, 30), (r) => {
+      r.probe.answer = (req) =>
+        JSON.stringify({
+          claims: [
+            { text: 'The job "secret-scan" failed.', evidence: ["E2", ...memoryClaim(req)] },
+          ],
+        });
+    });
+    const model = trace.conclusion!.diagnosis!.claims.filter((c) => c.origin === "model");
+    expect(model[0]).toMatchObject({ grounded: false });
+    expect(model[0]!.note).toMatch(/rests on stale memory/);
   });
 
   it("the same note confirmed recently is NOT stale: it may ground a claim (the rule is not blanket)", async () => {
