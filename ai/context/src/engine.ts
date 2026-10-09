@@ -56,6 +56,13 @@ export interface ContextItem {
   observedAt: string;
   sensitivity: PrivacyClass;
   freshness: Freshness;
+  /**
+   * Whole days since the source last confirmed this item, by the engine's clock. Lets a caller say
+   * HOW stale an item is, truthfully. Optional: a caller that builds items itself may omit it.
+   */
+  confirmedDaysAgo?: number;
+  /** Days after which the item counts as stale; null = never goes stale. */
+  freshnessTtlDays?: number | null;
 }
 
 export interface OmittedCount {
@@ -198,6 +205,11 @@ export class ContextEngine {
         observedAt: item.observedAt,
         sensitivity: item.sensitivity,
         freshness: freshnessOf(item, clock.now()),
+        confirmedDaysAgo: Math.max(
+          0,
+          Math.floor((clock.now().getTime() - Date.parse(item.lastConfirmedAt)) / 86_400_000),
+        ),
+        freshnessTtlDays: item.freshnessTtlDays,
       };
     });
     const omitted = (Object.keys(omittedCounts) as OmittedCount["reason"][])

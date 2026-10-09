@@ -4,6 +4,7 @@
 // Runs one scenario in a fresh world and gathers the evidence the oracles read: the persisted
 // trace, the audit log, the capabilities' own call counters and the model's prompt log. Nothing
 // here asks a model whether the run was safe.
+import type { ModelProvider } from "@phoenix/ai-models";
 import { ask, generateWith, type Answer } from "@phoenix/ai-context";
 import {
   AgentsDisabledError,
@@ -20,7 +21,8 @@ import {
   OPS_KIND,
   type HostileLog,
 } from "./agents";
-import { buildWorld, type World } from "./world";
+import { freshnessOf } from "@phoenix/ai-memory";
+import { SCENARIO_NOW, buildWorld, type World } from "./world";
 import type { Scenario } from "./types";
 
 export const DEFAULT_OPS_TOOLS: readonly string[] = ["ops.read_notes", "ops.read_state"];
@@ -38,11 +40,17 @@ export interface RunResult {
   answer: Answer | null;
   hostile: HostileLog;
   retrieval: RetrievalEvaluation | null;
+  /** Policy state at the end of the run, read before the database closes. */
+  policy: { rules: number; approvals: number };
+  /** Memory item ids that were stale at the scenario clock. */
+  staleMemoryIds: string[];
   /** Virtual milliseconds from submit to the end. */
   durationMs: number;
 }
 
 export interface RunOptions {
+  /** A real provider to use instead of the scripted model. */
+  realProvider?: ModelProvider;
   /** Called with the finished run before the world is closed. */
   inspect?: (run: RunResult) => void | Promise<void>;
 }
@@ -71,6 +79,7 @@ export async function runScenario(
   const hostile: HostileLog = { outcomes: [], admin: [] };
   const world = await buildWorld({
     setup: scenario.setup,
+    ...(options.realProvider ? { realProvider: options.realProvider } : {}),
     extraAgents: (w) => [
       createOpsAgent({
         model: w.model,
@@ -82,6 +91,7 @@ export async function runScenario(
         attempts: () => scenario.hostile?.attempts ?? [],
         admin: () => scenario.hostile?.admin ?? [],
         policyAdmin: w.admin,
+        allowedTools: scenario.setup.opsAllowedTools ?? ["ops.read_state"],
         log: hostile,
       }),
     ],
@@ -128,7 +138,12 @@ export async function runScenario(
     } else {
       try {
         const task = world.orchestrator.submit({
-          kind: scenario.subject === "ops" ? OPS_KIND : scenario.subject === "hostile" ? HOSTILE_KIND : scenario.task.kind,
+          kind:
+            scenario.subject === "ops"
+              ? OPS_KIND
+              : scenario.subject === "hostile"
+                ? HOSTILE_KIND
+                : scenario.task.kind,
           input: scenario.task.input,
           requestedBy: "user",
         });
@@ -138,7 +153,8 @@ export async function runScenario(
         state = trace?.run.state ?? "REFUSED";
         text = taskText(trace);
       } catch (err) {
-        if (!(err instanceof KillSwitchEngagedError || err instanceof AgentsDisabledError)) throw err;
+        if (!(err instanceof KillSwitchEngagedError || err instanceof AgentsDisabledError))
+          throw err;
         state = "REFUSED";
       }
     }
@@ -153,6 +169,13 @@ export async function runScenario(
       answer,
       hostile,
       retrieval,
+      policy: { rules: world.policy.rules().length, approvals: world.policy.approvals().length },
+      staleMemoryIds: (trace?.evidence ?? [])
+        .filter((e) => e.kind === "memory")
+        .flatMap((e) => {
+          const item = world.store.get(e.source);
+          return item && freshnessOf(item, new Date(SCENARIO_NOW)) === "stale" ? [e.id] : [];
+        }),
       durationMs: world.clock.now - started,
     };
     await options.inspect?.(result);

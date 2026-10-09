@@ -589,12 +589,20 @@ export class Orchestrator {
       (needsApproval) => ({ steps: plan.steps.length, needsApproval }),
     );
 
+    const skipped: string[] = [];
     const conclusion = await this.stage(
       rs,
       "execute",
       async () => {
         for (const step of plan.steps) {
           this.checkpoint(rs);
+          const skip = def.skipStep?.(rc, step);
+          if (skip !== undefined) {
+            // Not a tool call (nothing reached the gateway), so no `tool_call` row: it is named in
+            // the execute stage's detail instead.
+            skipped.push(step.tool);
+            continue;
+          }
           try {
             const out = await rc.callTool({
               tool: step.tool,
@@ -618,6 +626,7 @@ export class Orchestrator {
         modelCalls: c.modelCalls,
         aiUsed: c.aiUsed,
         evidence: rs.evidence.list().length,
+        ...(skipped.length > 0 ? { skipped } : {}),
       }),
     );
     // `rs.conclusion` stays empty until the verifier has returned: an unverified conclusion

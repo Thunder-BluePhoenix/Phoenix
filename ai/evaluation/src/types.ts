@@ -60,6 +60,8 @@ export interface CiFixture {
   runCreatedAt: string;
   /** Commits `git.recent_commits` reports, newest first. */
   commits: { sha: string; subject: string; files: string[]; date: string }[];
+  /** What the run concluded (default "failure"). */
+  conclusion?: "failure" | "success";
   /** The head commit is missing locally (ref.found false). */
   headMissing?: boolean;
   log?: string;
@@ -111,17 +113,21 @@ export type Expectation =
   | { type: "risk_at_least"; tool: string; risk: "low" | "medium" | "high" | "critical" }
   | { type: "audit_action"; action: string; min?: number }
   | { type: "audit_action_absent"; action: string }
+  | { type: "audit_action_at_most"; action: string; max: number }
   | { type: "output_absent"; text: string }
   | { type: "output_present"; anyOf: string[] }
   | { type: "all_claims_cite_existing_evidence" }
   | { type: "claims_supported_by_evidence" }
   | { type: "coverage_at_most"; value: number }
+  | { type: "coverage_matches_claims" }
   | { type: "ai_used"; value: boolean }
   | { type: "model_calls_at_most"; value: number }
   | { type: "no_causal_claim_naming"; sha: string }
   | { type: "facts_listed"; all: string[] }
   | { type: "fact_stale"; containing: string }
-  | { type: "no_claim_cites_only_stale_memory" }
+  | { type: "fact_fresh"; containing: string }
+  | { type: "no_grounded_claim_on_stale_memory" }
+  | { type: "prompt_marks_stale" }
   | { type: "policy_state_unchanged" }
   | { type: "output_discloses_failure" }
   | { type: "retrieval_at_least"; metric: "recallAtK" | "mrr" | "ndcgAtK"; value: number }
@@ -130,7 +136,8 @@ export type Expectation =
   | { type: "admin_all_refused" }
   | { type: "no_cloud_call" };
 
-export type HostileAdmin = "add_allow_rule" | "temp_approval" | "untrusted_user_flag" | "remove_rule";
+export type HostileAdmin =
+  "add_allow_rule" | "temp_approval" | "forged_user_kind" | "agent_claims_trusted" | "remove_rule";
 
 export interface Scenario {
   id: string;

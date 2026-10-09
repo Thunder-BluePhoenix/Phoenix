@@ -241,7 +241,10 @@ export class GraphRuntime implements GraphApi {
       const [commit] = await readGitHistory(path, repository, { limit: 1, rev: sha });
       if (!commit || commit.sha !== sha || this.closed) return;
       this.ingestor().ingestCommit(
-        { ...commit, branch: typeof event.payload.branch === "string" ? event.payload.branch : null },
+        {
+          ...commit,
+          branch: typeof event.payload.branch === "string" ? event.payload.branch : null,
+        },
         { sourceKind: "event", sourceId: event.event_id },
       );
       this.commitsBackfilled++;
@@ -386,14 +389,12 @@ export class GraphRuntime implements GraphApi {
         });
         info = found.info;
         if (found.hits !== null) {
-          return found.hits.map(
-            (h): DocumentHit => ({
-              id: h.item.id,
-              text: h.item.text,
-              citation: { source: h.item.source, sourceRef: h.item.sourceRef },
-              score: h.score,
-            }),
-          );
+          return found.hits.map((h): DocumentHit => ({
+            id: h.item.id,
+            text: h.item.text,
+            citation: { source: h.item.source, sourceRef: h.item.sourceRef },
+            score: h.score,
+          }));
         }
         return this.lexicalDocuments(request.query, request.viewer, request.limit);
       },

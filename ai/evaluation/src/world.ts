@@ -71,6 +71,8 @@ export interface World {
   ai: AiService;
   model: ModelCall;
   modelLog: ModelLog;
+  providerId: string;
+  modelName: string;
   events: PhoenixEvent[];
   confirmations: { approved: number; rejected: number };
   close(): Promise<void>;
@@ -149,8 +151,37 @@ function cloudProvider(log: ModelLog): ModelProvider {
   };
 }
 
+/** Wraps a real provider so every prompt and token count is logged like the scripted one's. */
+function recording(inner: ModelProvider, log: ModelLog, clock: { now: number }): ModelProvider {
+  return {
+    id: inner.id,
+    label: inner.label,
+    locality: inner.locality,
+    capabilities: inner.capabilities,
+    costTier: inner.costTier,
+    typicalLatencyMs: inner.typicalLatencyMs,
+    models: () => inner.models(),
+    health: () => inner.health(),
+    stream: (req, opts) => inner.stream(req, opts),
+    embed: (req, opts) => inner.embed(req, opts),
+    async generate(req, opts) {
+      const text = req.messages.map((m) => m.content).join("\n");
+      log.prompts.push({ text, privacy: req.privacy, purpose: req.purpose });
+      const started = Date.now();
+      const result = await inner.generate(req, opts);
+      clock.now += Date.now() - started;
+      log.inputTokens += result.usage?.inputTokens ?? Math.ceil(text.length / 4);
+      log.outputTokens += result.usage?.outputTokens ?? Math.ceil(result.text.length / 4);
+      log.replies.push(result.text);
+      return result;
+    },
+  };
+}
+
 export interface WorldOptions {
   setup: Setup;
+  /** Replaces the scripted model (the opt-in real-Ollama run). Its calls are still logged. */
+  realProvider?: ModelProvider;
   /** Agents beyond the CI agent; built with the world's model. */
   extraAgents?: (w: Pick<World, "model" | "engine" | "viewer" | "admin">) => AgentDefinition[];
 }
@@ -173,7 +204,8 @@ export async function buildWorld(options: WorldOptions): Promise<World> {
     const id = e.payload.confirmation_id;
     if (typeof id !== "string" || approvals === "none") return;
     const ok = approvals === "approve_all";
-    if (permissions.resolveConfirmation(id, ok, "eval-user")) confirmations[ok ? "approved" : "rejected"]++;
+    if (permissions.resolveConfirmation(id, ok, "eval-user"))
+      confirmations[ok ? "approved" : "rejected"]++;
   });
   const manager = new CapabilityManager({
     db,
@@ -243,7 +275,8 @@ export async function buildWorld(options: WorldOptions): Promise<World> {
       dedupeKey: `eval:${seed.key}`,
       ...(seed.ttlDays === undefined ? {} : { freshnessTtlDays: seed.ttlDays }),
     });
-    if (out.status !== "stored") throw new Error(`memory seed "${seed.key}" not stored: ${out.status}`);
+    if (out.status !== "stored")
+      throw new Error(`memory seed "${seed.key}" not stored: ${out.status}`);
   }
   memClock.now = new Date(SCENARIO_NOW);
   const ceiling = setup.viewerMaxSensitivity ?? "sensitive";
@@ -254,9 +287,19 @@ export async function buildWorld(options: WorldOptions): Promise<World> {
   });
 
   // Model: a scripted provider behind the real AiService (router + privacy gate).
-  const modelLog: ModelLog = { prompts: [], inputTokens: 0, outputTokens: 0, cloudCalls: 0, replies: [] };
+  const modelLog: ModelLog = {
+    prompts: [],
+    inputTokens: 0,
+    outputTokens: 0,
+    cloudCalls: 0,
+    replies: [],
+  };
   const registry2 = new ProviderRegistry();
-  registry2.register(scriptedProvider(setup.model ?? [], modelLog, clock));
+  registry2.register(
+    options.realProvider
+      ? recording(options.realProvider, modelLog, clock)
+      : scriptedProvider(setup.model ?? [], modelLog, clock),
+  );
   registry2.register(cloudProvider(modelLog));
   const ai = new AiService({
     registry: registry2,
@@ -319,6 +362,8 @@ export async function buildWorld(options: WorldOptions): Promise<World> {
     ai,
     model,
     modelLog,
+    providerId: options.realProvider?.id ?? "eval-fake",
+    modelName: options.realProvider ? "real" : "scripted-1",
     events,
     confirmations,
     async close() {

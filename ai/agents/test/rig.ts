@@ -70,6 +70,9 @@ export interface RigOptions {
     dedupeKey: string;
     scope?: string;
     contentType?: "doc" | "meeting_summary";
+    /** Days since the source last confirmed it, and its freshness limit (null/absent: never stale). */
+    ageDays?: number;
+    ttlDays?: number;
   }[];
   githubData?: (g: MockGithub) => void;
   /** Replaces the fake model (used by a throwaway script that talks to a real Ollama). */
@@ -165,24 +168,31 @@ export async function makeRig(options: RigOptions = {}): Promise<Rig> {
     approver: approverFromPermissions(permissions),
   });
 
-  const memStore = new MemoryStore(db);
+  // The memory clock is a variable so seeding can say when a note was last confirmed.
+  const seedClock = { now: new Date() };
+  const memStore = new MemoryStore(db, { now: () => seedClock.now });
   const pipeline = new MemoryPipeline({
     store: memStore,
     owner: "me",
     policy: createDefaultPolicy({ isSourceEnabled: () => true, allowSensitive: () => true }),
   });
+  const realNow = new Date();
   for (const m of options.memory ?? []) {
+    const observed = new Date(realNow.getTime() - (m.ageDays ?? 0) * 86_400_000);
+    seedClock.now = observed;
     pipeline.capture({
       source: "project-docs",
       sourceRef: "docs/notes.md",
       scope: m.scope ?? "path:/docs",
       contentType: m.contentType ?? "doc",
-      observedAt: "2026-10-01T00:00:00.000Z",
+      observedAt: observed.toISOString(),
       provenance: {},
       text: m.text,
       dedupeKey: m.dedupeKey,
+      ...(m.ttlDays === undefined ? {} : { freshnessTtlDays: m.ttlDays }),
     });
   }
+  seedClock.now = realNow;
   const engine = new ContextEngine({
     store: memStore,
     clock: { now: () => new Date(), timeZone: "UTC" },

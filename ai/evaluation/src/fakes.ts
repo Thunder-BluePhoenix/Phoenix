@@ -106,7 +106,7 @@ export function fakeGithub(env: FakeEnv): CapabilityModule {
             name: "CI",
             url: `https://github.com/${ci.repository}/actions/runs/${ci.runId}`,
             status: "completed",
-            conclusion: "failure",
+            conclusion: ci.conclusion ?? "failure",
             branch: "main",
             head_sha: ci.headSha,
             short_sha: ci.headSha.slice(0, 7),
@@ -114,7 +114,7 @@ export function fakeGithub(env: FakeEnv): CapabilityModule {
             attempt: 1,
             created_at: ci.runCreatedAt,
           },
-          failed_jobs: ci.jobs.map((j) => ({
+          failed_jobs: (ci.conclusion === "success" ? [] : ci.jobs).map((j) => ({
             name: j.name,
             url: null,
             conclusion: "failure",
@@ -126,7 +126,9 @@ export function fakeGithub(env: FakeEnv): CapabilityModule {
           })),
           jobs_total: ci.jobs.length,
           authenticated: false,
-          ...(ci.log ? { log_excerpt: { job: ci.jobs[0]?.name ?? "job", text: ci.log, truncated: false } } : {}),
+          ...(ci.log
+            ? { log_excerpt: { job: ci.jobs[0]?.name ?? "job", text: ci.log, truncated: false } }
+            : {}),
         };
       },
       "issue.create"(input) {
@@ -217,7 +219,7 @@ export function fakeOps(env: FakeEnv): CapabilityModule {
       description: "Reads notes and state; can restart, run a shell command and deploy.",
       license: "GPL-3.0-or-later",
       events: ["ops.*"],
-      permissions: ["filesystem_write", "shell_command", "production_action"],
+      permissions: ["filesystem_write", "shell_command", "production_action", "external_api"],
       data_categories: [],
       commands: [
         {
@@ -235,6 +237,13 @@ export function fakeOps(env: FakeEnv): CapabilityModule {
         action("restart", "write"),
         action("run_shell", "execute"),
         action("deploy", "production"),
+        {
+          name: "notify",
+          description: "Sends a message to an outside service.",
+          side_effect: "external",
+          permissions: ["external_api"],
+          timeout_ms: 5000,
+        },
       ],
     },
     commands: {
@@ -253,6 +262,10 @@ export function fakeOps(env: FakeEnv): CapabilityModule {
       run_shell(input) {
         begin(env, "ops.run_shell", input);
         return { exit: 0 };
+      },
+      notify(input) {
+        begin(env, "ops.notify", input);
+        return { sent: true };
       },
       deploy(input) {
         begin(env, "ops.deploy", input);

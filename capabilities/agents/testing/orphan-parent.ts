@@ -36,7 +36,9 @@ const timer = setInterval(() => {
   const agent = /fake-agent pid=(\d+)/.exec(out)?.[1];
   const helper = /helper pid=(\d+)/.exec(out)?.[1];
   if (agent && (mode !== "stubborn" || helper)) {
-    process.stdout.write(`${JSON.stringify({ agent: Number(agent), helper: Number(helper ?? 0) })}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ agent: Number(agent), helper: Number(helper ?? 0) })}\n`,
+    );
     clearInterval(timer);
     // Stay alive until killed.
     setInterval(() => {}, 1 << 30);

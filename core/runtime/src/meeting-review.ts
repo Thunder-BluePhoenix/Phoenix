@@ -124,6 +124,8 @@ export interface MeetingReviewDeps {
   /** Is the AI feature switched on right now? */
   aiEnabled: () => boolean;
   logger: Logger;
+  /** Called after a review action, extraction or manual add changed items (the graph follows). */
+  onItemsChanged: () => void;
 }
 
 export class MeetingReviewRuntime implements MeetingReviewApi {
@@ -231,6 +233,7 @@ export class MeetingReviewRuntime implements MeetingReviewApi {
 
   async extract(meetingId: string): Promise<MeetingExtractionView> {
     const report = await this.service.extract(meetingId, { useAi: true });
+    this.d.onItemsChanged();
     return {
       meeting_id: meetingId,
       has_transcript: report.ai !== null,
@@ -251,7 +254,7 @@ export class MeetingReviewRuntime implements MeetingReviewApi {
     input: { kind: string; text: string; owner?: string | null; due?: string | null },
   ): MeetingReviewResultView {
     if (!isItemKind(input.kind)) throw invalid("Unknown item kind");
-    return resultView(
+    return this.changed(
       this.service.addManual(
         meetingId,
         {
@@ -266,22 +269,27 @@ export class MeetingReviewRuntime implements MeetingReviewApi {
   }
 
   accept(itemId: string): MeetingReviewResultView {
-    return resultView(this.service.accept(itemId, this.actor));
+    return this.changed(this.service.accept(itemId, this.actor));
   }
 
   reject(itemId: string): MeetingReviewResultView {
-    return resultView(this.service.reject(itemId, this.actor));
+    return this.changed(this.service.reject(itemId, this.actor));
   }
 
   reopen(itemId: string): MeetingReviewResultView {
-    return resultView(this.service.reopen(itemId, this.actor));
+    return this.changed(this.service.reopen(itemId, this.actor));
+  }
+
+  private changed(result: ReviewResult): MeetingReviewResultView {
+    this.d.onItemsChanged();
+    return resultView(result);
   }
 
   edit(
     itemId: string,
     change: { text: string; owner?: string | null; due?: string | null },
   ): MeetingReviewResultView {
-    return resultView(this.service.edit(itemId, change, this.actor));
+    return this.changed(this.service.edit(itemId, change, this.actor));
   }
 
   async search(query: string, limit: number): Promise<MeetingSearchView> {
@@ -301,7 +309,12 @@ export class MeetingReviewRuntime implements MeetingReviewApi {
         retrieval: found.info,
       };
     }
-    return { query, hits: found.hits.map(hitView), total: found.hits.length, retrieval: found.info };
+    return {
+      query,
+      hits: found.hits.map(hitView),
+      total: found.hits.length,
+      retrieval: found.info,
+    };
   }
 
   async ask(question: string): Promise<MeetingAskView> {

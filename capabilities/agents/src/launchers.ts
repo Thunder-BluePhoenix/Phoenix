@@ -61,7 +61,6 @@ export interface LauncherConfigResult {
   problems: string[];
 }
 
-
 const LAUNCHER_KEYS: readonly string[] = [
   "command",
   "cwd_roots",
@@ -140,7 +139,8 @@ function checkLauncher(name: string, raw: unknown, problems: string[]): Launcher
   );
   for (const root of roots ?? []) {
     if (!isCleanAbsolute(root)) problems.push(`${at}: cwd_roots must be normalised absolute paths`);
-    else if (root === dirname(root)) problems.push(`${at}: cwd_roots must not be the filesystem root`);
+    else if (root === dirname(root))
+      problems.push(`${at}: cwd_roots must not be the filesystem root`);
     else if (root.includes("*")) problems.push(`${at}: cwd_roots must not contain "*"`);
   }
   let envAllow: string[] | undefined;
@@ -207,7 +207,6 @@ export class LauncherRefusal extends Error {
   override name = "LauncherRefusal";
 }
 
-
 /**
  * Looks at the real files NOW (they may have changed since the config was written) and refuses
  * anything unsafe: an executable that is missing, not a regular executable file, or writable by
@@ -216,9 +215,7 @@ export class LauncherRefusal extends Error {
  */
 export function resolveLaunch(spec: LauncherSpec, workspace: string): ResolvedLaunch {
   if (!isCleanAbsolute(workspace) || workspace.includes("*")) {
-    throw new LauncherRefusal(
-      "The workspace must be a normalised absolute path without wildcards",
-    );
+    throw new LauncherRefusal("The workspace must be a normalised absolute path without wildcards");
   }
   let executable: string;
   try {
@@ -253,7 +250,8 @@ export function resolveLaunch(spec: LauncherSpec, workspace: string): ResolvedLa
     const rel = relative(rootReal, real);
     return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
   });
-  if (!inside) throw new LauncherRefusal("The workspace is outside this launcher's allowed folders");
+  if (!inside)
+    throw new LauncherRefusal("The workspace is outside this launcher's allowed folders");
   return { executable, workspace: real };
 }
 

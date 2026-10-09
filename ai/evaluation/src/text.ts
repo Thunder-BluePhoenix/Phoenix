@@ -14,16 +14,16 @@ export const includesText = (haystack: string, needle: string): boolean =>
   normalise(haystack).includes(normalise(needle));
 
 const STOP: Record<string, true> = Object.fromEntries(
-  (
-    "about after again also because been before being below between both could does doing down during each from further have having here into more most only other over same should some such than that their them then there these they this those through under until very what when where which while with would your the and for are was were its not but can will not"
-  )
+  "about after again also because been before being below between both could does doing down during each from further have having here into more most only other over same should some such than that their them then there these they this those through under until very what when where which while with would your the and for are was were its not but can will not"
     .split(" ")
     .map((w): [string, true] => [w, true]),
 );
 
 const HEX = /\b[0-9a-f]{7,40}\b/g;
 const QUOTED = /["'`“”‘’]([^"'`“”‘’]{2,80})["'`“”‘’]/g;
-const IDENT = /[\p{L}\p{N}]*[\p{N}_./-][\p{L}\p{N}_./-]*/gu;
+// A token that has a digit, or an underscore, dot, slash or hyphen BETWEEN two alphanumerics.
+// A sentence-ending full stop ("failed.") must not turn a plain word into an identifier.
+const IDENT = /[\p{L}\p{N}]+(?:[_./-][\p{L}\p{N}]+)+|[\p{L}]*[\p{N}][\p{L}\p{N}]*/gu;
 
 /**
  * The identifiers a claim asserts: commit shas, quoted names, and tokens with digits or
@@ -36,7 +36,7 @@ export function identifiersOf(claim: string): string[] {
   for (const m of text.matchAll(HEX)) found[m[0]] = true;
   for (const m of text.matchAll(QUOTED)) if (m[1]) found[m[1].trim()] = true;
   for (const m of text.matchAll(IDENT)) {
-    const token = m[0].replace(/^[./-]+|[./-]+$/g, "");
+    const token = m[0];
     // Plain numbers like "1" or "2" say nothing; versions, paths, job names and ids do.
     if (token.length >= 3 && /[\p{L}]/u.test(token)) found[token] = true;
   }
@@ -45,7 +45,8 @@ export function identifiersOf(claim: string): string[] {
 
 export function contentWordsOf(text: string): string[] {
   const seen: Record<string, true> = {};
-  for (const w of normalise(text).match(/[\p{L}]{5,}/gu) ?? []) if (STOP[w] !== true) seen[w] = true;
+  for (const w of normalise(text).match(/[\p{L}]{5,}/gu) ?? [])
+    if (STOP[w] !== true) seen[w] = true;
   return Object.keys(seen);
 }
 

@@ -5,7 +5,7 @@
 | Stage | Stage 6 — Meeting → Engineering (v0.6) |
 | Release target | v0.6 |
 | Priority | High |
-| Status | 🟨 Library built; not wired into Core or the web app |
+| Status | 🟨 Library built and wired into Core (routes below); the web review panel is not built yet |
 | Depends on | [Phase 33 — AI Evaluation Harness & v0.4 Release](phase-33-ai-evaluation-harness.md), [Phase 16 — Meetings UI & Recording Indicator](phase-16-meetings-ui.md) |
 | Unblocks | [Phase 36 — Action Items → Engineering Tasks](phase-36-action-items-to-engineering-tasks.md) |
 
@@ -35,7 +35,7 @@ Turn meeting artifacts into reviewable decisions and action items.
 
 ## Exit criteria
 
-- [ ] Decisions and action items reviewable inside Phoenix (service done; open until Core routes and the web review panel exist)
+- [ ] Decisions and action items reviewable inside Phoenix (service and Core routes done and tested; open until the web review panel exists)
 
 ## Implementation notes
 
@@ -64,7 +64,74 @@ Package `ai/meetings` (`@phoenix/ai-meetings`), migration version 9 (`meeting_it
 
 **Search and ask.** `searchMeetings` and `askAboutMeetings` read memory domain `meeting` through the viewer's grants inside the search, so a meeting the viewer cannot see takes no result slot and shows in no count. Hits say whether a fact is `reviewed` (accepted in Phoenix) or from Kage's summary, and cite meeting id and item id. `ask` keeps stored facts apart from the labelled interpretation.
 
-**Wiring still to do** (parent): construct `MeetingItemService`, subscribe after meeting sync, add routes and the review panel, and add `meeting-review` to the memory policy's enabled sources. See `sharedEditsNeeded` in the phase result.
+## Wired into Core
+
+`core/runtime/src/meeting-review.ts` (`MeetingReviewRuntime`), routes in `core/api/src/meeting-routes.ts`, tests in `core/runtime/test/meeting-review.test.ts` (41 cases through the real HTTP API).
+
+- **Import.** After every `MeetingStore` change (a summary stored, archive, delete) Core imports Kage's decisions, action items and topics as `proposed` (`extracted_by: "kage"`). This is local and makes no model call.
+- **AI extraction is never automatic.** Only `POST /api/meetings/:id/items/extract` runs it, through `AiService` (privacy `sensitive`, purpose outside `SENSITIVE_CLOUD_PURPOSES`), so with every cloud opt-in on a transcript is still refused to the cloud (tested: zero cloud requests, transcript text in no request body). AI off: the route imports Kage's items and says `ai.unavailable`.
+- **Memory.** `meeting-review` is an enabled memory source; its sensitive facts still need `allow_sensitive_meetings`. Accepted items accepted while that is off are re-derived when it is turned on.
+- **Memory tab forget.** `POST /api/memory/:id/forget` and `POST /api/memory/delete` reject the item behind a forgotten `meeting-review` fact (the Phase 35 gap).
+- `reviewed_by` is the session user (`"owner"`; Core has one viewer). Every action writes an audit entry `meeting.item.reviewed|added|imported|extracted` with ids and counts.
+- A meeting the viewer cannot see, or that does not exist, is 404 for every route (indistinguishable).
+- Search and ask use the hybrid retriever when Phase 37 retrieval is on (`retrieval.mode` says which ran).
+
+## API contract
+
+All routes need the session token. Request bodies are JSON objects with **exact keys**: an unknown field is 400. Errors are `{code, message, details}`; 400 = invalid request or a transition the table forbids, 404 = unknown meeting/item (or not visible), 401 = no token. JSON is snake_case.
+
+**Item** (`MeetingItemView`):
+
+```json
+{
+  "id": "mi_…", "meeting_id": "kage:7",
+  "kind": "decision | action_item | requirement | topic | project_ref",
+  "text": "…", "owner": "Ben | null", "due": "Friday | null",
+  "status": "proposed | accepted | edited | rejected",
+  "extracted_by": "kage | manual | ai:<provider>/<model>",
+  "evidence": { "source": "transcript | summary", "quote": "…verbatim…",
+                "segment_start": 0, "segment_end": 1, "char_start": 0, "char_end": 40 } ,
+  "original": { "text": "…", "owner": null, "due": null },
+  "created_at": "ISO", "reviewed_at": "ISO | null", "reviewed_by": "owner | null"
+}
+```
+
+`evidence` may be `null` (Kage items without a findable quote, manual items); its `segment_*` / `char_*` keys are present only when known. `char_*` offsets refer to the transcript as the model saw it (see the gap register), so highlight by searching for `quote`. `original` is `null` until the first edit and then holds the extracted wording. Only action items carry `owner`/`due`.
+
+**Result of a review action** (`MeetingReviewResultView`): `{ "item": Item, "memory": { "stored": 1, "refused": ["sensitive meeting data from \"meeting-review\" needs explicit permission"] } }`. `memory.refused` is non-empty when the item is accepted but memory refused the fact (typically `allow_sensitive_meetings` is off): show it next to the item.
+
+| Route | Body / query | Success |
+|---|---|---|
+| `GET /api/meetings/:id/items?status=&kind=` | `status` ∈ proposed/accepted/edited/rejected, `kind` ∈ the five kinds; both optional; unknown value → 400 | 200 `{ "meeting_id", "items": Item[], "counts": {"proposed":n,"accepted":n,"edited":n,"rejected":n} }`. Items are oldest first. `counts` ignore the filters (they cover all items of the meeting). |
+| `POST /api/meetings/:id/items/extract` | `{}` | **202** `MeetingExtractionView` (below). Runs Kage import, then the model. Can take a minute with a local model: show progress and disable the button. |
+| `POST /api/meetings/:id/items` | `{ "kind", "text" (1-500), "owner"?: string\|null, "due"?: string\|null }` | **201** `Result`; the item starts `accepted`, `extracted_by: "manual"`. 400 for owner/due on a non-action item or text already present. |
+| `POST /api/meeting-items/:id/accept` | `{}` | 200 `Result` (proposed/edited → accepted) |
+| `POST /api/meeting-items/:id/reject` | `{}` | 200 `Result` (proposed/edited/accepted → rejected; its memory fact is removed) |
+| `POST /api/meeting-items/:id/reopen` | `{}` | 200 `Result` (rejected → proposed; never straight to accepted) |
+| `POST /api/meeting-items/:id/edit` | `{ "text" (1-500), "owner"?, "due"? }` (`undefined` keeps, `null` clears) | 200 `Result`: proposed/edited → `edited`; accepted stays `accepted` and its fact is replaced; rejected → 400 (reopen first). |
+| `GET /api/meetings/search?q=&limit=` | `q` 1-500 chars, `limit` 1-50 (default 20) | 200 `{ "query", "hits": Hit[], "total", "retrieval": Retrieval }` |
+| `POST /api/meetings/ask` | `{ "question" (1-500) }` | 200 `{ "question", "facts": [{ "ref":"M1","text","meeting_id","item_id","memory_id","origin" }], "interpretation": string\|null, "processed_by": string\|null, "ai_used": bool, "note": string\|null, "retrieval": Retrieval }`. `facts` are stored text only; `interpretation` is generated, labelled by `processed_by`, and null with AI off. |
+
+**Hit**: `{ "meeting_id", "item_id": string|null, "memory_id", "text", "origin": "reviewed|kage", "part": "decision|action_item|summary|…", "observed_at", "freshness": "fresh|stale", "score" }`. `origin: "reviewed"` = accepted in Phoenix; `"kage"` = Kage's own summary, unreviewed here.
+
+**Retrieval** (additive on every search/ask): `{ "mode": "lexical" | "hybrid", "vector_skipped_reason"?: string, "truncated"?: true }`. `mode: "lexical"` is the default (AI or retrieval off, or the vector half fell back: then `vector_skipped_reason` says why).
+
+**Extraction report** (`MeetingExtractionView`):
+
+```json
+{ "meeting_id": "kage:7", "has_transcript": true,
+  "kage": { "imported": 0, "duplicates": 3, "removed": 0 },
+  "ai": { "stored": 2, "unavailable": null,
+          "stats": { "chunks": 1, "chars_skipped": 0, "proposed": 3, "grounded": 2,
+                     "dropped": { "malformed": 0, "no_quote": 0, "quote_unusable": 0, "quote_not_found": 1, "text_not_supported": 0 },
+                     "owners_dropped": 0, "dues_dropped": 0, "ignored_fields": 0, "duplicates": 0,
+                     "capped": 0, "unparseable_chunks": 0, "failed_chunks": 0 } },
+  "counts": { "proposed": 5, "accepted": 0, "edited": 0, "rejected": 0 } }
+```
+
+`ai` is `null` when the meeting has no transcript; `ai.unavailable` is a sentence for the user when no model was used (AI off, no provider allowed to see transcripts, provider down). The UI SHOULD show `chars_skipped > 0` ("part of this transcript was not analysed") and the sum of `dropped` ("n suggestions were discarded because their quote is not in the transcript").
+
+**UI rules the contract implies.** Show the evidence quote next to every AI or Kage item; label `extracted_by`; an item's memory fact exists only while it is `accepted`; after `memory.refused` is non-empty say the fact is not remembered yet; after the Memory tab forgets a fact its item shows `rejected`.
 
 ## Source documents
 

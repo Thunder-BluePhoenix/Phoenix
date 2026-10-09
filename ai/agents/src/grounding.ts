@@ -253,6 +253,169 @@ export function checkCommitWording(
   };
 }
 
+// ── Support: does the cited evidence contain what the claim asserts? ────────
+
+const INVISIBLE = /[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff\u00ad]/g;
+const EVIDENCE_REF = /^e[0-9]{1,3}$/;
+const ORDINAL_OR_UNIT = /^[0-9]+(?:st|nd|rd|th|s|ms|m|h|d|am|pm|min|sec|kb|mb|gb)$/;
+/**
+ * Hyphenated plain words that are ordinary English, not names. A hyphenated name such as
+ * "secret-scan" IS checked; these are not, so an honest paraphrase is not rejected for them.
+ */
+const COMMON_COMPOUNDS: Readonly<Record<string, true>> = {
+  "rule-based": true,
+  "re-run": true,
+  "re-runs": true,
+  "built-in": true,
+  "up-to-date": true,
+  "follow-up": true,
+  "non-zero": true,
+  "well-known": true,
+  "open-source": true,
+  "third-party": true,
+  "read-only": true,
+  "long-running": true,
+  "high-risk": true,
+  "low-risk": true,
+  "so-called": true,
+  "step-by-step": true,
+  "one-off": true,
+};
+const MAX_CHECKED_IDENTIFIERS = 24;
+
+/** NFKC, invisible characters removed, lower-cased: zero-width characters cannot hide a match. */
+function fold(text: string): string {
+  return text.normalize("NFKC").replace(INVISIBLE, "").toLowerCase();
+}
+
+const QUOTED_PHRASE =
+  /["`\u201c]([^"`\u201c\u201d]{2,80})["`\u201d]|(?<![\p{L}\p{N}])'([^']{2,80})'(?![\p{L}\p{N}])/gu;
+
+function trimPunctuation(token: string): string {
+  return token.replace(/^[([{'"`<]+/, "").replace(/[.,;:!?)\]}'"`>]+$/, "");
+}
+
+/**
+ * The identifier-like things a claim asserts, and only those: quoted names, commit shas (7-40 hex
+ * characters containing a digit), numbers of five or more digits (run and job ids), paths and file
+ * names, and names with an underscore, digit or hyphen. Plain words are never checked, so honest
+ * paraphrase is not rejected. References to evidence ("E4") are not identifiers of the claim.
+ */
+export function identifiersIn(claim: string): string[] {
+  const text = fold(claim);
+  const found: Record<string, true> = {};
+  for (const m of text.matchAll(QUOTED_PHRASE)) {
+    const phrase = (m[1] ?? m[2] ?? "").trim();
+    if (phrase.length >= 2) found[phrase] = true;
+  }
+  // Words inside quotes were taken whole above; the rest is scanned token by token.
+  const rest = text.replace(QUOTED_PHRASE, " ");
+  for (const raw of rest.split(/[\s,;()[\]{}<>]+/)) {
+    const token = trimPunctuation(raw);
+    if (token.length < 3 || EVIDENCE_REF.test(token)) continue;
+    const hasLetter = /\p{L}/u.test(token);
+    const hasDigit = /\p{N}/u.test(token);
+    if (/^[0-9a-f]{7,40}$/.test(token)) {
+      if (hasDigit) found[token] = true;
+    } else if (/^[0-9]{5,}$/.test(token)) {
+      found[token] = true;
+    } else if (token.includes("/") || token.includes("\\")) {
+      const bare = token.replace(/^\.?\//, "");
+      const segments = bare.split(/[/\\]/).filter(Boolean);
+      const pathLike =
+        segments.length >= 3 ||
+        /[._@~\p{N}-]/u.test(bare) ||
+        token.startsWith(".") ||
+        token.startsWith("/");
+      if (segments.length >= 2 && pathLike) found[bare] = true;
+    } else if (
+      /^[\p{L}\p{N}_-]*\.[\p{L}\p{N}]{1,5}$/u.test(token) ||
+      /^\.[\p{L}]{3,}$/u.test(token)
+    ) {
+      // A file name: "package.json", ".gitleaksignore". "e.g." and "i.e." fall out (no stem).
+      const stem = token.slice(0, token.lastIndexOf("."));
+      if (token.startsWith(".") || (stem.length >= 2 && hasLetter && !/^[0-9.]+$/.test(token))) {
+        found[token] = true;
+      }
+    } else if (/[_]/.test(token) && hasLetter) {
+      found[token] = true;
+    } else if (/^[\p{L}]+(?:-[\p{L}\p{N}]+)+$|^[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)+$/u.test(token)) {
+      if (COMMON_COMPOUNDS[token] !== true && (hasDigit || token.length >= 6)) found[token] = true;
+    } else if (/^\p{L}+\p{N}[\p{L}\p{N}]*$/u.test(token) && !ORDINAL_OR_UNIT.test(token)) {
+      found[token] = true;
+    }
+  }
+  return Object.keys(found).slice(0, MAX_CHECKED_IDENTIFIERS);
+}
+
+/** Identifiers the claim asserts that none of `evidenceTexts` contains. Empty = supported. */
+export function unsupportedIdentifiers(claim: string, evidenceTexts: readonly string[]): string[] {
+  const evidence = fold(evidenceTexts.join("\n"));
+  return identifiersIn(claim).filter((id) => !evidence.includes(id));
+}
+
+/** Evidence ids whose text is old memory: set by the agent when it copies memory in. */
+export type StaleEvidence = Readonly<Record<string, true>>;
+
+export const STALE_NOTE = "rests on stale memory";
+export const UNSUPPORTED_NOTE = "cited but unsupported";
+
+export interface ClaimAssessment {
+  /** Citations that exist, are not model output and have text. */
+  evidenceIds: string[];
+  grounded: boolean;
+  notes: string[];
+  /** Citations removed because the evidence does not exist or is empty. */
+  invalid: number;
+}
+
+/**
+ * Decides whether a claim is grounded. All of these must hold: it cites at least one piece of
+ * evidence; every cited id exists, is not model output and has text; it cites at least one piece of
+ * FRESH evidence (a claim resting only on stale memory is not grounded); and the fresh cited text
+ * contains every identifier the claim asserts. Model text only: rule claims are built from the
+ * evidence itself.
+ */
+export function assessClaim(
+  text: string,
+  cited: readonly string[],
+  book: EvidenceBook,
+  stale: StaleEvidence = {},
+): ClaimAssessment {
+  const { valid, invalid } = checkCitations(cited, book);
+  const notes: string[] = [];
+  if (cited.length === 0) notes.push("cites no evidence");
+  if (invalid.length > 0) {
+    notes.push(
+      `cites evidence that does not exist or is empty: ${invalid.join(", ").slice(0, 80)}`,
+    );
+  }
+  const fresh = valid.filter((id) => stale[id] !== true);
+  const staleIds = valid.filter((id) => stale[id] === true);
+  let grounded = valid.length > 0 && invalid.length === 0;
+  if (grounded && fresh.length === 0) {
+    grounded = false;
+    notes.push(`${STALE_NOTE}: ${staleIds.join(", ")}`);
+  }
+  if (grounded) {
+    const texts = fresh.flatMap((id) => book.get(id)?.excerpt ?? []);
+    const missing = unsupportedIdentifiers(text, texts);
+    if (missing.length > 0) {
+      grounded = false;
+      const staleTexts = staleIds.flatMap((id) => book.get(id)?.excerpt ?? []);
+      const onlyStale =
+        staleTexts.length > 0 &&
+        unsupportedIdentifiers(missing.join(" \n "), staleTexts).length === 0;
+      notes.push(
+        onlyStale
+          ? `${STALE_NOTE}: ${staleIds.join(", ")}`
+          : `${UNSUPPORTED_NOTE}: the cited evidence does not contain ${missing.slice(0, 3).join(", ").slice(0, 80)}`,
+      );
+    }
+  }
+  return { evidenceIds: valid, grounded, notes, invalid: invalid.length };
+}
+
 // ── Claims ───────────────────────────────────────────────────────────────────
 
 export interface VerifiedClaims {
@@ -271,29 +434,24 @@ export function verifyModelClaims(
   commits: readonly CommitFacts[],
   terms: readonly string[],
   namedPaths: readonly string[],
+  stale: StaleEvidence = {},
 ): VerifiedClaims {
   let invalidCitations = 0;
   let reworded = 0;
   let grounded = 0;
   const out = claims.map((claim): DiagnosisClaim => {
-    const { valid, invalid } = checkCitations(claim.evidence, book);
-    invalidCitations += invalid.length;
     const wording = checkCommitWording(claim.text, commits, terms, namedPaths);
     if (wording.note) reworded++;
-    const notes: string[] = [];
-    if (claim.evidence.length === 0) notes.push("cites no evidence");
-    if (invalid.length > 0) {
-      notes.push(
-        `cites evidence that does not exist or is empty: ${invalid.join(", ").slice(0, 80)}`,
-      );
-    }
-    if (wording.note) notes.push(wording.note);
-    const isGrounded = valid.length > 0 && invalid.length === 0;
-    if (isGrounded) grounded++;
+    // Support is checked against what the claim says AFTER any rewrite: the rewritten sentence
+    // asserts nothing the evidence could fail to contain.
+    const a = assessClaim(wording.text, claim.evidence, book, stale);
+    invalidCitations += a.invalid;
+    const notes = [...a.notes, ...(wording.note ? [wording.note] : [])];
+    if (a.grounded) grounded++;
     return {
       text: wording.text,
-      evidenceIds: valid,
-      grounded: isGrounded,
+      evidenceIds: a.evidenceIds,
+      grounded: a.grounded,
       origin: "model",
       ...(notes.length > 0 ? { note: notes.join("; ").slice(0, 200) } : {}),
     };

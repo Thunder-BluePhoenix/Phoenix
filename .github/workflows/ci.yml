@@ -27,6 +27,29 @@ jobs:
       - name: Build web app
         run: pnpm build:web
 
+  # AI evaluation (Phase 33, ADR-0010). Offline only: scripted models and fake capabilities, no
+  # network, no Ollama. The test step fails on any regression against the committed baseline
+  # (ai/evaluation/golden/offline-report.json). The gate step prints the v0.4 release-gate verdict;
+  # it is informational (continue-on-error) while D1-D3 in docs/release-gates.md are open, because
+  # that gate FAILS on them by design. Remove continue-on-error once the owner has fixed or accepted them.
+  ai-evaluation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Offline evaluation and adversarial suite
+        run: npx vitest run ai/evaluation
+      - name: Release gate v0.4 (verdict)
+        continue-on-error: true
+        run: |
+          npx tsx ai/evaluation/src/cli.ts run
+          npx tsx ai/evaluation/src/cli.ts gate v0.4
+
   # The desktop shell (Phase 14). macOS only: it is the one platform verified so far, and the
   # Linux build needs webkit2gtk system packages that are not set up yet.
   desktop:

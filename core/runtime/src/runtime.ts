@@ -227,6 +227,7 @@ export class PhoenixRuntime implements CoreServices {
       ai: this.ai.service,
       aiEnabled: () => this.ai.aiSettings().enabled,
       logger: this.logger,
+      onItemsChanged: () => this.graph.syncMeetings(),
     });
     this.graph = new GraphRuntime({
       db: this.db,

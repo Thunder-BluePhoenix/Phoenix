@@ -41,7 +41,12 @@ const outputOf = (m: SessionManager, id: string) => m.output(id, 500).stdout.joi
 describe("session lifecycle", () => {
   it("runs the agent in the workspace, gives it the prompt on stdin and records a clean exit", async () => {
     const { manager, root, workspace, changes } = setup();
-    const view = manager.start("fake", fakeLauncher(root), workspace, "FAKE:echo\nrename the widget");
+    const view = manager.start(
+      "fake",
+      fakeLauncher(root),
+      workspace,
+      "FAKE:echo\nrename the widget",
+    );
     expect(view).toMatchObject({ state: "running", repository: "project", workspace });
     await waitFor(manager, view.id, "completed");
     expect(outputOf(manager, view.id)).toContain("Working on: rename the widget");
@@ -57,7 +62,7 @@ describe("session lifecycle", () => {
     await waitFor(manager, view.id, "completed");
     const out = outputOf(manager, view.id);
     expect(out).toMatch(/argv=\["?[^"]*"?\]/);
-    expect(out).not.toContain("SECRET-TASK-TEXT-123456\"");
+    expect(out).not.toContain('SECRET-TASK-TEXT-123456"');
     const argvLine = out.split("\n").find((l) => l.startsWith("fake-agent pid="))!;
     expect(argvLine).toContain("argv=[]");
     expect(manager.get(view.id)?.exit_code).toBe(0);
@@ -146,7 +151,9 @@ describe("session lifecycle", () => {
       /2 sessions are already running/,
     );
     await manager.stop(a.id);
-    expect(() => manager.start("fake", fakeLauncher(root), workspace, "FAKE:hang\n4")).not.toThrow();
+    expect(() =>
+      manager.start("fake", fakeLauncher(root), workspace, "FAKE:hang\n4"),
+    ).not.toThrow();
   });
 
   it("refuses send to a finished session, to an unknown one and over a closed input channel", async () => {
@@ -222,7 +229,12 @@ describe("session lifecycle", () => {
       manager.start("fake", fakeLauncher(root, { command: [writable] }), workspace, "x"),
     ).toThrow(/not an executable/);
     expect(() =>
-      manager.start("fake", fakeLauncher(root, { command: [join(root, "missing")] }), workspace, "x"),
+      manager.start(
+        "fake",
+        fakeLauncher(root, { command: [join(root, "missing")] }),
+        workspace,
+        "x",
+      ),
     ).toThrow(/does not exist/);
   });
 });
@@ -274,7 +286,9 @@ describe("no orphan survives Core", () => {
       buf += d.toString();
       if (buf.includes("\n")) found.resolve(JSON.parse(buf.split("\n")[0]!));
     });
-    const exited = new Promise<void>((resolve) => parent.on("close", () => resolve()));
+    const closed = Promise.withResolvers<void>();
+    parent.on("close", () => closed.resolve());
+    const exited = closed.promise;
     const pidsSeen = await found.promise;
     pids.push(pidsSeen.agent, ...(pidsSeen.helper ? [pidsSeen.helper] : []));
     return { parent, exited, ...pidsSeen };

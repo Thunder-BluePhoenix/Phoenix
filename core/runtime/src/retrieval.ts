@@ -190,7 +190,10 @@ export class RetrievalRuntime implements RetrievalApi {
 
   lexicalInfo(): RetrievalInfoView {
     const reason = this.inactiveReason();
-    return { mode: "lexical", ...(reason && reason !== "retrieval_disabled" ? { vector_skipped_reason: reason } : {}) };
+    return {
+      mode: "lexical",
+      ...(reason && reason !== "retrieval_disabled" ? { vector_skipped_reason: reason } : {}),
+    };
   }
 
   private embedder(s: RetrievalSettingsView): AiEmbedder {

@@ -48,12 +48,27 @@ const listed = async () =>
     .agents;
 
 describe("manifest", () => {
-  it("is observe-only: no permissions, nothing but a report and a read-only list", () => {
+  it("keeps the observe-only commands free of permissions and side effects (Phase 25 contract)", () => {
     const m = agentsCapability.manifest;
-    expect(m.permissions).toEqual([]);
-    expect(m.commands.map((c) => [c.name, c.side_effect])).toEqual([
-      ["report", "none"],
-      ["list", "read"],
+    const byName = Object.fromEntries(m.commands.map((c) => [c.name, c]));
+    expect([byName.report?.side_effect, byName.report?.permissions ?? []]).toEqual(["none", []]);
+    expect([byName.list?.side_effect, byName.list?.permissions ?? []]).toEqual(["read", []]);
+  });
+
+  it("declares every command that starts, messages or stops an agent as side effect execute with shell_command (Phase 34)", () => {
+    const m = agentsCapability.manifest;
+    const execute = m.commands.filter((c) => c.side_effect === "execute").map((c) => c.name);
+    expect(execute.sort()).toEqual([
+      "context.handoff",
+      "session.send",
+      "session.start",
+      "session.stop",
+    ]);
+    for (const c of m.commands.filter((c) => c.side_effect === "execute")) {
+      expect(c.permissions).toEqual(["shell_command"]);
+    }
+    expect(m.commands.filter((c) => c.side_effect === "none").map((c) => c.name)).toEqual([
+      "report",
     ]);
   });
 });

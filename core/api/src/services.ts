@@ -365,7 +365,12 @@ export type GraphTruncationView = Partial<
 >;
 
 export type GraphAnswerView =
-  | { kind: "why"; subject: GraphNodeView | null; paths: GraphPathView[]; truncated: GraphTruncationView }
+  | {
+      kind: "why";
+      subject: GraphNodeView | null;
+      paths: GraphPathView[];
+      truncated: GraphTruncationView;
+    }
   | {
       kind: "which";
       subject: GraphNodeView | null;
@@ -387,7 +392,13 @@ export interface GraphAskView {
   /** Facts with their explanation paths. Never produced by a model. */
   answers: GraphAnswerView[];
   /** Memory text found for the same question (hybrid when retrieval is on), with citations. */
-  documents: { id: string; text: string; source: string; source_ref: string; score: number | null }[];
+  documents: {
+    id: string;
+    text: string;
+    source: string;
+    source_ref: string;
+    score: number | null;
+  }[];
   notes: string[];
   retrieval: RetrievalInfoView;
   /** Present only when narration was requested and AI is on; the paths above are always returned. */

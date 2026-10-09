@@ -241,8 +241,18 @@ export class AiRuntime implements AiApi {
     const s = this.stored();
     if (!s.enabled) return "AI is off; nothing is sent to AI providers.";
     const classes = PRIVACY_CLASSES.filter((c) => s.cloud_opt_in[c]);
+    // True by construction: extraction uses a purpose the cloud gate refuses for sensitive data, and
+    // no cloud provider offers embeddings today. If one ever does, the embedding sentence changes.
+    const cloudEmbeds = this.registry
+      .list()
+      .some((p) => p.locality === "cloud" && p.capabilities.embed);
+    const transcripts =
+      " Meeting transcripts are only read by a model on this device: extracting decisions and action items is never sent to a cloud provider.";
+    const embedding = cloudEmbeds
+      ? " Searching by meaning may send public or internal memory text to a cloud provider that can embed text, if you opted in for that kind of data."
+      : " Searching by meaning (if you turn it on) embeds memory text on this device only.";
     if (!this.externalProcessingGranted() || classes.length === 0) {
-      return "AI is on and is processed on this device by Ollama; nothing is sent to external AI providers.";
+      return `AI is on and is processed on this device by Ollama; nothing is sent to external AI providers.${transcripts}${embedding}`;
     }
     const cloud = this.registry
       .list()
@@ -252,6 +262,6 @@ export class AiRuntime implements AiApi {
     const sensitive = classes.includes("sensitive")
       ? " Sensitive memories (including meeting summaries) are sent only when you ask Fawkes a question, and each such send is written to the audit log."
       : "";
-    return `AI is on. When Ollama is unavailable or you choose a cloud provider, ${classes.join(", ")} memories may be sent to ${cloud}.${sensitive}`;
+    return `AI is on. When Ollama is unavailable or you choose a cloud provider, ${classes.join(", ")} memories may be sent to ${cloud}.${sensitive}${transcripts}${embedding}`;
   }
 }

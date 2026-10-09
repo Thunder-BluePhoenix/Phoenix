@@ -5,7 +5,7 @@
 | Stage | Stage 7 — Knowledge Graph (v0.7) |
 | Release target | v0.7 |
 | Priority | High |
-| Status | 🟨 Built and measured at package level; the value gate is **not met** by the graph alone; not wired into Core (see notes) |
+| Status | 🟨 Built, measured and wired into Core; the value gate is **not met** by the graph alone; the provenance view in the web app is not built |
 | Depends on | [Phase 37 — Hybrid Retrieval (Lexical + Vector + Rerank)](phase-37-hybrid-retrieval.md) |
 | Unblocks | [Phase 39 — Workflow Engine](phase-39-workflow-engine.md) |
 
@@ -106,14 +106,37 @@ Two generic bugs were fixed between the first and second run, found by reading f
 
 ### Not done / limits
 
-Runtime wiring (below), API routes, the inspection UI, the release; the gaps are listed in `docs/gaps.md`.
+The inspection UI and the release; the gaps are listed in `docs/gaps.md`.
 
-### Wiring the parent needs (`core/runtime`, `core/api`)
+## Wired into Core
 
-1. Construct `new KnowledgeGraph(db)`, `new GraphIngestor({ graph, knownRepositories, repositoryAliases, trackerPrefixes, featureRules, documentRoots, selfName })`, `new GraphQuery(graph)`, `new GraphInspector(graph)` in `PhoenixRuntime` next to `MemoryStore`; call `ingest.attach(bus)` (the `EventBus` satisfies `EventSubscriber`; its handler receives `(event, info)`, the ingestor takes only the event).
-2. Call `ingestor.ingestMeeting(meeting, summary, items)` where the memory hook calls `ingestMeetings`, and `ingestor.ingestMemory(memory)` once at start.
-3. Routes: `GET /api/graph/nodes/:id` → `inspector.inspect(viewer, id)`; `GET /api/graph/nodes/:id/neighbors?depth=` → `neighbors`; `POST /api/graph/ask` → `answerQuestion` with the hybrid `Retriever` adapted to `DocumentHit`; `POST /api/graph/edges/:id/confirm` and `/reject`; `DELETE /api/graph/people/:name` → `forgetPerson`; always pass the request's `Viewer`, never the owner by default.
-4. Wire "delete all memory / forget" paths to also call `graph.clear()` / rely on the triggers (they cover `MemoryStore` and `MeetingStore`; they do not cover `EventStore.deleteBefore`, because event-sourced rows cite event ids that are not rows in any table the triggers watch, see gaps).
+`core/runtime/src/graph.ts` (`GraphRuntime`), routes in `core/api/src/graph-routes.ts`, migration **17** (`kg_event_deleted`), tests in `core/runtime/test/graph.test.ts` (35 cases through the real routes).
+
+- **Ingestion.** The runtime subscribes to the bus for the graph's event types (only when the event's `source` is the family it names: a `git.commit.created` from `terminal` is ignored). A live commit event carries no author or files, so each new sha is also read with a read-only `git log -1` from the repository named in the event's `path` **only if that exact path is configured on the git capability**, and its facts cite the event id (deleting the event deletes them). Memories are ingested at startup and hourly (`ingestMemory`); meetings and their reviewed items are ingested while `allow_sensitive_meetings` is on, after every meeting change and every review action.
+- **Deletion paths** (one runtime test each): event retention and delete-all events (migration 17 trigger on `events`), delete-all memory and forget one memory (migration 11 triggers), delete a meeting and delete-all meetings (migration 11 trigger), rejecting a reviewed item (trigger), turning 'allow sensitive meetings' off (`removeWhere({sourceKind:'meeting'|'meeting_item'})` plus audit `graph.meeting_data.removed`), forget a person (`POST /api/graph/people/forget`). Event-sourced rows are removed by the trigger rather than by a call after `deleteBefore` because the history limit, capability uninstall and delete-all also delete events and none of them can forget to tell the graph.
+- **Viewer.** Every route reads as the runtime's one viewer (`memory.agentContext().viewer`), never as the owner by default; a narrower viewer gets 404 for a node it has no readable provenance for (tested).
+- Narration is off unless the request says `narrate: true` and AI is on; it is labelled sensitive with a purpose the cloud gate never allows for sensitive data, and falls back to the path text when it names an identifier the path lacks.
+- Not wired: `POST /api/graph/edges/:id/confirm|reject` (nothing writes an AI-asserted edge yet), the web provenance view, stale-fact reconciliation.
+
+## API contract
+
+All routes need the session token; JSON is snake_case; bodies have exact keys (unknown field = 400). Errors are `{code, message, details}`. Node ids look like `Commit:Phoenix@<sha>`, `Document:Phoenix:core/api/src/server.ts`, `Person:ada lovelace`, `Meeting:kage:7`, `Decision:ADR-0020`; **they must be %-encoded in the URL path** (`encodeURIComponent`).
+
+**Provenance** (`GraphProvenanceView`), one per source supporting a node or edge: `{ source_kind: "event|capability|memory|meeting|meeting_item|user", source_id, capability, observed_at, recorded_at, confidence (0-1), asserted_by: "rule|capability|user|ai:<model>", scope, domain, sensitivity: "public|internal|sensitive", detail: {flat string/number/bool/null map: title, state, url ...} }`. `source_id` is an event id for `event`, a memory id for `memory`, a meeting id for `meeting` and an item id for `meeting_item`; the UI can link the last three to the Memory tab, the meeting and the review item. Show `sensitivity` (a meeting-derived row is `sensitive`) and `asserted_by` (an `ai:` row on its own makes the node `status: "proposed"`; label it "suggested by a model, not a fact").
+
+**Node** (`GraphNodeView`): `{ id, type, key, label, status: "fact|proposed", detail, provenance: Provenance[] }` (oldest provenance first). **Edge** (`GraphEdgeView`): `{ id: "<src>|<REL>|<dst>", src, rel, dst, status, provenance }`. Types: Person, Project, Repository, Commit, Service, Deployment, Meeting, Decision, Feature, Issue, PullRequest, CIRun, Document. Relations: AUTHORED, TOUCHES, PART_OF, DECIDED_IN, MENTIONS, FIXES, DEPLOYED_TO, TRIGGERED, ASSIGNED_TO, REFERENCES, PARTICIPATED_IN.
+
+| Route | Response |
+|---|---|
+| `GET /api/graph/nodes/:id` | 200 `{ node: Node, origin: Provenance[] (newest first), summary: { sources, assertors: string[], capabilities: string[], status }, visible_edges }`; **404** when the node does not exist or the viewer can read nothing about it (the two are indistinguishable); ids over 400 characters are 404. This is the origin chain the provenance view shows. |
+| `GET /api/graph/nodes/:id/neighbors?depth=` | `depth` 1 (default) or 2, else 400. 200 `{ center, nodes: Node[], edges: Edge[], truncated: bool }` (at most 100 nodes and 200 edges; `truncated` says it cut). 404 as above. |
+| `POST /api/graph/ask` `{ question (1-500), narrate?: bool }` | 200 `{ question, seeds: Node[], answers: Answer[], documents: [{id,text,source,source_ref,score}], notes: string[], retrieval: {mode,...}, narration: null \| { text, narrated: bool, processed_by: string\|null } }`. `seeds` are the entities of the question that matched exactly (empty = no graph facts, `notes` says so). `answers` are why/which/who facts, **never produced by a model**; `documents` are memory text found for the same question (hybrid when Phase 37 retrieval is on) and are shown apart. `narration` is non-null only when `narrate: true`; `narrated: false` means the model's words were refused and `text` is the path text. |
+| `POST /api/graph/people/forget` `{ name (1-200), confirm: true }` | 200 `{ removed: { provenance, nodes, edges } }`; `confirm` must be the literal `true` or 409 `ACTION_REQUIRES_CONFIRMATION`. Removes the person node, their edges and provenance, and keeps them out of future ingestion (only a hash of the id is stored). Audit `graph.person.forgotten` (counts only). |
+| `GET /api/graph/status` | `{ nodes, edges, provenance (whole-graph counts), visible_nodes_by_type: {Type: n}, commits_backfilled, last_ingest: null \| { at, memories, meetings } }` |
+
+**Answer** (`GraphAnswerView`) is a union on `kind`: `{ kind: "why", subject: Node|null, paths: Path[], truncated }`, `{ kind: "which", subject, type, results: [{ node: Node, path: Path }], truncated }`, `{ kind: "who", subject, people: [{ person: Node, paths: Path[] }], truncated }`. **Path**: `{ nodes: Node[], hops: [{ from, to, direction: "forward|backward", edge: Edge }], text }`; `text` is one line per hop from graph facts only and is what to show first; each `edge.provenance` is the evidence for that hop. `truncated` is `{ depth?, fanout?, visited?, time?, results? : true }`: say which bound cut the answer short.
+
+**Real run** (Core booted with `PHOENIX_DATA_DIR`, git capability watching this repository, 4 real commit events through `POST /api/events`): *which commits touched `core/api/src/server.ts`* returned 3 commits, each path citing a `git` event; *who touched it* returned `Person:thunder-bluephoenix`; a commit node's origin chain read `event / git / capability`; a meeting inserted through the same tables the Kage sync writes (no real Kage was running) produced `Meeting`, `Decision` and two `Person` nodes whose provenance is `sensitive`, and `why Meeting:kage:real1` returned the decision with `--DECIDED_IN-->` and (with `narrate`) a llama3.2 sentence that passed the identifier check. Delete-all events took the event-sourced rows out (102 nodes to 66), delete-all memory emptied the graph and the vectors, deleting the meeting removed its nodes.
 
 ## Source documents
 

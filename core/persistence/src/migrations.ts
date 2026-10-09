@@ -604,6 +604,55 @@ export const MIGRATIONS: readonly Migration[] = [
     `,
   },
   {
+    version: 14,
+    name: "ai_evaluation",
+    sql: `
+      -- Phase 33: results of evaluation runs and observations of agent runs. NOTHING here holds a
+      -- prompt, memory text, tool output, evidence text or secret: only ids, names, counts, hashes,
+      -- decisions, durations, token counts and verdicts. The observation JSON is built by
+      -- ai/evaluation from the agent trace and audit log; a test seeds canaries and scans this table.
+      CREATE TABLE eval_runs (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL CHECK (kind IN ('offline', 'real', 'observation')),
+        suite TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        seed INTEGER NOT NULL,
+        scenario_count INTEGER NOT NULL,
+        summary TEXT NOT NULL            -- JSON: counts and rates per category, no content
+      );
+      CREATE INDEX eval_runs_started ON eval_runs (started_at);
+
+      CREATE TABLE eval_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        eval_run_id TEXT NOT NULL REFERENCES eval_runs (id) ON DELETE CASCADE,
+        scenario_id TEXT NOT NULL,
+        category TEXT NOT NULL,
+        passed INTEGER NOT NULL CHECK (passed IN (0, 1)),
+        known_defect TEXT,               -- id of a documented runtime defect the scenario exposes
+        violations TEXT NOT NULL,        -- JSON: counts by kind (side_effect, leak, bypass, ...)
+        metrics TEXT NOT NULL,           -- JSON: numbers per metric
+        agent_run_id TEXT,               -- agent_runs.id this observation describes (no FK: see trigger)
+        observation TEXT,                -- JSON RunObservation
+        latency_ms INTEGER NOT NULL,
+        input_tokens INTEGER NOT NULL,
+        output_tokens INTEGER NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX eval_results_run ON eval_results (eval_run_id);
+      CREATE INDEX eval_results_scenario ON eval_results (scenario_id, created_at);
+      CREATE INDEX eval_results_created ON eval_results (created_at);
+      CREATE INDEX eval_results_agent_run ON eval_results (agent_run_id);
+
+      -- An observation describes one agent run. Deleting the run (or its task, which cascades) deletes
+      -- the observation, so nothing derived from a deleted trace survives.
+      CREATE TRIGGER eval_results_agent_run_deleted AFTER DELETE ON agent_runs
+      BEGIN
+        DELETE FROM eval_results WHERE agent_run_id = old.id;
+      END;
+    `,
+  },
+  {
     version: 15,
     name: "agent_links",
     sql: `

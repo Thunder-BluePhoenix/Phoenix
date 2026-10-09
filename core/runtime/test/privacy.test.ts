@@ -119,3 +119,32 @@ describe("pet settings", () => {
     expect((await api("GET", "/api/pet/settings")).json.reduced_motion).toBe("on");
   });
 });
+
+describe("derived data in the inventory (Phases 35-38)", () => {
+  it("lists vectors, the graph and review items with counts, and their deletion rule", async () => {
+    const core = await startCore();
+    const inv = (await core.api("GET", "/api/privacy")).json;
+    expect(inv.derived.map((d: { id: string }) => d.id)).toEqual([
+      "vectors",
+      "graph",
+      "meeting_items",
+    ]);
+    expect(inv.derived).toEqual([
+      expect.objectContaining({ id: "vectors", count: 0, deleted_with: "memory", enabled: false }),
+      expect.objectContaining({ id: "graph", count: 0, edges: 0, provenance_rows: 0 }),
+      expect.objectContaining({ id: "meeting_items", count: 0, deleted_with: "meetings" }),
+    ]);
+    // With AI off the sentence is unchanged: nothing is sent anywhere.
+    expect(inv.external_ai).toBe("AI is off; nothing is sent to AI providers.");
+    await core.runtime.stop();
+  });
+
+  it("with AI on it says transcripts and embeddings stay on this device", async () => {
+    const core = await startCore();
+    await core.api("POST", "/api/ai/settings", { enabled: true });
+    const sentence = (await core.api("GET", "/api/privacy")).json.external_ai as string;
+    expect(sentence).toMatch(/Meeting transcripts are only read by a model on this device/);
+    expect(sentence).toMatch(/embeds memory text on this device only/);
+    await core.runtime.stop();
+  });
+});

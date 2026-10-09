@@ -50,9 +50,16 @@ export const ciModel = (json: unknown, over: Partial<ModelResponder> = {}): Mode
 /** What an honest 3B-class model would say for the fixture above (cites real ids). */
 export const HONEST_ANSWER = {
   claims: [
-    { text: 'The job "secret-scan" failed at "Run gitleaks/gitleaks-action@v2".', evidence: ["E2"] },
+    {
+      text: 'The job "secret-scan" failed at "Run gitleaks/gitleaks-action@v2".',
+      evidence: ["E2"],
+    },
   ],
-  proposal: { text: "Open the secret-scan log and fix what it reports.", rationale: "It is the failing step.", evidence: ["E2"] },
+  proposal: {
+    text: "Open the secret-scan log and fix what it reports.",
+    rationale: "It is the failing step.",
+    evidence: ["E2"],
+  },
   confidence: "medium",
 };
 

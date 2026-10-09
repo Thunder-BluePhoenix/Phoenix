@@ -38,7 +38,11 @@ describe("parseLaunchers", () => {
     ["an empty command", { ...ok, command: [] }, /command must have/],
     ["a non-string argument", { ...ok, command: ["/usr/bin/env", 5] }, /strings/],
     ["a control character in argv", { ...ok, command: ["/usr/bin/env", "a\nb"] }, /control/],
-    ["too many arguments", { ...ok, command: ["/usr/bin/env", ...new Array(40).fill("x")] }, /entries/],
+    [
+      "too many arguments",
+      { ...ok, command: ["/usr/bin/env", ...new Array(40).fill("x")] },
+      /entries/,
+    ],
     ["no cwd roots", { ...ok, cwd_roots: [] }, /cwd_roots must have/],
     ["the filesystem root as a cwd root", { ...ok, cwd_roots: ["/"] }, /filesystem root/],
     ["a relative cwd root", { ...ok, cwd_roots: ["work"] }, /absolute/],

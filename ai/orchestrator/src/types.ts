@@ -131,6 +131,12 @@ export interface AgentDefinition {
    * plan's own input for the step is what plan validation saw; without this hook it is used as is.
    */
   prepareInput?(rc: RunContext, step: PlanStep): Record<string, unknown>;
+  /**
+   * Returns a reason to skip a planned step because an earlier step showed it is pointless (for
+   * example, the run being investigated did not fail). The step is recorded as `skipped` with that
+   * reason and no tool is called. Agent CODE only; it cannot add or change a step, only drop one.
+   */
+  skipStep?(rc: RunContext, step: PlanStep): string | undefined;
   /** Called with each successful tool output so the agent can record evidence. */
   afterTool?(rc: RunContext, step: PlanStep, output: unknown): Promise<void> | void;
   /** "continue" keeps going without that tool's result; the default is to fail the run. */

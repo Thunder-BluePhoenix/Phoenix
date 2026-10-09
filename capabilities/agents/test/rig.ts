@@ -84,3 +84,84 @@ export function managerFor(over: Partial<SessionManagerOptions> = {}) {
   });
   return { manager, changes, scheduler };
 }
+
+// ── A harness with the orchestration half connected ─────────────────────────────────────────
+
+import { execFileSync } from "node:child_process";
+import { createHarness, type Harness } from "@phoenix/sdk-testing";
+import { createAgentsCapability } from "../src";
+import type { AgentsServices, AuditRecord, ContextPort } from "../src/orchestration";
+
+export interface Orchestrated {
+  h: Harness;
+  audit: AuditRecord[];
+  root: string;
+  workspace: string;
+  /** Config the user would have saved: one launcher that runs the fake agent. */
+  launchers: Record<string, unknown>;
+  /** Runs a command like the Pet Panel would: confirmations are answered with `approve`. */
+  run: (command: string, input?: unknown, approve?: boolean) => ReturnType<Harness["run"]>;
+  commitTimes: Record<string, number>;
+}
+
+export async function orchestrated(
+  over: {
+    config?: Record<string, unknown>;
+    context?: ContextPort;
+    commitTimes?: Record<string, number>;
+    killSwitch?: () => boolean;
+    now?: () => number;
+  } = {},
+): Promise<Orchestrated> {
+  const { root, workspace } = workspaceIn();
+  const audit: AuditRecord[] = [];
+  const commitTimes = over.commitTimes ?? {};
+  const holder: { h?: Harness } = {};
+  const module = createAgentsCapability({
+    ...(over.now ? { now: over.now } : {}),
+    services: (): AgentsServices => ({
+      db: holder.h!.db,
+      events: holder.h!.bus,
+      audit: (record) => {
+        audit.push(record);
+        holder.h!.permissions.audit.record(record);
+      },
+      isKillSwitchEngaged: over.killSwitch ?? (() => holder.h!.permissions.isKillSwitchEngaged()),
+      ...(over.context ? { context: over.context } : {}),
+      commitTime: async (_path, sha) => commitTimes[sha],
+      env: process.env,
+    }),
+  });
+  const h = createHarness({ modules: [module] });
+  holder.h = h;
+  const launchers = { fake: fakeLauncher(root) };
+  h.manager.configure("agents", { launchers, grace_ms: 150, ...over.config });
+  await h.enable("agents");
+  return {
+    h,
+    audit,
+    root,
+    workspace,
+    launchers,
+    commitTimes,
+    run: (command, input = {}, approve = true) => h.run("agents", command, input, approve),
+  };
+}
+
+/** Initialises a throwaway git repository with one commit (for tests that use real git). */
+export function gitRepo(dir: string): string {
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-C", dir, ...args], {
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "t",
+        GIT_AUTHOR_EMAIL: "t@example.com",
+        GIT_COMMITTER_NAME: "t",
+        GIT_COMMITTER_EMAIL: "t@example.com",
+      },
+      encoding: "utf8",
+    }).trim();
+  git("init", "-q", "-b", "main");
+  git("commit", "-q", "--allow-empty", "-m", "first");
+  return git("rev-parse", "HEAD");
+}

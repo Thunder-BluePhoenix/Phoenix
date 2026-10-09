@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 //
-// Agents capability (Phase 25): shows whether AI coding agents (Claude Code,
-// Codex, …) are working, waiting for you, done or failed. OBSERVE ONLY: an
-// adapter reports what an agent is doing; this capability turns that into
-// `agent.*` events and a list of active agents. It has no permissions, starts
-// no process, opens no connection and offers no command that could steer an
-// agent (that is Phase 34).
+// Agents capability. Phase 25: shows whether AI coding agents (Claude Code, Codex, …) are working,
+// waiting for you, done or failed: an adapter reports what an agent does and this capability turns
+// that into `agent.*` events and a list of active agents (`report`, `list`: no side effects).
+// Phase 34: for agents the USER configured as launchers, it can also start, message and stop them
+// (`session.*`, `context.handoff`: side effect `execute`, so each call asks for confirmation),
+// link their sessions to commits and CI runs, and hand them authorised context. See
+// orchestration.ts for the rules; nothing here runs an agent without a confirmed command.
+import { ErrorCode, PhoenixError } from "@phoenix/protocol";
 import { defineCapability, type CapabilityContext } from "@phoenix/sdk";
 import {
   AGENT_ID_PATTERN,
@@ -23,8 +25,17 @@ import {
   type AgentState,
   type WaitReason,
 } from "./report";
+import { Orchestrator, type AgentsServices } from "./orchestration";
+import { MAX_LAUNCHERS } from "./launchers";
+import { MAX_MESSAGE_CHARS, MAX_PROMPT_CHARS } from "./sessions";
 
 export * from "./report";
+export * from "./handoff";
+export * from "./launchers";
+export * from "./links";
+export * from "./orchestration";
+export * from "./output";
+export * from "./sessions";
 
 /** A session that went silent for this long is dropped (config `silent_after_min`). */
 export const DEFAULT_SILENT_AFTER_MIN = 120;
@@ -87,12 +98,39 @@ function payloadOf(session: Session): AgentEventPayload {
 export interface AgentsCapabilityOptions {
   /** Clock in ms since the epoch; tests inject one. */
   now?: () => number;
+  /**
+   * Phoenix Core's services for orchestration (database, event bus, audit, kill switch, memory).
+   * Called each time the capability is enabled. Without it only the observe-only commands work.
+   */
+  services?: () => AgentsServices | undefined;
 }
+
+const SESSION_ID_PATTERN = "^ph-[0-9a-f]{16}$";
+const sessionIdInput = {
+  type: "object",
+  required: ["session_id"],
+  additionalProperties: false,
+  properties: { session_id: { type: "string", pattern: SESSION_ID_PATTERN } },
+};
 
 /** A fresh capability instance (its own session table); Phoenix Core uses `agentsCapability`. */
 export function createAgentsCapability(options: AgentsCapabilityOptions = {}) {
   const now = options.now ?? Date.now;
   let sessions: Record<string, Session> = {};
+  /** Present while the capability is enabled and Core supplied its services. */
+  let orchestrator: Orchestrator | undefined;
+
+  /** The orchestration half; without Core's services (a bare harness) it is unavailable. */
+  function connected(): Orchestrator {
+    if (!orchestrator) {
+      throw new PhoenixError(
+        ErrorCode.CAPABILITY_UNAVAILABLE,
+        "Agent orchestration needs Phoenix Core's services (memory, events, audit); they are not connected",
+        ["NOT_CONNECTED"],
+      );
+    }
+    return orchestrator;
+  }
 
   function emit(
     ctx: CapabilityContext,
@@ -205,10 +243,10 @@ export function createAgentsCapability(options: AgentsCapabilityOptions = {}) {
       name: "Coding agents",
       version: "0.1.0",
       description:
-        "Shows whether coding agents (Claude Code, Codex, …) are working, waiting for you, done or failed. Observe-only.",
+        "Shows whether coding agents (Claude Code, Codex, …) are working, waiting for you, done or failed, and, for agents you configure, starts, messages and stops them on your confirmation and links their sessions to commits and CI runs.",
       license: "GPL-3.0-or-later",
       events: ["agent.*"],
-      permissions: [],
+      permissions: ["shell_command", "repository_access"],
       data_categories: [
         "agent name and session id",
         "workspace path and repository name",
@@ -244,6 +282,112 @@ export function createAgentsCapability(options: AgentsCapabilityOptions = {}) {
           description: "Currently active coding agents, from what adapters have reported",
           side_effect: "read",
         },
+        {
+          name: "session.start",
+          description:
+            "Start a coding agent (a launcher you configured) in a workspace with a task prompt",
+          side_effect: "execute",
+          permissions: ["shell_command"],
+          input_schema: {
+            type: "object",
+            required: ["launcher", "workspace", "prompt"],
+            additionalProperties: false,
+            properties: {
+              launcher: { type: "string", pattern: AGENT_PATTERN.source },
+              workspace: { type: "string", maxLength: MAX_WORKSPACE, pattern: "^/[^\\p{Cc}]*$" },
+              prompt: { type: "string", minLength: 1, maxLength: MAX_PROMPT_CHARS },
+              task: { type: "string", maxLength: MAX_TASK, pattern: "^[^\\p{Cc}]*$" },
+            },
+          },
+        },
+        {
+          name: "session.send",
+          description: "Send a message to a running coding-agent session",
+          side_effect: "execute",
+          permissions: ["shell_command"],
+          input_schema: {
+            type: "object",
+            required: ["session_id", "message"],
+            additionalProperties: false,
+            properties: {
+              session_id: { type: "string", pattern: SESSION_ID_PATTERN },
+              message: { type: "string", minLength: 1, maxLength: MAX_MESSAGE_CHARS },
+            },
+          },
+        },
+        {
+          name: "session.stop",
+          description: "Stop a running coding-agent session and everything it started",
+          side_effect: "execute",
+          permissions: ["shell_command"],
+          input_schema: sessionIdInput,
+        },
+        {
+          name: "session.list",
+          description:
+            "Coding-agent sessions Phoenix started, and links waiting for you to resolve",
+          side_effect: "read",
+        },
+        {
+          name: "session.get",
+          description: "One session with its linked commits and CI runs and a timeline",
+          side_effect: "read",
+          input_schema: {
+            type: "object",
+            required: ["session_id"],
+            additionalProperties: false,
+            properties: {
+              session_id: { type: "string", pattern: SESSION_ID_PATTERN },
+              output_lines: { type: "integer", minimum: 0, maximum: 200 },
+            },
+          },
+        },
+        {
+          name: "context.handoff",
+          description:
+            "Give a session notes from Phoenix memory it is allowed to see (its own repository only, nothing sensitive)",
+          side_effect: "execute",
+          permissions: ["shell_command"],
+          input_schema: {
+            type: "object",
+            required: ["session_id", "question"],
+            additionalProperties: false,
+            properties: {
+              session_id: { type: "string", pattern: SESSION_ID_PATTERN },
+              question: { type: "string", minLength: 1, maxLength: 300 },
+            },
+          },
+        },
+        {
+          name: "context.fetch",
+          description:
+            "Read the notes a session is allowed to see from Phoenix memory (used by context.handoff through the tool gateway)",
+          side_effect: "read",
+          permissions: ["repository_access"],
+          input_schema: {
+            type: "object",
+            required: ["session_id", "question"],
+            additionalProperties: false,
+            properties: {
+              session_id: { type: "string", pattern: SESSION_ID_PATTERN },
+              question: { type: "string", minLength: 1, maxLength: 300 },
+            },
+          },
+        },
+        {
+          name: "link.resolve",
+          description: "Pick the session an ambiguous commit or CI run belongs to",
+          side_effect: "write",
+          input_schema: {
+            type: "object",
+            required: ["link_id", "session_id"],
+            additionalProperties: false,
+            properties: {
+              link_id: { type: "integer", minimum: 1 },
+              session_id: { type: "string", pattern: SESSION_ID_PATTERN },
+            },
+          },
+        },
       ],
       healthcheck: { interval_ms: 30_000 },
       config_schema: {
@@ -260,6 +404,32 @@ export function createAgentsCapability(options: AgentsCapabilityOptions = {}) {
             minimum: 1,
             maximum: 1_440,
             description: "Forget a session that has been silent this long (default 120).",
+          },
+          launchers: {
+            type: "object",
+            maxProperties: MAX_LAUNCHERS,
+            additionalProperties: { type: "object" },
+            description:
+              'Coding agents Phoenix may start, by name: { "<name>": { "command": ["/abs/path", ...fixed args], "cwd_roots": ["/abs/folder"], "env_allow": [...], "waiting_prompts": [...], "stdin": "keep_open" } }. Nothing else can be started. Details are checked when a session starts.',
+          },
+          max_sessions: {
+            type: "integer",
+            minimum: 1,
+            maximum: 10,
+            description: "Most sessions running at once (default 3).",
+          },
+          max_runtime_min: {
+            type: "integer",
+            minimum: 1,
+            maximum: 1_440,
+            description: "A session still running after this long is stopped (default 120).",
+          },
+          grace_ms: {
+            type: "integer",
+            minimum: 0,
+            maximum: 60_000,
+            description:
+              "How long a stopped agent gets to exit before it is killed (default 5000).",
           },
         },
       },
@@ -306,11 +476,38 @@ export function createAgentsCapability(options: AgentsCapabilityOptions = {}) {
       }, SWEEP_INTERVAL_MS);
       timer.unref();
       ctx.signal.addEventListener("abort", () => clearInterval(timer), { once: true });
+
+      void orchestrator?.close("shutdown");
+      const services = options.services?.();
+      orchestrator = services
+        ? new Orchestrator({
+            ctx,
+            services,
+            now,
+            announce: (report) => {
+              try {
+                record(report, ctx);
+              } catch (err) {
+                ctx.logger.warn("could not announce an agent session", { error: String(err) });
+              }
+            },
+          })
+        : undefined;
     },
-    health: () => ({
-      status: "healthy",
-      message: `${Object.keys(sessions).length} active agent session(s)`,
-    }),
+    async shutdown() {
+      const closing = orchestrator;
+      orchestrator = undefined;
+      await closing?.close("shutdown");
+    },
+    health: () => {
+      const problems = orchestrator?.problems ?? [];
+      return {
+        status: problems.length > 0 ? "degraded" : "healthy",
+        message:
+          `${Object.keys(sessions).length} active agent session(s)` +
+          (problems.length > 0 ? `; launcher config: ${problems[0]}` : ""),
+      };
+    },
     commands: {
       report(input, ctx) {
         const result = validateReport(input);
@@ -334,6 +531,14 @@ export function createAgentsCapability(options: AgentsCapabilityOptions = {}) {
           }));
         return { agents };
       },
+      "session.start": (input) => connected().start(input),
+      "session.send": (input) => connected().send(input),
+      "session.stop": (input) => connected().stop(input),
+      "session.list": () => connected().list(),
+      "session.get": (input) => connected().get(input),
+      "context.handoff": (input) => connected().handoffContext(input),
+      "context.fetch": (input) => connected().fetchContext(input),
+      "link.resolve": (input) => connected().resolveLink(input),
     },
   });
 }

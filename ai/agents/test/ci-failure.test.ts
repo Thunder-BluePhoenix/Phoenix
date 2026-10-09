@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { FAKE_GITHUB_TOKEN } from "../../../protocol/testing/fake-secrets";
 import { EvidenceBook, type RunContext } from "@phoenix/ai-orchestrator";
@@ -666,5 +668,290 @@ describe("a commit can only be tied to a run if it led to the run and is not new
     expect(trace.steps.filter((s) => s.kind === "tool_call").map((s) => s.name)).toEqual([
       TOOL_FAILURE_DETAILS,
     ]);
+  });
+});
+
+describe("a run that did not fail has nothing to diagnose", () => {
+  const SUCCESS_RUN = 37827195337;
+
+  /** Points the mocked run at a conclusion/status, leaving everything else as the failed fixture. */
+  const withRun =
+    (over: Record<string, unknown>) =>
+    (r: Rig): void => {
+      const detail = r.gh.data.runDetails[4242];
+      r.gh.data.runDetails[4242] = {
+        ...(typeof detail === "object" && detail !== null ? detail : {}),
+        ...over,
+      };
+    };
+
+  it("the committed fixture run that concluded SUCCESS is reported as such, with no failure story", async () => {
+    const fixture: { workflow_runs: { id: number; conclusion: string | null }[] } = JSON.parse(
+      readFileSync(
+        join(import.meta.dirname, "../../../capabilities/github/test/fixtures/runs.json"),
+        "utf8",
+      ),
+    );
+    expect(fixture.workflow_runs.find((r) => r.id === SUCCESS_RUN)?.conclusion).toBe("success");
+    const { rig, trace } = await run({ ai: true }, (r) => {
+      withRun({ conclusion: "success", status: "completed" })(r);
+      r.probe.answer = () => '{"claims":[{"text":"It failed.","evidence":["E1"]}]}';
+    });
+    expect(rig.probe.calls).toHaveLength(0); // no model is asked a question with a false premise
+    expect(trace.run.state).toBe("COMPLETED");
+    const c = trace.conclusion!;
+    expect(c.summary).toBe(
+      `Run 4242 of octo/phoenix concluded success; there is no failure to diagnose.`,
+    );
+    expect(c.summary).not.toMatch(/failed/i);
+    expect(c.diagnosis).toBeUndefined();
+    expect(c.proposals).toEqual([]);
+    expect(c.aiUsed).toBe(false);
+    expect(trace.verification).toMatchObject({ passed: true });
+    expect(trace.verification!.checks.map((x) => x.name)).toEqual([
+      "run_observed",
+      "no_failure_story_invented",
+    ]);
+    // the commit step is skipped, not run: no commit evidence, no git call
+    expect(trace.steps.filter((s) => s.kind === "tool_call").map((s) => s.name)).toEqual([
+      TOOL_FAILURE_DETAILS,
+    ]);
+    expect(trace.steps.find((s) => s.name === "execute")!.detail.skipped).toEqual([
+      TOOL_RECENT_COMMITS,
+    ]);
+    expect(trace.evidence.map((e) => e.kind)).toEqual(["tool_output"]);
+  });
+
+  it.each([
+    ["cancelled", { conclusion: "cancelled", status: "completed" }, "was cancelled"],
+    ["neutral", { conclusion: "neutral", status: "completed" }, "concluded neutral"],
+    ["skipped", { conclusion: "skipped", status: "completed" }, "concluded skipped"],
+    [
+      "in progress",
+      { conclusion: null, status: "in_progress" },
+      "is not finished (status in_progress)",
+    ],
+    ["queued", { conclusion: null, status: "queued" }, "is not finished (status queued)"],
+  ])(
+    "a %s run is described as what it is, with no diagnosis or proposal",
+    async (_n, over, words) => {
+      const { rig, trace } = await run({ ai: true }, (r) => {
+        withRun(over)(r);
+        r.probe.answer = () => '{"claims":[{"text":"x","evidence":["E1"]}]}';
+      });
+      expect(trace.run.state).toBe("COMPLETED");
+      expect(trace.conclusion!.summary).toBe(
+        `Run 4242 of octo/phoenix ${words}; there is no failure to diagnose.`,
+      );
+      expect(trace.conclusion!.diagnosis).toBeUndefined();
+      expect(trace.conclusion!.proposals).toEqual([]);
+      expect(rig.probe.calls).toHaveLength(0);
+      expect(trace.steps.filter((s) => s.kind === "tool_call")).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    ["failure", "failure"],
+    ["timed_out", "timed_out"],
+  ])("a %s run is still diagnosed as before", async (_n, conclusion) => {
+    const { trace } = await run({ ai: false }, withRun({ conclusion }));
+    expect(trace.conclusion!.diagnosis).toBeDefined();
+    expect(trace.conclusion!.proposals.length).toBeGreaterThan(0);
+    expect(trace.conclusion!.summary).toContain("failed in job");
+  });
+});
+
+describe("stale memory is marked as stale and cannot ground a claim alone", () => {
+  const OLD =
+    "phoenix CI failure note: secret-scan fails because the gitleaks allowlist is missing the vendor directory.";
+  const staleNote = (ageDays: number, ttlDays: number) => ({
+    ai: true as const,
+    memory: [{ text: OLD, dedupeKey: "stale-note", ageDays, ttlDays }],
+  });
+  const memoryClaim = (request: { messages: { content: string }[] }): string[] => {
+    const id = /\[(E[0-9]+)\] kind=memory/.exec(
+      request.messages.map((m) => m.content).join("\n"),
+    )?.[1];
+    return id ? [id] : [];
+  };
+
+  it("the evidence text says how stale; the prompt flags it and tells the model to prefer fresh output", async () => {
+    const { rig, trace } = await run(staleNote(200, 30), (r) => {
+      r.probe.answer = () =>
+        JSON.stringify({ claims: [{ text: "Job secret-scan failed.", evidence: ["E2"] }] });
+    });
+    const mem = trace.evidence.find((e) => e.kind === "memory")!;
+    expect(mem.excerpt).toMatch(
+      /^\[project\/project-docs, STALE: last confirmed 200 days ago, past its 30-day limit\] phoenix CI failure note/,
+    );
+    const prompt = rig.probe.calls[0]!.messages.map((m) => m.content).join("\n");
+    expect(prompt).toMatch(/kind=memory STALE source=/);
+    expect(prompt).toMatch(/Prefer fresh tool output/);
+    expect(prompt).toMatch(/rests only on a STALE note is not accepted/);
+  });
+
+  it("a claim resting only on stale memory is not grounded, says so, and does not count toward coverage", async () => {
+    const { trace } = await run(staleNote(200, 30), (r) => {
+      r.probe.answer = (req) =>
+        JSON.stringify({
+          claims: [
+            {
+              text: "The gitleaks allowlist is missing the vendor directory.",
+              evidence: memoryClaim(req),
+            },
+          ],
+        });
+    });
+    const d = trace.conclusion!.diagnosis!;
+    const model = d.claims.filter((c) => c.origin === "model");
+    expect(model).toHaveLength(1);
+    expect(model[0]).toMatchObject({ grounded: false });
+    expect(model[0]!.note).toMatch(/rests on stale memory/);
+    const rule = d.claims.filter((c) => c.origin === "rule");
+    expect(d.evidenceCoverage).toBeCloseTo(rule.length / (rule.length + 1));
+    expect(trace.verification!.checks.find((c) => c.name === "model_claims_grounded")?.passed).toBe(
+      false,
+    );
+    expect(trace.run.state).toBe("COMPLETED");
+  });
+
+  it("a claim that cites stale memory AND fresh tool output that supports it stays grounded", async () => {
+    const { trace } = await run(staleNote(200, 30), (r) => {
+      r.probe.answer = (req) =>
+        JSON.stringify({
+          claims: [
+            { text: 'The job "secret-scan" failed.', evidence: ["E2", ...memoryClaim(req)] },
+          ],
+        });
+    });
+    const model = trace.conclusion!.diagnosis!.claims.filter((c) => c.origin === "model");
+    expect(model[0]).toMatchObject({ grounded: true });
+  });
+
+  it("the same note confirmed recently is NOT stale: it may ground a claim (the rule is not blanket)", async () => {
+    const { rig, trace } = await run(staleNote(3, 30), (r) => {
+      r.probe.answer = (req) =>
+        JSON.stringify({
+          claims: [
+            {
+              text: "The gitleaks allowlist is missing the vendor directory.",
+              evidence: memoryClaim(req),
+            },
+          ],
+        });
+    });
+    const mem = trace.evidence.find((e) => e.kind === "memory")!;
+    expect(mem.excerpt).not.toMatch(/STALE/);
+    expect(rig.probe.calls[0]!.messages.map((m) => m.content).join("\n")).not.toMatch(
+      /kind=memory STALE/,
+    );
+    expect(
+      trace.conclusion!.diagnosis!.claims.filter((c) => c.origin === "model")[0],
+    ).toMatchObject({ grounded: true });
+  });
+
+  it("a note with no freshness limit never goes stale", async () => {
+    const { trace } = await run(
+      { ai: true, memory: [{ text: OLD, dedupeKey: "forever", ageDays: 900 }] },
+      (r) => {
+        r.probe.answer = () => '{"claims":[]}';
+      },
+    );
+    expect(trace.evidence.find((e) => e.kind === "memory")!.excerpt).not.toMatch(/STALE/);
+  });
+
+  it("a proposal that rests only on stale memory is not grounded", async () => {
+    const { trace } = await run(staleNote(200, 30), (r) => {
+      r.probe.answer = (req) =>
+        JSON.stringify({
+          claims: [{ text: "Job secret-scan failed.", evidence: ["E2"] }],
+          proposal: {
+            text: "Add the vendor directory to the allowlist.",
+            rationale: "per the note",
+            evidence: memoryClaim(req),
+          },
+        });
+    });
+    const proposal = trace.conclusion!.proposals[0]!;
+    expect(proposal.text).toContain("vendor directory");
+    expect(proposal.grounded).toBe(false);
+  });
+});
+
+describe("a claim must be supported by the evidence it cites, not just cite something that exists", () => {
+  it("a job and step that appear in no evidence: cited but unsupported, not grounded, not in coverage", async () => {
+    const { trace } = await run({ ai: true }, (r) => {
+      r.probe.answer = () =>
+        JSON.stringify({
+          claims: [
+            {
+              text: 'The job "deploy-prod" failed at step "Run terraform apply".',
+              evidence: ["E2"],
+            },
+            {
+              text: 'The job "secret-scan" failed at "Run gitleaks/gitleaks-action@v2".',
+              evidence: ["E2"],
+            },
+          ],
+        });
+    });
+    const model = trace.conclusion!.diagnosis!.claims.filter((c) => c.origin === "model");
+    expect(model.map((c) => c.grounded)).toEqual([false, true]);
+    expect(model[0]!.evidenceIds).toEqual(["E2"]);
+    expect(model[0]!.note).toMatch(
+      /cited but unsupported: the cited evidence does not contain deploy-prod/,
+    );
+    const rule = trace.conclusion!.diagnosis!.claims.filter((c) => c.origin === "rule");
+    expect(trace.conclusion!.diagnosis!.evidenceCoverage).toBeCloseTo(
+      (rule.length + 1) / (rule.length + 2),
+    );
+    expect(trace.run.state).toBe("COMPLETED");
+  });
+
+  it("honest paraphrase of what the evidence says is still grounded", async () => {
+    const { trace } = await run({ ai: true }, (r) => {
+      r.probe.answer = () =>
+        JSON.stringify({
+          claims: [
+            { text: "The secret scanning job did not succeed in this run.", evidence: ["E2"] },
+            {
+              text: "The gitleaks action step is where it stopped; e.g. the third step.",
+              evidence: ["E2"],
+            },
+            { text: "A re-run is the sensible next step.", evidence: ["E1"] },
+          ],
+        });
+    });
+    expect(
+      trace
+        .conclusion!.diagnosis!.claims.filter((c) => c.origin === "model")
+        .map((c) => c.grounded),
+    ).toEqual([true, true, true]);
+  });
+
+  it("an invented sha, run id or file path is unsupported even when a real id is cited", async () => {
+    const { trace } = await run({ ai: true }, (r) => {
+      r.probe.answer = () =>
+        JSON.stringify({
+          claims: [
+            { text: "Run 99999999 is the one that failed.", evidence: ["E1"] },
+            { text: "The problem is in scripts/deploy/rollout.sh.", evidence: ["E2"] },
+            { text: "Run 4242 of workflow CI failed.", evidence: ["E1"] },
+          ],
+        });
+    });
+    const model = trace.conclusion!.diagnosis!.claims.filter((c) => c.origin === "model");
+    expect(model.map((c) => c.grounded)).toEqual([false, false, true]);
+  });
+
+  it("model claims are re-assessed by the verifier: a handed-over 'grounded' flag is not trusted", async () => {
+    const { rig, trace } = await run({ ai: true }, (r) => {
+      r.probe.answer = () =>
+        JSON.stringify({ claims: [{ text: 'The job "deploy-prod" failed.', evidence: ["E2"] }] });
+    });
+    void rig;
+    expect(trace.verification!.checks.find((c) => c.name === "model_claims_grounded")?.passed).toBe(
+      false,
+    );
   });
 });

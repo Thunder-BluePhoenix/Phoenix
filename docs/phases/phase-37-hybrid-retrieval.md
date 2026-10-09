@@ -5,7 +5,7 @@
 | Stage | Stage 7 — Knowledge Graph (v0.7) |
 | Release target | v0.7 |
 | Priority | High |
-| Status | 🟨 Built and measured at package level; not wired into Core (see notes) |
+| Status | 🟨 Built, measured and wired into Core (off by default); the Settings UI and an eval-harness hook are not built |
 | Depends on | [Phase 36 — Action Items → Engineering Tasks](phase-36-action-items-to-engineering-tasks.md) |
 | Unblocks | [Phase 38 — Knowledge Graph & Provenance](phase-38-knowledge-graph-and-provenance.md) |
 
@@ -91,9 +91,37 @@ Why this may not generalise: 24 held-out queries, one corpus (this repository's 
 
 ### Not done
 
-- Nothing in Core calls this package: no runtime wiring, no setting for the embedding model, no schedule that runs `VectorIndexer`, no API route, and `ContextEngine`/`ask` still use lexical search only. See the gap register.
+- Nothing in the web app shows retrieval settings or status yet (the routes exist, see "Wired into Core").
 - The Phase 33 evaluation harness does not call `evaluateRetrieval` yet.
 - The benchmark scripts need a running local Ollama with `nomic-embed-text` and `llama3.2`; the repository tests do not (they use fakes).
+
+## Wired into Core
+
+`core/runtime/src/retrieval.ts` (`RetrievalRuntime`), routes in `core/api/src/memory-routes.ts`, tests in `core/runtime/test/retrieval.test.ts`, deletion and viewer tests included.
+
+- **Off by default.** `retrieval.enabled` (persisted in settings key `retrieval.settings`) is false, and it also needs AI on. With either off nothing is embedded, no provider is called, and `/api/memory/search` and `/api/memory/ask` run the Phase 28 lexical path unchanged (tested: zero network requests).
+- **Defaults** are the dev-tuned values: `k = 20`, `vector_weight = 0.5`, `reranker: "feature"`; embedding provider `ollama`, model `nomic-embed-text` (with its `search_document:`/`search_query:` prefixes, so the vector space is `ollama/nomic-embed-text#prefixed`). The model reranker is not offered. Queries are embedded with data class `sensitive`, so they can only go to a local provider. Changing the model starts a new vector space; the old vectors stay apart, are never searched, and are shown under `other_models` in the status.
+- **Indexer.** `MemoryRuntime.maintain()` (startup and hourly) calls `RetrievalRuntime.index()`: incremental, batches of 16, at most 256 items per run and 40 runs per trigger, single-flight, never throws for provider problems. Turning retrieval on or changing the model triggers a run. Memory is not embedded the instant it is captured; it is embedded by the next maintenance run or settings change (a gap).
+- **Search/ask.** The retriever runs with the viewer-scoped filter. Every search/ask response carries `retrieval: { mode: "lexical" | "hybrid", vector_skipped_reason?, truncated? }` additively. When the vector half cannot run (provider down, index empty, AI off) the mode is `lexical` and `vector_skipped_reason` says why; when retrieval is simply off there is no reason field.
+- **Deletion** reaches vectors through the migration 10 triggers; tested through the real routes: forget one memory, delete-all, a memory forgotten while its embedding was in flight.
+
+### API
+
+| Route | Notes |
+|---|---|
+| `GET /api/retrieval/settings` | `{ enabled, provider, model, k, vector_weight, reranker }` |
+| `POST /api/retrieval/settings` | any subset of those keys; exact keys; `provider` must be a provider that can embed (`ollama`), `model` 1-100 plain characters, `k` integer 1-200, `vector_weight` 0-5, `reranker` `feature`\|`none`; audit entry `retrieval.settings.changed` |
+| `GET /api/retrieval/status` | `{ enabled, active, inactive_reason: null\|"retrieval_disabled"\|"ai_disabled", provider, model, vector_space, embedded, total, unembedded, failures, other_models: [{model, vectors}], payload_bytes, last_run: null\|{at, embedded, failed, remaining, capped, degraded: string[]} }` |
+
+### Real run (this Mac, real Ollama `nomic-embed-text` and `llama3.2`)
+
+289 memories (4 real commits via the event route + 285 chunks of `docs/phases/phase-2*.md`/`phase-3*.md`) were embedded in about 8 seconds; the status then read `embedded 289 / total 289, failures 0`. Three reworded questions, retrieval off versus on (top 3 sources):
+
+- "how does the assistant stop a cloud model from seeing private meeting transcripts": off = phase-35, phase-20, phase-35; on = phase-35, phase-29, phase-20.
+- "what makes an automatic bot unable to approve its own actions": off = phase-20, phase-35, phase-36; on = phase-35, phase-36, phase-20.
+- "how slow is looking through many thousands of stored numbers": off = phase-31, phase-38, phase-20 (none about vector scan cost); on = **phase-37** first (its cost section), then phase-20, phase-29.
+
+Only the third is a clear find that keyword search missed; the first two reorder results that were already roughly right. Three queries prove nothing about relevance; the benchmark above is the measurement.
 
 ## Source documents
 

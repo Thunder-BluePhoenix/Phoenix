@@ -137,12 +137,7 @@ export class SessionManager {
   constructor(private readonly o: SessionManagerOptions) {}
 
   /** Starts `spec` in `workspace`. The prompt is written to the agent's stdin. */
-  start(
-    launcher: string,
-    spec: LauncherSpec,
-    workspace: string,
-    prompt: string,
-  ): SessionView {
+  start(launcher: string, spec: LauncherSpec, workspace: string, prompt: string): SessionView {
     if (this.o.isKillSwitchEngaged()) {
       throw refuse(ErrorCode.SECURITY_POLICY_BLOCKED, "Emergency stop is engaged");
     }
@@ -191,7 +186,10 @@ export class SessionManager {
       stderr: new OutputRing(),
       history: [],
       messagesSent: 0,
-      cancelRuntime: this.o.schedule(() => void this.terminate(id, "max_runtime"), this.o.maxRuntimeMs),
+      cancelRuntime: this.o.schedule(
+        () => void this.terminate(id, "max_runtime"),
+        this.o.maxRuntimeMs,
+      ),
       cancelKill: () => {},
       exited: exit.promise,
     };
@@ -313,7 +311,8 @@ export class SessionManager {
 
   private require(id: string): Session {
     const session = this.sessions[id];
-    if (!session) throw refuse(ErrorCode.RESOURCE_NOT_FOUND, `Unknown session "${id.slice(0, 40)}"`);
+    if (!session)
+      throw refuse(ErrorCode.RESOURCE_NOT_FOUND, `Unknown session "${id.slice(0, 40)}"`);
     return session;
   }
 
