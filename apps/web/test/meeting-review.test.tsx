@@ -159,7 +159,12 @@ describe("Decisions and action items of a meeting", () => {
       "Reject",
     ]);
     const accepted = await card("accepted one");
-    expect(accepted.getAllByRole("button").map((b) => b.textContent)).toEqual(["Edit", "Reject"]);
+    // An accepted decision can also become a plan (Phase 36).
+    expect(accepted.getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "Edit",
+      "Reject",
+      "Make a plan…",
+    ]);
     const rejected = await card("rejected one");
     expect(rejected.getAllByRole("button").map((b) => b.textContent)).toEqual([
       "Reopen for review",

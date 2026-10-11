@@ -653,3 +653,255 @@ export interface GraphStatus {
   commits_backfilled: number;
   last_ingest: { at: string; memories: number; meetings: number } | null;
 }
+
+/** Phase 36: a plan for engineering tasks made from an accepted meeting item. */
+export type PlanDestination =
+  { system: "github"; repository: string } | { system: "frappe"; site: string };
+
+export type PlanBasis = "meeting" | "suggested" | "user";
+
+export interface PlanStatement {
+  text: string;
+  basis: PlanBasis;
+  item_id?: string;
+  quote?: string;
+}
+
+export type PlanStatus =
+  "draft" | "proposed" | "approved" | "creating" | "created" | "failed" | "cancelled";
+
+export interface PlanTask {
+  title: string;
+  body: string;
+  labels: string[];
+  basis: PlanBasis;
+  item_id?: string;
+  quote?: string;
+}
+
+export interface Plan {
+  id: string;
+  meeting_id: string;
+  item_id: string;
+  target: "github" | "frappe";
+  destination: PlanDestination;
+  status: PlanStatus;
+  /** What `approve` must echo back. */
+  content_hash: string;
+  approved: { hash: string; by: string; at: string } | null;
+  include_meeting_ref: boolean;
+  title: string;
+  /** "rules" or "ai:<provider>/<model>". */
+  generated_by: string;
+  not_ai_generated: boolean;
+  summary: PlanStatement;
+  acceptance_criteria: PlanStatement[];
+  risks: PlanStatement[];
+  open_questions: string[];
+  tasks: PlanTask[];
+  source: {
+    item_id: string;
+    meeting_id: string;
+    kind: string;
+    item_text: string;
+    owner: string | null;
+    due: string | null;
+    quote: string | null;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlanTaskRun {
+  task_index: number;
+  idempotency_key: string;
+  status: "pending" | "attempting" | "created" | "failed";
+  attempts: number;
+  external_id: string | null;
+  url: string | null;
+  error: string | null;
+  updated_at: string;
+}
+
+export interface PlanLink {
+  id: string;
+  meeting_id: string;
+  item_id: string;
+  plan_id: string;
+  task_index: number;
+  system: "github" | "frappe";
+  external_id: string;
+  url: string;
+  approved_by: string;
+  approved_at: string;
+  created_at: string;
+}
+
+/** GET /api/plans/:id and the result of edit, propose, approve and cancel. */
+export interface PlanDetail {
+  plan: Plan;
+  runs: PlanTaskRun[];
+  links: PlanLink[];
+}
+
+/** POST /api/plans/:id/create. It answers only after every task was confirmed or refused. */
+export interface PlanCreationReport extends PlanDetail {
+  failure: { task_index: number; message: string } | null;
+}
+
+export interface PlanPreview {
+  plan_id: string;
+  tasks: {
+    task_index: number;
+    tool: string;
+    input: Record<string, unknown>;
+    decision: { effect: string; risk: string; reasons: string[]; matched: string[] };
+  }[];
+}
+
+export interface PlanningStatus {
+  enabled: boolean;
+  ai_enabled: boolean;
+  reasons: string[];
+  destinations: {
+    github: { capability_enabled: boolean; write_token_set: boolean };
+    frappe: { capability_enabled: boolean; write_token_set: boolean; sites: string[] };
+  };
+}
+
+export interface PlanSummary {
+  id: string;
+  item_id: string;
+  target: "github" | "frappe";
+  status: PlanStatus;
+  title: string;
+  task_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** POST /api/meeting-items/:id/plan. */
+export interface PlanGeneration {
+  plan: Plan;
+  generation: { unavailable: string | null };
+}
+
+/** Phases 39 and 40: workflows. */
+export type WorkflowEnvironment = "local" | "dev" | "staging" | "production";
+
+export interface Workflow {
+  id: string;
+  name: string;
+  enabled: boolean;
+  environment: WorkflowEnvironment;
+  version: number;
+  hash: string;
+  trigger: { event: string; where?: string };
+  authorisation_reasons: string[];
+  authorised: boolean;
+  problems: string[];
+}
+
+export interface WorkflowAuthorisation {
+  id: string;
+  workflow_id: string;
+  definition_hash: string;
+  authorised_by: string;
+  authorised_at: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  revoked_by: string | null;
+  /** Not revoked, not expired and bound to the workflow's current hash. */
+  live: boolean;
+}
+
+/** The parts of a stored definition the page reads; the rest is shown as text. */
+export interface WorkflowDefinitionView {
+  id: string;
+  name: string;
+  version: number;
+  environment: WorkflowEnvironment;
+  trigger: { event: string; where?: string };
+  declares: { tools: string[]; ai: boolean; context?: boolean };
+  steps: {
+    id: string;
+    type: string;
+    tool?: string;
+    summary?: string;
+    compensate?: { tool: string };
+  }[];
+}
+
+export interface WorkflowDetail {
+  workflow: Workflow;
+  definition: WorkflowDefinitionView | null;
+  authorisations: WorkflowAuthorisation[];
+  created_by: string | null;
+  created_at: string | null;
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+export interface WorkflowValidation {
+  valid: boolean;
+  problems: string[];
+  hash: string | null;
+  authorisation: { required: boolean; reasons: string[] } | null;
+}
+
+export interface WorkflowRunSummary {
+  id: string;
+  workflow_id: string;
+  workflow_name: string;
+  status: string;
+  terminal: boolean;
+  correlation_id: string;
+  trigger_event_id: string;
+  chain_depth: number;
+  current_step: string | null;
+  reason: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface WorkflowRunStep {
+  seq: number;
+  step_id: string;
+  phase: "step" | "compensation";
+  type: string;
+  status: string;
+  attempts: number;
+  destructive: boolean;
+  tool: string | null;
+  input: string | null;
+  output: string | null;
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
+}
+
+export interface WorkflowRun extends WorkflowRunSummary {
+  trigger: string;
+  steps: WorkflowRunStep[];
+}
+
+export interface WorkflowMetrics {
+  runs_started: number;
+  runs_succeeded: number;
+  runs_failed: number;
+  runs_cancelled: number;
+  runs_rejected: number;
+  runs_interrupted: number;
+  runs_refused: number;
+  runs_compensated: number;
+  runs_needing_attention: number;
+  steps_succeeded: number;
+  steps_failed: number;
+  step_failure_rate: number;
+  duration: { p50: number; p90: number; p99: number; samples: number } | null;
+  approvals_waiting: number;
+  approvals_approved: number;
+  approvals_rejected: number;
+  approvals_expired: number;
+}

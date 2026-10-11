@@ -5,7 +5,7 @@
 | Stage | Stage 8 — Automation & Workflows (v0.8) |
 | Release target | v0.8 |
 | Priority | High |
-| Status | 🟨 Engine built and tested in-process (real SQLite, PermissionGateway, CapabilityManager, ToolGateway, EventBus; one real run with Ollama `llama3.2`); wired into Core (routes in the phase-40 doc); no web view yet (see [gaps register](../gaps.md)) |
+| Status | 🟨 Engine built and tested in-process (real SQLite, PermissionGateway, CapabilityManager, ToolGateway, EventBus; one real run with Ollama `llama3.2`); wired into Core (routes in the phase-40 doc); read-only web view at `#/workflows` (no authoring) (see [gaps register](../gaps.md)) |
 | Depends on | [Phase 38 — Knowledge Graph & Provenance](phase-38-knowledge-graph-and-provenance.md) |
 | Unblocks | [Phase 40 — Workflow Safety & v0.8 Release](phase-40-workflow-safety.md) |
 
@@ -79,6 +79,12 @@ All routes need the session token and are **user routes**: they are the only way
 **Engine API added for these routes** (`core/workflows/src/engine.ts`): `startManual(by, workflowId, payload)` and `cancelRun(by, runId)`. Both refuse any actor that is not `kind: "user"` with `trustedByUser: true`, audit the user, and are held only by the runtime's user-route wrapper: the engine instance is never handed to the tool gateway, an agent or a workflow step.
 
 **UI rules the contract implies.** List shows `enabled`, `environment`, `authorised` and `problems`; "Run now" opens a payload box and is disabled while `problems` is non-empty; a 403 from start shows the `reason` (it is in `details[2]`) and links to the refused run. Run history polls `GET /api/workflows/runs` and a run detail polls until `terminal`. A `waiting_approval` run has a pending confirmation in `/api/confirmations` (capability `workflows`, command `approve.<run>.<step>`): answer it there. `failed_needs_attention` and `interrupted` are not successes and must be shown as such.
+
+## Web UI
+
+`#/workflows` (list, nav link "Workflows"), `#/workflows/<id>` and `#/workflows/<id>/runs/<run id>` (`Workflows.tsx`). The list shows enabled/disabled, environment (PRODUCTION underlined and spelled out), authorised in words, the trigger, the problems that stop it running and a one-line run count. Detail: the definition as read-only formatted text in a scrolling `<pre>` with its version and hash, the tools it can call (a production or critical action is flagged, a declared undo named), "Check the definition" (`POST /api/workflows/validate`: problems with their paths, or the hash and whether authorisation is needed; nothing is stored), enable/disable, "Run now" (payload box, JSON object only; a 403 `RUN_REFUSED` shows the reason from `details[2]` and links to the refused run), recent runs (`failed`, `failed_needs_attention`, `interrupted` and `refused` are marked "needs a look"), and the numbers. A run page shows status and reason, the trigger, every step with input/output/error as plain text, steps that change state flagged "Changes state", the confirmation list when a step waits, and a cancel that needs a second click (a 400 `RUN_NOT_ACTIVE` is shown). It is re-read on `workflow.*` events and every 3 s while the run is not finished.
+
+**Checked:** `apps/web/test/workflows.test.tsx` (32 cases, with phase 40's). Browser smoke against a real Core with a local test capability (`deploys.logs`, `deploys.rollback`, `deploys.undo_rollback`; no real service): a production workflow saved disabled; validate listed why it needs authorisation; a Run now before authorising was refused with "not authorised: environment is "production"; the user must authorise this exact definition" and linked to the refused run; after authorising, a double click on Run now made one POST; the run showed "Running · at step logs" and the policy confirmation for `deploys.logs` was answerable from the run page (found by the smoke, the page now shows the confirmation list for any unfinished run, not only `waiting_approval`); the workflow's own approval step followed (its `<b>` in the summary stayed text); a cancel (double click, one POST) ended `cancelled` with the approval withdrawn; a second run ran to the end through the `production_action` confirmation and showed `rollback` flagged "Changes state"; metrics showed 2 runs, 1 succeeded, 1 cancelled.
 
 ## Source documents
 

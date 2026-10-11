@@ -20,11 +20,21 @@ import type {
   MemorySearchHit,
   MemorySettings,
   Notification,
+  PlanDetail,
+  PlanLink,
+  PlanPreview,
+  PlanSummary,
+  PlanningStatus,
   RetrievalSettings,
   RetrievalStatus,
   StoredEvent,
   Summary,
   Transcript,
+  Workflow,
+  WorkflowDetail,
+  WorkflowMetrics,
+  WorkflowRun,
+  WorkflowRunSummary,
 } from "./types";
 
 /** Loads a resource and reloads it whenever `shouldReload` matches a live event. */
@@ -186,6 +196,7 @@ export function useAction() {
   const client = useClient();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [details, setDetails] = useState<readonly string[]>([]);
   const inFlight = useRef(false);
   const run = useCallback(
     async <T = unknown>(method: string, path: string, body: unknown = {}) => {
@@ -193,10 +204,12 @@ export function useAction() {
       inFlight.current = true;
       setBusy(true);
       setError(null);
+      setDetails([]);
       try {
         return await client.request<T>(method, path, method === "GET" ? undefined : body);
       } catch (err) {
         setError(err instanceof ApiError ? err.message : "Request failed");
+        setDetails(err instanceof ApiError ? err.details : []);
         return undefined;
       } finally {
         inFlight.current = false;
@@ -205,7 +218,7 @@ export function useAction() {
     },
     [client],
   );
-  return { run, busy, error };
+  return { run, busy, error, details };
 }
 
 const isMeetingEvent = (t: string) => t.startsWith("kage.");
@@ -541,6 +554,113 @@ export function useMeeting(id: string) {
   }, [client, reload]);
 
   return { ...data, error, missing, reload, content };
+}
+
+/** Whether engineering plans can be made right now, and the reasons when they cannot. */
+export function usePlanningStatus() {
+  return useLiveResource<PlanningStatus | null>(
+    "/api/plans/status",
+    (j) => j,
+    null,
+    (t) => t === "capability.enabled" || t === "capability.disabled" || t.startsWith("ai."),
+  );
+}
+
+/** A plan, its task runs and links. Re-read when a confirmation changes (a create is waiting on it). */
+export function usePlan(planId: string) {
+  return useLiveResource<PlanDetail | null>(
+    `/api/plans/${encodeURIComponent(planId)}`,
+    (j) => j,
+    null,
+    (t) => t.startsWith("security.confirmation."),
+  );
+}
+
+/** The exact calls a plan would make. Re-read with the plan, never on its own. */
+export function usePlanPreview(planId: string, contentHash: string | null) {
+  // The hash is in the path's query so a changed plan is a new resource, never a stale preview.
+  return useLiveResource<PlanPreview | null>(
+    `/api/plans/${encodeURIComponent(planId)}/preview${contentHash ? `?v=${contentHash.slice(0, 16)}` : ""}`,
+    (j) => j,
+    null,
+    () => false,
+  );
+}
+
+export function useMeetingPlans(meetingId: string) {
+  return useLiveResource<PlanSummary[]>(
+    `/api/meetings/${encodeURIComponent(meetingId)}/plans`,
+    (j) => j.plans,
+    [],
+    (t) => t.startsWith("capability.command."),
+  );
+}
+
+export function useMeetingLinks(meetingId: string) {
+  return useLiveResource<PlanLink[]>(
+    `/api/meetings/${encodeURIComponent(meetingId)}/links`,
+    (j) => j.links,
+    [],
+    (t) => t.startsWith("capability.command."),
+  );
+}
+
+const isWorkflowEvent = (t: string) => t.startsWith("workflow.");
+
+export function useWorkflows() {
+  return useLiveResource<Workflow[] | null>(
+    "/api/workflows",
+    (j) => j.workflows,
+    null,
+    isWorkflowEvent,
+  );
+}
+
+export function useWorkflow(id: string) {
+  return useLiveResource<WorkflowDetail | null>(
+    `/api/workflows/${encodeURIComponent(id)}`,
+    (j) => j,
+    null,
+    isWorkflowEvent,
+  );
+}
+
+export function useWorkflowRuns(workflowId: string) {
+  return useLiveResource<WorkflowRunSummary[]>(
+    `/api/workflows/runs?workflow_id=${encodeURIComponent(workflowId)}&limit=20`,
+    (j) => j.runs,
+    [],
+    isWorkflowEvent,
+  );
+}
+
+export function useWorkflowMetrics() {
+  return useLiveResource<Record<string, WorkflowMetrics> | null>(
+    "/api/workflows/metrics",
+    (j) => j.metrics,
+    null,
+    isWorkflowEvent,
+  );
+}
+
+const RUN_POLL_MS = 3_000;
+
+/** One run with its step history, kept fresh by workflow events and, while it runs, a slow poll. */
+export function useWorkflowRun(runId: string) {
+  const res = useLiveResource<WorkflowRun | null>(
+    `/api/workflows/runs/${encodeURIComponent(runId)}`,
+    (j) => j,
+    null,
+    isWorkflowEvent,
+  );
+  const { reload } = res;
+  const active = res.data !== null && !res.data.terminal;
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setInterval(() => void reload(), RUN_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [active, reload]);
+  return res;
 }
 
 /** Current hash route without the leading "#" ("/" when empty). */

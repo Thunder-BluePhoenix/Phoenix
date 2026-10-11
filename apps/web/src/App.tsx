@@ -5,8 +5,10 @@ import { AgentSessionDetail, AgentSessionsPage } from "./components/AgentSession
 import type { FawkesAvatarHandle } from "./components/FawkesAvatar";
 import { MeetingDetail, MeetingsPage } from "./components/Meetings";
 import { Navbar } from "./components/Navbar";
+import { PlanPage } from "./components/Plans";
 import { ProvenanceNode, ProvenancePage } from "./components/Provenance";
 import { SettingsPage } from "./components/Settings";
+import { WorkflowDetailPage, WorkflowRunPage, WorkflowsPage } from "./components/Workflows";
 import { isTabId, PetPanel } from "./components/PetPanel";
 import { useConnection, useDisplayedState, useTasks } from "./core/context";
 import { useHashRoute } from "./core/hooks";
@@ -22,6 +24,9 @@ export function App() {
   const route = useHashRoute();
   const meetingId = /^\/meetings\/(.+)$/.exec(route)?.[1];
   const agentId = /^\/agents\/(.+)$/.exec(route)?.[1];
+  const runMatch = /^\/workflows\/([^/]+)\/runs\/([^/]+)$/.exec(route);
+  const workflowId = /^\/workflows\/([^/]+)$/.exec(route)?.[1];
+  const planId = /^\/plans\/(.+)$/.exec(route)?.[1];
   const provenanceId = /^\/provenance\/(.+)$/.exec(route)?.[1];
   const main = useRef<HTMLElement>(null);
   // "#/panel/<tab>" opens the Pet Panel on that tab: how the floating desktop pet sends you to
@@ -76,6 +81,18 @@ export function App() {
           <MeetingsPage state={state} />
         ) : connection !== "unauthenticated" && meetingId ? (
           <MeetingDetail key={meetingId} id={decodeURIComponent(meetingId)} state={state} />
+        ) : connection !== "unauthenticated" && route === "/workflows" ? (
+          <WorkflowsPage />
+        ) : connection !== "unauthenticated" && runMatch ? (
+          <WorkflowRunPage
+            key={runMatch[2]}
+            workflowId={decodeURIComponent(runMatch[1] ?? "")}
+            runId={decodeURIComponent(runMatch[2] ?? "")}
+          />
+        ) : connection !== "unauthenticated" && workflowId ? (
+          <WorkflowDetailPage key={workflowId} workflowId={decodeURIComponent(workflowId)} />
+        ) : connection !== "unauthenticated" && planId ? (
+          <PlanPage key={planId} planId={decodeURIComponent(planId)} />
         ) : connection !== "unauthenticated" && route === "/provenance" ? (
           <ProvenancePage />
         ) : connection !== "unauthenticated" && provenanceId ? (

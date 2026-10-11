@@ -177,7 +177,13 @@ a {
     padding: 4px 6px;
   }
 }
-/* Four page links need about 300 px; below 340 px they wrap to a second row, so the navbar is taller. */
+/* Five page links need about 390 px, so on screens under 440 px they wrap to a second row of links
+   and the navbar is taller (100 px). Under 340 px they need a third row (120 px). */
+@media (max-width: 440px) {
+  :root {
+    --navbar-h: 100px;
+  }
+}
 @media (max-width: 340px) {
   :root {
     --navbar-h: 120px;
@@ -1272,4 +1278,74 @@ code.break {
   font-size: 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* ── Phases 36, 39, 40: plans and workflows ──────────────────────────────── */
+.make-plan {
+  margin-top: 6px;
+}
+.plan-page > *,
+.workflows > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.plan-task-list,
+.preview-list {
+  padding-left: 20px;
+  margin: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plan-tasks {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.plan-tasks legend {
+  padding: 0;
+  font-weight: 600;
+}
+.wf-production {
+  font-weight: 700;
+  text-decoration: underline;
+}
+.wf-production-banner {
+  border: 1px solid var(--danger);
+  border-left-width: 6px;
+  border-left-style: double;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 0;
+}
+.wf-flag {
+  color: var(--danger-text);
+  text-transform: uppercase;
+  font-size: 11px;
+}
+.wf-step {
+  border-left-width: 4px;
+}
+.wf-step-destructive {
+  border-left-style: double;
+  border-left-width: 6px;
+  border-color: var(--danger);
+}
+.wf-definition {
+  max-height: 320px;
+}
+.metric-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.metric-row dt {
+  font-weight: 600;
+}
+.metric-row dd {
+  margin: 0;
 }

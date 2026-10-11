@@ -63,3 +63,9 @@ export function safeHttpUrl(ref: string | null | undefined): string | null {
   if (url.username || url.password) return null;
   return url.href;
 }
+
+/** Like safeHttpUrl, but only https: an address from another system is linked only when it is secure. */
+export function safeHttpsUrl(ref: string | null | undefined): string | null {
+  const url = safeHttpUrl(ref);
+  return url !== null && url.startsWith("https:") ? url : null;
+}

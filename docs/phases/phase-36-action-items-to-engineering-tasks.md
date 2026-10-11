@@ -5,7 +5,7 @@
 | Stage | Stage 6 — Meeting → Engineering (v0.6) |
 | Release target | v0.6 |
 | Priority | High |
-| Status | 🟨 Library built and tested against local mocks; wired into Core (routes below, tested through the HTTP API against the local mock GitHub and mock Frappe); there is no web panel yet; never run against a real GitHub or Frappe |
+| Status | 🟨 Library built and tested against local mocks; wired into Core (routes below, tested through the HTTP API against the local mock GitHub and mock Frappe); the web panel is built (`#/plans/<id>`); never run against a real GitHub or Frappe |
 | Depends on | [Phase 35 — Kage Decisions & Action-Item Extraction](phase-35-kage-decisions-and-action-items.md), [Phase 22 — GitHub & CI/CD Capability](phase-22-github-and-cicd-capability.md), [Phase 23 — Frappe / ERPNext Capability](phase-23-frappe-erpnext-capability.md) |
 | Unblocks | [Phase 37 — Hybrid Retrieval (Lexical + Vector + Rerank)](phase-37-hybrid-retrieval.md) |
 
@@ -140,6 +140,19 @@ All routes need the session token and are **user routes**: there is no tool, cap
 | `POST /api/plans/:id/cancel` | `{}` | 200 `Detail` (draft/proposed/approved/failed → cancelled). 400 while `creating`. |
 
 **UI rules the contract implies.** Show the status gate (`/api/plans/status`) before offering "Make a plan". Show the basis of every statement and the `preview` (with the policy `decision`) before approval; the "name the meeting in the created tasks" box is **off** by default. Never offer approve for a plan whose hash changed; after any edit the plan is `draft` again. After `create`, show each run's `status`, `url` and `error`, and the links. The per-task confirmation prompts arrive through the normal confirmation flow.
+
+## Web UI
+
+"Make a plan…" sits on every accepted decision, action item and requirement of the meeting page (`Plans.tsx`, `MakePlan`); it asks for the destination (GitHub `owner/name`, Frappe site), validates it like the API, and shows every `reasons` sentence from `GET /api/plans/status` (or from a `PLANNING_OFF` refusal) when planning is off. The plan page is `#/plans/<id>`:
+
+- **Reading.** Status in words, a "Rules-based draft" or "Model output (provider/model)" label, the destination, every statement with its basis ("from the meeting" with the stored quote, "suggested by the model", "written by you"), and the exact preview (`GET /api/plans/:id/preview`: tool, input, policy verdict) as plain text in a scrolling `<pre>`.
+- **Editing** (title, summary, destination, tasks with title/body/labels, add/remove up to 8) validates with the service's rules and sends only what changed. Saving returns the plan to draft, as the API does.
+- **Approve** sends the `content_hash` of the plan on screen (plus `include_meeting_ref`). If the plan changed, Core's refusal is shown and the plan is reloaded to what Core now holds.
+- **Create** needs a tick ("I understand this creates N tasks in <destination>, as me") and sends `{confirm:true}`. The request is held open with no client timeout; while it is open the page says "Waiting for your approval of task N of M", shows the confirmation list (`Approvals`), keeps Create disabled and sends nothing on a second click. The per-task report, a failure ("stopped at task N", retry is safe), and the links created follow. External addresses are text, linked only if `https:`. The meeting page lists its plans (`GET /api/meetings/:id/plans`) and the tasks created (`/links`).
+
+**Checked:** `apps/web/test/plans.test.tsx` (24 cases: happy path, planning off, errors, hostile text, double click on Approve, Draft, Create and Cancel, stale-hash refusal, the long-blocking create against a fake Core that holds the request open, http/javascript links as text). Mutations, each failing a test and restored: approve without the hash; Create enabled while pending; Create without the tick; any URL linked. Browser smoke against a real Core with a local GitHub mock (`capabilities/github/testing/mock-github`) and a fake model reply (see below): accept a decision, "Make a plan…" (one POST on a double click), propose, a plan edit made through the API behind the page, Approve refused with Core's message and the page reloaded to the new fingerprint, then approve, tick, double-click Create (one POST; "Waiting for your approval of task 1 of 2." appeared in 30 ms and stayed 8 s with no error), approve task 1 in the UI, the page moved to task 2 of 2, approve task 2, both tasks listed with https links and the same single `create` request returned.
+
+**The mock saw the writes:** the rig that ran the plan flow closed with the mock GitHub having recorded 2 writes and 2 issues, one per approved task and no duplicate for the double click. **Not covered by the smoke:** a real model (the reply was a fixed JSON from the test double; local Ollama was not running) and Frappe (no Frappe mock was started).
 
 ## Source documents
 

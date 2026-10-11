@@ -102,7 +102,7 @@ Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
 | 35 | [Kage Decisions & Action-Item Extraction](phase-35-kage-decisions-and-action-items.md) | v0.6 | High | 33, 16 | 🟨 | | Extraction, review states, search/ask, review panel on the meeting page; real-model path not exercised in the browser; 1 criterion open |
-| 36 | [Action Items → Engineering Tasks](phase-36-action-items-to-engineering-tasks.md) | v0.6 | High | 35, 22, 23 | 🟨 | | Plans and task creation wired into Core, user-only routes; verified only against local GitHub/Frappe mocks; no web panel yet; 2 criteria open |
+| 36 | [Action Items → Engineering Tasks](phase-36-action-items-to-engineering-tasks.md) | v0.6 | High | 35, 22, 23 | 🟨 | | Plans and task creation wired into Core, user-only routes; web panel built; verified only against local GitHub/Frappe mocks; 2 criteria open |
 
 **Stage gate:** Meeting artifacts can become structured engineering context.
 
@@ -119,7 +119,7 @@ Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still 
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 39 | [Workflow Engine](phase-39-workflow-engine.md) | v0.8 | High | 38 | 🟨 | | Engine wired into Core with routes; no web view for workflows yet; 1 criterion open |
+| 39 | [Workflow Engine](phase-39-workflow-engine.md) | v0.8 | High | 38 | 🟨 | | Engine wired into Core with routes; read-only web view (no authoring); 1 criterion open |
 | 40 | [Workflow Safety & v0.8 Release](phase-40-workflow-safety.md) | v0.8 | High | 39 | 🟨 | | Safety layer wired into Core (user-only authorise, kill switch, restart reconciliation); v0.8 not cut; 2 criteria open |
 
 **Stage gate:** Workflow execution is reliable and safe.

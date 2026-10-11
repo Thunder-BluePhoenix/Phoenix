@@ -24,6 +24,7 @@ import {
   type MeetingReviewResult,
 } from "../core/types";
 import { Feedback } from "./Feedback";
+import { MakePlan } from "./Plans";
 
 type Filter = "all" | MeetingItemStatus;
 
@@ -260,6 +261,7 @@ function ItemCard({
         </div>
       )}
       {!editing && <Feedback error={error} />}
+      {!editing && <MakePlan item={item} />}
     </li>
   );
 }

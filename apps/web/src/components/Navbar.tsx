@@ -45,6 +45,9 @@ export const Navbar = forwardRef<FawkesAvatarHandle, NavbarProps>(function Navba
         <a href="#/agents" aria-current={route.startsWith("/agents") ? "page" : undefined}>
           Agents
         </a>
+        <a href="#/workflows" aria-current={route.startsWith("/workflows") ? "page" : undefined}>
+          Workflows
+        </a>
         <a href="#/settings" aria-current={route === "/settings" ? "page" : undefined}>
           Settings
         </a>

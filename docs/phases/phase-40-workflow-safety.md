@@ -71,6 +71,12 @@ Same conventions as the [phase 39 contract](phase-39-workflow-engine.md#api-cont
 
 **Gaps recorded by the wiring** (also in the gaps register): a user cancel does not run declared undo steps (it is handled like the kill switch: safest, nothing invented); `ToolGateway.call` takes no cancellation signal, so a cancelled call may still complete in the capability and is then recorded as unknown.
 
+## Web UI
+
+"Authorise for production" on the workflow page (`Workflows.tsx`): it lists the reasons from `authorisation_reasons`, every tool the definition calls (with its declared undo), the version and the full definition hash being authorised, and an optional expiry. The expiry is checked in the page by the API's rule (future, at most 90 days) and sent as an ISO time. "Authorise exactly this definition" sends the `hash` of the definition on screen; if the stored definition changed meanwhile Core's refusal is shown (`HASH_MISMATCH`) and the page reloads to the new version and hash. "Authorisations" lists each one as "In force", "Revoked" or "Not in force (the definition changed or it expired)" with its hash; "Revoke authorisation…" needs a second click. Everything from the stored definition and from runs renders as text.
+
+**Checked:** `apps/web/test/workflows.test.tsx`. Mutation: authorise sent without the hash fails 5 tests (restored). Browser smoke against a real Core: the definition was changed to version 2 through the API behind the page, Authorise was refused ("The workflow changed since you reviewed it; review it again before authorising"), the page reloaded to hash `70755cb128ed…` and version 2, and the retry authorised it (one POST on a double click). A 3-day expiry typed with native input events was stored (`expires_at` 2026-10-14T04:30Z) and shown; a past expiry was refused in the page without a request; revoke ended the authorisation ("Revoked") and the workflow went back to "NOT authorised: triggers are refused".
+
 ## Source documents
 
 - Post-MVP Roadmap v1.0 §10.2
