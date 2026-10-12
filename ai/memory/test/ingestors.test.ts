@@ -196,6 +196,48 @@ describe("meeting ingestor", () => {
     ingest(m);
     expect(m.store.search({ match: buildMatchQuery("zoom")!, limit: 5 })).toEqual([]);
   });
+
+  it("preserves existing memories across both 500-row boundaries, archives, and failed enumeration", () => {
+    const m = meetingRig();
+    for (let n = 0; n < 1002; n++) {
+      const id = String(n).padStart(4, "0");
+      m.meetings.upsert({
+        capabilityId: "kage",
+        externalId: id,
+        status: "ready",
+        startedAt: "2026-10-07T09:00:00.000Z",
+      });
+      m.meetings.setSummary(`kage:${id}`, { text: `Meeting ${id} agreement` });
+      if (n % 2) m.meetings.archive(`kage:${id}`);
+    }
+    expect(ingest(m).stored).toBe(1006);
+    expect(m.store.count()).toBe(1006);
+    expect(ingest(m)).toMatchObject({ removed: 0, duplicate: 1006 });
+
+    // A failed page must not turn unseen meetings into absent references.
+    const broken = {
+      listAll: () => {
+        throw new Error("page unavailable");
+      },
+      summary: (id: string) => m.meetings.summary(id),
+    };
+    expect(() =>
+      ingestMeetings({
+        pipeline: m.pipeline,
+        store: m.store,
+        meetings: broken,
+        capabilities: ["kage"],
+      }),
+    ).toThrow("page unavailable");
+    expect(m.store.count()).toBe(1006);
+
+    m.meetings.archive("kage:0000");
+    m.meetings.archive("kage:0001", false);
+    m.meetings.delete("kage:1001");
+    expect(ingest(m)).toMatchObject({ removed: 1 });
+    expect(m.store.count()).toBe(1005);
+    expect(m.store.sourceRefs({ source: "kage", domain: "meeting" })).toContain("kage:1000");
+  });
 });
 
 describe("markdown chunking", () => {

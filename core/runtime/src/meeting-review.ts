@@ -168,10 +168,7 @@ export class MeetingReviewRuntime implements MeetingReviewApi {
   importAll(): { imported: number } {
     let imported = 0;
     if (this.closed) return { imported };
-    const all = [
-      ...this.d.meetings.list({ limit: 500 }),
-      ...this.d.meetings.list({ archived: true, limit: 500 }),
-    ];
+    const all = this.d.meetings.listAll();
     for (const meeting of all) {
       if (!IMPORT_CAPABILITIES.includes(meeting.capability_id) || !meeting.has_summary) continue;
       try {
@@ -186,7 +183,7 @@ export class MeetingReviewRuntime implements MeetingReviewApi {
   /** Re-derives memory facts from accepted items, for example after sensitive meetings were allowed. */
   resyncMemory(): void {
     if (this.closed) return;
-    for (const meeting of this.d.meetings.list({ limit: 500 })) {
+    for (const meeting of this.d.meetings.listAll()) {
       this.service.syncMemory(meeting.id);
     }
   }

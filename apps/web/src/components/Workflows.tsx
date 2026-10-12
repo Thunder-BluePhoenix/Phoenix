@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { formatAgo, formatDate } from "../core/format";
 import {
   useAction,
@@ -53,7 +53,7 @@ function WorkflowState({ w }: { w: Workflow }) {
 }
 
 export function WorkflowsPage() {
-  const { data: workflows, error } = useWorkflows();
+  const { data: workflows, error, reload } = useWorkflows();
   const { data: metrics } = useWorkflowMetrics();
   return (
     <div className="meetings workflows">
@@ -68,10 +68,9 @@ export function WorkflowsPage() {
         </p>
       )}
       {workflows && workflows.length === 0 && (
-        <p className="muted">
-          No workflows yet. A workflow is created by saving a definition through the API.
-        </p>
+        <p className="muted">No workflows yet. Create one by reviewing a definition below.</p>
       )}
+      <WorkflowEditor onSaved={reload} />
       <ul className="card-list" aria-label="Workflows">
         {workflows?.map((w) => (
           <li key={w.id} className="card meeting-row">
@@ -133,6 +132,214 @@ function Metrics({ m }: { m: WorkflowMetrics | undefined }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+/** A validation belongs to one immutable draft. Editing it, even during a request, ends review. */
+function WorkflowEditor({
+  initial,
+  onSaved,
+}: {
+  initial?: WorkflowDetail;
+  onSaved: () => Promise<void>;
+}) {
+  const id = useId();
+  const [draft, setDraft] = useState(() =>
+    initial?.definition
+      ? definitionText({ ...initial.definition, enabled: initial.workflow.enabled })
+      : "",
+  );
+  const draftRef = useRef(draft);
+  const revision = useRef(0);
+  const saving = useRef(false);
+  const checking = useRef(false);
+  const [review, setReview] = useState<{
+    text: string;
+    definition: unknown;
+    hash: string;
+    authorisation: WorkflowValidation["authorisation"];
+  } | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const validation = useAction();
+  const save = useAction();
+
+  const change = (value: string) => {
+    draftRef.current = value;
+    revision.current++;
+    setDraft(value);
+    setReview(null);
+    setProblem(null);
+    setNote(null);
+    setSavedId(null);
+  };
+  const check = async (e: FormEvent) => {
+    e.preventDefault();
+    if (saving.current || checking.current) return;
+    const text = draftRef.current;
+    const at = revision.current;
+    setReview(null);
+    setNote(null);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      setProblem("Enter a JSON workflow definition before checking it.");
+      return;
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      setProblem("A workflow definition must be a JSON object.");
+      return;
+    }
+    if (!("enabled" in parsed) || parsed.enabled !== (initial?.workflow.enabled ?? false)) {
+      setProblem(
+        initial
+          ? `Keep "enabled": ${initial.workflow.enabled}. Change the switch separately after saving.`
+          : 'Set "enabled": false. Saving a new definition must not switch it on.',
+      );
+      return;
+    }
+    if (initial && (!("id" in parsed) || parsed.id !== initial.workflow.id)) {
+      setProblem("Editing must keep the same workflow ID. Use Create workflow for a new ID.");
+      return;
+    }
+    setProblem(null);
+    checking.current = true;
+    try {
+      const result = await validation.run<WorkflowValidation>("POST", "/api/workflows/validate", {
+        definition: parsed,
+      });
+      if (at !== revision.current || text !== draftRef.current) return;
+      if (!result) return;
+      if (!result.valid || !result.hash) {
+        setProblem(
+          result.problems.length
+            ? `Not valid: ${result.problems.join("; ")}`
+            : "Validation did not return a valid definition hash.",
+        );
+        return;
+      }
+      setReview({
+        text,
+        definition: parsed,
+        hash: result.hash,
+        authorisation: result.authorisation,
+      });
+    } finally {
+      checking.current = false;
+    }
+  };
+  const submit = async () => {
+    if (saving.current || !review || review.text !== draftRef.current) return;
+    saving.current = true;
+    setProblem(null);
+    setNote(null);
+    try {
+      const result = await save.run<{ workflow: Workflow }>("POST", "/api/workflows", {
+        definition: review.definition,
+        ...(initial ? { expected_hash: initial.workflow.hash } : { create_only: true }),
+      });
+      if (!result) {
+        setReview(null);
+        return;
+      }
+      setReview(null);
+      if (result.workflow.hash !== review.hash) {
+        setProblem(
+          "The saved definition hash differs from the reviewed hash. Review the stored definition before using it.",
+        );
+      } else {
+        setNote(
+          initial
+            ? "Definition saved. Existing switch state is unchanged; saving does not authorise it."
+            : "Definition saved switched off. Saving does not authorise or enable it.",
+        );
+      }
+      setSavedId(result.workflow.id);
+      await onSaved();
+    } finally {
+      saving.current = false;
+    }
+  };
+
+  return (
+    <section className="card wf-editor" aria-labelledby={`${id}-heading`}>
+      <h2 id={`${id}-heading`} className="h3">
+        {initial ? "Edit definition" : "Create workflow"}
+      </h2>
+      <p className="muted small">
+        Enter the complete JSON definition.{" "}
+        {initial
+          ? `Keep "enabled": ${initial.workflow.enabled}; this edit preserves its current switch state. Saving does not authorise or run it.`
+          : 'New definitions must have "enabled": false. Saving does not run, enable or authorise them.'}{" "}
+        Checking never saves.
+      </p>
+      <form onSubmit={(e) => void check(e)}>
+        <div className="field">
+          <label htmlFor={`${id}-json`}>Workflow definition (JSON)</label>
+          <textarea
+            id={`${id}-json`}
+            className="wf-editor-input"
+            value={draft}
+            onChange={(e) => change(e.target.value)}
+            spellCheck={false}
+            rows={12}
+            disabled={save.busy || saving.current}
+          />
+        </div>
+        <button
+          type="submit"
+          className="btn"
+          disabled={validation.busy || save.busy || checking.current || saving.current}
+        >
+          Check draft
+        </button>
+      </form>
+      <Feedback error={validation.error || save.error} />
+      {problem && (
+        <p className="error-text memory-text" role="alert">
+          {problem}
+        </p>
+      )}
+      {review && review.text === draft && (
+        <div className="review-edit" aria-label="Reviewed definition">
+          <p>
+            <strong>Valid draft.</strong> Review this exact definition and hash before saving. A
+            change requires another check.
+          </p>
+          <pre className="agent-output wf-definition" tabIndex={0} aria-label="Definition to save">
+            {definitionText(review.definition)}
+          </pre>
+          <p className="memory-text">
+            Validated hash: <code className="break">{review.hash}</code>
+          </p>
+          <p>
+            {review.authorisation?.required
+              ? `Authorisation required separately: ${review.authorisation.reasons.join("; ")}`
+              : "No authorisation required."}{" "}
+            Saving never authorises;{" "}
+            {initial
+              ? `the switch remains ${initial.workflow.enabled ? "on" : "off"}.`
+              : "the new workflow stays switched off."}
+          </p>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={save.busy || saving.current}
+            onClick={() => void submit()}
+          >
+            Confirm: save exactly this definition
+          </button>
+        </div>
+      )}
+      {note && <p role="status">{note}</p>}
+      {savedId && (
+        <p>
+          <a href={workflowHref(savedId)}>Review stored workflow</a>
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -498,6 +705,7 @@ export function WorkflowDetailPage({ workflowId }: { workflowId: string }) {
         )}
         <Validate definition={definition} />
       </section>
+      {definition && <WorkflowEditor key={`${w.id}:${w.hash}`} initial={data} onSaved={reload} />}
 
       <section aria-labelledby="state-h" className="card">
         <h2 id="state-h" className="h3">
@@ -663,6 +871,15 @@ export function WorkflowRunPage({ workflowId, runId }: { workflowId: string; run
     );
   }
   if (!run) return <p className="muted">Loading…</p>;
+  const runApprovals = (
+    <Approvals
+      filter={(c) =>
+        c.details?.run === run.id &&
+        c.details.workflow === run.workflow_id &&
+        Boolean(c.details.step)
+      }
+    />
+  );
 
   const doCancel = async () => {
     await cancel.run("POST", `/api/workflows/runs/${encodeURIComponent(run.id)}/cancel`, {});
@@ -692,17 +909,17 @@ export function WorkflowRunPage({ workflowId, runId }: { workflowId: string; run
         )}{" "}
         · chain depth {run.chain_depth}
       </p>
+      {/* Both workflow gates and tool policy confirmations belong to this run only when Core
+          provides the run identifier; a generic policy request must stay in the main queue. */}
       {run.status === "waiting_approval" && (
         <section aria-labelledby="wait-h" className="card">
           <h2 id="wait-h" className="h3">
             Waiting for you
           </h2>
-          <Approvals />
+          {runApprovals}
         </section>
       )}
-      {/* A step can also wait for the policy's confirmation of one tool call while the run is
-          still "running": the question must be answerable from here too. */}
-      {!run.terminal && run.status !== "waiting_approval" && <Approvals />}
+      {!run.terminal && run.status !== "waiting_approval" && runApprovals}
       {!run.terminal && (
         <section aria-labelledby="cancel-h" className="card">
           <h2 id="cancel-h" className="h3">

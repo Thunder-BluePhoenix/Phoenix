@@ -7,7 +7,6 @@ import {
   RISK_LABEL,
   RUN_STATE_TEXT,
   STEP_STATUS_TEXT,
-  taskTitle,
 } from "../core/agent";
 import { formatSince } from "../core/format";
 import { useAction, useAgentTask, useAgentTasks } from "../core/hooks";
@@ -168,7 +167,7 @@ function TaskBody({ detail, onChanged }: { detail: AgentTaskDetail; onChanged: (
             type="button"
             className="btn btn-danger-outline"
             disabled={busy}
-            aria-label={`Cancel task: ${taskTitle(detail)}`}
+            aria-label={`Cancel task: ${detail.task.title}`}
             onClick={() => void cancel()}
           >
             Cancel task
@@ -360,7 +359,7 @@ function TaskBody({ detail, onChanged }: { detail: AgentTaskDetail; onChanged: (
 /** One agent task, loaded by id and kept live by `agent_run.*` and approval events. */
 export function TaskCard({ taskId, title }: { taskId: string; title?: string }) {
   const { data, error, reload } = useAgentTask(taskId);
-  const heading = title ?? (data ? taskTitle(data) : "Agent task");
+  const heading = data?.task.title ?? title ?? "Agent task";
   return (
     <article className="card task-card" aria-label={`Agent task: ${heading}`}>
       <h4 className="task-title">{heading}</h4>

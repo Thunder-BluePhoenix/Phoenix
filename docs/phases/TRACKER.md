@@ -110,7 +110,7 @@ Next up: finish **Phase 14 — floating desktop Fawkes** and **Phase 20 — hard
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 37 | [Hybrid Retrieval (Lexical + Vector + Rerank)](phase-37-hybrid-retrieval.md) | v0.7 | High | 36 | ✅ | | Hybrid retrieval wired into Core and Settings (off by default); recall@5 up, MRR gain within noise; no rebuild route (see gaps.md) |
+| 37 | [Hybrid Retrieval (Lexical + Vector + Rerank)](phase-37-hybrid-retrieval.md) | v0.7 | High | 36 | ✅ | | Local-only hybrid retrieval with explicit rebuild; recall@5 up, MRR gain within noise; real cold-rebuild verification pending |
 | 38 | [Knowledge Graph & Provenance](phase-38-knowledge-graph-and-provenance.md) | v0.7 | High | 37 | 🟨 | | Graph and provenance view built; pre-registered value gate NOT met by the graph alone; 3 criteria open |
 
 **Stage gate:** Graph/hybrid retrieval proves measurable value.
@@ -119,7 +119,7 @@ Next up: finish **Phase 14 — floating desktop Fawkes** and **Phase 20 — hard
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 39 | [Workflow Engine](phase-39-workflow-engine.md) | v0.8 | High | 38 | 🟨 | | Engine wired into Core with routes; read-only web view (no authoring); 1 criterion open |
+| 39 | [Workflow Engine](phase-39-workflow-engine.md) | v0.8 | High | 38 | 🟨 | | Engine and user-owned history retention wired into Core; web definition editor uses atomic create-only/expected-hash save; release evidence open |
 | 40 | [Workflow Safety & v0.8 Release](phase-40-workflow-safety.md) | v0.8 | High | 39 | 🟨 | | Safety layer wired into Core (user-only authorise, kill switch, restart reconciliation); v0.8 not cut; 2 criteria open |
 
 **Stage gate:** Workflow execution is reliable and safe.
@@ -128,8 +128,8 @@ Next up: finish **Phase 14 — floating desktop Fawkes** and **Phase 20 — hard
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 41 | [SDK Stabilisation & Developer Docs](phase-41-sdk-stabilization-and-docs.md) | v0.9 | High | 40 | 🟨 | | Manifest/protocol v1 boundary, examples, docs and real-Core walkthrough; independent third-party docs-only build and package publication unverified |
-| 42 | [Capability Registry & v0.9 Release](phase-42-capability-registry.md) | v0.9 | High | 41 | 🟨 | | Signed local index and disclosure built; executable third-party install refused without OS sandbox; v0.9 not cut |
+| 41 | [SDK Stabilisation & Developer Docs](phase-41-sdk-stabilization-and-docs.md) | v0.9 | High | 40 | 🟨 | | Local packed ESM/TS SDK and isolated consumer/compat fixtures plus versioned static docs; independent onboarding/hosting/publication absent |
+| 42 | [Capability Registry & v0.9 Release](phase-42-capability-registry.md) | v0.9 | High | 41 | 🟨 | | Host-verified signer ID/digest shown separately from artifact trust; third-party install refuses without OS sandbox; v0.9 not cut |
 
 **Stage gate:** SDK/ecosystem and core are stable enough for external users.
 
@@ -146,15 +146,15 @@ Next up: finish **Phase 14 — floating desktop Fawkes** and **Phase 20 — hard
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 45 | [Cross-Device Context & Sync](phase-45-cross-device-context.md) | v1.1 | Medium | 44 | 🟨 | | Opt-in encrypted staged-record sync, Core routes and Settings UI; no deployed relay, automatic preference integration or rollback-resistant freshness |
-| 46 | [Personal Knowledge Engine](phase-46-personal-knowledge-engine.md) | v1.2 | High | 45 | 🟨 | | Typed 11-domain ingestion, PR/CI/deployment producers and classified answers; remaining producers, deletion propagation and v1.2 gate open |
-| 47 | [Multi-Agent Runtime](phase-47-multi-agent-runtime.md) | v1.3 | High | 46 | 🟨 | | CI + meeting specialists under typed contracts; planning specialist and v1.3 evaluation/release missing |
-| 48 | [Phoenix World Model](phase-48-world-model.md) | v1.4 | Medium | 47 | 🟨 | | Explicit sourced six-hop association traversal and UI; no automatic full-chain producer or historical snapshots |
+| 45 | [Cross-Device Context & Sync](phase-45-cross-device-context.md) | v1.1 | Medium | 44 | 🟨 | | Encrypted staged records plus explicit reduced-motion/search-limit adapters and conflict-safe apply; no relay/device revocation/replay checkpoint |
+| 46 | [Personal Knowledge Engine](phase-46-personal-knowledge-engine.md) | v1.2 | High | 45 | 🟨 | | Typed PR/CI/deploy/issue event metadata with deletion cascade and classified answers; other vetted sources and real-model corpus missing |
+| 47 | [Multi-Agent Runtime](phase-47-multi-agent-runtime.md) | v1.3 | High | 46 | 🟨 | | CI, meeting review and aggregate-only planning review under typed grants; real specialist chain and v1.3 evaluation absent |
+| 48 | [Phoenix World Model](phase-48-world-model.md) | v1.4 | Medium | 47 | 🟨 | | Append-only surviving temporal provenance and sourced association UI; complete real incident chain/causality absent |
 | 49 | [Controlled Autonomous Agents](phase-49-controlled-autonomy.md) | v1.5 | High | 48 | 🟨 | | Settings/budgets/stop implemented; executable autonomy and CI→PR runner refused without OS sandbox; gate not met |
 | 50 | [AI Capability Ecosystem](phase-50-ai-capability-ecosystem.md) | v1.6 | Medium | 49 | 🟨 | | Additive AI manifest metadata and explicit user disclosure; third-party install and cloud AI fail closed |
 | 51 | [Agent-to-Agent Collaboration](phase-51-agent-to-agent-collaboration.md) | v1.7 | Medium | 50 | 🟨 | | Typed specialist delegation, intersection, conflict records and ancestry audit; no coding/test/devops specialists or v1.7 tag |
-| 52 | [Predictive & Proactive Intelligence](phase-52-proactive-intelligence.md) | v1.8 | Medium | 51 | 🟨 | | Opt-in manual grounded Kage unassigned-action insights with quiet/noise controls; no deploy/incident/dependency producers |
-| 53 | [Self-Improving Workflows & Evaluation Loop](phase-53-evaluation-feedback-loop.md) | v1.9 | Medium | 52 | 🟨 | | Offline governed re-evaluation and human approval only; no durable authenticated Core activation/rollback or release |
+| 52 | [Predictive & Proactive Intelligence](phase-52-proactive-intelligence.md) | v1.8 | Medium | 51 | 🟨 | | Off-by-default consented Kage cadence with current-source/quiet/noise gates; no deploy/incident/dependency sources or user study |
+| 53 | [Self-Improving Workflows & Evaluation Loop](phase-53-evaluation-feedback-loop.md) | v1.9 | Medium | 52 | 🟨 | | Digest-only durable feedback/candidate/evaluation/approval with forget cascade; no trusted task reader, pinned baseline or active consumer in Core |
 | 54 | [Multimodal Interaction (Speech & Vision)](phase-54-multimodal-interaction.md) | v2.0 | Medium | 53 | 🟨 | | Local adapters plus Core-authorized one-shot mic/screen capture and Settings UI; installed models, device result and Fawkes voice unverified |
 | 55 | [v2.0 — Ambient AI Operating Layer](phase-55-v2-0-ambient-ai-layer.md) | v2.0 | High | 54 | 🟨 | | 14 DoD + 8 anti-goal evidence plan, NO-GO; critical sandbox/preview/review/multimodal gates open |
 

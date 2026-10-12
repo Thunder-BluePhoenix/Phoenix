@@ -76,6 +76,7 @@ export interface RetrievalDeps {
   /** Providers able to embed, by id. */
   embeddingProviders: () => readonly string[];
   aiEnabled: () => boolean;
+  killSwitchEngaged: () => boolean;
   audit: AuditLog;
   logger: Logger;
   now?: () => Date;
@@ -101,7 +102,9 @@ export class RetrievalRuntime implements RetrievalApi {
   private readonly now: () => Date;
   private indexer: { key: string; indexer: VectorIndexer } | null = null;
   private running: Promise<IndexReport | null> | null = null;
+  private rebuildRunning: Promise<RetrievalStatusView> | null = null;
   private lastRun: LastRun | null = null;
+  private rebuilding = false;
   private closed = false;
 
   constructor(private readonly d: RetrievalDeps) {
@@ -129,6 +132,12 @@ export class RetrievalRuntime implements RetrievalApi {
   }
 
   setSettings(input: unknown): RetrievalSettingsView {
+    if (this.rebuilding) {
+      throw new PhoenixError(
+        ErrorCode.CAPABILITY_DISABLED,
+        "Wait for the index rebuild before changing smart search settings",
+      );
+    }
     if (input === null || typeof input !== "object" || Array.isArray(input)) {
       throw invalid("Retrieval settings must be an object");
     }
@@ -185,6 +194,7 @@ export class RetrievalRuntime implements RetrievalApi {
   private inactiveReason(): string | null {
     if (!this.settings().enabled) return "retrieval_disabled";
     if (!this.d.aiEnabled()) return "ai_disabled";
+    if (this.d.killSwitchEngaged()) return "kill_switch";
     return null;
   }
 
@@ -329,10 +339,49 @@ export class RetrievalRuntime implements RetrievalApi {
     if (this.indexer?.key !== embedder.modelKey) {
       this.indexer = {
         key: embedder.modelKey,
-        indexer: new VectorIndexer({ vectors: this.vectors, embedder, minIntervalMs: 0 }),
+        indexer: new VectorIndexer({
+          vectors: this.vectors,
+          embedder,
+          minIntervalMs: 0,
+          canIndex: () => !this.closed && this.inactiveReason() === null,
+        }),
       };
     }
     return this.indexer.indexer;
+  }
+
+  /** Explicitly replace the active model's vectors; other model spaces are retained. */
+  rebuild(): Promise<RetrievalStatusView> {
+    if (this.rebuildRunning) return this.rebuildRunning;
+    if (this.closed || this.inactiveReason() !== null) {
+      throw new PhoenixError(
+        ErrorCode.CAPABILITY_DISABLED,
+        "Smart search and AI must be on, and the emergency stop disengaged, before rebuilding",
+      );
+    }
+    this.rebuilding = true;
+    this.rebuildRunning = this.runRebuild().finally(() => {
+      this.rebuilding = false;
+      this.rebuildRunning = null;
+    });
+    return this.rebuildRunning;
+  }
+
+  private async runRebuild(): Promise<RetrievalStatusView> {
+    await this.running;
+    if (this.closed || this.inactiveReason() !== null) {
+      throw new PhoenixError(
+        ErrorCode.CAPABILITY_DISABLED,
+        "Smart search or AI was turned off before rebuilding",
+      );
+    }
+    const model = this.embedder(this.settings()).modelKey;
+    this.lastRun = null;
+    this.vectors.dropModel(model);
+    // The old indexer may be in cooldown after an outage; a deliberate retry gets a fresh one.
+    this.indexer = null;
+    await this.runIndex();
+    return this.status();
   }
 
   /**
@@ -340,6 +389,11 @@ export class RetrievalRuntime implements RetrievalApi {
    * while retrieval or AI is off. Never throws for provider problems; they show in `status()`.
    */
   index(): Promise<IndexReport | null> {
+    if (this.rebuilding)
+      return this.rebuildRunning!.then(
+        () => null,
+        () => null,
+      );
     this.running ??= this.runIndex().finally(() => {
       this.running = null;
     });
@@ -353,7 +407,11 @@ export class RetrievalRuntime implements RetrievalApi {
     let embedded = 0;
     let failed = 0;
     try {
-      for (let run = 0; run < MAX_RUNS_PER_TRIGGER && !this.closed; run++) {
+      for (
+        let run = 0;
+        run < MAX_RUNS_PER_TRIGGER && !this.closed && this.inactiveReason() === null;
+        run++
+      ) {
         report = await indexer.run();
         embedded += report.embedded;
         failed += report.failed;
@@ -378,6 +436,7 @@ export class RetrievalRuntime implements RetrievalApi {
 
   /** Resolves when the index run in progress (if any) has finished. */
   async settled(): Promise<void> {
+    await this.rebuildRunning?.catch(() => undefined);
     await this.running?.catch(() => undefined);
   }
 

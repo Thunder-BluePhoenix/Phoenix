@@ -5,6 +5,7 @@ import { tokenize, type Viewer } from "@phoenix/ai-memory";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_RRF_K,
+  AiEmbedder,
   FeatureReranker,
   ModelReranker,
   Retriever,
@@ -13,7 +14,7 @@ import {
   type Reranker,
   type RetrieverOptions,
 } from "../src";
-import { CLOCK, aiRig, rig, type Rig } from "./helpers";
+import { CLOCK, aiRig, rig, toyVector, type Rig } from "./helpers";
 
 /** Words in one group mean the same thing: the paraphrase case lexical search cannot solve. */
 const CONCEPTS: Record<string, number> = {
@@ -256,6 +257,82 @@ describe("degradation is silent for the user but reported", () => {
       (await retriever.retrieve({ query: "database lock", viewer: r.owner, limit: 3 })).report
         .vectorSkipped,
     ).toBeNull();
+  });
+
+  it("uses local nomic for every query privacy class despite enabled cloud", async () => {
+    const a = aiRig({
+      preferred: "cloud",
+      cloudOptIn: { public: true, internal: true, sensitive: true },
+    });
+    a.local.model = "nomic-embed-text";
+    const embedder = new AiEmbedder(a.ai, {
+      provider: "local",
+      model: "nomic-embed-text",
+      queryPrefix: "search_query: ",
+    });
+    for (const privacy of ["public", "internal", "sensitive"] as const) {
+      expect(await embedder.embedQuery("database lock", privacy)).toEqual(
+        toyVector("search_query: database lock"),
+      );
+    }
+    expect(a.local.embedRequests.map((request) => request.privacy)).toEqual([
+      "public",
+      "internal",
+      "sensitive",
+    ]);
+    expect(a.cloud.embedRequests).toEqual([]);
+  });
+
+  it("degrades to lexical when local fails without probing opted-in cloud", async () => {
+    const r = rig();
+    const a = aiRig({ cloudOptIn: { public: true, internal: true, sensitive: true } });
+    const id = r.add({ text: "database lock fix", dedupeKey: "a" });
+    r.vectors.putMany(a.embedder.modelKey, [
+      { id, text: "database lock fix", vector: toyVector("database lock fix") },
+    ]);
+    const retriever = new Retriever({
+      store: r.store,
+      vectors: r.vectors,
+      embedder: a.embedder,
+      clock: CLOCK,
+    });
+    let cloudHealth = 0;
+    a.cloud.health = () => {
+      cloudHealth++;
+      return Promise.resolve({ available: true, detail: "ok" });
+    };
+    a.local.failEmbed = new ModelError("network", "local", "connection refused");
+    for (const privacy of ["public", "internal", "sensitive"] as const) {
+      const res = await retriever.retrieve({
+        query: "database lock",
+        viewer: r.owner,
+        limit: 3,
+        queryPrivacy: privacy,
+      });
+      expect(ids(res.items)).toEqual([id]);
+      expect(res.report.vectorSkipped).toMatchObject({ reason: "provider_unavailable" });
+    }
+    expect(a.cloud.embedRequests).toEqual([]);
+    expect(cloudHealth).toBe(0);
+  });
+
+  it("reports missing local embedding provider instead of using cloud", async () => {
+    const r = rig();
+    const a = aiRig({ cloudOptIn: { public: true, internal: true, sensitive: true } });
+    const id = r.add({ text: "database lock fix", dedupeKey: "a" });
+    const embedder = new AiEmbedder(a.ai, { provider: "missing", model: "nomic-embed-text" });
+    r.vectors.putMany(embedder.modelKey, [
+      { id, text: "database lock fix", vector: toyVector("database lock fix") },
+    ]);
+    const res = await new Retriever({
+      store: r.store,
+      vectors: r.vectors,
+      embedder,
+      clock: CLOCK,
+    }).retrieve({ query: "database lock", viewer: r.owner, limit: 3, queryPrivacy: "public" });
+    expect(ids(res.items)).toEqual([id]);
+    expect(res.report.vectorSkipped).toMatchObject({ reason: "no_provider" });
+    expect(a.cloud.embedRequests).toEqual([]);
   });
 
   it("an empty index is reported, not an error", async () => {

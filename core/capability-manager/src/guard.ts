@@ -6,16 +6,37 @@ import { ErrorCode, PhoenixError } from "@phoenix/protocol";
  * Runs `fn` with a timeout and converts any throw (sync or async) into a
  * rejected promise, so a misbehaving capability can never take down core.
  */
-export async function guarded<T>(fn: () => T | Promise<T>, timeoutMs: number): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new PhoenixError(ErrorCode.OPERATION_TIMEOUT)), timeoutMs);
-    timer.unref();
-  });
+export async function guarded<T>(
+  fn: () => T | Promise<T>,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<T> {
+  const deadline = Promise.withResolvers<never>();
+  const timer = setTimeout(
+    () => deadline.reject(new PhoenixError(ErrorCode.OPERATION_TIMEOUT)),
+    timeoutMs,
+  );
+  timer.unref();
+  const cancelled = Promise.withResolvers<never>();
+  const onAbort = () =>
+    cancelled.reject(new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Command cancelled"));
+  if (signal?.aborted) onAbort();
+  else signal?.addEventListener("abort", onAbort, { once: true });
   try {
-    return await Promise.race([Promise.resolve().then(fn), timeout]);
+    const result = await Promise.race([
+      Promise.resolve().then(() => {
+        if (signal?.aborted)
+          throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Command cancelled");
+        return fn();
+      }),
+      deadline.promise,
+      cancelled.promise,
+    ]);
+    if (signal?.aborted) throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Command cancelled");
+    return result;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", onAbort);
   }
 }
 

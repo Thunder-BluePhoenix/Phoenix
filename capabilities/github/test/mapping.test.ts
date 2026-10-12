@@ -206,6 +206,19 @@ describe("parsers treat responses as hostile", () => {
     ).toEqual([]);
   });
 
+  it("accepts only full PR head SHAs and normalizes their case", () => {
+    const raw = (sha: unknown) => ({
+      number: 4,
+      state: "open",
+      html_url: "https://github.com/o/r/pull/4",
+      head: { ref: "feature", sha },
+    });
+    expect(parsePulls([raw("A".repeat(40))])[0]?.headSha).toBe("a".repeat(40));
+    for (const sha of ["a".repeat(7), "a".repeat(39), "a".repeat(41), "g".repeat(40), 42]) {
+      expect(parsePulls([raw(sha)])[0]?.headSha).toBeUndefined();
+    }
+  });
+
   it("parses deployments, statuses and reviews defensively", () => {
     expect(
       parseDeployments([{ id: 1 }, { id: "x" }, null, { id: 2, environment: 3 }]),
@@ -222,6 +235,26 @@ describe("parsers treat responses as hostile", () => {
     expect(
       parseReviews([{ id: 1, state: "APPROVED", user: { login: "bob" } }, { id: 2 }]),
     ).toHaveLength(1);
+  });
+
+  it("keeps only a full deployment SHA, independently of its ref", () => {
+    expect(parseDeployments([{ id: 11, ref: "main", sha: "A".repeat(40) }])[0]).toMatchObject({
+      ref: "main",
+      sha: "a".repeat(40),
+    });
+    for (const sha of [
+      undefined,
+      null,
+      "a".repeat(7),
+      "a".repeat(39),
+      "a".repeat(41),
+      "a".repeat(501),
+      "g".repeat(40),
+      42,
+    ]) {
+      expect(parseDeployments([{ id: 11, ref: "main", sha }])[0]).not.toHaveProperty("sha");
+    }
+    expect(parseDeployments([{ id: 11, ref: "A".repeat(40) }])[0]).not.toHaveProperty("sha");
   });
 });
 
@@ -397,6 +430,26 @@ describe("pull requests → events", () => {
     ]);
   });
 
+  it("includes a valid head SHA in PR events without attributing merges or closures to the author", () => {
+    const withSha = pr({ headSha: "a".repeat(40) });
+    const opened = diffPulls([withSha], {}, live);
+    expect(opened.events[0]?.payload).toMatchObject({ actor: "ada", head_sha: "a".repeat(40) });
+    for (const terminal of [
+      pr({
+        headSha: "a".repeat(40),
+        open: false,
+        merged: true,
+        mergedAt: T("2026-10-05T11:00:00Z"),
+      }),
+      pr({ headSha: "a".repeat(40), open: false, closedAt: T("2026-10-05T11:00:00Z") }),
+    ]) {
+      const event = diffPulls([terminal], opened.seen, live).events[0]!;
+      expect(event.payload.head_sha).toBe("a".repeat(40));
+      expect(event.payload).not.toHaveProperty("actor");
+    }
+    expect(diffPulls([pr()], {}, live).events[0]?.payload).not.toHaveProperty("head_sha");
+  });
+
   it("closed without merging is pr.closed; reopening says so", () => {
     const opened = diffPulls([pr()], {}, live);
     const closed = diffPulls(
@@ -569,6 +622,27 @@ describe("deployments → events", () => {
     expect(diffDeployments([dep], { 11: null }, {}, live).events[0]!.payload.url).toBe(
       "https://github.com/octo/phoenix/deployments",
     );
+  });
+
+  it("emits the validated immutable SHA and its source, not the branch label", () => {
+    const parsed = parseDeployments([
+      {
+        id: dep.id,
+        ref: "main",
+        sha: "A".repeat(40),
+        environment: "production",
+        created_at: "2026-10-05T10:00:00Z",
+      },
+    ])[0]!;
+    const emitted = diffDeployments([parsed], { 11: status("success") }, {}, live).events[0]!;
+    expect(emitted.payload).toMatchObject({
+      branch: "main",
+      sha: "a".repeat(40),
+      sha_source: "deployment.sha",
+    });
+    expect(
+      diffDeployments([dep], { 11: status("success") }, {}, live).events[0]!.payload,
+    ).not.toHaveProperty("sha");
   });
 
   it("unknown or inactive states produce nothing; a missing lookup keeps the old phase", () => {

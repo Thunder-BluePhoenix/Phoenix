@@ -1338,6 +1338,25 @@ code.break {
 .wf-definition {
   max-height: 320px;
 }
+.wf-editor,
+.wf-editor .field,
+.wf-editor .review-edit {
+  min-width: 0;
+  max-width: 100%;
+}
+.wf-editor-input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  resize: vertical;
+  overflow-wrap: anywhere;
+}
+.wf-editor .agent-output {
+  max-width: 100%;
+  overflow-x: auto;
+}
 .metric-row {
   display: flex;
   flex-wrap: wrap;

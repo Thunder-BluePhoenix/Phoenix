@@ -36,6 +36,14 @@ export interface SignedIndex {
 /** Opaque result of signature and schema validation; never accept arbitrary JSON in preview. */
 declare const verifiedIndex: unique symbol;
 export type VerifiedRegistryIndex = Readonly<RegistryIndex> & { readonly [verifiedIndex]: true };
+/** Provenance is created only after host-key Ed25519 verification, never from HTTP input. */
+export interface RegistryProvenance {
+  signer_key_id: string;
+  signature: string;
+  signature_status: "verified";
+  index_sha256: string;
+  artifact_verification: "not_verified";
+}
 export interface RegistryVersions {
   sdk: string;
   core: string;
@@ -43,6 +51,7 @@ export interface RegistryVersions {
 }
 export interface RegistryPreview {
   entry: RegistryEntry;
+  provenance: RegistryProvenance;
   permission_descriptions: Record<string, string>;
   data_categories: string[];
   license_policy: string;
@@ -255,7 +264,7 @@ function freezeIndex(index: RegistryIndex): RegistryIndex {
 /** Trust keys are provisioned by the host, not supplied by the index. Ed25519 only. */
 export class RegistryService {
   private readonly keys: ReadonlyMap<string, KeyObject>;
-  private readonly verified = new WeakSet<object>();
+  private readonly provenanceByIndex = new WeakMap<object, RegistryProvenance>();
   constructor(
     trustedKeys: ReadonlyMap<string, string | KeyObject>,
     private readonly versions: RegistryVersions,
@@ -284,7 +293,8 @@ export class RegistryService {
       reject("INVALID_INDEX", "Unsupported index format");
     // Structural resource guard precedes recursive canonicalization; manifest validation follows signature verification.
     safeTree(index);
-    if (!verify(null, Buffer.from(canonical(index)), key, Buffer.from(signature, "base64url")))
+    const signedBytes = Buffer.from(canonical(index));
+    if (!verify(null, signedBytes, key, Buffer.from(signature, "base64url")))
       reject("INVALID_SIGNATURE", "Index signature mismatch");
     const seen = new Set<string>();
     for (const value of index.entries) {
@@ -294,16 +304,31 @@ export class RegistryService {
       seen.add(identity);
     }
     const frozen = freezeIndex(index as unknown as RegistryIndex);
-    this.verified.add(frozen);
+    this.provenanceByIndex.set(
+      frozen,
+      Object.freeze({
+        signer_key_id: keyId,
+        signature,
+        signature_status: "verified",
+        index_sha256: createHash("sha256").update(signedBytes).digest("hex"),
+        artifact_verification: "not_verified",
+      }),
+    );
     return frozen as VerifiedRegistryIndex;
   }
 
+  provenance(index: VerifiedRegistryIndex): RegistryProvenance {
+    const provenance = this.provenanceByIndex.get(index);
+    if (!provenance) reject("UNTRUSTED_INDEX", "Index was not verified by this registry service");
+    return provenance;
+  }
+
   preview(index: VerifiedRegistryIndex, id: string, version: string): RegistryPreview {
-    if (!this.verified.has(index))
-      reject("UNTRUSTED_INDEX", "Index was not verified by this registry service");
+    const provenance = this.provenance(index);
     const entry = index.entries.find((e) => e.id === id && e.version === version);
     if (!entry) reject("NOT_FOUND", "Capability version not in trusted index");
     return {
+      provenance,
       entry,
       permission_descriptions: Object.fromEntries(
         entry.permissions.map((p) => [p, PERMISSION_DESCRIPTIONS[p]]),

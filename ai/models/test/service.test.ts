@@ -753,3 +753,44 @@ describe("status", () => {
     expect(s.providers.find((p) => p.id === "ollama")?.access.sensitive.allowed).toBe(true);
   });
 });
+
+describe("local-only embeddings", () => {
+  it("never health-checks or calls cloud after a pinned local provider fails", async () => {
+    const local = fakeProvider({
+      id: "ollama",
+      locality: "local",
+      embed: () => Promise.reject(new ModelError("network", "ollama", "local unavailable")),
+    });
+    const cloud = fakeProvider({ id: "cloud", locality: "cloud" });
+    const r = rig([local, cloud]);
+    await expect(
+      r.service.run({
+        kind: "embed",
+        localProvider: "ollama",
+        request: {
+          input: ["private query"],
+          privacy: "internal",
+          purpose: "embed a retrieval query",
+        },
+      }),
+    ).rejects.toMatchObject({
+      attempts: expect.arrayContaining([
+        expect.objectContaining({ provider: "ollama", outcome: "failed" }),
+        expect.objectContaining({ provider: "cloud", outcome: "skipped", calls: 0 }),
+      ]),
+    });
+    expect(cloud.calls).toEqual({ generate: 0, stream: 0, embed: 0, health: 0 });
+  });
+
+  it("refuses direct unpinned cloud embeddings even with cloud opt-in", async () => {
+    const cloud = fakeProvider({ id: "cloud", locality: "cloud" });
+    const r = rig([cloud]);
+    await expect(
+      r.service.run({
+        kind: "embed",
+        request: { input: ["query"], privacy: "public", purpose: "embed a retrieval query" },
+      }),
+    ).rejects.toBeInstanceOf(NoProviderError);
+    expect(cloud.calls).toEqual({ generate: 0, stream: 0, embed: 0, health: 0 });
+  });
+});

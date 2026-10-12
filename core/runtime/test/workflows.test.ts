@@ -4,12 +4,18 @@
 // Phases 39 and 40 through the public HTTP API and a real PhoenixRuntime: definitions, validation,
 // production authorisation bound to the definition hash, manual runs that pass every gate of a bus
 // trigger, cancel, the kill switch, metrics, and reconciliation of interrupted runs after a restart.
-// The only capability is a local test double; nothing here reaches a network.
+// Existing scenarios use a deploy test double; the final scenario runs a real first-party GitHub
+// read against a loopback fixture, with in-process AI and memory lookup.
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CapabilityModule } from "@phoenix/capability-manager";
+import { createGithubCapability } from "@phoenix/capability-github";
+import { MemorySecretStore } from "@phoenix/persistence";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { realRunData, REPO, RUN_ID } from "../../../ai/agents/test/rig";
+import { startMockGithub } from "../../../capabilities/github/testing/mock-github";
+import { fakeNetwork } from "./ai-network";
 import { startCore, type TestCore } from "./helpers";
 import { guardNetwork } from "./network-guard";
 
@@ -87,6 +93,20 @@ function deploys(calls: Calls): CapabilityModule {
     },
   };
 }
+/** Local meeting source: eligible only after explicit capability opt-in. */
+const fakeKage: CapabilityModule = {
+  manifest: {
+    id: "kage",
+    name: "Kage (test double)",
+    version: "0.0.1",
+    description: "Test meeting source without network access",
+    license: "GPL-3.0-or-later",
+    events: ["kage.*"],
+    permissions: [],
+    data_categories: [],
+    commands: [],
+  },
+};
 
 interface Rig {
   core: TestCore;
@@ -99,7 +119,13 @@ interface Rig {
 async function rig(runtime: Parameters<typeof startCore>[1] = {}): Promise<Rig> {
   const guard = guardNetwork();
   const calls: Calls = { log: [], held: [] };
-  const core = await startCore({}, { capabilities: [deploys(calls)], ...runtime });
+  const core = await startCore(
+    {},
+    {
+      ...runtime,
+      capabilities: [deploys(calls), ...(runtime.capabilities ?? [])],
+    },
+  );
   cleanups.push(async () => {
     for (const h of calls.held) h.resolve({ released: true });
     await core.runtime.stop();
@@ -287,6 +313,55 @@ describe("definitions: list, get, validate, save, replace, enable", () => {
     expect((await r.core.api("GET", "/api/workflows/runs")).json.runs).toEqual([]);
     expect((await auditActions(r)).some((e) => e.action === "workflow.disabled")).toBe(true);
   });
+  it("atomically rejects stale editor hashes and create-only collisions without changing content", async () => {
+    const r = await rig();
+    const base = readLogs("shared");
+    expect(
+      (
+        await r.core.api("POST", "/api/workflows", {
+          definition: base,
+          create_only: true,
+        })
+      ).status,
+    ).toBe(201);
+    const oldHash = await hashOf(r, "shared");
+    const editorA = readLogs("shared", { version: 2, name: "editor A" });
+    const editorB = readLogs("shared", { version: 3, name: "editor B" });
+    expect(
+      (
+        await r.core.api("POST", "/api/workflows", {
+          definition: editorA,
+          expected_hash: oldHash,
+        })
+      ).status,
+    ).toBe(200);
+    const winningHash = await hashOf(r, "shared");
+    const stale = await r.core.api("POST", "/api/workflows", {
+      definition: editorB,
+      expected_hash: oldHash,
+    });
+    expect(stale.status).toBe(400);
+    expect(stale.json.details).toContain("HASH_MISMATCH");
+    const collision = await r.core.api("POST", "/api/workflows", {
+      definition: editorB,
+      create_only: true,
+    });
+    expect(collision.status).toBe(400);
+    expect(collision.json.details).toContain("WORKFLOW_EXISTS");
+    expect(await hashOf(r, "shared")).toBe(winningHash);
+    expect((await r.core.api("GET", "/api/workflows/shared")).json.definition.name).toBe(
+      "editor A",
+    );
+    expect(
+      (
+        await r.core.api("POST", "/api/workflows", {
+          definition: editorB,
+          expected_hash: winningHash,
+          create_only: true,
+        })
+      ).status,
+    ).toBe(400);
+  });
 });
 
 describe("runs: start, history, metrics", () => {
@@ -408,6 +483,120 @@ describe("runs: start, history, metrics", () => {
     const diag = (await r.core.api("GET", "/api/diagnostics")).json;
     expect(diag.derived.workflow_runs).toBe(1);
     expect(JSON.stringify(diag)).not.toContain("do-not-count-me");
+  });
+  it("deletes terminal history and its step snapshot, but refuses active and protected runs", async () => {
+    const r = await rig();
+    await save(r, readLogs());
+    const id = (await start(r, "read-logs", { secretish: "erase-me" })).json.run.id as string;
+    await untilStatus(r, id, "succeeded");
+    r.core.runtime.db
+      .prepare("UPDATE workflow_run_steps SET destructive = 1 WHERE run_id = ?")
+      .run(id);
+    const denied = await r.core.api("POST", `/api/workflows/runs/${id}/delete`, {});
+    expect(denied.status).toBe(400);
+    expect((await run(r, id)).steps).toHaveLength(1);
+    const erased = await r.core.api("POST", `/api/workflows/runs/${id}/delete`, {
+      confirm_evidence: true,
+    });
+    expect(erased.status).toBe(200);
+    expect(erased.json).toEqual({ deleted: true });
+    expect((await r.core.api("GET", `/api/workflows/runs/${id}`)).status).toBe(404);
+    expect(
+      r.core.runtime.db.prepare("SELECT * FROM workflow_run_steps WHERE run_id = ?").all(id),
+    ).toEqual([]);
+
+    await save(r, waitForApproval());
+    r.answer.by = () => undefined;
+    const pending = (await start(r, "needs-approval")).json.run.id as string;
+    await untilStatus(r, pending, "waiting_approval");
+    expect(
+      (
+        await r.core.api("POST", `/api/workflows/runs/${pending}/delete`, {
+          confirm_evidence: true,
+        })
+      ).status,
+    ).toBe(400);
+    expect((await run(r, pending)).status).toBe("waiting_approval");
+    expect(r.core.runtime.permissions.pendingConfirmations()).toHaveLength(1);
+  });
+
+  it("bounds pruning and retains protected evidence until explicitly confirmed", async () => {
+    const r = await rig();
+    await save(
+      r,
+      workflow("notified", [{ id: "note", type: "notify", title: "ok", message: "done" }], []),
+    );
+    const first = (await start(r, "notified")).json.run.id as string;
+    await untilStatus(r, first, "succeeded");
+    const second = (await start(r, "notified")).json.run.id as string;
+    await untilStatus(r, second, "succeeded");
+    await save(r, readLogs());
+    const protectedId = (await start(r, "read-logs")).json.run.id as string;
+    await untilStatus(r, protectedId, "succeeded");
+    r.core.runtime.db
+      .prepare("UPDATE workflow_run_steps SET destructive = 1 WHERE run_id = ?")
+      .run(protectedId);
+    const age = Date.now() - 120_000;
+    r.core.runtime.db
+      .prepare("UPDATE workflow_runs SET finished_at = ? WHERE id = ?")
+      .run(age, first);
+    r.core.runtime.db
+      .prepare("UPDATE workflow_runs SET finished_at = ? WHERE id = ?")
+      .run(age + 1, second);
+    r.core.runtime.db
+      .prepare("UPDATE workflow_runs SET finished_at = ? WHERE id = ?")
+      .run(age + 2, protectedId);
+    const request = { before: new Date(Date.now() + 120_000).toISOString(), limit: 1 };
+    expect((await r.core.api("POST", "/api/workflows/runs/prune", request)).json).toMatchObject({
+      scanned: 1,
+      deleted: 1,
+    });
+    expect(
+      (await r.core.api("POST", "/api/workflows/runs/prune", { ...request, limit: 200 })).json,
+    ).toMatchObject({ deleted: 1, protected: 1 });
+    expect((await run(r, protectedId)).status).toBe("succeeded");
+    expect(
+      (
+        await r.core.api("POST", "/api/workflows/runs/prune", {
+          ...request,
+          limit: 200,
+          confirm_evidence: true,
+        })
+      ).json,
+    ).toMatchObject({ deleted: 1 });
+    expect((await r.core.api("GET", `/api/workflows/runs/${protectedId}`)).status).toBe(404);
+    expect(
+      (await r.core.api("POST", "/api/workflows/runs/prune", { ...request, limit: 201 })).status,
+    ).toBe(400);
+  });
+
+  it("privacy deletion removes eligible snapshots and leaves protected audit evidence", async () => {
+    const r = await rig();
+    await save(
+      r,
+      workflow(
+        "privacy-note",
+        [{ id: "note", type: "notify", title: "ok", message: "secret" }],
+        [],
+      ),
+    );
+    const ordinary = (await start(r, "privacy-note")).json.run.id as string;
+    await untilStatus(r, ordinary, "succeeded");
+    await save(r, readLogs());
+    const protectedId = (await start(r, "read-logs")).json.run.id as string;
+    await untilStatus(r, protectedId, "succeeded");
+    r.core.runtime.db
+      .prepare("UPDATE workflow_run_steps SET destructive = 1 WHERE run_id = ?")
+      .run(protectedId);
+    r.core.runtime.db
+      .prepare("UPDATE workflow_runs SET finished_at = ? WHERE id IN (?, ?)")
+      .run(Date.now() - 120_000, ordinary, protectedId);
+    expect(r.core.runtime.workflows.deleteHistoryForPrivacy()).toBe(1);
+    expect((await r.core.api("GET", `/api/workflows/runs/${ordinary}`)).status).toBe(404);
+    expect(
+      r.core.runtime.db.prepare("SELECT * FROM workflow_run_steps WHERE run_id = ?").all(ordinary),
+    ).toEqual([]);
+    expect((await run(r, protectedId)).status).toBe("succeeded");
   });
 });
 
@@ -774,5 +963,206 @@ describe("network", () => {
     const id = (await start(r, "read-logs")).json.run.id as string;
     await untilStatus(r, id, "succeeded");
     expect(r.fetched.filter((u) => !u.startsWith(r.core.base))).toEqual([]);
+  });
+});
+
+describe("first-party read, context and local AI through the real workflow runtime", () => {
+  it("requires opt-in, refuses unauthorized sensitive capture and AI, and limits lookup context", async () => {
+    const gh = await startMockGithub();
+    cleanups.push(() => gh.close());
+    realRunData(gh);
+    const network = fakeNetwork({
+      chat: () => JSON.stringify({ diagnosis: "secret-scan failed at gitleaks" }),
+    });
+    const r = await rig({
+      capabilities: [
+        createGithubCapability({ sleep: () => Promise.withResolvers<void>().promise }),
+        fakeKage,
+      ],
+      secrets: new MemorySecretStore(),
+      runtime: { fetch: network.fetch },
+    });
+    const definition = workflow(
+      "inspect-real-ci",
+      [
+        {
+          id: "ci",
+          type: "action",
+          tool: "github.ci.failure_details",
+          input: { repository: REPO, run_id: RUN_ID },
+        },
+        { id: "context", type: "lookup", query: "secret-scan gitleaks", limit: 5 },
+        {
+          id: "diagnosis",
+          type: "ai",
+          instruction: "Summarize the failed CI job using the supplied records.",
+          data: {
+            job: "{{ steps.ci.failed_jobs[0].name }}",
+            context: "{{ steps.context.items[0].text }}",
+          },
+          output: { diagnosis: { type: "string", max_length: 100 } },
+          privacy: "internal",
+        },
+      ],
+      ["github.ci.failure_details"],
+      { declares: { tools: ["github.ci.failure_details"], context: true, ai: true } },
+    );
+    expect(
+      (
+        await r.core.api("POST", "/api/capabilities/github/config", {
+          config: { repositories: [], api_url: gh.url },
+        })
+      ).status,
+    ).toBe(200);
+    // A workflow cannot be installed with a tool that the owner has not opted into.
+    const beforeOptIn = await r.core.api("POST", "/api/workflows/validate", { definition });
+    expect(beforeOptIn.json.valid).toBe(false);
+    expect(beforeOptIn.json.problems.join(" ")).toContain("not an available tool");
+    expect(gh.requests).toEqual([]);
+
+    expect((await r.core.api("POST", "/api/capabilities/github/enable", {})).status).toBe(200);
+    expect(gh.requests).toEqual([]);
+    expect((await save(r, definition)).status).toBe(201);
+    // Neither an unenabled source nor an unapproved sensitive domain can enter memory.
+    const captured = r.core.runtime.memory.pipeline.capture({
+      source: "git",
+      sourceRef: REPO,
+      scope: `repo:${REPO}`,
+      contentType: "commit",
+      observedAt: new Date().toISOString(),
+      dedupeKey: "ci-secret-scan-commit",
+      text: "secret-scan gitleaks failed in the CI job",
+      provenance: {},
+    });
+    expect(captured.status).toBe("stored");
+    const meeting = {
+      source: "kage",
+      sourceRef: "meeting-1",
+      scope: "meeting:meeting-1",
+      contentType: "meeting_summary" as const,
+      observedAt: new Date().toISOString(),
+      dedupeKey: "ci-sensitive-meeting",
+      text: "secret-scan gitleaks confidential meeting note",
+      provenance: {},
+    };
+    expect(r.core.runtime.memory.pipeline.capture(meeting)).toMatchObject({
+      status: "refused",
+      reason: 'source "kage" is not enabled',
+    });
+    await r.core.runtime.capabilities.enable("kage");
+    expect(r.core.runtime.memory.pipeline.capture(meeting)).toMatchObject({
+      status: "refused",
+      reason: 'sensitive meeting data from "kage" needs explicit permission',
+    });
+    expect(
+      (
+        await r.core.api("POST", "/api/memory/settings", {
+          allow_sensitive_meetings: true,
+        })
+      ).status,
+    ).toBe(200);
+    const sensitive = r.core.runtime.memory.pipeline.capture(meeting);
+    expect(sensitive).toMatchObject({
+      status: "stored",
+      item: { domain: "meeting", sensitivity: "sensitive", scope: "meeting:meeting-1" },
+    });
+    // The owner can see the stored meeting; the workflow's internal-only viewer cannot.
+    expect((await r.core.api("GET", "/api/memory?domain=meeting")).json.items).toEqual([
+      expect.objectContaining({ text: meeting.text, sensitivity: "sensitive" }),
+    ]);
+
+    const off = await start(r, "inspect-real-ci");
+    expect(off.status).toBe(202);
+    await untilStatus(r, off.json.run.id, "failed");
+    const offSteps = (await run(r, off.json.run.id)).steps as (RunDetail["steps"][number] & {
+      output: string | null;
+    })[];
+    // History displays only the first 600 characters; persisted step output retains the full,
+    // bounded result from the real GitHub command.
+    const ciRecord = r.core.runtime.db
+      .prepare("SELECT output FROM workflow_run_steps WHERE run_id = ? AND step_id = ?")
+      .get(off.json.run.id, "ci") as { output: string };
+    expect(JSON.parse(ciRecord.output)).toMatchObject({
+      repository: REPO,
+      run: { id: RUN_ID, conclusion: "failure" },
+      failed_jobs: [{ name: "secret-scan", failed_steps: [{ conclusion: "failure" }] }],
+      authenticated: false,
+    });
+    const offContext = offSteps.find((s) => s.step_id === "context")?.output;
+    expect(offContext).not.toBeNull();
+    const offContextRecord = r.core.runtime.db
+      .prepare("SELECT output FROM workflow_run_steps WHERE run_id = ? AND step_id = ?")
+      .get(off.json.run.id, "context") as { output: string };
+    expect(JSON.parse(offContextRecord.output)).toMatchObject({
+      items: [expect.objectContaining({ text: "secret-scan gitleaks failed in the CI job" })],
+    });
+    expect(offContextRecord.output).not.toContain("confidential meeting note");
+    expect(offContext).not.toContain("confidential meeting note");
+    expect(offSteps.find((s) => s.step_id === "diagnosis")?.status).toBe("failed");
+    expect((await run(r, off.json.run.id)).reason).toMatch(/AI step failed/);
+    expect(network.chats()).toEqual([]);
+
+    expect((await r.core.api("POST", "/api/ai/settings", { enabled: true })).status).toBe(200);
+    const enabled = await start(r, "inspect-real-ci");
+    expect(enabled.status).toBe(202);
+    await untilStatus(r, enabled.json.run.id, "succeeded");
+    const steps = (await run(r, enabled.json.run.id)).steps as typeof offSteps;
+    const context = steps.find((s) => s.step_id === "context")?.output;
+    expect(context).not.toBeNull();
+    const contextRecord = r.core.runtime.db
+      .prepare("SELECT output FROM workflow_run_steps WHERE run_id = ? AND step_id = ?")
+      .get(enabled.json.run.id, "context") as { output: string };
+    expect(JSON.parse(contextRecord.output)).toMatchObject({
+      items: [expect.objectContaining({ text: "secret-scan gitleaks failed in the CI job" })],
+    });
+    expect(contextRecord.output).not.toContain("confidential meeting note");
+    expect(context).not.toContain("confidential meeting note");
+    const diagnosis = steps.find((s) => s.step_id === "diagnosis")?.output;
+    expect(diagnosis).not.toBeNull();
+    expect(JSON.parse(diagnosis!)).toMatchObject({
+      diagnosis: "secret-scan failed at gitleaks",
+      processed_by: expect.stringContaining("Ollama"),
+    });
+    expect(network.chats()).toHaveLength(1);
+    expect(network.chats()[0]?.body).toContain("secret-scan gitleaks failed in the CI job");
+    expect(network.chats()[0]?.body).not.toContain("confidential meeting note");
+    expect(network.cloud()).toEqual([]);
+    expect(gh.requests.map((request) => [request.method, request.path])).toEqual(
+      Array.from({ length: 2 }, () => [
+        ["GET", `/repos/${REPO}/actions/runs/${RUN_ID}`],
+        ["GET", `/repos/${REPO}/actions/runs/${RUN_ID}/jobs?filter=latest&per_page=30`],
+      ]).flat(),
+    );
+    expect(gh.requests.every((request) => request.authorization === undefined)).toBe(true);
+    expect(gh.writes).toEqual([]);
+    expect(
+      r.fetched.filter((url) => !url.startsWith(r.core.base) && !url.startsWith(gh.url)),
+    ).toEqual([]);
+    const audit = await auditActions(r);
+    expect(
+      audit.some(
+        (a) =>
+          a.action === "policy.decision" &&
+          a.actor === `system:workflow-${enabled.json.run.id}` &&
+          a.details.tool === "github.ci.failure_details" &&
+          a.decision === "allowed",
+      ),
+    ).toBe(true);
+    expect(
+      audit.some(
+        (a) =>
+          a.action === "tool.succeeded" &&
+          a.actor === `system:workflow-${enabled.json.run.id}` &&
+          a.details.tool === "github.ci.failure_details",
+      ),
+    ).toBe(true);
+    expect(
+      audit.some(
+        (a) =>
+          a.action === "workflow.run.started_by_user" &&
+          a.actor === "user:owner" &&
+          a.details.run === enabled.json.run.id,
+      ),
+    ).toBe(true);
   });
 });

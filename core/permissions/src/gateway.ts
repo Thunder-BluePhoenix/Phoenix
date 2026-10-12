@@ -43,6 +43,8 @@ export interface Confirmation {
   permissions: readonly Permission[];
   requestedAt: string;
   expiresAt: string;
+  /** Sanitized workflow ids only; never arbitrary request.details or tool inputs. */
+  details?: { workflow?: string; run?: string; step?: string };
 }
 
 export interface PermissionGatewayOptions {
@@ -163,7 +165,9 @@ export class PermissionGateway {
   // ── Authorization ─────────────────────────────────────────────────────────
 
   /** Resolves when the action may run; rejects with a PhoenixError otherwise. */
-  async authorize(request: ActionRequest): Promise<AuthorizedAction> {
+  async authorize(request: ActionRequest, signal?: AbortSignal): Promise<AuthorizedAction> {
+    if (signal?.aborted)
+      throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Authorization cancelled");
     const base = {
       actor: request.capabilityId,
       capabilityId: request.capabilityId,
@@ -198,9 +202,11 @@ export class PermissionGateway {
 
     let confirmationId: string | undefined;
     if (this.needsConfirmation(request)) {
-      confirmationId = await this.confirm(request);
+      confirmationId = await this.confirm(request, signal);
     }
 
+    if (signal?.aborted)
+      throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Authorization cancelled");
     const action: AuthorizedAction = {
       id: newId("act"),
       request,
@@ -259,7 +265,26 @@ export class PermissionGateway {
     return true;
   }
 
-  private confirm(request: ActionRequest): Promise<string> {
+  private workflowIds(details: Record<string, unknown> | undefined): {
+    workflow?: string;
+    run?: string;
+    step?: string;
+  } {
+    if (!details) return {};
+    const safe: { workflow?: string; run?: string; step?: string } = {};
+    for (const field of ["workflow", "run", "step"] as const) {
+      const value = details[field];
+      if (typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/.test(value))
+        safe[field] = value;
+    }
+    return safe;
+  }
+
+  private confirm(request: ActionRequest, signal?: AbortSignal): Promise<string> {
+    if (signal?.aborted)
+      return Promise.reject(
+        new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Authorization cancelled"),
+      );
     const id = newId("conf");
     const nowMs = this.now();
     const confirmation: Confirmation = {
@@ -271,6 +296,9 @@ export class PermissionGateway {
       permissions: request.permissions,
       requestedAt: new Date(nowMs).toISOString(),
       expiresAt: new Date(nowMs + this.timeoutMs).toISOString(),
+      ...(request.capabilityId === "workflows"
+        ? { details: this.workflowIds(request.details) }
+        : {}),
     };
 
     this.audit.record({
@@ -295,45 +323,59 @@ export class PermissionGateway {
       },
     });
 
-    return new Promise<string>((resolve, reject) => {
-      const finish = (approved: boolean, by: string, timedOut = false) => {
+    const deferred = Promise.withResolvers<string>();
+    const { resolve, reject } = deferred;
+    const onAbort = () => finish(false, "cancelled");
+    const finish = (approved: boolean, by: string, timedOut = false) => {
+      if (!this.pending.delete(id)) return;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      const outcome = timedOut
+        ? "expired"
+        : approved
+          ? "approved"
+          : by === "cancelled"
+            ? "cancelled"
+            : "rejected";
+      this.audit.record({
+        actor: by,
+        action: `confirmation.${outcome}`,
+        capabilityId: request.capabilityId,
+        decision: approved ? "allowed" : "denied",
+        details: { confirmationId: id, command: request.command },
+      });
+      this.emit({
+        event_type: "security.confirmation.resolved",
+        severity: approved ? "success" : "info",
+        correlation_id: id,
+        subject: request.capabilityId,
+        payload: { confirmation_id: id, outcome },
+      });
+      if (approved) resolve(id);
+      else if (timedOut)
+        reject(new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Confirmation expired"));
+      else if (by === "kill-switch")
+        reject(new PhoenixError(ErrorCode.SECURITY_POLICY_BLOCKED, "Emergency stop is engaged"));
+      else if (by === "cancelled")
+        reject(new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Authorization cancelled"));
+      else reject(new PhoenixError(ErrorCode.PERMISSION_DENIED, "Rejected by user"));
+    };
+    const timer = setTimeout(() => finish(false, "system", true), this.timeoutMs);
+    timer.unref();
+    this.pending.set(id, {
+      confirmation,
+      timer,
+      resolve: (approved, by) => finish(approved, by),
+      abort: (error) => {
         if (!this.pending.delete(id)) return;
         clearTimeout(timer);
-        const outcome = timedOut ? "expired" : approved ? "approved" : "rejected";
-        this.audit.record({
-          actor: by,
-          action: `confirmation.${outcome}`,
-          capabilityId: request.capabilityId,
-          decision: approved ? "allowed" : "denied",
-          details: { confirmationId: id, command: request.command },
-        });
-        this.emit({
-          event_type: "security.confirmation.resolved",
-          severity: approved ? "success" : "info",
-          correlation_id: id,
-          subject: request.capabilityId,
-          payload: { confirmation_id: id, outcome },
-        });
-        if (approved) resolve(id);
-        else if (timedOut)
-          reject(new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Confirmation expired"));
-        else if (by === "kill-switch")
-          reject(new PhoenixError(ErrorCode.SECURITY_POLICY_BLOCKED, "Emergency stop is engaged"));
-        else reject(new PhoenixError(ErrorCode.PERMISSION_DENIED, "Rejected by user"));
-      };
-      const timer = setTimeout(() => finish(false, "system", true), this.timeoutMs);
-      timer.unref();
-      this.pending.set(id, {
-        confirmation,
-        timer,
-        resolve: (approved, by) => finish(approved, by),
-        abort: (error) => {
-          if (!this.pending.delete(id)) return;
-          clearTimeout(timer);
-          reject(error);
-        },
-      });
+        signal?.removeEventListener("abort", onAbort);
+        reject(error);
+      },
     });
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+    return deferred.promise;
   }
 
   private emit(event: Omit<NewEvent, "source">): void {

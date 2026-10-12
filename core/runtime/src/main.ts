@@ -53,7 +53,14 @@ try {
     ...(trustedKeyFile && indexFile ? { registry: { trustedKeyFile, indexFile } } : {}),
     ...(whisperModelPath ? { whisperModelPath } : {}),
     ...(visionModel ? { visionModel } : {}),
-    capabilities: builtinCapabilities(config.env, () => runtime.agentsServices()),
+    capabilities: builtinCapabilities(
+      config.env,
+      () => runtime.agentsServices(),
+      () => ({
+        reviewContext: (id: string) =>
+          runtime.planning.reviewContext(id, runtime.memory.settings().allow_sensitive_meetings),
+      }),
+    ),
   });
 } catch (err) {
   fail(err, { port: config.port, dataDir: config.dataDir });

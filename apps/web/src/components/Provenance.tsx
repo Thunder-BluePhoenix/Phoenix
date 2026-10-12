@@ -76,15 +76,16 @@ function assertorText(asserted: string): string {
   return `recorded by ${asserted === "rule" ? "a fixed rule" : "a capability"}`;
 }
 
-/** The stored words of a provenance row: its quote, as data. Never interpreted as markup. */
+/** Stored source words are displayed only when the provenance carries an actual quote. */
 function storedQuote(p: GraphProvenance): string | null {
+  if (p.source_kind === "meeting_item") return null;
   const text = p.detail.text ?? p.detail.title;
   return typeof text === "string" && text.length > 0 ? text : null;
 }
 
 function detailLines(p: GraphProvenance): string[] {
   return Object.entries(p.detail)
-    .filter(([key]) => key !== "text" && key !== "title")
+    .filter(([key]) => key !== "text" && key !== "title" && key !== "source_quote")
     .map(([key, value]) => `${key}: ${String(value)}`);
 }
 
@@ -117,10 +118,17 @@ function Evidence({ row }: { row: GraphProvenance }) {
             ? "Internal"
             : "Public"}
       </p>
-      {quote ? (
+      {row.source_kind === "meeting_item" ? (
+        typeof row.detail.text === "string" && <p className="memory-text">{row.detail.text}</p>
+      ) : quote ? (
         <blockquote className="quote">{quote}</blockquote>
       ) : (
         <p className="muted small">No quote is stored for this evidence.</p>
+      )}
+      {typeof row.detail.source_quote === "string" && row.detail.source_quote.length > 0 && (
+        <p className="small">
+          <strong>Source quote</strong> <q className="memory-text">{row.detail.source_quote}</q>
+        </p>
       )}
       {detailLines(row).map((line) => (
         <p key={line} className="muted small memory-text">

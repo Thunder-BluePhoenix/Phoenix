@@ -28,11 +28,7 @@ export type EventPublisher = (event: PhoenixEvent) => { ok: boolean };
  * and (where required) a human approval before anything runs.
  */
 export interface WorkflowToolGateway {
-  /**
-   * `options.signal` aborts when the engine abandons the call (step timeout, emergency stop).
-   * `ToolGateway.call` takes no second argument yet, so today the abandoned call is not
-   * withdrawn inside the gateway (see the gaps register).
-   */
+  /** Aborts pending approval and in-flight provider work when the step is abandoned. */
   call(call: ToolCall, options?: { signal: AbortSignal }): Promise<ToolCallResult>;
   tools(): ToolContract[];
 }
@@ -75,12 +71,6 @@ export interface EngineDeps {
   isKillSwitchEngaged: () => boolean;
   /** Controlled autonomy settings; no autonomous execution without an audited OS sandbox. */
   autonomy?: AutonomyController;
-  /**
-   * Called when the engine gives up on a tool call that is still running (step timeout, stop).
-   * The runtime wires it to withdraw that call's pending confirmation. The capability itself is
-   * not interrupted: its outcome is recorded as unknown.
-   */
-  abandon?: (tool: string) => void;
   /** Absent = `ai` steps fail (the workflow cannot use AI that is not configured). */
   ai?: AiStep;
   /** Absent = `lookup` steps fail. */

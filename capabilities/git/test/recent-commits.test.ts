@@ -11,6 +11,7 @@ import {
   MAX_COMMITS,
   MAX_FILES,
   createGitCapability,
+  githubRemoteIdentity,
   parseLog,
   validateLimit,
   validatePathFilter,
@@ -88,6 +89,51 @@ describe("recent_commits manifest", () => {
     expect(() => h!.manager.invoke("git", "recent_commits", input)).toThrow(
       /Invalid command input/,
     );
+  });
+});
+
+describe("GitHub remote identity", () => {
+  it.each([
+    ["https://github.com/Octo/Phoenix.git", "octo/phoenix"],
+    ["https://user:token@github.com/Octo/Phoenix.git", "octo/phoenix"],
+    ["git@github.com:octo/phoenix.git", "octo/phoenix"],
+    ["ssh://git@github.com/octo/phoenix.git", "octo/phoenix"],
+    ["https://github.com.evil.invalid/octo/phoenix.git", null],
+    ["https://github.com@evil.invalid/octo/phoenix.git", null],
+    ["https://example.org/octo/phoenix.git", null],
+    ["file:///octo/phoenix.git", null],
+    ["git@github.com:octo/phoenix.git/extra", null],
+    ["https://github.com/octo/%70hoenix.git", null],
+    ["https://github.com/octo/phoenix.git?token=secret", null],
+    ["ssh://other@github.com/octo/phoenix.git", null],
+  ])("parses %s only as a canonical GitHub identity", (url, identity) => {
+    expect(githubRemoteIdentity(url)).toBe(identity);
+  });
+
+  it("keeps commits but rejects absent, foreign and ambiguous remote identities", async () => {
+    const dir = emptyRepo();
+    commit(dir, "in local checkout");
+    await enable(dir);
+    expect((await recent()).result.github_repository).toBeNull();
+    sh(dir, "remote", "add", "origin", "https://github.com/Octo/Phoenix.git");
+    expect((await recent()).result.github_repository).toBe("octo/phoenix");
+    sh(dir, "remote", "add", "backup", "git@github.com:octo/phoenix.git");
+    expect((await recent()).result.github_repository).toBe("octo/phoenix");
+    sh(dir, "remote", "add", "other", "https://github.com/other/repo.git");
+    const ambiguous = (await recent()).result;
+    expect(ambiguous.github_repository).toBeNull();
+    expect(ambiguous.commits).toHaveLength(1);
+    sh(dir, "remote", "remove", "other");
+    sh(
+      dir,
+      "remote",
+      "set-url",
+      "backup",
+      `https://user:${FAKE_GITHUB_TOKEN}@github.com/octo/phoenix.git`,
+    );
+    const safe = (await recent()).result;
+    expect(safe.github_repository).toBe("octo/phoenix");
+    expect(JSON.stringify(safe)).not.toContain(FAKE_GITHUB_TOKEN);
   });
 });
 
@@ -342,12 +388,16 @@ describe("recent_commits repository selection", () => {
     const b = emptyRepo();
     commit(a, "in a");
     commit(b, "in b");
+    sh(a, "remote", "add", "origin", "https://github.com/octo/first.git");
+    sh(b, "remote", "add", "origin", "git@github.com:octo/second.git");
     await enable(a, b);
     const missing = await recent();
     expect(missing.op.status).toBe("failed");
     expect(missing.op.error?.message).toMatch(/repo_path is required/);
     expect((await recent({ repo_path: b })).result.commits[0]!.subject).toBe("in b");
     expect((await recent({ repo_path: a })).result.commits[0]!.subject).toBe("in a");
+    expect((await recent({ repo_path: b })).result.github_repository).toBe("octo/second");
+    expect((await recent({ repo_path: a })).result.github_repository).toBe("octo/first");
   });
 
   it("refuses a repository that is not configured, even a real one", async () => {
@@ -457,6 +507,7 @@ describe("ref: only the commits that led to a given commit", () => {
     const result = (await recent({ ref: absent })).result;
     expect(result).toEqual({
       repository: result.repository,
+      github_repository: null,
       ref: { requested: absent, found: false },
       commits: [],
       truncated: false,

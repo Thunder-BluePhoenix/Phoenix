@@ -417,6 +417,24 @@ export class KnowledgeGraph {
     );
   }
 
+  /** Scrubs an item quote from current and historical assertions after evidence is withdrawn. */
+  purgeSourceQuote(sourceId: string): void {
+    this.db
+      .prepare(
+        `UPDATE kg_provenance SET detail = json_remove(detail, '$.source_quote')
+       WHERE source_kind = 'meeting_item' AND source_id = ?
+         AND json_type(detail, '$.source_quote') IS NOT NULL`,
+      )
+      .run(sourceId);
+    this.db
+      .prepare(
+        `UPDATE kg_provenance_history SET detail = json_remove(detail, '$.source_quote')
+       WHERE source_kind = 'meeting_item' AND source_id = ?
+         AND json_type(detail, '$.source_quote') IS NOT NULL`,
+      )
+      .run(sourceId);
+  }
+
   /** Removes everything one capability (or one kind of source) supported. */
   removeWhere(filter: { capability?: string; sourceKind?: SourceKind }): RemovalReport {
     const where: string[] = [];
@@ -497,10 +515,10 @@ export class KnowledgeGraph {
   }
 
   /** The node as the viewer sees it, or null when it does not exist or nothing about it is readable. */
-  node(viewer: Viewer, id: string, memo: VisibilityMemo = {}): NodeView | null {
+  node(viewer: Viewer, id: string, memo: VisibilityMemo = {}, asOf?: string): NodeView | null {
     const row = this.nodeRow(id);
     if (!row) return null;
-    const rows = this.visibleRows(viewer, "node", id).map(toView).sort(byObserved);
+    const rows = this.visibleRows(viewer, "node", id, asOf).map(toView).sort(byObserved);
     memo[id] = rows.length > 0;
     if (rows.length === 0) return null;
     const detail: Detail = Object.assign({}, ...rows.map((r) => r.detail));
@@ -516,11 +534,11 @@ export class KnowledgeGraph {
   }
 
   /** Cheap visibility test for traversal; memoised in `memo`. */
-  isNodeVisible(viewer: Viewer, id: string, memo: VisibilityMemo): boolean {
+  isNodeVisible(viewer: Viewer, id: string, memo: VisibilityMemo, asOf?: string): boolean {
     const known = memo[id];
     if (known !== undefined) return known;
     const visible =
-      this.nodeRow(id) !== undefined && this.visibleRows(viewer, "node", id).length > 0;
+      this.nodeRow(id) !== undefined && this.visibleRows(viewer, "node", id, asOf).length > 0;
     memo[id] = visible;
     return visible;
   }
@@ -531,6 +549,7 @@ export class KnowledgeGraph {
     id: string,
     options: AdjacencyOptions,
     memo: VisibilityMemo = {},
+    asOf?: string,
   ): Adjacency {
     const direction = options.direction ?? "both";
     const edges: EdgeView[] = [];
@@ -542,7 +561,7 @@ export class KnowledgeGraph {
         (options.rel ? " AND rel = ?" : "");
       const params = options.rel ? [id, options.rel] : [id];
       for (const row of this.prepare(sql).iterate(...params) as Iterable<EdgeRow>) {
-        const view = this.visibleEdge(viewer, row, memo);
+        const view = this.visibleEdge(viewer, row, memo, asOf);
         if (!view || (view.status === "proposed" && options.includeProposed !== true)) continue;
         if (edges.length >= options.limit) {
           truncated = true;
@@ -557,9 +576,9 @@ export class KnowledgeGraph {
   }
 
   /** One edge as the viewer sees it, or null. */
-  edge(viewer: Viewer, id: string, memo: VisibilityMemo = {}): EdgeView | null {
+  edge(viewer: Viewer, id: string, memo: VisibilityMemo = {}, asOf?: string): EdgeView | null {
     const row = this.edgeRow(id);
-    return row ? this.visibleEdge(viewer, row, memo) : null;
+    return row ? this.visibleEdge(viewer, row, memo, asOf) : null;
   }
 
   /**
@@ -782,25 +801,69 @@ export class KnowledgeGraph {
     );
   }
 
-  private visibleRows(viewer: Viewer, kind: "node" | "edge", subject: string): ProvRow[] {
-    const rows = this.prepare(
-      `SELECT source_kind, source_id, parent_key, capability, observed_at, recorded_at, confidence,
-              asserted_by, scope, domain, sensitivity, detail
-       FROM kg_provenance WHERE subject_kind = ? AND subject_id = ?`,
-    ).all(kind, subject) as unknown as ProvRow[];
-    return rows.filter((r) =>
-      canView(viewer, {
-        scope: r.scope,
-        domain: isDomain(r.domain) ? r.domain : "general",
-        sensitivity: r.sensitivity,
-      }),
-    );
+  private visibleRows(
+    viewer: Viewer,
+    kind: "node" | "edge",
+    subject: string,
+    asOf?: string,
+  ): ProvRow[] {
+    const rows =
+      asOf === undefined
+        ? (this.prepare(
+            `SELECT source_kind, source_id, parent_key, capability, observed_at, recorded_at, confidence,
+                  asserted_by, scope, domain, sensitivity, detail
+           FROM kg_provenance WHERE subject_kind = ? AND subject_id = ?`,
+          ).all(kind, subject) as unknown as ProvRow[])
+        : (this.prepare(
+            `SELECT h.source_kind, h.source_id, h.parent_key, h.capability, h.observed_at,
+                  h.recorded_at, h.confidence, h.asserted_by, h.scope, h.domain, h.sensitivity, h.detail,
+                  p.scope AS current_scope, p.domain AS current_domain,
+                  p.sensitivity AS current_sensitivity
+           FROM kg_provenance p JOIN kg_provenance_history h ON h.provenance_id = p.id
+           WHERE p.subject_kind = ? AND p.subject_id = ? AND h.recorded_at <= ?
+             AND h.id = (SELECT h2.id FROM kg_provenance_history h2
+                         WHERE h2.provenance_id = p.id AND h2.recorded_at <= ?
+                         ORDER BY h2.recorded_at DESC, h2.id DESC LIMIT 1)`,
+          ).all(kind, subject, asOf, asOf) as unknown as (ProvRow & {
+            current_scope: string;
+            current_domain: string;
+            current_sensitivity: PrivacyClass;
+          })[]);
+    return rows.filter((r) => {
+      if (
+        !canView(viewer, {
+          scope: r.scope,
+          domain: isDomain(r.domain) ? r.domain : "general",
+          sensitivity: r.sensitivity,
+        })
+      )
+        return false;
+      if (asOf === undefined) return true;
+      const current = r as ProvRow & {
+        current_scope: string;
+        current_domain: string;
+        current_sensitivity: PrivacyClass;
+      };
+      return canView(viewer, {
+        scope: current.current_scope,
+        domain: isDomain(current.current_domain) ? current.current_domain : "general",
+        sensitivity: current.current_sensitivity,
+      });
+    });
   }
 
-  private visibleEdge(viewer: Viewer, row: EdgeRow, memo: VisibilityMemo): EdgeView | null {
-    const rows = this.visibleRows(viewer, "edge", row.id).map(toView).sort(byObserved);
+  private visibleEdge(
+    viewer: Viewer,
+    row: EdgeRow,
+    memo: VisibilityMemo,
+    asOf?: string,
+  ): EdgeView | null {
+    const rows = this.visibleRows(viewer, "edge", row.id, asOf).map(toView).sort(byObserved);
     if (rows.length === 0) return null;
-    if (!this.isNodeVisible(viewer, row.src, memo) || !this.isNodeVisible(viewer, row.dst, memo)) {
+    if (
+      !this.isNodeVisible(viewer, row.src, memo, asOf) ||
+      !this.isNodeVisible(viewer, row.dst, memo, asOf)
+    ) {
       return null;
     }
     return {

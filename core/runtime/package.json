@@ -28,6 +28,7 @@
     "@phoenix/capability-git": "workspace:*",
     "@phoenix/capability-github": "workspace:*",
     "@phoenix/capability-issues": "workspace:*",
+    "@phoenix/capability-planning": "workspace:*",
     "@phoenix/capability-kage": "workspace:*",
     "@phoenix/capability-manager": "workspace:*",
     "@phoenix/capability-mock": "workspace:*",

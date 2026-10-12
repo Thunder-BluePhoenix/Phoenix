@@ -96,7 +96,6 @@ export class WorkflowEngine {
       ai: d.ai,
       lookup: d.lookup,
       sleep: d.sleep ?? realSleep,
-      abandon: d.abandon,
       approvalWaitMs: DEFAULT_APPROVAL_WAIT_MS,
       warn,
     });
@@ -192,9 +191,9 @@ export class WorkflowEngine {
   }
 
   /**
-   * The emergency stop: every active run is cancelled. No undo is attempted, because the kill
-   * switch blocks every tool call; a run with succeeded steps that declared an undo therefore ends
-   * `failed_needs_attention`. Waiting approvals are rejected by the PermissionGateway itself.
+   * The emergency stop aborts each active run's in-flight tool signal and rejects waiting approvals.
+   * Dispatched writes may already have taken effect, so they are recorded as unknown and require
+   * attention; no undo is attempted while the kill switch blocks tool calls.
    */
   onKillSwitch(): void {
     for (const state of Object.values(this.active)) {

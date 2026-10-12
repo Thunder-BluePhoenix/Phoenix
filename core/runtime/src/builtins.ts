@@ -8,6 +8,7 @@ import { createGithubCapability } from "@phoenix/capability-github";
 import { createIssuesCapability } from "@phoenix/capability-issues";
 import { createKageCapability } from "@phoenix/capability-kage";
 import { mockCapability } from "@phoenix/capability-mock";
+import { createPlanningCapability, type PlanningServices } from "@phoenix/capability-planning";
 import { terminalCapability } from "@phoenix/capability-terminal";
 import type { CapabilityModule } from "@phoenix/capability-manager";
 import type { PhoenixConfig } from "@phoenix/config";
@@ -25,6 +26,7 @@ import type { PhoenixConfig } from "@phoenix/config";
 export function builtinCapabilities(
   env: PhoenixConfig["env"],
   agentsServices?: () => AgentsServices | undefined,
+  planningServices?: () => PlanningServices | undefined,
 ): CapabilityModule[] {
   return [
     createKageCapability(),
@@ -35,6 +37,7 @@ export function builtinCapabilities(
     createFrappeCapability(),
     createAgentsCapability(agentsServices ? { services: agentsServices } : {}),
     createIssuesCapability(),
+    createPlanningCapability({ services: planningServices }),
     ...(env === "dev" ? [mockCapability] : []),
   ];
 }

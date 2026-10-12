@@ -177,9 +177,10 @@ function prEvent(
       number: pr.number,
       title: pr.title,
       branch: pr.branch,
+      ...(pr.headSha ? { head_sha: pr.headSha } : {}),
       base: pr.base,
-      // The PR's author: GitHub's PR list does not say who merged or closed it.
-      actor: pr.author,
+      // The PR's author is not necessarily the actor who closed or merged it.
+      ...(type === "pr.closed" || type === "pr.merged" ? {} : { actor: pr.author }),
       ...extra,
     },
   };
@@ -330,6 +331,7 @@ export function deployEvent(
       deployment_id: deployment.id,
       environment: deployment.environment,
       branch: deployment.ref,
+      ...(deployment.sha ? { sha: deployment.sha, sha_source: "deployment.sha" } : {}),
       actor: status?.creator ?? deployment.creator,
       state: status?.state ?? "created",
     },

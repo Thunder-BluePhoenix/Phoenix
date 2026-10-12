@@ -61,7 +61,6 @@ export interface RunnerDeps {
   ai: EngineDeps["ai"];
   lookup: EngineDeps["lookup"];
   sleep: Sleeper;
-  abandon: ((tool: string) => void) | undefined;
   approvalWaitMs: number;
   warn: (message: string, fields?: Record<string, unknown>) => void;
 }
@@ -132,23 +131,50 @@ export class StepRunner {
     const inner = new AbortController();
     const done = Promise.withResolvers<T>();
     const stopTimer = new AbortController();
+    let settled = false;
     const onAbort = () => {
+      if (settled) return;
+      settled = true;
       inner.abort();
       done.reject(this.stopped(state));
     };
-    run(inner.signal).then(done.resolve, done.reject);
-    this.sleep(ms, stopTimer.signal).then(
-      () => {
-        inner.abort();
-        done.reject(onTimeout());
-      },
-      () => undefined,
-    );
     if (state.abort.signal.aborted) onAbort();
     else state.abort.signal.addEventListener("abort", onAbort, { once: true });
+    if (!settled) {
+      try {
+        run(inner.signal).then(
+          (value) => {
+            if (!settled) {
+              settled = true;
+              done.resolve(value);
+            }
+          },
+          (error: unknown) => {
+            if (!settled) {
+              settled = true;
+              done.reject(error);
+            }
+          },
+        );
+      } catch (error) {
+        settled = true;
+        done.reject(error);
+      }
+      if (!settled)
+        this.sleep(ms, stopTimer.signal).then(
+          () => {
+            if (settled) return;
+            settled = true;
+            inner.abort();
+            done.reject(onTimeout());
+          },
+          () => undefined,
+        );
+    }
     try {
       return await done.promise;
     } finally {
+      settled = true;
       stopTimer.abort();
       state.abort.signal.removeEventListener("abort", onAbort);
     }
@@ -217,11 +243,7 @@ export class StepRunner {
         );
         return { output: boundValue(result.output), attempts: attempt };
       } catch (err) {
-        const gone =
-          err instanceof RunCancelled ||
-          err instanceof Halted ||
-          (err instanceof StepFailure && err.status === "timed_out");
-        if (gone) this.d.abandon?.(prepared.tool);
+        if (state.abort.signal.aborted) throw this.stopped(state);
         const failure = this.asFailure(err, prepared);
         if (!(failure.retryable && attempt <= extra)) throw failure;
         await this.pause(state, (options.retry?.backoff_ms ?? 0) * attempt);
@@ -251,6 +273,8 @@ export class StepRunner {
       const message = `${prepared.tool}: ${err.message}`.slice(0, 300);
       if (err.code === "TIMEOUT")
         return new StepFailure(message, "timed_out", true, prepared.destructive);
+      if (err.code === "CANCELLED")
+        return new StepFailure(message, "failed", false, prepared.destructive);
       if (err.code === "EXECUTION_FAILED") return new StepFailure(message, "failed", true);
       if (err.code === "APPROVAL_REJECTED") return new StepFailure(message, "rejected");
       return new StepFailure(message);

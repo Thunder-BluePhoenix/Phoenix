@@ -14,7 +14,13 @@ afterEach(() => {
 });
 
 const initial: ProactiveStatus = {
-  preferences: { enabled: false, capabilities: [], quietHours: null, maxPerHour: 3 },
+  preferences: {
+    enabled: false,
+    capabilities: [],
+    quietHours: null,
+    maxPerHour: 3,
+    cadenceMinutes: null,
+  },
   source: { capability_id: "kage", available: true, mode: "manual" },
   noise: { delivered: 0, dismissed: 0, suppressed: 0, dismissalRate: 0 },
 };
@@ -204,5 +210,33 @@ describe("manual proactive suggestions settings", () => {
         new Response(JSON.stringify({ message: "Unavailable" }), { status: 503 }),
     });
     expect((await (await section()).findByRole("alert")).textContent).toBe("Unavailable");
+  });
+  it("offers scheduling only after explicit opt-in and allows returning to manual mode", async () => {
+    const { api } = open();
+    const s = await section();
+    const cadence = s.getByRole("combobox", {
+      name: "Automatic evaluation cadence",
+    }) as HTMLSelectElement;
+    expect(cadence.disabled).toBe(true);
+    expect(cadence.value).toBe("");
+    fireEvent.click(s.getByRole("checkbox", { name: "Enable proactive suggestions" }));
+    await waitFor(() => expect(api.posts("/api/proactive/preferences")).toHaveLength(1));
+    expect(cadence.disabled).toBe(true);
+    fireEvent.click(s.getByRole("checkbox", { name: /Kage accepted/ }));
+    await waitFor(() => expect(cadence.disabled).toBe(false));
+    expect(api.posts("/api/proactive/evaluate")).toHaveLength(0);
+    fireEvent.change(cadence, { target: { value: "30" } });
+    await waitFor(() =>
+      expect(api.posts("/api/proactive/preferences")[2]?.body).toEqual({ cadenceMinutes: 30 }),
+    );
+    await waitFor(() =>
+      expect(s.getByText(/Kage source:/).textContent).toContain("every 30 minutes"),
+    );
+    await waitFor(() => expect(cadence.disabled).toBe(false));
+    fireEvent.change(cadence, { target: { value: "" } });
+    await waitFor(() =>
+      expect(api.posts("/api/proactive/preferences")[3]?.body).toEqual({ cadenceMinutes: null }),
+    );
+    expect(api.posts("/api/proactive/evaluate")).toHaveLength(0);
   });
 });

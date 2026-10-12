@@ -54,6 +54,40 @@ const REPO = "octo/phoenix";
 const SITE = "erp.localhost";
 const FRAPPE_CREDENTIAL = [["mock", "key"].join(""), ["mock", "secret"].join("")].join(":");
 
+/** A local Ollama proposal for the accepted decision; its second task is deliberately only a suggestion. */
+const VENDOR_MODEL_REPLY = JSON.stringify({
+  title: "Vendor approval flow",
+  summary: {
+    text: "Purchasing can approve new suppliers before the first order",
+    quote: "purchasing can approve new suppliers before the first order",
+  },
+  acceptance_criteria: [
+    { text: "Purchasing approves new suppliers", quote: "purchasing can approve new suppliers" },
+  ],
+  tasks: [
+    {
+      title: "Build vendor approval flow",
+      body: "Add the approval workflow.",
+      labels: ["procurement"],
+      quote: "vendor approval flow",
+    },
+    {
+      title: "Notify suppliers by email",
+      body: "Send an email on approval.",
+      labels: [],
+      quote: "this was never said in the meeting",
+    },
+  ],
+  risks: [{ text: "Existing suppliers may need migration", quote: null }],
+  open_questions: ["Who may approve suppliers?"],
+  frappe: {
+    doctype: "Vendor Approval",
+    fields: [{ label: "Vendor", fieldtype: "Link", required: true }],
+    workflow_states: ["Draft", "Approved"],
+    permissions: [{ role: "Purchase User", read: true, write: true, create: true }],
+  },
+});
+
 /** A sleeper for capability pollers that wakes only when the capability is disabled. */
 const idleSleep = (_ms: number, signal: AbortSignal): Promise<void> => {
   const done = Promise.withResolvers<void>();
@@ -103,13 +137,19 @@ interface Detail {
 }
 
 async function rig(
-  options: { ai?: boolean; github?: boolean; frappe?: boolean; writeToken?: boolean } = {},
+  options: {
+    ai?: boolean;
+    github?: boolean;
+    frappe?: boolean;
+    writeToken?: boolean;
+    modelReply?: string;
+  } = {},
 ): Promise<Rig> {
   const guard = guardNetwork();
   const gh = await startMockGithub();
   const frappe = await startMockFrappe();
   frappe.expectedAuth = `token ${FRAPPE_CREDENTIAL}`;
-  const network = fakeNetwork({ chat: () => "this is not a JSON plan" });
+  const network = fakeNetwork({ chat: () => options.modelReply ?? "this is not a JSON plan" });
   const core = await startCore(
     {},
     {
@@ -288,6 +328,87 @@ describe("planning is off unless AI and a destination are configured", () => {
   });
 });
 
+describe("valid local model generation through Core", () => {
+  it("labels grounded and suggested claims without executing the model's proposal", async () => {
+    const r = await rig({ modelReply: VENDOR_MODEL_REPLY });
+    const response = await r.core.api("POST", `/api/meeting-items/${r.decisionId}/plan`, {
+      destination: GITHUB_DEST,
+    });
+    expect(response.status, JSON.stringify(response.json)).toBe(201);
+    const plan = response.json.plan as Detail["plan"] & {
+      summary: { basis: string; item_id?: string; quote?: string };
+      acceptance_criteria: { basis: string; item_id?: string }[];
+      risks: { basis: string }[];
+      tasks: (Detail["plan"]["tasks"][number] & {
+        basis: string;
+        item_id?: string;
+        quote?: string;
+      })[];
+      frappe: unknown;
+    };
+    expect(plan).toMatchObject({
+      status: "draft",
+      approved: null,
+      not_ai_generated: false,
+      generated_by: expect.stringMatching(/^ai:ollama\//),
+      destination: GITHUB_DEST,
+    });
+    expect(response.json.generation).toMatchObject({
+      unavailable: null,
+      stats: { grounded: 3, suggested: 2, proposed: 5 },
+    });
+    expect(plan.summary).toMatchObject({
+      basis: "meeting",
+      item_id: r.decisionId,
+      quote: "purchasing can approve new suppliers before the first order",
+    });
+    expect(plan.acceptance_criteria[0]).toMatchObject({ basis: "meeting", item_id: r.decisionId });
+    expect(plan.tasks[0]).toMatchObject({
+      basis: "meeting",
+      item_id: r.decisionId,
+      quote: "vendor approval flow",
+    });
+    expect(plan.tasks[1]).toMatchObject({ basis: "suggested" });
+    expect(plan.tasks[1]).not.toHaveProperty("quote");
+    expect(plan.tasks[1]).not.toHaveProperty("item_id");
+    expect(plan.risks[0]).toMatchObject({ basis: "suggested" });
+    expect(plan.frappe).toBeNull();
+    expect((await detail(r, plan.id)).plan).toMatchObject({
+      generated_by: plan.generated_by,
+      not_ai_generated: false,
+      status: "draft",
+    });
+    expect(r.network.chats()).toHaveLength(1);
+    expect(r.network.chats()[0]!.url).toMatch(/^http:\/\/127\.0\.0\.1:11434\/api\/chat$/);
+    expect(r.network.cloud()).toEqual([]);
+    expect(posts(r)).toEqual([]);
+    expect(r.frappe.tasks).toEqual([]);
+  });
+
+  it("does not turn a fabricated quote into meeting evidence", async () => {
+    const reply = JSON.stringify({
+      ...JSON.parse(VENDOR_MODEL_REPLY),
+      summary: {
+        text: "Purchasing can approve new suppliers before the first order",
+        quote: "an entirely unrelated quotation that the meeting never contained",
+      },
+    });
+    const r = await rig({ modelReply: reply });
+    const response = await r.core.api("POST", `/api/meeting-items/${r.decisionId}/plan`, {
+      destination: GITHUB_DEST,
+    });
+    expect(response.status).toBe(201);
+    expect(response.json.plan).toMatchObject({
+      not_ai_generated: false,
+      summary: { basis: "suggested" },
+    });
+    expect(response.json.plan.summary).not.toHaveProperty("quote");
+    expect(response.json.generation.stats).toMatchObject({ grounded: 2, suggested: 3 });
+    expect(posts(r)).toEqual([]);
+    expect(r.network.cloud()).toEqual([]);
+  });
+});
+
 describe("generate, edit, approve, create (GitHub, against the local mock)", () => {
   it("makes a draft from an accepted item, labelled as not AI generated when the model gave nothing usable", async () => {
     const r = await rig();
@@ -439,6 +560,31 @@ describe("generate, edit, approve, create (GitHub, against the local mock)", () 
   });
 });
 
+describe("failed GitHub mock with a valid model draft", () => {
+  it("records a failed run without claiming a task link or leaking the remote response", async () => {
+    const r = await rig({ modelReply: VENDOR_MODEL_REPLY });
+    r.gh.writeMode.current = "http500";
+    const approved = await approvedPlan(r, GITHUB_DEST, r.decisionId);
+    expect(approved.plan).toMatchObject({
+      not_ai_generated: false,
+      generated_by: expect.stringMatching(/^ai:ollama\//),
+    });
+    expect(posts(r)).toEqual([]);
+    const res = await r.core.api("POST", `/api/plans/${approved.plan.id}/create`, {
+      confirm: true,
+    });
+    expect(res.status).toBe(200);
+    expect(res.json.plan.status).toBe("failed");
+    expect(res.json.failure).toMatchObject({ task_index: 0 });
+    expect(JSON.stringify(res.json)).not.toContain("REMOTE-TEXT-MUST-NOT-LEAK");
+    expect(res.json.links).toEqual([]);
+    expect(r.gh.issues).toEqual([]);
+    expect(posts(r)).toHaveLength(1);
+    expect(posts(r)[0]).toMatchObject({ status: 500, authorization: `Bearer ${MOCK_WRITE_TOKEN}` });
+    expect(r.network.cloud()).toEqual([]);
+  });
+});
+
 describe("idempotency: a second creation makes no second external call", () => {
   it("a created plan cannot be created again and the mock saw no further POST", async () => {
     const r = await rig();
@@ -477,6 +623,50 @@ describe("idempotency: a second creation makes no second external call", () => {
 });
 
 describe("Frappe (against the local mock)", () => {
+  it("creates locally mocked Frappe Tasks only after user approval of a model draft", async () => {
+    const r = await rig({ frappe: true, modelReply: VENDOR_MODEL_REPLY });
+    const generated = await r.core.api("POST", `/api/meeting-items/${r.decisionId}/plan`, {
+      destination: FRAPPE_DEST,
+    });
+    expect(generated.status, JSON.stringify(generated.json)).toBe(201);
+    const plan = generated.json.plan as Detail["plan"] & {
+      frappe: { doctype: string; fields: { label: string }[] };
+    };
+    expect(plan).toMatchObject({
+      not_ai_generated: false,
+      generated_by: expect.stringMatching(/^ai:ollama\//),
+      status: "draft",
+    });
+    expect(plan.frappe).toMatchObject({
+      doctype: "Vendor Approval",
+      fields: [{ label: "Vendor" }],
+    });
+    expect(r.frappe.tasks).toEqual([]);
+    expect(r.gh.writes).toEqual([]);
+    expect(
+      (await r.core.api("POST", `/api/plans/${plan.id}/create`, { confirm: true })).status,
+    ).toBe(400);
+    expect(r.frappe.tasks).toEqual([]);
+    expect((await r.core.api("POST", `/api/plans/${plan.id}/propose`, {})).status).toBe(200);
+    const approved = await r.core.api("POST", `/api/plans/${plan.id}/approve`, {
+      hash: plan.content_hash,
+    });
+    expect(approved.status).toBe(200);
+    const created = await r.core.api("POST", `/api/plans/${plan.id}/create`, { confirm: true });
+    expect(created.status, JSON.stringify(created.json)).toBe(200);
+    expect(created.json.plan.status).toBe("created");
+    expect(r.frappe.tasks).toHaveLength(plan.tasks.length);
+    expect(created.json.links).toHaveLength(plan.tasks.length);
+    expect(created.json.links[0]).toMatchObject({ system: "frappe", meeting_id: r.meetingId });
+    expect(r.gh.writes).toEqual([]);
+    expect(r.network.cloud()).toEqual([]);
+    expect(
+      r.fetched
+        .filter((url) => !url.startsWith(r.core.base))
+        .every((url) => url.startsWith(r.gh.url) || url.startsWith(r.frappe.url)),
+    ).toBe(true);
+  });
+
   it("creates a Task through the same flow and links it", async () => {
     const r = await rig({ frappe: true });
     const approved = await approvedPlan(r, FRAPPE_DEST, r.decisionId);
@@ -511,31 +701,27 @@ describe("approve and create are user routes only", () => {
     }
   });
 
-  it("no tool, capability command or capability id of any built-in reaches approve, create-task or the plan service", async () => {
-    // The tool registry is built from capability manifests: if none declares it, no agent can call it.
+  it("the only built-in plan tool is the redacted read-only review context", async () => {
     const modules = builtinCapabilities("dev");
-    const ids = modules.map((m) => m.manifest.id);
-    expect(ids.filter((id) => /plan|workflow/i.test(id))).toEqual([]);
+    const planning = modules.find((m) => m.manifest.id === "plans");
+    expect(planning?.manifest.commands.map((c) => [c.name, c.side_effect])).toEqual([
+      ["review_context", "read"],
+    ]);
     const commands = modules.flatMap((m) =>
       m.manifest.commands.map((c) => `${m.manifest.id}.${c.name}`),
     );
-    expect(commands.filter((c) => /approve|authori[sz]e|revoke|plan\.|workflow/i.test(c))).toEqual(
-      [],
-    );
-    // The same holds for what the runtime really registers and enables.
+    expect(
+      commands.filter((c) =>
+        /approve|authori[sz]e|revoke|plans?\.create|plans?\.preview|workflow/i.test(c),
+      ),
+    ).toEqual([]);
     const r = await rig();
-    const listed = (await r.core.api("GET", "/api/capabilities")).json.capabilities as {
-      id: string;
-    }[];
-    expect(listed.filter((c) => /plan|workflow/i.test(c.id))).toEqual([]);
     const tools = r.core.runtime.toolGateway.tools().map((t) => t.name);
     expect(tools).toContain("github.issue.create");
-    expect(
-      tools.filter((t) => /approve|authori[sz]e|revoke|^plans?\.|^workflows?\./i.test(t)),
-    ).toEqual([]);
+    expect(tools.filter((t) => /^plans?\./i.test(t))).toEqual([]);
   });
 
-  it("an agent cannot call a plan tool through the gateway, and creating a task as an agent is refused with nothing sent", async () => {
+  it("an agent cannot call plan approval or creation through the gateway, and direct task creation still needs approval", async () => {
     const r = await rig();
     const approved = await approvedPlan(r);
     const agent = { kind: "agent" as const, id: "evil-agent", trustedByUser: false };

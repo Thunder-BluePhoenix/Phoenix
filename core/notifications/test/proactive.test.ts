@@ -4,7 +4,7 @@ import { EventBus } from "@phoenix/event-bus";
 import { openDatabase } from "@phoenix/persistence";
 import { StateEngine } from "@phoenix/state-engine";
 import { describe, expect, it } from "vitest";
-import { NotificationService, type ProactiveInsight } from "../src";
+import { NotificationService, type ProactiveInsight, type ProactivePreferences } from "../src";
 
 const insight: ProactiveInsight = {
   id: "unassigned_action:meetings:m1",
@@ -117,5 +117,29 @@ describe("proactive policy", () => {
     expect(service.considerInsight("alice", insight, () => true)).toBeNull();
     setTime("2026-10-13T07:00:00Z");
     expect(service.considerInsight("alice", insight, () => true)).not.toBeNull();
+  });
+  it("requires explicit valid cadence and clears scheduling on revoked consent", () => {
+    const { service, db, bus } = rig();
+    expect(service.proactivePreferences("alice").cadenceMinutes).toBeNull();
+    expect(() =>
+      service.setProactivePreferences("alice", {
+        cadenceMinutes: Number("5") as ProactivePreferences["cadenceMinutes"],
+      }),
+    ).toThrow();
+    expect(() => service.setProactivePreferences("alice", { cadenceMinutes: 15 })).toThrow();
+    service.setProactivePreferences("alice", { enabled: true, capabilities: ["kage"] });
+    expect(service.setProactivePreferences("alice", { cadenceMinutes: 30 }).cadenceMinutes).toBe(
+      30,
+    );
+    service.close();
+    const reopened = new NotificationService({ db, bus, state: new StateEngine() });
+    expect(reopened.proactivePreferences("alice").cadenceMinutes).toBe(30);
+    expect(reopened.setProactivePreferences("alice", { enabled: false }).cadenceMinutes).toBeNull();
+    expect(reopened.setProactivePreferences("alice", { enabled: true }).cadenceMinutes).toBeNull();
+    reopened.setProactivePreferences("alice", { cadenceMinutes: 15 });
+    expect(
+      reopened.setProactivePreferences("alice", { capabilities: [] }).cadenceMinutes,
+    ).toBeNull();
+    reopened.close();
   });
 });

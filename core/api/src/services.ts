@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import type { ImprovementApi } from "./improvement-routes";
 import type { PhoenixConfig } from "@phoenix/config";
 import type { EventBus } from "@phoenix/event-bus";
 import type { Logger } from "@phoenix/logging";
@@ -342,7 +343,7 @@ export interface RetrievalStatusView {
   enabled: boolean;
   /** True when search and ask use the vector index right now (enabled and AI on). */
   active: boolean;
-  /** "retrieval_disabled" | "ai_disabled" when not active. */
+  /** "retrieval_disabled" | "ai_disabled" | "kill_switch" when not active. */
   inactive_reason: string | null;
   provider: string;
   model: string;
@@ -371,6 +372,8 @@ export interface RetrievalApi {
   settings(): RetrievalSettingsView;
   setSettings(input: unknown): RetrievalSettingsView;
   status(): RetrievalStatusView;
+  /** Re-embed the active vector space, bounded to one indexing trigger. */
+  rebuild(): Promise<RetrievalStatusView>;
 }
 
 export interface GraphProvenanceView {
@@ -622,6 +625,7 @@ export interface AgentProposalView {
 export interface AgentTaskDetailView {
   task: {
     id: string;
+    title: string;
     kind: string;
     input: Record<string, unknown>;
     requested_by: string;
@@ -763,6 +767,14 @@ export interface AgentApi {
   cancel(id: string): { cancelled: boolean; state: string } | null;
   /** The harness observation of a task's run (Phase 33); null for an unknown task. */
   observation(id: string): AgentObservationView | null;
+  observationHistory(
+    id: string,
+    limit: number,
+  ): {
+    observations: { id: number; created_at: string; observation: AgentObservationView }[];
+  } | null;
+  observationRecord(id: string, observationId: number): AgentObservationView | null;
+  forget(id: string): Promise<boolean>;
   settings(): AgentSettingsView;
   setSettings(input: unknown): AgentSettingsView;
   describeConfirmation(confirmationId: string): ConfirmationContextView | undefined;
@@ -1039,7 +1051,10 @@ export interface WorkflowsApi {
     hash: string | null;
     authorisation: { required: boolean; reasons: string[] } | null;
   };
-  save(definition: unknown): {
+  save(
+    definition: unknown,
+    precondition?: { expectedHash?: string; createOnly?: boolean },
+  ): {
     created: boolean;
     workflow: WorkflowView;
     stored_enabled: boolean;
@@ -1061,6 +1076,12 @@ export interface WorkflowsApi {
     runs: WorkflowRunSummaryView[];
   };
   getRun(runId: string): WorkflowRunView | null;
+  deleteRun(runId: string, confirmEvidence?: boolean): { deleted: true };
+  pruneRuns(input: { before: number; limit: number; confirmEvidence?: boolean }): {
+    deleted: number;
+    protected: number;
+    scanned: number;
+  };
   metrics(): Record<string, WorkflowMetricsView>;
 }
 
@@ -1070,6 +1091,8 @@ export interface SyncApi {
   configure(input: Record<string, unknown>): Promise<unknown>;
   disable(): unknown;
   exclusions(input: Record<string, unknown>): unknown;
+  adapter(input: Record<string, unknown>): unknown;
+  apply(input: Record<string, unknown>): unknown;
   upsert(input: Record<string, unknown>): unknown;
   delete(id: string, scope: string): unknown;
   resolve(id: string, scope: string, choice: "local" | "remote"): unknown;
@@ -1171,6 +1194,7 @@ export interface CoreServices {
   sync?: SyncApi;
   registry?: RegistryApi;
   multimodal?: MultimodalApi;
+  improvement?: ImprovementApi;
   petSettings?(): unknown;
   setPetSettings?(input: unknown): unknown;
   /** Persists the user's sleep preference. */

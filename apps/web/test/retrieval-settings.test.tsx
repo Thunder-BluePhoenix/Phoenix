@@ -43,6 +43,7 @@ const status = (over: Partial<RetrievalStatus> = {}): RetrievalStatus => ({
 /** A fake Core whose settings and status follow what is posted, like the real one. */
 function open(initial: RetrievalSettings, st: Partial<RetrievalStatus> = {}) {
   let current = initial;
+  let rebuilt: RetrievalStatus | null = null;
   return openAt("#/settings", {
     "GET /api/retrieval/settings": () => current,
     "POST /api/retrieval/settings": (body) => {
@@ -50,12 +51,30 @@ function open(initial: RetrievalSettings, st: Partial<RetrievalStatus> = {}) {
       return current;
     },
     "GET /api/retrieval/status": () =>
+      rebuilt ??
       status({
         enabled: current.enabled,
         active: current.enabled,
         inactive_reason: current.enabled ? null : "retrieval_disabled",
         ...st,
       }),
+    "POST /api/retrieval/rebuild": () =>
+      (rebuilt = status({
+        enabled: true,
+        active: true,
+        inactive_reason: null,
+        embedded: 10,
+        unembedded: 2,
+        failures: 1,
+        last_run: {
+          at: new Date().toISOString(),
+          embedded: 10,
+          failed: 1,
+          remaining: 2,
+          capped: true,
+          degraded: ["provider timed out"],
+        },
+      })),
   });
 }
 
@@ -129,28 +148,94 @@ describe("Smart search settings", () => {
     expect(await s.findByText(/Smart search is on, but AI is off/)).toBeTruthy();
     expect(s.getByText("Not built since Phoenix started.")).toBeTruthy();
     expect(s.getByText(/None: no fallback reason was reported/)).toBeTruthy();
-    // Updating needs smart search AND AI: the button says so instead of doing nothing.
     expect(
-      (s.getByRole("button", { name: "Update the index now" }) as HTMLButtonElement).disabled,
+      (s.getByRole("button", { name: "Rebuild entire index" }) as HTMLButtonElement).disabled,
     ).toBe(true);
-    expect(s.getByText(/Update is available once smart search is on and AI is on/)).toBeTruthy();
+    expect(s.getByText(/Rebuild is available only when smart search and AI are on/)).toBeTruthy();
   });
 
-  it("'Update the index' is unavailable while off and indexes by switching off and on, once", async () => {
+  it("requires visible confirmation, posts only the explicit rebuild request, and shows bounded partial results", async () => {
     const { api } = open(settings({ enabled: true }));
     const s = await section();
-    const update = await s.findByRole("button", { name: "Update the index now" });
-    await waitFor(() => expect((update as HTMLButtonElement).disabled).toBe(false));
-    doubleClick(() => fireEvent.click(update));
-    await s.findByText("Indexing started for memories that are not indexed yet.");
-    expect(api.posts("/api/retrieval/settings").map((c) => c.body)).toEqual([
-      { enabled: false },
-      { enabled: true },
-    ]);
+    const start = await s.findByRole("button", { name: "Rebuild entire index" });
+    await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(start);
+    expect(api.posts("/api/retrieval/rebuild")).toHaveLength(0);
+    expect(s.getByText(/Rebuild replaces every vector for the current model/)).toBeTruthy();
+    expect(s.getByText(/Other models’ vectors are kept/)).toBeTruthy();
+    fireEvent.click(s.getByRole("button", { name: "Cancel" }));
+    expect(api.posts("/api/retrieval/rebuild")).toHaveLength(0);
+    fireEvent.click(s.getByRole("button", { name: "Rebuild entire index" }));
+    doubleClick(() => fireEvent.click(s.getByRole("button", { name: "Confirm full rebuild" })));
+    expect((await s.findByRole("status")).textContent).toContain(
+      "10 indexed, 1 failed, 2 waiting; stopped at its limit",
+    );
+    expect(s.getByRole("status").textContent).toContain(
+      "Keywords only for some of it: provider timed out",
+    );
+    expect(s.getByText("Index size").nextElementSibling?.textContent).toContain(
+      "10 of 12 memories indexed (2 waiting, 1 failed)",
+    );
+    expect(api.posts("/api/retrieval/rebuild").map((c) => c.body)).toEqual([{ confirm: true }]);
+    expect(api.posts("/api/retrieval/settings")).toHaveLength(0);
+  });
+
+  it("disables rebuild when search is off or the emergency stop is engaged", async () => {
+    const { api } = open(settings());
+    const s = await section();
+    expect(
+      ((await s.findByRole("button", { name: "Rebuild entire index" })) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.click(s.getByRole("button", { name: "Rebuild entire index" }));
+    expect(api.posts("/api/retrieval/rebuild")).toHaveLength(0);
     cleanup();
-    open(settings({ enabled: false }));
-    const off = await (await section()).findByRole("button", { name: "Update the index now" });
-    expect((off as HTMLButtonElement).disabled).toBe(true);
+    open(settings({ enabled: true }), { active: false, inactive_reason: "kill_switch" });
+    const stopped = await section();
+    expect(await stopped.findByText(/paused by the emergency stop/)).toBeTruthy();
+    expect(
+      (stopped.getByRole("button", { name: "Rebuild entire index" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it("shows a rebuild error without claiming success, and allows a retry", async () => {
+    const { api } = open(settings({ enabled: true }));
+    api.set(
+      "POST /api/retrieval/rebuild",
+      () =>
+        new Response(
+          JSON.stringify({ code: "CAPABILITY_DISABLED", message: "Emergency stop engaged" }),
+          { status: 409 },
+        ),
+    );
+    const s = await section();
+    const start = await s.findByRole("button", { name: "Rebuild entire index" });
+    await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(start);
+    fireEvent.click(s.getByRole("button", { name: "Confirm full rebuild" }));
+    expect((await s.findByRole("alert")).textContent).toBe("Emergency stop engaged");
+    expect(s.queryByRole("status")).toBeNull();
+    expect(
+      (s.getByRole("button", { name: "Rebuild entire index" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("keeps confirmation controls and results accessible at 320px", async () => {
+    const previous = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 320 });
+    try {
+      open(settings({ enabled: true }));
+      const s = await section();
+      const start = await s.findByRole("button", { name: "Rebuild entire index" });
+      await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(false));
+      fireEvent.click(start);
+      const group = s.getByRole("group", { name: "Confirm full index rebuild" });
+      expect(group.classList.contains("wrap")).toBe(true);
+      fireEvent.click(within(group).getByRole("button", { name: "Confirm full rebuild" }));
+      expect((await s.findByRole("status")).textContent).toContain("2 waiting");
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: previous });
+    }
   });
 
   it("shows an error from Core next to the switch", async () => {

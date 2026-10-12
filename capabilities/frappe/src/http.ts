@@ -16,10 +16,23 @@ export function normalizeOrigin(value: string, assumeHttp = false): string | und
   try {
     const url = new URL(withScheme);
     if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
+    if (url.username || url.password) return undefined;
     return url.origin;
   } catch {
     return undefined;
   }
+}
+
+/** A site_config host is untrusted: only the selected bench's numeric loopback binding is implicit.
+ * Remote and alternate-port layouts must be selected explicitly with a per-site URL override. */
+export function localBenchOrigin(value: string, port: number): string | undefined {
+  const origin = normalizeOrigin(value, true);
+  if (!origin) return undefined;
+  const url = new URL(origin);
+  if (url.username || url.password) return undefined;
+  if (url.hostname !== "127.0.0.1" && url.hostname !== "[::1]") return undefined;
+  if ((url.port || "80") !== String(port) || url.protocol !== "http:") return undefined;
+  return origin;
 }
 
 /** Reads at most `max` bytes; null when the body is larger. */

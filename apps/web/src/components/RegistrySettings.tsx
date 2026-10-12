@@ -3,17 +3,28 @@
 import { useEffect, useState } from "react";
 import { useClient } from "../core/context";
 
+type RegistryProvenance = {
+  signer_key_id: string;
+  signature: string;
+  signature_status: "verified";
+  index_sha256: string;
+  artifact_verification: "not_verified";
+};
+
 type RegistryListing = {
   id: string;
   version: string;
   name: string;
   description: string;
 };
-type RegistryBrowse = {
-  configured: boolean;
-  sandbox_status: "unavailable";
-  entries: RegistryListing[];
-};
+type RegistryBrowse =
+  | { configured: false; sandbox_status: "unavailable"; entries: [] }
+  | {
+      configured: true;
+      sandbox_status: "unavailable";
+      provenance: RegistryProvenance;
+      entries: RegistryListing[];
+    };
 type RegistryPreview = {
   entry: {
     id: string;
@@ -25,6 +36,7 @@ type RegistryPreview = {
     security: { contact: string; advisory_url: string };
     artifact: { sha256: string; size: number };
   };
+  provenance: RegistryProvenance;
   permission_descriptions: Record<string, string>;
   data_categories: string[];
   license_policy: string;
@@ -105,6 +117,20 @@ export function RegistrySettingsSection() {
           signed index to browse capabilities.
         </p>
       )}
+      {browse?.configured && (
+        <div className="small">
+          <p>
+            Index signature: {browse.provenance.signature_status} with host-trusted Ed25519 signer{" "}
+            <code>{browse.provenance.signer_key_id}</code>.
+          </p>
+          <p>
+            Signature: <code>{browse.provenance.signature}</code>
+          </p>
+          <p>
+            Signed index SHA-256: <code>{browse.provenance.index_sha256}</code>
+          </p>
+        </div>
+      )}
       {browse?.configured && browse.entries.length === 0 && (
         <p className="muted small">The signed registry contains no capabilities.</p>
       )}
@@ -176,10 +202,20 @@ export function RegistrySettingsSection() {
                 </dl>
                 <h4>Signed provenance</h4>
                 <p>
-                  Metadata from a signature-verified, host-trusted local index. Artifact SHA-256:{" "}
+                  Index signature: {preview.provenance.signature_status} with host-trusted Ed25519
+                  signer <code>{preview.provenance.signer_key_id}</code>.
+                </p>
+                <p>
+                  Signature: <code>{preview.provenance.signature}</code>
+                </p>
+                <p>
+                  Signed index SHA-256: <code>{preview.provenance.index_sha256}</code>
+                </p>
+                <p>
+                  Artifact SHA-256 declared by the signed index:{" "}
                   <code>{preview.entry.artifact.sha256}</code> ({preview.entry.artifact.size}{" "}
-                  bytes). This digest identifies the declared artifact; browsing does not verify or
-                  execute the artifact.
+                  bytes). Artifact verification: not verified; artifact bytes have not been fetched
+                  or checked. Browsing does not execute the artifact.
                 </p>
                 <p className="muted small">
                   Sandbox: unavailable. Installation is disabled; no install request will be sent.

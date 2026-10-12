@@ -343,13 +343,13 @@ describe("Provenance of one entity", () => {
     ).toBeTruthy();
   });
 
-  it("'Why do you think this?' lists evidence ids with the stored quote, as text", async () => {
+  it("'Why do you think this?' lists evidence ids and stored source words as text", async () => {
     const hostile = prov({
       source_kind: "meeting_item",
       source_id: "mi_9",
       asserted_by: "user",
       sensitivity: "sensitive",
-      detail: { text: XSS, state: "open" },
+      detail: { text: XSS, source_quote: XSS, state: "open" },
     });
     const { container } = openNode(COMMIT, {
       [NODE_PATH(COMMIT)]: () => inspection(COMMIT, [prov(), hostile]),
@@ -369,7 +369,30 @@ describe("Provenance of one entity", () => {
     expect(rows[1]!.textContent).toContain("confirmed by you");
     expect(rows[1]!.textContent).toContain("Sensitive");
     expect(rows[1]!.textContent).toContain("state: open");
-    expect(container.querySelectorAll("blockquote")).toHaveLength(2);
+    expect(container.querySelectorAll("blockquote")).toHaveLength(1);
+    expectInert(container);
+  });
+
+  it("renders owner-provided source quotes as inert text, without inventing absent quotes", async () => {
+    const hostile = prov({
+      source_kind: "meeting_item",
+      source_id: "mi_9",
+      sensitivity: "sensitive",
+      detail: { text: "Ship", source_quote: XSS },
+    });
+    const absent = prov({
+      source_kind: "meeting_item",
+      source_id: "mi_10",
+      detail: { text: "No source" },
+    });
+    const { container } = openNode(DECISION, {
+      [NODE_PATH(DECISION)]: () => inspection(DECISION, [hostile, absent]),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /^Why do you think this\?/ }));
+    expect(screen.getByText("Source quote")).toBeTruthy();
+    expect(container.querySelector("q")?.textContent).toBe(XSS);
+    expect(container.querySelectorAll("q")).toHaveLength(1);
+    expect(container.querySelectorAll("blockquote")).toHaveLength(0);
     expectInert(container);
   });
 

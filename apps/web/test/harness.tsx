@@ -65,6 +65,7 @@ export function taskDetail(
   return {
     task: {
       id: TASK_ID,
+      title: "CI failure in acme/app",
       kind: "ci_failure",
       input: { repository: "acme/app", run_id: 7 },
       requested_by: "user",

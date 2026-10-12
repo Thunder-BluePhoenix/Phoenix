@@ -3,17 +3,17 @@
 //
 // Engineering plans from accepted meeting items, and creating their tasks (Phase 36 wiring).
 //
-// - Everything here is the signed-in user's own action. `approve` and `create` are methods of this
-//   class and are reached ONLY by the session-token routes in `core/api/src/plan-routes.ts`: no
-//   tool, no capability command and no agent surface exposes them. Creation goes through the
-//   runtime's `ToolGateway` as the USER actor (`PlanService` builds the call), so policy and audit
-//   still apply and the capability manager still asks the user to confirm every external call.
+// - The user's preview, approval and creation remain ONLY on session-token routes. A separate
+//   opted-in capability reads only bounded aggregate counts, never preview inputs, plan text,
+//   destination details, meeting identity, or idempotency keys. Creation goes through the runtime's
+//   ToolGateway as USER, with policy, audit and confirmation for every external call.
 // - Off unless AI is on AND the destination is configured (write token set, capability enabled, and
 //   for Frappe the site listed under `api`). Reading, editing and cancelling existing plans always
 //   works.
 // - The idempotency key and marker behaviour belong to `PlanService` and the capabilities; this file
 //   adds no retry and no second path to a capability.
 import { generateWith } from "@phoenix/ai-context";
+import { canView } from "@phoenix/ai-memory";
 import type { Actor, MeetingItemService } from "@phoenix/ai-meetings";
 import type { AiService } from "@phoenix/ai-models";
 import {
@@ -44,6 +44,21 @@ import type { Logger } from "@phoenix/logging";
 import type { AuditLog } from "@phoenix/permissions";
 import type { Database, MeetingStore } from "@phoenix/persistence";
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
+
+/** A deliberately text-free, bounded projection. Counts include tasks and summary/criteria/risk statements; no preview inputs or creation keys. */
+export interface PlanReviewContext {
+  plan_id: string;
+  status: EngineeringPlanStatus;
+  task_count: number;
+  meeting_grounded_count: number;
+  suggested_count: number;
+  user_edited_count: number;
+  criteria_count: number;
+  risk_count: number;
+  open_question_count: number;
+}
+
+type EngineeringPlanStatus = PlanRecord["status"];
 
 const GITHUB = "github";
 const FRAPPE = "frappe";
@@ -325,6 +340,44 @@ export class PlanningRuntime implements PlanningApi {
 
   get(planId: string): PlanDetailView {
     return this.detail(planId);
+  }
+
+  /** Agent-safe aggregate only; the user's explicit sensitive-meeting opt-in is checked on every read. */
+  reviewContext(planId: string, sensitiveMeetingOptIn: boolean): PlanReviewContext {
+    if (!sensitiveMeetingOptIn) {
+      throw new PhoenixError(ErrorCode.SECURITY_POLICY_BLOCKED, "Sensitive meeting review is off");
+    }
+    const actor = this.actor;
+    if (!actor.viewer) {
+      throw new PhoenixError(ErrorCode.PERMISSION_DENIED, "A meeting viewer is required");
+    }
+    const record = this.service.get(planId, actor);
+    if (
+      !canView(actor.viewer, {
+        scope: `meeting:${record.meetingId}`,
+        domain: "meeting",
+        sensitivity: "sensitive",
+      })
+    ) {
+      throw new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, "No such plan");
+    }
+    const statements = [
+      record.plan.summary,
+      ...record.plan.acceptanceCriteria,
+      ...record.plan.risks,
+    ];
+    const bases = [...statements, ...record.plan.tasks];
+    return {
+      plan_id: record.id,
+      status: record.status,
+      task_count: Math.min(record.plan.tasks.length, 100),
+      meeting_grounded_count: Math.min(bases.filter((s) => s.basis === "meeting").length, 100),
+      suggested_count: Math.min(bases.filter((s) => s.basis === "suggested").length, 100),
+      user_edited_count: Math.min(bases.filter((s) => s.basis === "user").length, 100),
+      criteria_count: Math.min(record.plan.acceptanceCriteria.length, 100),
+      risk_count: Math.min(record.plan.risks.length, 100),
+      open_question_count: Math.min(record.plan.openQuestions.length, 100),
+    };
   }
 
   preview(planId: string) {

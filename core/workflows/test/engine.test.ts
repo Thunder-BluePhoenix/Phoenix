@@ -752,7 +752,6 @@ describe("runtime enforcement of the declared-permission model", () => {
       ai: undefined,
       lookup: undefined,
       sleep: new ManualClock().sleep,
-      abandon: undefined,
       approvalWaitMs: 1,
       warn: () => undefined,
     });

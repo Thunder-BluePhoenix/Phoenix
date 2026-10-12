@@ -88,4 +88,18 @@ describe("ExternalClient against a hostile capability", () => {
     });
     await expect(client.health(100)).rejects.toMatchObject({ code: ErrorCode.OPERATION_TIMEOUT });
   });
+
+  it("aborts an already dispatched command without claiming its write failed safely", async () => {
+    const dispatched = Promise.withResolvers<void>();
+    const client = await capability((res) => {
+      dispatched.resolve();
+      res.writeHead(200);
+      res.write('{"result":');
+    });
+    const controller = new AbortController();
+    const pending = client.command("save", {}, "op_test", 5_000, controller.signal);
+    await dispatched.promise;
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ code: ErrorCode.OPERATION_TIMEOUT });
+  });
 });

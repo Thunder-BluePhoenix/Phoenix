@@ -3,8 +3,8 @@
 //
 // Memory inside Core (Phase 28 wiring, Phase 29 governance).
 //
-// What flows in: git commits (live events), curated GitHub PR/CI/deployment metadata,
-// meeting summaries (after the meeting sync stores one), and user-listed markdown files.
+// What flows in: git commits (live events), curated GitHub PR/CI/deployment and issue-tracker
+// event metadata, meeting summaries (after sync stores one), and user-listed markdown files.
 // EVERY read goes through `canView` with the viewer this runtime was built with (the device owner
 // unless a test or a future multi-user build says otherwise), so totals, counts and the page never
 // reflect an item the viewer cannot see.
@@ -139,8 +139,8 @@ const REVIEW_SOURCE = "meeting-review";
 /** Do not allow an event payload to turn arbitrary text into a repository permission scope. */
 const REPOSITORY =
   /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\/[A-Za-z0-9_](?:[A-Za-z0-9_.-]{0,98}[A-Za-z0-9_])?$/;
-// Only these GitHub event shapes have checked identifiers. Issue, decision, architecture,
-// infra, people, incident and Fawkes still lack trusted structured producers here.
+// Issue tracker events carry provider-validated keys and normalized enum categories. Decision,
+// architecture, infra, people, incident and Fawkes still lack trusted structured producers here.
 const GITHUB_STATES = {
   "github.pr.opened": ["pr", "opened", "number", "PR"],
   "github.pr.merged": ["pr", "merged", "number", "PR"],
@@ -187,6 +187,89 @@ function githubEngineeringRecord(event: PhoenixEvent): EngineeringRecord | null 
   };
 }
 
+const ISSUE_CATEGORIES = ["open", "in_progress", "done", "cancelled"] as const;
+const ISSUE_KEYS = {
+  linear: /^[A-Za-z][A-Za-z0-9]{0,15}-\d{1,9}$/,
+  jira: /^[A-Z][A-Z0-9_]{0,49}-\d{1,9}$/,
+} as const;
+
+/** Project only validated identifiers and closed enums, never tracker-supplied free text. */
+function issueEngineeringRecord(event: PhoenixEvent): EngineeringRecord | null {
+  if (event.source !== "issues") return null;
+  const type = event.event_type;
+  if (
+    type !== "issues.assigned" &&
+    type !== "issues.unassigned" &&
+    type !== "issues.status_changed"
+  )
+    return null;
+  const { tracker, key, category } = event.payload;
+  if (
+    typeof tracker !== "string" ||
+    typeof key !== "string" ||
+    typeof category !== "string" ||
+    !ISSUE_CATEGORIES.includes(category as (typeof ISSUE_CATEGORIES)[number])
+  )
+    return null;
+  // A status-change event carries both normalized buckets; status names are untrusted prose.
+  if (
+    type === "issues.status_changed" &&
+    (event.payload.to !== category ||
+      typeof event.payload.from !== "string" ||
+      !ISSUE_CATEGORIES.includes(event.payload.from as (typeof ISSUE_CATEGORIES)[number]))
+  )
+    return null;
+  let scope: string;
+  let subject: string;
+  if (tracker === "github") {
+    const match =
+      /^([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\/[A-Za-z0-9_](?:[A-Za-z0-9_.-]{0,98}[A-Za-z0-9_])?)#([1-9]\d{0,15})$/.exec(
+        key,
+      );
+    if (
+      !match ||
+      !REPOSITORY.test(match[1]!) ||
+      match[1]!.includes("..") ||
+      !Number.isSafeInteger(Number(match[2]))
+    )
+      return null;
+    scope = `repo:${match[1]}`;
+    subject = `Issue#${match[2]}`;
+  } else if ((tracker === "linear" || tracker === "jira") && ISSUE_KEYS[tracker].test(key)) {
+    scope = `issue:${tracker}:${key}`;
+    subject = `Issue#${key}`;
+  } else return null;
+  const state =
+    type === "issues.assigned"
+      ? "assigned"
+      : type === "issues.unassigned"
+        ? "inactive"
+        : (
+            {
+              open: "opened",
+              in_progress: "started",
+              done: "completed",
+              cancelled: "cancelled",
+            } as const
+          )[category as (typeof ISSUE_CATEGORIES)[number]];
+  return {
+    domain: "issue",
+    source: "issues",
+    sourceRef: `${tracker}:${key}`,
+    recordId: event.event_id,
+    scope,
+    observedAt: event.timestamp,
+    sensitivity: "internal",
+    evidenceKind: "fact",
+    subject,
+    state,
+    evidenceId: event.event_id,
+    confidence: 1,
+    freshnessTtlDays: 7,
+    retentionDays: 90,
+  };
+}
+
 export class MemoryRuntime implements MemoryApi {
   readonly store: MemoryStore;
   readonly pipeline: MemoryPipeline;
@@ -194,6 +277,7 @@ export class MemoryRuntime implements MemoryApi {
   private readonly viewer: Viewer;
   private readonly unsubscribe: () => void;
   private readonly stopGithub: () => void;
+  private readonly stopIssues: () => void;
   private readonly stopMeetingSync: () => void;
   private hooks: MemoryHooks | null = null;
   private retrieval: RetrievalRuntime | null = null;
@@ -222,7 +306,12 @@ export class MemoryRuntime implements MemoryApi {
     });
     this.unsubscribe = d.bus.subscribe("memory-git", "git.commit.created", (event) => {
       // Only the git capability's own events: any other source naming this type is not a commit.
-      if (event.source !== "git" || !this.current().capture_git) return;
+      if (
+        event.source !== "git" ||
+        !this.current().capture_git ||
+        !this.d.db.prepare("SELECT 1 FROM events WHERE event_id = ?").get(event.event_id)
+      )
+        return;
       ingestGitEvent(this.pipeline, event);
     });
     this.stopGithub = d.bus.subscribe(
@@ -230,7 +319,24 @@ export class MemoryRuntime implements MemoryApi {
       ["github.pr.*", "github.ci.*", "github.deploy.*"],
       (event) => {
         if (!this.isSourceEnabled("github")) return;
+        if (!this.d.db.prepare("SELECT 1 FROM events WHERE event_id = ?").get(event.event_id))
+          return;
         const record = githubEngineeringRecord(event);
+        if (record) ingestEngineeringRecords(this.pipeline, [record]);
+      },
+    );
+    this.stopIssues = d.bus.subscribe(
+      "memory-issues-engineering",
+      ["issues.assigned", "issues.unassigned", "issues.status_changed"],
+      (event) => {
+        if (!this.isSourceEnabled("issues")) return;
+        if (
+          !this.d.db
+            .prepare("SELECT 1 FROM events WHERE event_id = ? AND source = 'issues'")
+            .get(event.event_id)
+        )
+          return;
+        const record = issueEngineeringRecord(event);
         if (record) ingestEngineeringRecords(this.pipeline, [record]);
       },
     );
@@ -355,6 +461,7 @@ export class MemoryRuntime implements MemoryApi {
     this.closed = true;
     this.unsubscribe();
     this.stopGithub();
+    this.stopIssues();
     this.stopMeetingSync();
     await this.docChain.catch(() => undefined);
   }

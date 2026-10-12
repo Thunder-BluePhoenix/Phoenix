@@ -16,11 +16,13 @@ export interface QuietHours {
   start: string;
   end: string;
 }
+export type ProactiveCadenceMinutes = 15 | 30 | 60 | 1440;
 export interface ProactivePreferences {
   enabled: boolean;
   capabilities: string[];
   quietHours: QuietHours | null;
   maxPerHour: number;
+  cadenceMinutes: ProactiveCadenceMinutes | null;
 }
 export interface NoiseMetrics {
   delivered: number;
@@ -40,6 +42,7 @@ const defaults: ProactivePreferences = {
   capabilities: [],
   quietHours: null,
   maxPerHour: 3,
+  cadenceMinutes: null,
 };
 const empty = (): PolicyState => ({
   delivered: [],
@@ -83,7 +86,16 @@ export class ProactiveNotificationPolicy {
   ) {}
   preferences(user: string): ProactivePreferences {
     if (!validId(user)) throw new Error("invalid user id");
-    return { ...defaults, ...this.settings.get<Partial<ProactivePreferences>>(key(user), {}) };
+    const stored = this.settings.get<Partial<ProactivePreferences>>(key(user), {});
+    const prefs = { ...defaults, ...stored };
+    if (
+      prefs.enabled !== true ||
+      !Array.isArray(prefs.capabilities) ||
+      !prefs.capabilities.includes("kage") ||
+      ![15, 30, 60, 1440].includes(prefs.cadenceMinutes as number)
+    )
+      prefs.cadenceMinutes = null;
+    return prefs;
   }
   setPreferences(user: string, input: Partial<ProactivePreferences>): ProactivePreferences {
     const next = this.preferences(user);
@@ -97,6 +109,11 @@ export class ProactiveNotificationPolicy {
       if (!Array.isArray(input.capabilities) || !input.capabilities.every(validId))
         throw new Error("invalid capabilities");
       next.capabilities = [...new Set(input.capabilities)].slice(0, 100);
+    }
+    if (input.cadenceMinutes !== undefined) {
+      if (input.cadenceMinutes !== null && ![15, 30, 60, 1440].includes(input.cadenceMinutes))
+        throw new Error("invalid proactive cadence");
+      next.cadenceMinutes = input.cadenceMinutes;
     }
     if (input.maxPerHour !== undefined) {
       if (!Number.isInteger(input.maxPerHour) || input.maxPerHour < 1 || input.maxPerHour > 20)
@@ -118,6 +135,15 @@ export class ProactiveNotificationPolicy {
         next.quietHours = { timezone: h.timezone, start: h.start, end: h.end };
       } else next.quietHours = null;
     }
+    if (
+      input.cadenceMinutes !== undefined &&
+      input.cadenceMinutes !== null &&
+      (!next.enabled || !next.capabilities.includes("kage"))
+    )
+      throw new Error("proactive cadence requires Kage opt-in");
+    if (!next.enabled || !next.capabilities.includes("kage")) next.cadenceMinutes = null;
+    else if (next.cadenceMinutes !== null && ![15, 30, 60, 1440].includes(next.cadenceMinutes))
+      throw new Error("invalid proactive cadence");
     this.settings.set(key(user), next);
     return next;
   }

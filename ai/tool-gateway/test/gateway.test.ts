@@ -131,8 +131,8 @@ async function setup(
   });
   const admin = new PolicyAdmin({ store, audit: h.permissions.audit, now: () => nowMs });
   const realHost: CapabilityHost = {
-    invokeAndWait: (id, command, input, actor) =>
-      h.manager.invokeAndWait(id, command, input, actor),
+    invokeAndWait: (id, command, input, actor, signal) =>
+      h.manager.invokeAndWait(id, command, input, actor, signal),
   };
   const gateway = new ToolGateway({
     host: options.host ? options.host(realHost) : realHost,
@@ -615,6 +615,87 @@ describe("outcomes", () => {
     expect(err.message).toContain("outcome is unknown");
     await vi.advanceTimersByTimeAsync(60_000);
     expect(attempts).toEqual(["save"]);
+  });
+
+  it("aborts a hanging provider and audits cancellation without claiming success", async () => {
+    const started = Promise.withResolvers<void>();
+    const m = mockCapability({ names: [] });
+    let providerSignal: AbortSignal | undefined;
+    m.commands!.list = (_input, ctx) => {
+      providerSignal = ctx.signal;
+      started.resolve();
+      return new Promise(() => {});
+    };
+    const { gateway, h } = await setup([m]);
+    const controller = new AbortController();
+    const pending = failure(gateway.call(call("notes.list"), { signal: controller.signal }));
+    await started.promise;
+    controller.abort();
+    expect((await pending).code).toBe("CANCELLED");
+    expect(providerSignal?.aborted).toBe(true);
+    expect(actions(h)).toContain("tool.cancelled");
+    expect(actions(h)).not.toContain("tool.succeeded");
+  });
+
+  it("keeps a completed result when abort happens afterward", async () => {
+    const { gateway, h } = await setup([mockCapability({ names: [] })]);
+    const controller = new AbortController();
+    const result = await gateway.call(call("notes.list"), { signal: controller.signal });
+    controller.abort();
+    expect(result.output).toEqual({ notes: [] });
+    expect(actions(h)).toContain("tool.succeeded");
+    expect(actions(h)).not.toContain("tool.unknown");
+  });
+
+  it("records an aborted dispatched write as unknown, never as a successful write", async () => {
+    const started = Promise.withResolvers<void>();
+    const m = mockCapability({ names: [] });
+    let providerSignal: AbortSignal | undefined;
+    m.commands!.save = (_input, ctx) => {
+      providerSignal = ctx.signal;
+      started.resolve();
+      return new Promise(() => {});
+    };
+    const { gateway, h, answer } = await setup([m]);
+    const controller = new AbortController();
+    const pending = failure(
+      gateway.call(call("notes.save", { actor: user, input: { title: "x" } }), {
+        signal: controller.signal,
+      }),
+    );
+    await answer(true);
+    await started.promise;
+    controller.abort();
+    expect((await pending).code).toBe("CANCELLED");
+    expect(providerSignal?.aborted).toBe(true);
+    await vi.waitFor(() => expect(actions(h)).toContain("action.failed"));
+    expect(actions(h)).toContain("tool.unknown");
+    expect(actions(h)).not.toContain("tool.succeeded");
+    const audit = h.permissions.audit.list({ limit: 1000 });
+    expect(audit.find((e) => e.action === "action.failed")?.details).toMatchObject({
+      outcomeUnknown: true,
+    });
+  });
+
+  it("withdraws the pending confirmation when cancelled before dispatch", async () => {
+    const calls: Calls = { names: [] };
+    const { gateway, h } = await setup([mockCapability(calls)]);
+    const controller = new AbortController();
+    const pending = failure(
+      gateway.call(
+        call("notes.save", {
+          actor: user,
+          input: { title: "x" },
+        }),
+        { signal: controller.signal },
+      ),
+    );
+    await vi.waitFor(() => expect(h.permissions.pendingConfirmations()).toHaveLength(1));
+    controller.abort();
+    expect((await pending).code).toBe("CANCELLED");
+    expect(h.permissions.pendingConfirmations()).toHaveLength(0);
+    expect(calls.names).toEqual([]);
+    expect(actions(h)).not.toContain("tool.succeeded");
   });
 
   it("retries an idempotent tool after a timeout with a fresh decision and audit record each time", async () => {

@@ -244,6 +244,12 @@ describe("what the viewer may see", () => {
       (await core.api("GET", `/api/graph/nodes/${enc(`Commit:repo@${shas[0]}`)}`)).status,
     ).toBe(404);
     expect((await status(core)).visible_nodes_by_type).toEqual({});
+    const privacy = (await core.api("GET", "/api/privacy")).json;
+    expect(privacy.derived.find((item: { id: string }) => item.id === "graph")).toMatchObject({
+      count: 0,
+      edges: 0,
+      provenance_rows: 0,
+    });
     const ask = (
       await core.api("POST", "/api/graph/ask", { question: "who touched core/engine.ts" })
     ).json;
@@ -281,7 +287,7 @@ describe("narration is off unless asked for and AI is on", () => {
 });
 
 describe("every deletion path reaches the graph", () => {
-  it("event retention removes what only those events supported, and keeps what memory supports", async () => {
+  it("event retention removes graph facts and event-derived memory, leaving no copied excerpt", async () => {
     const { dir, shas } = repo();
     const core = await boot();
     await ingestCommits(core, dir, shas);
@@ -290,6 +296,10 @@ describe("every deletion path reaches the graph", () => {
     const before = stats(core);
     expect(before.nodes).toBeGreaterThan(0);
     await core.api("POST", "/api/privacy/retention", { events: 1 });
+    const derived = core.runtime.db
+      .prepare("SELECT id FROM memory_items WHERE deleted_at IS NULL AND source='git'")
+      .all() as { id: string }[];
+    expect(derived.length).toBeGreaterThan(0);
     expect(core.runtime.privacy.prune(Date.now() + 2 * 86_400_000).events).toBeGreaterThan(0);
     const after = stats(core);
     expect(after.provenance).toBeLessThan(before.provenance);
@@ -297,6 +307,14 @@ describe("every deletion path reaches the graph", () => {
     expect((await status(core)).visible_nodes_by_type.Person).toBeUndefined();
     expect((await status(core)).visible_nodes_by_type.Document).toBeUndefined();
     expect(core.runtime.graph.graph.stats().edges).toBeLessThanOrEqual(before.edges);
+    for (const row of derived) {
+      const item = core.runtime.db
+        .prepare("SELECT text, provenance, deleted_at FROM memory_items WHERE id=?")
+        .get(row.id) as { text: string; provenance: string; deleted_at: string | null };
+      expect(item.text).toBe("");
+      expect(item.provenance).toBe("{}");
+      expect(item.deleted_at).not.toBeNull();
+    }
   });
 
   it("delete-all events empties the graph of event-sourced rows", async () => {
@@ -373,6 +391,37 @@ describe("every deletion path reaches the graph", () => {
       return m.id;
     }
 
+    it("indexes meetings past both 500-row groups with tied timestamps and archive changes", async () => {
+      const core = await boot();
+      await core.runtime.capabilities.enable("kage");
+      await core.api("POST", "/api/memory/settings", { allow_sensitive_meetings: true });
+      for (let n = 0; n < 1002; n++) {
+        const id = String(n).padStart(4, "0");
+        const m = core.runtime.meetings.upsert({
+          capabilityId: "kage",
+          externalId: id,
+          status: "ready",
+          startedAt: "2026-10-01T10:00:00Z",
+        })!;
+        if (n % 2) core.runtime.meetings.archive(m.id);
+      }
+      core.runtime.graph.syncMeetings();
+      expect((await status(core)).last_ingest.meetings).toBe(1002);
+      expect(
+        core.runtime.db
+          .prepare("SELECT COUNT(*) AS n FROM kg_provenance WHERE source_kind = 'meeting'")
+          .get(),
+      ).toEqual({ n: 1002 });
+      core.runtime.meetings.archive("kage:1000");
+      core.runtime.meetings.archive("kage:1001", false);
+      core.runtime.graph.syncMeetings();
+      expect(
+        core.runtime.db
+          .prepare("SELECT COUNT(*) AS n FROM kg_provenance WHERE source_kind = 'meeting'")
+          .get(),
+      ).toEqual({ n: 1002 });
+    });
+
     it("ingests a meeting only while sensitive meeting data is allowed, as sensitive provenance", async () => {
       const core = await boot();
       await core.runtime.capabilities.enable("kage");
@@ -432,7 +481,92 @@ describe("every deletion path reaches the graph", () => {
         ).n;
       expect(rows()).toBeGreaterThan(0);
       await core.api("POST", `/api/meeting-items/${decision.id}/reject`, {});
+      expect(
+        core.runtime.db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM kg_provenance_history WHERE source_id = ? AND detail LIKE '%source_quote%'",
+          )
+          .get(decision.id),
+      ).toEqual({ n: 0 });
       expect(rows()).toBe(0);
+    });
+    it("returns reviewed source evidence at depth two only to the owner and purges every copy", async () => {
+      const core = await boot();
+      const id = await withMeeting(core);
+      await vi.waitFor(() =>
+        expect(core.runtime.meetingReview.service.items.list(id).length).toBeGreaterThan(0),
+      );
+      const decision = core.runtime.meetingReview.service.items.list(id, { kind: "decision" })[0]!;
+      expect(decision.evidence?.quote).toBeTruthy();
+      await core.api("POST", `/api/meeting-items/${decision.id}/accept`, {});
+      core.runtime.graph.syncMeetings();
+      const path = `/api/graph/nodes/${enc("Person:ada lovelace")}/neighbors`;
+      const direct = (await core.api("GET", path)).json;
+      const two = (await core.api("GET", `${path}?depth=2`)).json;
+      expect(direct.nodes.some((n: { type: string }) => n.type === "Decision")).toBe(false);
+      expect(two.nodes.some((n: { type: string }) => n.type === "Decision")).toBe(true);
+      const source = two.edges.flatMap(
+        (e: { provenance: { detail: { source_quote?: string } }[] }) =>
+          e.provenance.map((p) => p.detail.source_quote).filter(Boolean),
+      );
+      expect(source).toContain(decision.evidence!.quote.slice(0, 300));
+      const copyCount = () =>
+        core.runtime.db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM kg_provenance_history WHERE detail LIKE '%source_quote%'",
+          )
+          .get() as { n: number };
+      expect(copyCount().n).toBeGreaterThan(0);
+      await core.api("POST", "/api/memory/settings", { allow_sensitive_meetings: false });
+      expect(copyCount()).toEqual({ n: 0 });
+      expect((await core.api("GET", `${path}?depth=2`)).status).toBe(404);
+    });
+
+    it("graph clear removes a reviewed quote and its temporal revisions", async () => {
+      const core = await boot();
+      const id = await withMeeting(core);
+      await vi.waitFor(() =>
+        expect(core.runtime.meetingReview.service.items.list(id).length).toBeGreaterThan(0),
+      );
+      const decision = core.runtime.meetingReview.service.items.list(id, { kind: "decision" })[0]!;
+      await core.api("POST", `/api/meeting-items/${decision.id}/accept`, {});
+      core.runtime.graph.syncMeetings();
+      const count = () =>
+        core.runtime.db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM kg_provenance_history WHERE detail LIKE '%source_quote%'",
+          )
+          .get() as { n: number };
+      expect(count().n).toBeGreaterThan(0);
+      core.runtime.graph.graph.clear();
+      expect(count()).toEqual({ n: 0 });
+    });
+
+    it("hides source evidence from a non-owner with sensitive scope and deletes historical copies on forget", async () => {
+      const core = await boot(fakeNetwork(), {
+        id: "guest",
+        grants: [{ scope: "*", maxSensitivity: "sensitive" }],
+      });
+      const id = await withMeeting(core);
+      await vi.waitFor(() =>
+        expect(core.runtime.meetingReview.service.items.list(id).length).toBeGreaterThan(0),
+      );
+      const decision = core.runtime.meetingReview.service.items.list(id, { kind: "decision" })[0]!;
+      await core.api("POST", `/api/meeting-items/${decision.id}/accept`, {});
+      core.runtime.graph.syncMeetings();
+      const path = `/api/graph/nodes/${enc("Person:ada lovelace")}/neighbors?depth=2`;
+      const response = await core.api("GET", path);
+      expect(response.status).toBe(200);
+      expect(response.json.nodes.some((n: { type: string }) => n.type === "Decision")).toBe(true);
+      expect(JSON.stringify(response.json)).not.toContain("source_quote");
+      await core.api("DELETE", `/api/meetings/${id}`, { confirm: true });
+      expect(
+        core.runtime.db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM kg_provenance_history WHERE detail LIKE '%source_quote%'",
+          )
+          .get(),
+      ).toEqual({ n: 0 });
     });
   });
 

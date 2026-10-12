@@ -24,12 +24,21 @@ import { manifestsFromDatabase, type RegisteredTool, type ToolRegistry } from ".
 
 /** The slice of the capability manager the gateway needs. */
 export interface CapabilityHost {
-  invokeAndWait(id: string, command: string, input: unknown, actor: string): Promise<Operation>;
+  invokeAndWait(
+    id: string,
+    command: string,
+    input: unknown,
+    actor: string,
+    signal?: AbortSignal,
+  ): Promise<Operation>;
 }
 
 /** Asks the user to approve one policy-escalated call. Rejects when declined or expired. */
 export interface Approver {
-  approve(request: { contract: ToolContract; summary: string; call: ToolCall }): Promise<void>;
+  approve(
+    request: { contract: ToolContract; summary: string; call: ToolCall },
+    signal?: AbortSignal,
+  ): Promise<void>;
 }
 
 export const MAX_INPUT_BYTES = 256 * 1024;
@@ -96,17 +105,22 @@ export class ToolGateway {
     return this.o.policy.evaluate(this.toRequest(call, tool?.contract));
   }
 
-  async call(call: ToolCall): Promise<ToolCallResult> {
+  /** Aborting stops pending approval and signals the host; dispatched writes may remain uncertain. */
+  async call(call: ToolCall, options?: { signal?: AbortSignal }): Promise<ToolCallResult> {
     const tool = this.registry.get(call.tool);
     if (tool) this.checkInput(tool, call);
 
     const maxAttempts = tool?.contract.idempotent ? 1 + this.retries : 1;
     for (let attempt = 1; ; attempt++) {
+      if (options?.signal?.aborted) throw new ToolGatewayError("CANCELLED", "Tool call cancelled");
       try {
-        return await this.attempt(call, tool, attempt);
+        return await this.attempt(call, tool, attempt, options?.signal);
       } catch (err) {
         const retry =
-          attempt < maxAttempts && err instanceof ToolGatewayError && err.code === "TIMEOUT";
+          !options?.signal?.aborted &&
+          attempt < maxAttempts &&
+          err instanceof ToolGatewayError &&
+          err.code === "TIMEOUT";
         if (!retry) throw err;
       }
     }
@@ -118,6 +132,7 @@ export class ToolGateway {
     call: ToolCall,
     tool: RegisteredTool | undefined,
     attempt: number,
+    signal?: AbortSignal,
   ): Promise<ToolCallResult> {
     const request = this.toRequest(call, tool?.contract);
     let audited: AuditedDecision;
@@ -145,9 +160,13 @@ export class ToolGateway {
     }
     const contract = tool.contract;
 
-    if (decision.effect === "require_approval") await this.approve(call, contract, audited);
+    if (decision.effect === "require_approval") await this.approve(call, contract, audited, signal);
+    if (signal?.aborted) {
+      this.outcome(audited, contract, call, "cancelled", {});
+      throw new ToolGatewayError("CANCELLED", "Tool call cancelled", [], decision, audited.auditId);
+    }
 
-    const output = await this.execute(audited, call, tool);
+    const output = await this.execute(audited, call, tool, signal);
     return {
       tool: contract.name,
       output: output.result,
@@ -162,6 +181,7 @@ export class ToolGateway {
     proof: AuditedDecision,
     call: ToolCall,
     tool: RegisteredTool,
+    signal?: AbortSignal,
   ): Promise<{ result: unknown; operationId: string }> {
     assertAudited(proof);
     if (proof.decision.effect === "deny") {
@@ -176,32 +196,74 @@ export class ToolGateway {
     const { contract } = tool;
     const actor = `${call.actor.kind}:${call.actor.id}`.slice(0, 200);
 
-    const timer = Promise.withResolvers<never>();
+    const controller = new AbortController();
+    const finished = Promise.withResolvers<Operation>();
+    let settled = false;
+    let dispatched = false;
+    const onAbort = () => {
+      if (settled) return;
+      controller.abort();
+      finished.reject(
+        new ToolGatewayError(
+          "CANCELLED",
+          `${contract.name} cancelled; its outcome may be unknown`,
+          [],
+          proof.decision,
+          proof.auditId,
+        ),
+      );
+    };
+    if (signal?.aborted) controller.abort();
+    else signal?.addEventListener("abort", onAbort, { once: true });
     // The wait for a user's confirmation happens inside invokeAndWait, so it extends the budget.
     const limit = contract.timeoutMs + this.approvalWaitMs;
-    const handle = setTimeout(
-      () =>
-        timer.reject(
-          new ToolGatewayError(
-            "TIMEOUT",
-            `${contract.name} did not finish within ${limit} ms; its outcome is unknown`,
-            [ErrorCode.OPERATION_TIMEOUT],
-            proof.decision,
-            proof.auditId,
-          ),
+    const handle = setTimeout(() => {
+      if (settled) return;
+      controller.abort();
+      finished.reject(
+        new ToolGatewayError(
+          "TIMEOUT",
+          `${contract.name} did not finish within ${limit} ms; its outcome is unknown`,
+          [ErrorCode.OPERATION_TIMEOUT],
+          proof.decision,
+          proof.auditId,
         ),
-      limit,
-    );
+      );
+    }, limit);
     let op: Operation;
     try {
-      op = await Promise.race([
-        this.o.host.invokeAndWait(contract.capabilityId, contract.command, call.input, actor),
-        timer.promise,
-      ]);
+      if (controller.signal.aborted)
+        throw new ToolGatewayError(
+          "CANCELLED",
+          "Tool call cancelled",
+          [],
+          proof.decision,
+          proof.auditId,
+        );
+      dispatched = true;
+      const pending = this.o.host.invokeAndWait(
+        contract.capabilityId,
+        contract.command,
+        call.input,
+        actor,
+        controller.signal,
+      );
+      pending.then(
+        (result) => {
+          settled = true;
+          finished.resolve(result);
+        },
+        (error: unknown) => {
+          settled = true;
+          finished.reject(error);
+        },
+      );
+      op = await finished.promise;
     } catch (err) {
-      throw this.failure(err, proof, contract, call);
+      throw this.failure(err, proof, contract, call, dispatched);
     } finally {
       clearTimeout(handle);
+      signal?.removeEventListener("abort", onAbort);
     }
 
     if (op.status !== "succeeded") {
@@ -212,14 +274,22 @@ export class ToolGateway {
         rejected
           ? "APPROVAL_REJECTED"
           : code === ErrorCode.OPERATION_TIMEOUT
-            ? "TIMEOUT"
+            ? signal?.aborted
+              ? "CANCELLED"
+              : "TIMEOUT"
             : "EXECUTION_FAILED",
         `${contract.name} failed: ${op.error?.message ?? "unknown error"}`,
         [code],
         proof.decision,
         proof.auditId,
       );
-      this.outcome(proof, contract, call, "failed", { code });
+      this.outcome(
+        proof,
+        contract,
+        call,
+        op.outcomeUnknown ? "unknown" : signal?.aborted ? "cancelled" : "failed",
+        { code, operationId: op.id },
+      );
       throw failed;
     }
 
@@ -298,15 +368,56 @@ export class ToolGateway {
     call: ToolCall,
     contract: ToolContract,
     proof: AuditedDecision,
+    signal?: AbortSignal,
   ): Promise<void> {
     const reasons = proof.decision.reasons;
+    if (signal?.aborted) {
+      this.outcome(proof, contract, call, "cancelled", {});
+      throw new ToolGatewayError(
+        "CANCELLED",
+        "Approval cancelled",
+        [],
+        proof.decision,
+        proof.auditId,
+      );
+    }
+    const cancelled = Promise.withResolvers<never>();
+    const onAbort = () =>
+      cancelled.reject(
+        new ToolGatewayError("CANCELLED", "Approval cancelled", [], proof.decision, proof.auditId),
+      );
+    signal?.addEventListener("abort", onAbort, { once: true });
     try {
-      await this.o.approver.approve({
-        contract,
-        call,
-        summary: `${contract.description} (${reasons[0] ?? "policy requires approval"})`,
-      });
+      await Promise.race([
+        this.o.approver.approve(
+          {
+            contract,
+            call,
+            summary: `${contract.description} (${reasons[0] ?? "policy requires approval"})`,
+          },
+          signal,
+        ),
+        cancelled.promise,
+      ]);
+      if (signal?.aborted)
+        throw new ToolGatewayError(
+          "CANCELLED",
+          "Approval cancelled",
+          [],
+          proof.decision,
+          proof.auditId,
+        );
     } catch (err) {
+      if (signal?.aborted) {
+        this.outcome(proof, contract, call, "cancelled", {});
+        throw new ToolGatewayError(
+          "CANCELLED",
+          "Approval cancelled",
+          [],
+          proof.decision,
+          proof.auditId,
+        );
+      }
       throw new ToolGatewayError(
         "APPROVAL_REJECTED",
         `Not approved: ${err instanceof Error ? err.message : String(err)}`,
@@ -314,6 +425,8 @@ export class ToolGateway {
         proof.decision,
         proof.auditId,
       );
+    } finally {
+      signal?.removeEventListener("abort", onAbort);
     }
   }
 
@@ -322,9 +435,18 @@ export class ToolGateway {
     proof: AuditedDecision,
     contract: ToolContract,
     call: ToolCall,
+    dispatched: boolean,
   ): ToolGatewayError {
     if (err instanceof ToolGatewayError) {
-      this.outcome(proof, contract, call, "timeout", {});
+      const uncertain =
+        dispatched && contract.sideEffect !== "none" && contract.sideEffect !== "read";
+      this.outcome(
+        proof,
+        contract,
+        call,
+        err.code === "CANCELLED" ? (uncertain ? "unknown" : "cancelled") : "timeout",
+        {},
+      );
       return err;
     }
     const message = err instanceof Error ? err.message : String(err);
@@ -398,16 +520,19 @@ export function enabledManifests(
  */
 export function approverFromPermissions(permissions: PermissionGateway): Approver {
   return {
-    async approve({ contract, summary }) {
+    async approve({ contract, summary }, signal) {
       if (permissions.needsConfirmation(contract)) return;
-      await permissions.authorize({
-        capabilityId: contract.capabilityId,
-        command: contract.command,
-        permissions: contract.permissions,
-        sideEffect: "external",
-        summary: `Policy approval: ${summary}`,
-        details: { actualSideEffect: contract.sideEffect, policy: true },
-      });
+      await permissions.authorize(
+        {
+          capabilityId: contract.capabilityId,
+          command: contract.command,
+          permissions: contract.permissions,
+          sideEffect: "external",
+          summary: `Policy approval: ${summary}`,
+          details: { actualSideEffect: contract.sideEffect, policy: true },
+        },
+        signal,
+      );
     },
   };
 }

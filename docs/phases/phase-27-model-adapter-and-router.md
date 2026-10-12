@@ -40,8 +40,8 @@ Introduce a provider-agnostic AI layer with one cloud and one local adapter, opt
 
 ## Exit criteria
 
-- [x] No silent external AI transmission (proved at package level with a counting fake network; the runtime must still construct `AiService` with the real grant, see notes)
-- [x] Core functional without AI (nothing in Core imports `@phoenix/ai-models`; `enabled: false` makes zero calls)
+- [x] No silent external AI transmission (proved at package level with a counting fake network; Core also constructs `AiService` with the real grant; Anthropic remains unverified, see notes)
+- [x] Core functional without AI (`AiRuntime` wires `@phoenix/ai-models` into Core; AI is off by default and disabled requests make zero provider calls)
 
 ## Implementation notes
 
@@ -50,7 +50,7 @@ Introduce a provider-agnostic AI layer with one cloud and one local adapter, opt
 - Ollama is loopback-only and also refuses models that Ollama proxies to a remote host (`*:cloud`, anything with `remote_host` in `/api/tags`): on this machine `kimi-k2.5:cloud` and `gpt-oss:120b-cloud` are of that kind, so they are not "local".
 - Verified for real against Ollama 0.15.5 (`llama3.2`, `nomic-embed-text`): `PHOENIX_REAL_OLLAMA=1 npx vitest run ai/models/test/real-ollama.test.ts`. Embeddings are 768-dimensional; cosine of near-duplicate sentences 0.898 vs 0.400 for unrelated ones.
 - **Not verified: the Anthropic adapter.** No API key was available and `api.anthropic.com` was never contacted; it is tested only against fakes that emit the documented Messages/SSE format. The default model id (`claude-haiku-4-5`) is unchecked.
-- Not done in this phase: runtime wiring, settings persistence and API routes (parent), Phase 29 rules for sensitive data.
+- **Built since this phase's package work**: `core/runtime/src/ai.ts` constructs `AiService`, persists AI settings and connects the grant; `core/api/src/memory-routes.ts` exposes the AI settings and secret routes. The Anthropic adapter still lacks a real-service run (above).
 
 ## Source documents
 

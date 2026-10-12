@@ -147,6 +147,24 @@ describe("Current task", () => {
     ).toBeTruthy();
   });
 
+  it("uses the detail title for headings and actions, without interpreting hostile text", async () => {
+    const title = "<img src=x onerror=alert(1)>";
+    openOverview(
+      taskDetail("RUNNING", {
+        task: {
+          ...taskDetail("RUNNING").task,
+          title,
+          kind: "planning_review",
+          input: { plan_id: "42" },
+        },
+      }),
+    );
+    const card = await screen.findByRole("article", { name: `Agent task: ${title}` });
+    expect(within(card).getByRole("heading", { name: title }).textContent).toBe(title);
+    expect(within(card).getByRole("button", { name: `Cancel task: ${title}` })).toBeTruthy();
+    expect(card.querySelector("img")).toBeNull();
+  });
+
   it("shows steps with tool, status, risk and the policy decision", async () => {
     openOverview(taskDetail("RUNNING", done));
     const task = await screen.findByRole("article");

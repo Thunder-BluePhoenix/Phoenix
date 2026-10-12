@@ -13,7 +13,7 @@ export const DEFAULT_CORE_URL = "http://127.0.0.1:4870";
  */
 export function resolveSessionToken(
   explicit?: string,
-  env: NodeJS.ProcessEnv = process.env,
+  env: Record<string, string | undefined> = process.env,
 ): string {
   if (explicit) return explicit;
   if (env.PHOENIX_SESSION_TOKEN) return env.PHOENIX_SESSION_TOKEN;

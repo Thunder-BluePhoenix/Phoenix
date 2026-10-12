@@ -66,6 +66,40 @@ describe("confirmation (ADR-0006)", () => {
     expect(((await c.run("session.list")).result as { sessions: unknown[] }).sessions).toEqual([]);
   });
 
+  it("reads only the launchers captured on enable; saving config does not make new launchers runnable", async () => {
+    const c = await ready();
+    const before = await c.run("launcher.list");
+    expect(
+      before.result &&
+        typeof before.result === "object" &&
+        "launchers" in before.result &&
+        Object.keys(before.result.launchers as object),
+    ).toEqual(["fake"]);
+    c.h.manager.configure("agents", { launchers: {} });
+    const after = await c.run("launcher.list");
+    const view = await started(c);
+    expect(view.launcher).toBe("fake");
+    await vi.waitFor(async () =>
+      expect((await sessionState(c, view.id)).session?.state).toBe("completed"),
+    );
+    expect(after.result).toEqual(before.result);
+    expect(confirmations(c, "launcher.list")).toEqual([]);
+  });
+
+  it("rejects malformed launcher config through the capability config API", async () => {
+    const c = await ready();
+    expect(() =>
+      c.h.manager.configure("agents", { launchers: { fake: { command: ["/bin/echo"] } } }),
+    ).toThrow(/Invalid configuration/);
+    expect(() =>
+      c.h.manager.configure("agents", {
+        launchers: {
+          fake: { command: ["/bin/echo"], cwd_roots: ["/work"], secret: "not allowed" },
+        },
+      }),
+    ).toThrow();
+  });
+
   it("the read commands never ask", async () => {
     const c = await ready();
     await c.run("session.list");

@@ -1,20 +1,41 @@
 {
   "name": "@phoenix/sdk",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "license": "GPL-3.0-or-later",
+  "description": "Phoenix Node capability SDK (local candidate; publication requires owner approval)",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/sdk-compat.mjs build",
+    "check:artifact": "node ../../scripts/sdk-compat.mjs check"
   },
   "dependencies": {
-    "@phoenix/capability-manager": "workspace:*",
-    "@phoenix/protocol": "workspace:*",
-    "@phoenix/sdk-events": "workspace:*"
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
   },
   "devDependencies": {
+    "@microsoft/api-extractor": "^7.52.0",
+    "@phoenix/capability-manager": "workspace:*",
     "@phoenix/config": "workspace:*",
     "@phoenix/logging": "workspace:*",
-    "@phoenix/runtime": "workspace:*"
+    "@phoenix/protocol": "workspace:*",
+    "@phoenix/runtime": "workspace:*",
+    "@phoenix/sdk-events": "workspace:*",
+    "esbuild": "0.28.2",
+    "typescript": "~5.9.3"
   }
 }

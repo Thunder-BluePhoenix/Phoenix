@@ -60,6 +60,8 @@ export interface PullRequest {
   draft: boolean;
   author: string;
   branch: string;
+  /** Full head commit SHA when supplied by GitHub. */
+  headSha?: string;
   base: string;
   createdAt?: number;
   updatedAt?: number;
@@ -97,6 +99,8 @@ export interface Deployment {
   id: number;
   environment: string;
   ref: string;
+  /** GitHub's full immutable deployment sha, distinct from its ref. */
+  sha?: string;
   creator: string;
   createdAt?: number;
 }
@@ -127,6 +131,10 @@ function parsePull(raw: unknown): PullRequest | null {
   const head = isRecord(raw.head) ? raw.head : {};
   const base = isRecord(raw.base) ? raw.base : {};
   const reviewers = Array.isArray(raw.requested_reviewers) ? raw.requested_reviewers : [];
+  const headSha =
+    typeof head.sha === "string" && /^[0-9a-f]{40}$/i.test(head.sha)
+      ? head.sha.toLowerCase()
+      : undefined;
   return {
     number,
     title: clean(raw.title) ?? `Pull request #${number}`,
@@ -136,6 +144,7 @@ function parsePull(raw: unknown): PullRequest | null {
     draft: raw.draft === true,
     author: login(raw.user),
     branch: clean(head.ref) ?? "unknown",
+    ...(headSha ? { headSha } : {}),
     base: clean(base.ref) ?? "unknown",
     createdAt: time(raw.created_at),
     updatedAt: time(raw.updated_at),
@@ -323,6 +332,9 @@ export function parseDeployments(body: unknown): Deployment[] {
         id: deploymentId,
         environment: clean(raw.environment, 80) ?? "unknown",
         ref: clean(raw.ref, 100) ?? "unknown",
+        ...(typeof raw.sha === "string" && FULL_SHA.test(raw.sha)
+          ? { sha: raw.sha.toLowerCase() }
+          : {}),
         creator: login(raw.creator),
         createdAt: time(raw.created_at),
       },

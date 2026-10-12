@@ -46,7 +46,9 @@ const from64 = (text: string, bytes: number) => {
   return decoded;
 };
 export const newRecoveryKey = () => b64(randomBytes(32));
-/** The recovery key must be transferred out-of-band and kept only in OS secret storage on devices. */
+/** Account recovery credential, shared out-of-band across devices. This is NOT device authentication:
+ * a relay accepting the same bearer token cannot revoke one device or prevent replay of old ciphertext.
+ * Keep the key only in OS secret storage; do not claim device revocation without a relay-enforced roster. */
 export function identity(recoveryKey: string): string {
   return b64(
     createHash("sha256")

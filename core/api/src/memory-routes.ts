@@ -78,6 +78,14 @@ export function memoryRoutes(s: CoreServices): Route[] {
       retrieval().setSettings(expectObject(await body())),
     ),
     route("GET", "/api/retrieval/status", () => retrieval().status()),
+    // Rebuild is destructive to the current vector space; require an explicit request body.
+    route("POST", "/api/retrieval/rebuild", async ({ body }) => {
+      const b = expectObject(await body());
+      if (Object.keys(b).length !== 1 || b.confirm !== true) {
+        throw invalid('Rebuilding the index needs {"confirm": true}');
+      }
+      return retrieval().rebuild();
+    }),
     route("GET", "/api/memory/settings", () => memory().settings()),
     route("POST", "/api/memory/settings", async ({ body }) =>
       memory().setSettings(expectObject(await body())),

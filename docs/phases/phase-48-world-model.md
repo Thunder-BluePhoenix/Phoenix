@@ -21,7 +21,7 @@ Maintain a continuously updated model of the authorised engineering environment.
 
 ## Tasks
 
-- [x] Temporal graph read layer with per-hop surviving provenance, freshness and bounded traversal (historical snapshots do not survive source replacement/deletion).
+- [x] Temporal graph read layer with append-only revisions of surviving provenance, historical/current viewer filters, freshness and bounded traversal; deleted sources purge historical detail.
 - [x] Exact typed entity identity resolution; ambiguous display names never resolve automatically.
 - [ ] Production failure → deployment → commit → service → issue → decision → meeting chain automatically ingested (route traverses only explicitly sourced existing edges; no complete producer pipeline).
 
@@ -39,7 +39,7 @@ Maintain a continuously updated model of the authorised engineering environment.
 
 ## Implementation notes
 
-`WorldModel.rootCauseChains` returns only complete six-hop trails with visible fresh evidence on every node/edge. The authenticated `GET /api/graph/world/failures/:key/chains` and Provenance UI say **documented association; causation not established**. Migration 20 adds `Failure` and `ASSOCIATED_WITH` while preserving existing graph rows. An `asOf` query sees only currently surviving provenance, not overwritten or withdrawn historical observations. No evidence-backed causal root cause or v1.4 release is claimed.
+`WorldModel.rootCauseChains` returns complete explicitly sourced six-hop trails with visible fresh evidence on every node/edge. The authenticated `GET /api/graph/world/failures/:key/chains` and Provenance UI say **documented association; causation not established**. Migration 20 adds `Failure`/`ASSOCIATED_WITH`; migration 23 records observation revisions for surviving provenance. `asOf` selects the revision valid at that time and also checks current viewer access; source deletion purges past content with only content-free numeric revocation metadata. Historical evidence from before migration 23 cannot be retroactively recovered or used to resurrect forgotten user content. No complete real incident producer chain, proven causal root cause or v1.4 release is claimed.
 
 ---
 Back to [TRACKER](TRACKER.md)

@@ -169,6 +169,21 @@ export class MeetingStore {
     return rows.map(toMeeting);
   }
 
+  /** Enumerates every live meeting by stable id, independent of the API's bounded list limit. */
+  listAll(): Meeting[] {
+    const page = this.db.prepare(
+      `SELECT * FROM meetings WHERE deleted_at IS NULL AND id > ? ORDER BY id ASC LIMIT 500`,
+    );
+    const all: Meeting[] = [];
+    let after = "";
+    while (true) {
+      const rows = page.all(after) as unknown as Row[];
+      for (const row of rows) all.push(toMeeting(row));
+      if (rows.length < 500) return all;
+      after = rows[rows.length - 1]!.id;
+    }
+  }
+
   get(id: string): Meeting | null {
     const r = this.row(id);
     return r && !r.deleted_at ? toMeeting(r) : null;

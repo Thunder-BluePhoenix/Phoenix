@@ -83,10 +83,11 @@ export class LocalRegistryRuntime implements RegistryApi {
   async browse() {
     if (!this.config?.trustedKeyFile || !this.config.indexFile)
       return { configured: false as const, sandbox_status: "unavailable" as const, entries: [] };
-    const { index } = await this.verified();
+    const { service, index } = await this.verified();
     return {
       configured: true as const,
       sandbox_status: "unavailable" as const,
+      provenance: service.provenance(index),
       entries: index.entries.map(
         ({ id, version, manifest, permissions, data_categories, license }) => ({
           id,

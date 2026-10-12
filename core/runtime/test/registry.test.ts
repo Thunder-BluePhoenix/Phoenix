@@ -110,16 +110,26 @@ describe("real Core local registry API", () => {
       (await api("POST", "/api/registry/example/1.0.0/install", undefined, { authorization: "" }))
         .status,
     ).toBe(401);
+    const envelope = JSON.parse(signedIndex());
+    const expectedProvenance = {
+      signer_key_id: "testkey",
+      signature: envelope.signature,
+      signature_status: "verified",
+      index_sha256: createHash("sha256").update(canonical(envelope.index)).digest("hex"),
+      artifact_verification: "not_verified",
+    };
     const browse = await api("GET", "/api/registry");
     expect(browse.status).toBe(200);
     expect(browse.json).toMatchObject({
       configured: true,
+      provenance: expectedProvenance,
       sandbox_status: "unavailable",
       entries: [{ id: "example", version: "1.0.0", installable: false }],
     });
     const preview = await api("GET", "/api/registry/example/1.0.0");
     expect(preview.status).toBe(200);
     expect(preview.json).toMatchObject({
+      provenance: expectedProvenance,
       entry: { id: "example", artifact: { file: "example.tar" } },
       permission_descriptions: { network: "Make network connections" },
       data_categories: ["repository_metadata"],
@@ -132,6 +142,9 @@ describe("real Core local registry API", () => {
     expect(
       (await api("GET", "/api/registry?indexFile=/tmp/other.json&trustedKeyFile=/tmp/other.pem"))
         .json,
+    ).toEqual(browse.json);
+    expect(
+      (await api("GET", "/api/registry?signer_key_id=attacker&signature_status=verified")).json,
     ).toEqual(browse.json);
   });
 

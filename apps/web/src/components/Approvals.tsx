@@ -92,6 +92,15 @@ function ApprovalCard({
         </dd>
         <dt>Permissions used</dt>
         <dd>{c.permissions.length > 0 ? c.permissions.join(", ") : "None listed."}</dd>
+        {c.details?.run && c.details.step && (
+          <>
+            <dt>Workflow step</dt>
+            <dd>
+              {c.details.step} ·{" "}
+              {c.capabilityId === "workflows" ? "Workflow approval" : "Tool policy approval"}
+            </dd>
+          </>
+        )}
         {(c.task_id || (c.evidence_ids && c.evidence_ids.length > 0)) && (
           <>
             <dt>Requested by</dt>
@@ -176,8 +185,9 @@ interface FocusPlan {
  * The approvals queue (Phase 32). Every request is an explanation card; Up/Down move between
  * cards; nothing is approved by a global shortcut. Results are announced in a polite live region.
  */
-export function Approvals() {
-  const { data: pending, error, reload } = useConfirmations();
+export function Approvals({ filter }: { filter?: (confirmation: Confirmation) => boolean }) {
+  const { data: confirmations, error, reload } = useConfirmations();
+  const pending = filter ? confirmations.filter(filter) : confirmations;
   const [announcement, setAnnouncement] = useState("");
   const heading = useRef<HTMLHeadingElement>(null);
   const cards = useRef<Record<string, HTMLLIElement | null>>({});

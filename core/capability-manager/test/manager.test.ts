@@ -373,6 +373,66 @@ describe("commands", () => {
     expect(op).toMatchObject({ status: "failed", error: { code: ErrorCode.PERMISSION_DENIED } });
   });
 
+  it("withdraws a pending confirmation on abort without dispatching", async () => {
+    const { manager, permissions } = setup();
+    let dispatched = false;
+    manager.registerBuiltin(
+      builtin({
+        commands: {
+          status: () => ({ ok: true }),
+          deploy: () => {
+            dispatched = true;
+            return "deployed";
+          },
+        },
+      }),
+    );
+    await manager.enable("demo");
+    const controller = new AbortController();
+    const pending = manager.invokeAndWait("demo", "deploy", {}, "user", controller.signal);
+    await Promise.resolve();
+    expect(permissions.pendingConfirmations()).toHaveLength(1);
+    controller.abort();
+    expect((await pending).outcomeUnknown).toBeUndefined();
+    expect(dispatched).toBe(false);
+    expect(permissions.pendingConfirmations()).toHaveLength(0);
+  });
+
+  it("marks an already dispatched write uncertain and signals its provider on abort", async () => {
+    const { manager, permissions } = setup();
+    const started = Promise.withResolvers<void>();
+    let providerSignal: AbortSignal | undefined;
+    manager.registerBuiltin(
+      builtin({
+        commands: {
+          status: () => ({ ok: true }),
+          deploy: (_input, ctx) => {
+            providerSignal = ctx.signal;
+            started.resolve();
+            return new Promise(() => {});
+          },
+        },
+      }),
+    );
+    await manager.enable("demo");
+    const controller = new AbortController();
+    const pending = manager.invokeAndWait("demo", "deploy", {}, "user", controller.signal);
+    await Promise.resolve();
+    const [confirmation] = permissions.pendingConfirmations();
+    permissions.resolveConfirmation(confirmation!.id, true);
+    await started.promise;
+    controller.abort();
+    expect(await pending).toMatchObject({
+      status: "failed",
+      outcomeUnknown: true,
+      error: { message: expect.stringMatching(/cancelled; outcome is unknown/) },
+    });
+    expect(providerSignal?.aborted).toBe(true);
+    expect(
+      permissions.audit.list({ limit: 100 }).find((e) => e.action === "action.failed")?.details,
+    ).toMatchObject({ outcomeUnknown: true });
+  });
+
   it("validates input, rejects unknown commands and disabled capabilities", async () => {
     const { manager } = setup();
     manager.registerBuiltin(

@@ -45,6 +45,8 @@ export interface Calls {
   failCommands: Record<string, boolean>;
   /** Resolvers of calls held open by `hang` / `stuck_write`; released when the core closes. */
   held: (() => void)[];
+  /** Provider signals observed by commands held open during cancellation tests. */
+  signals?: AbortSignal[];
   /** What `logs` returns (default: two short lines). */
   logLines?: string[];
 }
@@ -135,8 +137,9 @@ export function deploysCapability(calls: Calls): CapabilityModule {
         calls.held.push(() => held.resolve({ released: true }));
         return held.promise;
       },
-      stuck_write: (input) => {
+      stuck_write: (input, ctx) => {
         calls.log.push({ command: "stuck_write", input });
+        calls.signals?.push(ctx.signal);
         const held = Promise.withResolvers<unknown>();
         calls.held.push(() => held.resolve({ released: true }));
         return held.promise;
@@ -236,7 +239,8 @@ export async function boot(o: BootOptions): Promise<Core> {
   });
   const gateway = new ToolGateway({
     host: {
-      invokeAndWait: (id, cmd, input, actor) => manager.invokeAndWait(id, cmd, input, actor),
+      invokeAndWait: (id, cmd, input, actor, signal) =>
+        manager.invokeAndWait(id, cmd, input, actor, signal),
     },
     registry,
     policy,
@@ -253,16 +257,6 @@ export async function boot(o: BootOptions): Promise<Core> {
     approvals: o.approvals ?? approvalsFromPermissions(permissions),
     audit: permissions.audit,
     isKillSwitchEngaged: () => permissions.isKillSwitchEngaged(),
-    // What the runtime wires too: withdraw the confirmation prompt of the call that was given up on.
-    abandon: (tool) => {
-      const [capability, command] = [
-        tool.slice(0, tool.indexOf(".")),
-        tool.slice(tool.indexOf(".") + 1),
-      ];
-      for (const c of permissions.pendingConfirmations())
-        if (c.capabilityId === capability && c.command === command)
-          permissions.resolveConfirmation(c.id, false, "workflow-abandon");
-    },
     ...(o.ai ? { ai: o.ai } : {}),
     ...(o.now ? { now: o.now } : {}),
     ...(o.sleep ? { sleep: o.sleep } : {}),

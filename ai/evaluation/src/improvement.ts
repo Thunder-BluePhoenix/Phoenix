@@ -71,9 +71,13 @@ function digest(report: Report): string {
 
 const copy = <T>(value: T): T => structuredClone(value);
 
-function validate(change: ImprovementChange): void {
+export function validateImprovementChange(change: ImprovementChange): void {
+  if (change === null || typeof change !== "object" || Array.isArray(change))
+    throw new Error("Only safe prompt or retrieval changes are allowed");
   switch (change.target) {
     case "ops.prompt":
+      if (Object.keys(change).some((key) => !["target", "promptAddendum"].includes(key)))
+        throw new Error("Unexpected prompt candidate field");
       if (
         typeof change.promptAddendum !== "string" ||
         !PROMPT_TEMPLATES.includes(change.promptAddendum)
@@ -83,6 +87,8 @@ function validate(change: ImprovementChange): void {
         );
       return;
     case "retrieval.limit":
+      if (Object.keys(change).some((key) => !["target", "retrievalLimit"].includes(key)))
+        throw new Error("Unexpected retrieval candidate field");
       if (
         !Number.isInteger(change.retrievalLimit) ||
         change.retrievalLimit < 1 ||
@@ -91,6 +97,8 @@ function validate(change: ImprovementChange): void {
         throw new Error("Retrieval limit must be between 1 and 3");
       return;
     case "ops.workflow":
+      if (Object.keys(change).some((key) => !["target", "maxFollowUps"].includes(key)))
+        throw new Error("Unexpected workflow candidate field");
       if (
         !Number.isInteger(change.maxFollowUps) ||
         change.maxFollowUps < 0 ||
@@ -101,6 +109,37 @@ function validate(change: ImprovementChange): void {
     default:
       throw new Error("Policy, permission and security changes are not improvement targets");
   }
+}
+const validate = validateImprovementChange;
+
+export interface ImprovementEvidence {
+  controlDigest: string;
+  candidateDigest: string;
+  improvement: string;
+  failures: string[];
+}
+
+/** Fresh offline control and candidate, never a model self-score or a user-supplied report. */
+export async function evaluateImprovement(
+  baseline: Report,
+  pinnedDigest: string,
+  change: ImprovementChange,
+  gate: Gate = GATES["v0.4"]!,
+  scenarios: readonly Scenario[] = ALL_SCENARIOS,
+): Promise<ImprovementEvidence> {
+  // This adapter invokes the offline coordinator's evaluation without accepting client output.
+  // Synthetic provenance remains confined to the local offline harness, never written to Core.
+  const loop = new ImprovementLoop(baseline, pinnedDigest, gate, scenarios, () => ({
+    output: "offline",
+    observation: { taskId: "offline", runId: "offline" } as RunObservation,
+  }));
+  const feedback = loop.recordFeedback({
+    taskId: "offline",
+    userId: "offline",
+    rating: "unhelpful",
+  });
+  const proposal = loop.propose(feedback.id, change);
+  return (await loop.reevaluate(proposal.id)).evidence!;
 }
 
 /** Offline coordinator only. Digest comes from an independent trusted pin; task and human

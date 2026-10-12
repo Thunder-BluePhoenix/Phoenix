@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { describe, expect, it } from "vitest";
-import { WorldModel, type NodeRef, type Relation } from "../src";
+import { openDatabase } from "@phoenix/persistence";
+import { KnowledgeGraph, WorldModel, type NodeRef, type Relation } from "../src";
 import { OWNER, prov, rig, viewerOf } from "./helpers";
 
 const at = "2026-10-09T10:00:00.000Z";
@@ -164,5 +165,97 @@ describe("temporal world model", () => {
     const { world } = setup();
     expect(() => world.rootCauseChains(OWNER, { failure: refs[1]!, ...query })).toThrow();
     expect(() => world.resolve(OWNER, refs[0]!, { asOf: "not a date" })).toThrow();
+  });
+});
+
+describe("surviving provenance revisions", () => {
+  it("selects the prior observation and detail at the cutoff without resolving ambiguous labels", () => {
+    const db = openDatabase(":memory:");
+    let now = "2026-10-08T10:00:00.000Z";
+    const graph = new KnowledgeGraph(db, { now: () => new Date(now) });
+    const world = new WorldModel(graph);
+    const ref: NodeRef = { type: "Service", key: "payments" };
+    graph.upsertNode(
+      ref,
+      prov({ sourceId: "revision", detail: { title: "Earlier" }, confidence: 0.3 }),
+    );
+    const cutoff = "2026-10-09T10:00:00.000Z";
+    now = "2026-10-10T10:00:00.000Z";
+    graph.upsertNode(
+      ref,
+      prov({ sourceId: "revision", observedAt: now, detail: { title: "Later" }, confidence: 0.9 }),
+    );
+    graph.upsertNode(
+      { type: "Service", key: "billing" },
+      prov({ sourceId: "other", detail: { title: "Earlier" } }),
+    );
+    const past = world.resolve(OWNER, ref, { asOf: cutoff });
+    expect(past?.node.label).toBe("Earlier");
+    expect(past?.confidence).toBe(0.3);
+    expect(past?.observedAt).toBe("2026-10-08T10:00:00.000Z");
+    expect(world.resolve(OWNER, { type: "Service", key: "Earlier" }, { asOf: cutoff })).toBeNull();
+    expect(world.resolve(OWNER, ref, { asOf: "2026-10-11T10:00:00.000Z" })?.node.label).toBe(
+      "Later",
+    );
+  });
+
+  it("traverses the historical revision of a surviving edge, not its newer observation", () => {
+    const db = openDatabase(":memory:");
+    let now = "2026-10-08T10:00:00.000Z";
+    const graph = new KnowledgeGraph(db, { now: () => new Date(now) });
+    const world = new WorldModel(graph);
+    for (const [index, ref] of refs.entries())
+      graph.upsertNode(ref, prov({ sourceId: `node-${index}` }));
+    for (const [index, pair] of edges.entries()) {
+      const [from, to] = pair;
+      graph.assertEdge(
+        refs[from]!,
+        relations[index]!,
+        refs[to]!,
+        prov({ sourceId: `edge-${index}` }),
+      );
+    }
+    now = "2026-10-10T10:00:00.000Z";
+    graph.assertEdge(
+      refs[4]!,
+      "MENTIONS",
+      refs[5]!,
+      prov({ sourceId: "edge-4", observedAt: now, confidence: 0.4 }),
+    );
+    const old = world.rootCauseChains(OWNER, { failure: refs[0]!, asOf: at });
+    expect(old.chains[0]?.hops[4]?.confidence).toBe(1);
+    expect(old.chains[0]?.hops[4]?.observedAt).toBe("2026-10-08T10:00:00.000Z");
+    expect(
+      world.rootCauseChains(OWNER, { failure: refs[0]!, asOf: "2026-10-11T10:00:00.000Z" })
+        .chains[0]?.hops[4]?.confidence,
+    ).toBe(0.4);
+  });
+
+  it("never reveals an old scope after restriction, or any detail after privacy deletion", () => {
+    const db = openDatabase(":memory:");
+    let now = "2026-10-08T10:00:00.000Z";
+    const graph = new KnowledgeGraph(db, { now: () => new Date(now) });
+    const world = new WorldModel(graph);
+    const ref: NodeRef = { type: "Service", key: "private-service" };
+    graph.upsertNode(
+      ref,
+      prov({ sourceId: "private", detail: { title: "Sensitive historical detail" } }),
+    );
+    now = "2026-10-10T10:00:00.000Z";
+    graph.upsertNode(
+      ref,
+      prov({ sourceId: "private", scope: "repo:secret", detail: { title: "Restricted" } }),
+    );
+    const cutoff = "2026-10-09T10:00:00.000Z";
+    expect(world.resolve(viewerOf("repo:o/r"), ref, { asOf: cutoff })).toBeNull();
+    expect(world.resolve(OWNER, ref, { asOf: cutoff })?.node.label).toBe(
+      "Sensitive historical detail",
+    );
+    graph.removeSource("event", "private");
+    expect(world.resolve(OWNER, ref, { asOf: cutoff })).toBeNull();
+    expect(db.prepare("SELECT detail FROM kg_provenance_history").all()).toEqual([]);
+    expect(
+      db.prepare("SELECT provenance_id, revoked_at FROM kg_provenance_revoked").all().length,
+    ).toBe(1);
   });
 });

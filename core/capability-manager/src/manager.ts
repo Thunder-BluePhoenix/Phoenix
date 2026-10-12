@@ -499,7 +499,13 @@ export class CapabilityManager {
    * before the capability is called. Completion is reported through
    * capability.command.completed / .failed events with correlation_id = operation id.
    */
-  invoke(id: string, command: string, input: unknown = {}, actor = "user"): Operation {
+  invoke(
+    id: string,
+    command: string,
+    input: unknown = {},
+    actor = "user",
+    signal?: AbortSignal,
+  ): Operation {
     const entry = this.require(id);
     if (entry.status !== "enabled") {
       throw new PhoenixError(
@@ -534,28 +540,62 @@ export class CapabilityManager {
     };
     this.remember(op);
 
+    const controller = new AbortController();
+    const onAbort = () => controller.abort();
+    signal?.addEventListener("abort", onAbort, { once: true });
+    entry.abort?.signal.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted || entry.abort?.signal.aborted) controller.abort();
+    let dispatched = false;
     void (async () => {
       let action;
       try {
-        action = await this.o.permissions.authorize({
-          capabilityId: id,
-          command,
-          permissions: spec.permissions ?? [],
-          sideEffect: spec.side_effect,
-          summary: `${entry.manifest.name}: ${spec.description}`,
-          details: { actor, operation_id: op.id },
-        });
+        if (controller.signal.aborted)
+          throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Command cancelled");
+        action = await this.o.permissions.authorize(
+          {
+            capabilityId: id,
+            command,
+            permissions: spec.permissions ?? [],
+            sideEffect: spec.side_effect,
+            summary: `${entry.manifest.name}: ${spec.description}`,
+            details: { actor, operation_id: op.id },
+          },
+          controller.signal,
+        );
+        if (controller.signal.aborted)
+          throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Command cancelled");
         this.update(op, { status: "running" });
         const timeout = spec.timeout_ms ?? this.callTimeoutMs;
-        const result =
-          entry.kind === "builtin"
-            ? await guarded(() => entry.module!.commands![command]!(input, entry.ctx!), timeout)
-            : await entry.client!.command(command, input, op.id, timeout);
+        let result: unknown;
+        if (entry.kind === "builtin") {
+          result = await guarded(
+            () => {
+              dispatched = true;
+              const ctx = entry.ctx!;
+              return entry.module!.commands![command]!(input, {
+                ...ctx,
+                signal: controller.signal,
+                emit: (event, options) =>
+                  controller.signal.aborted
+                    ? {
+                        ok: false,
+                        error: new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Command cancelled"),
+                      }
+                    : ctx.emit(event, options),
+              });
+            },
+            timeout,
+            controller.signal,
+          );
+        } else {
+          if (controller.signal.aborted)
+            throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Command cancelled");
+          dispatched = true;
+          result = await entry.client!.command(command, input, op.id, timeout, controller.signal);
+        }
         this.update(op, { status: "succeeded", result });
         if (this.closed) return;
         this.o.permissions.recordOutcome(action, "succeeded", { operation_id: op.id });
-        // Commands without side effects (status reads, terminal reports) stay out of the
-        // activity history; the audit log still records them.
         this.emitOp(
           "capability.command.completed",
           entry,
@@ -568,14 +608,34 @@ export class CapabilityManager {
         );
       } catch (err) {
         const e = toPhoenixError(err);
-        this.update(op, { status: "failed", error: e.toJSON() });
+        const outcomeUnknown =
+          dispatched &&
+          (controller.signal.aborted || e.code === ErrorCode.OPERATION_TIMEOUT) &&
+          spec.side_effect !== "none" &&
+          spec.side_effect !== "read";
+        const error =
+          outcomeUnknown && controller.signal.aborted
+            ? new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Command cancelled; outcome is unknown")
+            : e;
+        this.update(op, {
+          status: "failed",
+          error: error.toJSON(),
+          ...(outcomeUnknown ? { outcomeUnknown } : {}),
+        });
         if (this.closed) return;
         if (action)
           this.o.permissions.recordOutcome(action, "failed", {
             operation_id: op.id,
             error: e.message,
+            ...(outcomeUnknown ? { outcomeUnknown: true } : {}),
           });
-        this.emitOp("capability.command.failed", entry, op, "warning", { code: e.code });
+        this.emitOp("capability.command.failed", entry, op, "warning", {
+          code: e.code,
+          outcomeUnknown,
+        });
+      } finally {
+        signal?.removeEventListener("abort", onAbort);
+        entry.abort?.signal.removeEventListener("abort", onAbort);
       }
     })();
     return op;
@@ -587,8 +647,9 @@ export class CapabilityManager {
     command: string,
     input: unknown = {},
     actor = "user",
+    signal?: AbortSignal,
   ): Promise<Operation> {
-    const op = this.invoke(id, command, input, actor);
+    const op = this.invoke(id, command, input, actor, signal);
     while (op.status === "pending" || op.status === "running") {
       await new Promise((r) => setTimeout(r, 5));
     }

@@ -169,6 +169,8 @@ describe("normalizeOrigin", () => {
   it("accepts only http(s) and reduces to an origin", () => {
     expect(normalizeOrigin("http://127.0.0.1:8000/some/path?x=1")).toBe("http://127.0.0.1:8000");
     expect(normalizeOrigin("https://erp.example.com")).toBe("https://erp.example.com");
+    expect(normalizeOrigin("http://user:password@127.0.0.1:8000")).toBeUndefined();
+    expect(normalizeOrigin("http://127.0.0.1:8000@169.254.169.254")).toBeUndefined();
     expect(normalizeOrigin("ftp://x")).toBeUndefined();
     expect(normalizeOrigin("file:///etc/passwd")).toBeUndefined();
     expect(normalizeOrigin("javascript:alert(1)")).toBeUndefined();
@@ -185,21 +187,24 @@ describe("normalizeOrigin", () => {
 
 describe("resolveSiteUrl", () => {
   const bench = { webserverPort: 8005 };
-  it("prefers the user's override, then host_name, then the bench's port on loopback", () => {
-    const site = { name: "a.localhost", hostName: "https://a.example.com" };
+  it("prefers the user's override, then safe host_name, then the bench's loopback port", () => {
+    const site = { name: "a.localhost", hostName: "http://127.0.0.1:8005" };
     const overrides = { "a.localhost": "http://127.0.0.1:9000/ignored" };
     expect(resolveSiteUrl(site, bench, overrides)).toEqual({
       url: "http://127.0.0.1:9000",
       source: "override",
     });
     expect(resolveSiteUrl(site, bench, {})).toEqual({
-      url: "https://a.example.com",
+      url: "http://127.0.0.1:8005",
       source: "host_name",
     });
     expect(resolveSiteUrl({ name: "a.localhost" }, bench, {})).toEqual({
       url: "http://127.0.0.1:8005",
       source: "default",
     });
+    expect(
+      resolveSiteUrl({ name: "a.localhost", hostName: "http://169.254.169.254" }, bench, {}),
+    ).toEqual({ url: "http://127.0.0.1:8005", source: "default" });
   });
 
   it("does not use an override that is not http(s)", () => {
@@ -302,26 +307,27 @@ describe("discoverBench", () => {
     ]);
   });
 
-  it("keeps host_name only when it is a usable http(s) origin", async () => {
+  it("accepts only the selected bench's loopback binding from site_config host_name", async () => {
     const bench = fixtureBench({
+      common: { webserver_port: 8005 },
       sites: [
-        { name: "good.localhost", host_name: "https://erp.example.com/" },
-        { name: "bare.localhost", host_name: "erp.localhost:8000" },
+        { name: "local.localhost", host_name: "http://127.0.0.1:8005/secret?key=1" },
+        { name: "remote.localhost", host_name: "https://erp.example.com/" },
+        { name: "metadata.localhost", host_name: "http://169.254.169.254/latest/meta-data" },
+        { name: "otherport.localhost", host_name: "http://127.0.0.1:8006" },
+        { name: "alias.localhost", host_name: "localhost:8005" },
+        { name: "credential.localhost", host_name: "http://u:p@127.0.0.1:8005" },
         { name: "ftp.localhost", host_name: "ftp://erp.example.com" },
         { name: "number.localhost", host_name: 42 },
       ],
     });
     const byName = Object.fromEntries((await discoverBench(bench)).sites.map((s) => [s.name, s]));
-    expect(byName["good.localhost"]).toEqual({
-      name: "good.localhost",
-      hostName: "https://erp.example.com",
+    expect(byName["local.localhost"]).toEqual({
+      name: "local.localhost",
+      hostName: "http://127.0.0.1:8005",
     });
-    expect(byName["bare.localhost"]).toEqual({
-      name: "bare.localhost",
-      hostName: "http://erp.localhost:8000",
-    });
-    expect(byName["ftp.localhost"]).toEqual({ name: "ftp.localhost" });
-    expect(byName["number.localhost"]).toEqual({ name: "number.localhost" });
+    for (const name of ["remote", "metadata", "otherport", "alias", "credential", "ftp", "number"])
+      expect(byName[`${name}.localhost`]).toEqual({ name: `${name}.localhost` });
   });
 
   it("lists a site whose site_config.json is not valid JSON, without its content", async () => {
@@ -461,14 +467,14 @@ describe("frappe capability", () => {
     const found = r.h.events.filter((e) => e.event_type === "frappe.bench.discovered");
     expect(found).toHaveLength(1);
     expect(found[0]).toMatchObject({
-      source: "frappe",
-      severity: "info",
       payload: {
-        bench: r.bench,
+        bench_id: expect.stringMatching(/^[a-f0-9]{32}$/),
         apps: ["frappe", "erpnext"],
         sites: ["a.localhost", "b.localhost"],
       },
     });
+    expect(JSON.stringify(found[0])).not.toContain(r.bench);
+    expect(found[0]!.payload).not.toHaveProperty("url");
     expect(found[0]!.payload).not.toHaveProperty("added");
     // First sync is ephemeral: Fawkes does not light up for something that already existed.
     expect(
@@ -506,7 +512,7 @@ describe("frappe capability", () => {
     expect(event).toMatchObject({
       severity: "error",
       subject: "a.localhost",
-      payload: { site: "a.localhost", url: r.mock.url, consecutive_failures: 2 },
+      payload: { site: "a.localhost", bench_id: expect.any(String), consecutive_failures: 2 },
     });
 
     await r.tick(); // still down: no repeat event
@@ -585,6 +591,28 @@ describe("frappe capability", () => {
     expect((await r.h.manager.checkHealth("frappe")).health.status).toBe("healthy");
   });
 
+  it("keeps site identities distinct without storing bench paths or site URLs in events", async () => {
+    const r = await rig({ sites: [{ name: "a.localhost" }, { name: "b.localhost" }] });
+    r.mock.setMode("down");
+    await r.tick();
+    await r.tick();
+    const failures = r.h.events.filter((e) => e.event_type === "frappe.site.unhealthy");
+    expect(failures).toHaveLength(2);
+    expect(new Set(failures.map((e) => e.correlation_id)).size).toBe(2);
+    expect(failures.map((e) => e.payload.site).sort()).toEqual(["a.localhost", "b.localhost"]);
+    for (const event of failures) {
+      expect(JSON.stringify(event)).not.toContain(r.bench);
+      expect(JSON.stringify(event)).not.toContain(r.mock.url);
+      expect(event.payload).not.toHaveProperty("url");
+      expect(event.payload).not.toHaveProperty("bench");
+    }
+    rmSync(join(r.bench, "sites", "a.localhost"), { recursive: true });
+    await r.tick();
+    const removed = r.h.events.find((e) => e.event_type === "frappe.site.removed");
+    expect(removed?.payload).toMatchObject({ site: "a.localhost", bench_id: expect.any(String) });
+    expect(JSON.stringify(removed)).not.toContain(r.bench);
+  });
+
   it("two benches with the same site name stay separate activities", async () => {
     const second = await startMockFrappe();
     const other = fixtureBench({ common: { webserver_port: second.port } });
@@ -613,14 +641,13 @@ describe("frappe capability", () => {
     await second.close();
   });
 
-  it("uses a configured URL override, then host_name, then the bench port", async () => {
+  it("uses a configured URL override, then a safe host_name, then the bench port", async () => {
     mock = await startMockFrappe();
-    const viaHost = await startMockFrappe();
     const viaPort = await startMockFrappe();
     const bench = fixtureBench({
       sites: [
         { name: "over.localhost", host_name: "http://127.0.0.1:1" }, // dead, but overridden
-        { name: "host.localhost", host_name: viaHost.url },
+        { name: "host.localhost", host_name: viaPort.url },
         { name: "port.localhost" },
       ],
       common: { webserver_port: viaPort.port },
@@ -637,15 +664,24 @@ describe("frappe capability", () => {
     const op = await h.run("frappe", "sites");
     const { sites } = op.result as { sites: SiteView[] }; // the handler's declared return type
     expect(sites.map((s) => [s.site, s.url, s.url_source, s.status])).toEqual([
-      ["host.localhost", viaHost.url, "host_name", "healthy"],
+      ["host.localhost", viaPort.url, "host_name", "healthy"],
       ["over.localhost", mock.url, "override", "healthy"],
       ["port.localhost", viaPort.url, "default", "healthy"],
     ]);
     expect(mock.requests.map((q) => q.site)).toEqual(["over.localhost"]);
-    expect(viaHost.requests.map((q) => q.site)).toEqual(["host.localhost"]);
-    expect(viaPort.requests.map((q) => q.site)).toEqual(["port.localhost"]);
-    await viaHost.close();
+    expect(viaPort.requests.map((q) => q.site)).toEqual(["host.localhost", "port.localhost"]);
     await viaPort.close();
+  });
+
+  it("ignores a hostile host_name and polls only the configured bench binding", async () => {
+    const r = await rig({
+      sites: [{ name: "a.localhost", host_name: "http://169.254.169.254/latest/meta-data" }],
+    });
+    const result = await r.h.run("frappe", "sites");
+    const { sites } = result.result as { sites: SiteView[] };
+    expect(sites[0]).toMatchObject({ url: r.mock.url, url_source: "default", status: "healthy" });
+    expect(r.mock.requests.map((request) => request.site)).toEqual(["a.localhost"]);
+    expect(JSON.stringify(r.h.events)).not.toContain("169.254.169.254");
   });
 
   it("removes the ERROR when an unhealthy site disappears from the bench", async () => {

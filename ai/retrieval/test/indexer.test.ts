@@ -198,6 +198,27 @@ describe("failure tolerance", () => {
     expect(r.vectors.orphanCount()).toBe(0);
   });
 
+  it("does not persist a response after indexing permission is withdrawn mid-call", async () => {
+    const r = rig();
+    r.add({ text: "alpha", dedupeKey: "a" });
+    const inner = new ToyEmbedder();
+    let allowed = true;
+    const racing = {
+      modelKey: inner.modelKey,
+      embedDocuments: async (texts: readonly string[], privacy: "internal") => {
+        const vectors = await inner.embedDocuments(texts, privacy);
+        allowed = false;
+        return vectors;
+      },
+      embedQuery: (text: string) => inner.embedQuery(text),
+    };
+    const report = await indexer(r, racing, { canIndex: () => allowed }).run();
+    expect(report.embedded).toBe(0);
+    expect(report.remaining).toBe(1);
+    expect(r.vectors.count(inner.modelKey)).toBe(0);
+    expect(r.vectors.failures(inner.modelKey)).toEqual([]);
+  });
+
   it("a router answer from a different model is discarded, not stored under the wrong key", async () => {
     const r = rig();
     const a = aiRig();
@@ -268,7 +289,7 @@ describe("privacy and AI-off behaviour", () => {
     expect(r.vectors.count(cloudEmbedder.modelKey)).toBe(0);
   });
 
-  it("internal text may go to a cloud embedder only when the grant and opt-in allow", async () => {
+  it("internal text never goes to a cloud embedder without opt-in", async () => {
     const r = rig();
     const a = aiRig();
     const cloudEmbedder = new AiEmbedder(a.ai, { provider: "cloud", model: "toy-embed" });
@@ -280,18 +301,18 @@ describe("privacy and AI-off behaviour", () => {
     expect(report.degraded[0]?.reason).toBe("no_provider");
   });
 
-  it("internal text does reach a cloud embedder once the grant and the opt-in allow it", async () => {
+  it("internal text never goes to a cloud embedder even with grant and opt-in", async () => {
     const r = rig();
     const a = aiRig({ cloudOptIn: { public: true, internal: true, sensitive: true } });
     a.local.capabilities = { generate: true, stream: false, embed: false };
     const cloudEmbedder = new AiEmbedder(a.ai, { provider: "cloud", model: "toy-embed" });
     r.add({ text: "plain commit", dedupeKey: "a" });
-    expect(await indexer(r, cloudEmbedder).run()).toMatchObject({ embedded: 1 });
+    expect(await indexer(r, cloudEmbedder).run()).toMatchObject({ embedded: 0 });
     a.grant.value = false;
     r.add({ text: "another commit", dedupeKey: "b" });
     const denied = await indexer(r, cloudEmbedder).run();
     expect(denied.embedded).toBe(0);
-    expect(a.cloud.embedRequests).toHaveLength(1);
+    expect(a.cloud.embedRequests).toHaveLength(0);
   });
 
   it("a prefix is part of the vector space identity", () => {
@@ -325,10 +346,7 @@ describe("privacy and AI-off behaviour", () => {
 });
 
 describe("router fallback", () => {
-  it("a failing local provider falls back to an allowed cloud one, whose answer is discarded as a different model", async () => {
-    // Documents a limitation: AiService has no 'this provider only' option, so with a cloud opt-in
-    // the text of an internal item is sent to the cloud after the local provider fails, and the
-    // answer is then refused because it is from another model. Sensitive text never takes this path.
+  it("a failing local provider never falls back to an opted-in cloud provider", async () => {
     const r = rig();
     const a = aiRig({ cloudOptIn: { public: true, internal: true, sensitive: true } }, r.clock);
     a.local.failEmbed = new ModelError("protocol", "local", "bad");
@@ -342,8 +360,11 @@ describe("router fallback", () => {
       scope: "meeting:m1",
     });
     const report = await indexer(r, a.embedder).run();
-    expect(report.embedded).toBe(0);
-    expect(a.cloud.embedRequests.map((q) => q.privacy)).not.toContain("sensitive");
+    expect(report).toMatchObject({ embedded: 0, remaining: 2 });
+    expect(report.degraded).toContainEqual(
+      expect.objectContaining({ reason: "provider_unavailable" }),
+    );
+    expect(a.cloud.embedRequests).toEqual([]);
     expect(r.vectors.count(a.embedder.modelKey)).toBe(0);
   });
 });

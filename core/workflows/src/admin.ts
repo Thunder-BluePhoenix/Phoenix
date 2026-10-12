@@ -42,8 +42,12 @@ export class WorkflowAdmin {
     this.now = o.now ?? Date.now;
   }
 
-  /** Validates and stores a definition (create or update). Returns what was stored. */
-  save(by: Actor, input: unknown): StoredDefinition {
+  /** Validates and stores a definition; concurrency preconditions are checked within the write transaction. */
+  save(
+    by: Actor,
+    input: unknown,
+    precondition: { expectedHash?: string; createOnly?: boolean } = {},
+  ): StoredDefinition {
     this.requireUser(by, "workflow.save");
     const checked = validateDefinition(input, this.o.catalog);
     if (!checked.ok) {
@@ -60,24 +64,29 @@ export class WorkflowAdmin {
       );
     }
     const def = checked.definition;
-    const existing = this.o.store.readDefinition(def.id);
-    if (!existing && this.o.store.listDefinitions().length >= MAX_WORKFLOWS)
-      throw new WorkflowError("LIMIT_REACHED", `At most ${MAX_WORKFLOWS} workflows are allowed`);
-    if (
-      existing?.ok &&
-      def.version <= existing.definition.version &&
-      definitionHash(def) !== existing.hash
-    )
-      throw new WorkflowError("VERSION_CONFLICT", "Raise `version` when the behaviour changes", [
-        `stored version is ${existing.definition.version}`,
-      ]);
     const need = requiresAuthorisation(def, this.o.catalog);
     const hash = definitionHash(def);
-    // A definition that needs authorisation is stored switched off until the user has authorised
-    // exactly this content, so saving never starts anything by itself.
-    const stored: typeof def =
-      need.required && existing?.ok !== true ? { ...def, enabled: false } : def;
-    const out = transaction(this.o.store.database, () => {
+    return transaction(this.o.store.database, () => {
+      const existing = this.o.store.readDefinition(def.id);
+      if (precondition.createOnly && existing)
+        throw new WorkflowError("VERSION_CONFLICT", "The workflow already exists", [
+          "WORKFLOW_EXISTS",
+        ]);
+      if (
+        precondition.expectedHash !== undefined &&
+        (!existing?.ok || existing.hash !== precondition.expectedHash)
+      )
+        throw new WorkflowError("VERSION_CONFLICT", "The workflow changed since you reviewed it", [
+          "HASH_MISMATCH",
+        ]);
+      if (!existing && this.o.store.listDefinitions().length >= MAX_WORKFLOWS)
+        throw new WorkflowError("LIMIT_REACHED", `At most ${MAX_WORKFLOWS} workflows are allowed`);
+      if (existing?.ok && def.version <= existing.definition.version && hash !== existing.hash)
+        throw new WorkflowError("VERSION_CONFLICT", "Raise `version` when the behaviour changes", [
+          `stored version is ${existing.definition.version}`,
+        ]);
+      // A definition needing authorisation starts disabled until this exact content is authorised.
+      const stored = need.required && existing?.ok !== true ? { ...def, enabled: false } : def;
       this.record(by, existing ? "workflow.updated" : "workflow.created", {
         workflow: def.id,
         version: def.version,
@@ -91,12 +100,10 @@ export class WorkflowAdmin {
         `${by.kind}:${by.id}`.slice(0, 120),
         this.now(),
       );
-      // Editing the behaviour kills every authorisation bound to the old content.
       if (existing?.ok && existing.hash !== saved.hash)
         this.o.writes.revokeAuthorisations(def.id, "system:definition-changed", this.now());
       return saved;
     });
-    return out;
   }
 
   setEnabled(by: Actor, id: string, enabled: boolean): void {

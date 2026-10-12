@@ -920,4 +920,205 @@ export const MIGRATIONS: readonly Migration[] = [
       BEGIN DELETE FROM kg_provenance WHERE subject_kind = 'node' AND subject_id = old.id; END;
     `,
   },
+  {
+    version: 21,
+    name: "event_memory_deletion",
+    sql: `
+      -- Event history retention, source uninstall and delete-all share this path. Only memories
+      -- actually citing this event and its capability are removed; repository-history memories
+      -- without an event id and other capability facts must remain. Tombstones retain dedupe keys
+      -- without retaining copied text, provenance, FTS, vectors, graph facts or evidence excerpts.
+      CREATE TRIGGER memory_event_deleted AFTER DELETE ON events
+      BEGIN
+        UPDATE memory_items SET text = '', provenance = '{}', deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+          WHERE deleted_at IS NULL AND source = old.source
+            AND ((old.source = 'git' AND domain = 'git'
+                  AND json_valid(provenance) AND json_extract(provenance, '$.event_id') = old.event_id)
+              OR (old.source = 'github' AND domain IN ('pr', 'repo', 'deployment')
+                  AND json_valid(provenance) AND json_extract(provenance, '$.record_id') = old.event_id));
+      END;
+    `,
+  },
+  {
+    version: 22,
+    name: "agent_observations",
+    sql: `
+      -- An immutable, redacted observation snapshot per run. The JSON contains only identifiers,
+      -- hashes, counts, provider/model identifiers and usage; never prompts or evidence bodies.
+      -- Deleting a task cascades through its observations, including forgotten task history.
+      CREATE TABLE agent_observations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL REFERENCES agent_tasks (id) ON DELETE CASCADE,
+        run_id TEXT NOT NULL REFERENCES agent_runs (id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL,
+        observation TEXT NOT NULL CHECK (json_valid(observation)),
+        UNIQUE (run_id)
+      );
+      CREATE INDEX agent_observations_task ON agent_observations (task_id, id DESC);
+      CREATE TRIGGER agent_observations_immutable BEFORE UPDATE ON agent_observations
+      BEGIN SELECT RAISE(ABORT, 'agent observations are append-only'); END;
+    `,
+  },
+  {
+    version: 23,
+    name: "kg_provenance_revisions",
+    sql: `
+      -- Retain changed assertions only while their source still survives. A deletion erases every
+      -- historical detail and leaves only an unlinkable numeric row id and revocation timestamp.
+      CREATE TABLE kg_provenance_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provenance_id INTEGER NOT NULL,
+        source_kind TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        parent_key TEXT,
+        capability TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        asserted_by TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        domain TEXT NOT NULL,
+        sensitivity TEXT NOT NULL,
+        detail TEXT NOT NULL
+      );
+      CREATE INDEX kg_provenance_history_lookup
+        ON kg_provenance_history (provenance_id, recorded_at DESC, id DESC);
+      CREATE TABLE kg_provenance_revoked (
+        provenance_id INTEGER PRIMARY KEY,
+        revoked_at TEXT NOT NULL
+      );
+      INSERT INTO kg_provenance_history
+        (provenance_id, source_kind, source_id, parent_key, capability, observed_at,
+         recorded_at, confidence, asserted_by, scope, domain, sensitivity, detail)
+      SELECT id, source_kind, source_id, parent_key, capability, observed_at,
+             recorded_at, confidence, asserted_by, scope, domain, sensitivity, detail
+        FROM kg_provenance;
+      CREATE TRIGGER kg_provenance_history_insert AFTER INSERT ON kg_provenance
+      BEGIN
+        INSERT INTO kg_provenance_history
+          (provenance_id, source_kind, source_id, parent_key, capability, observed_at,
+           recorded_at, confidence, asserted_by, scope, domain, sensitivity, detail)
+        VALUES (new.id, new.source_kind, new.source_id, new.parent_key, new.capability,
+                new.observed_at, new.recorded_at, new.confidence, new.asserted_by,
+                new.scope, new.domain, new.sensitivity, new.detail);
+      END;
+      CREATE TRIGGER kg_provenance_history_update AFTER UPDATE ON kg_provenance
+      WHEN old.parent_key IS NOT new.parent_key OR old.capability IS NOT new.capability
+        OR old.observed_at IS NOT new.observed_at OR old.confidence IS NOT new.confidence
+        OR old.scope IS NOT new.scope OR old.domain IS NOT new.domain
+        OR old.sensitivity IS NOT new.sensitivity OR old.detail IS NOT new.detail
+      BEGIN
+        INSERT INTO kg_provenance_history
+          (provenance_id, source_kind, source_id, parent_key, capability, observed_at,
+           recorded_at, confidence, asserted_by, scope, domain, sensitivity, detail)
+        VALUES (new.id, new.source_kind, new.source_id, new.parent_key, new.capability,
+                new.observed_at, new.recorded_at, new.confidence, new.asserted_by,
+                new.scope, new.domain, new.sensitivity, new.detail);
+      END;
+      CREATE TRIGGER kg_provenance_history_delete AFTER DELETE ON kg_provenance
+      BEGIN
+        DELETE FROM kg_provenance_history WHERE provenance_id = old.id;
+        INSERT INTO kg_provenance_revoked (provenance_id, revoked_at)
+          VALUES (old.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+      END;
+    `,
+  },
+  {
+    version: 24,
+    name: "governed_improvement",
+    sql: `
+      CREATE TABLE improvement_feedback (
+        id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES agent_tasks(id) ON DELETE CASCADE,
+        run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+        output_digest TEXT NOT NULL, observation_digest TEXT NOT NULL,
+        user_id TEXT NOT NULL, rating TEXT NOT NULL CHECK (rating IN ('helpful', 'unhelpful')),
+        training_opt_in INTEGER NOT NULL CHECK (training_opt_in IN (0, 1)), recorded_at TEXT NOT NULL
+      );
+      CREATE TABLE improvement_proposals (
+        id TEXT PRIMARY KEY, feedback_id TEXT NOT NULL REFERENCES improvement_feedback(id) ON DELETE CASCADE,
+        change_json TEXT NOT NULL CHECK (json_valid(change_json)), candidate_hash TEXT NOT NULL,
+        baseline_digest TEXT NOT NULL, state TEXT NOT NULL CHECK (state IN
+          ('proposed', 'evaluating', 'rejected', 'evaluated', 'approved', 'active', 'rolled_back')),
+        evidence_json TEXT CHECK (evidence_json IS NULL OR json_valid(evidence_json)),
+        approved_by TEXT, approved_at TEXT, approved_evidence_digest TEXT
+      );
+      CREATE TABLE improvement_activations (
+        version TEXT PRIMARY KEY, proposal_id TEXT NOT NULL REFERENCES improvement_proposals(id) ON DELETE CASCADE,
+        change_json TEXT NOT NULL CHECK (json_valid(change_json)), approved_by TEXT NOT NULL,
+        baseline_digest TEXT NOT NULL, activated_at TEXT NOT NULL, rolled_back_at TEXT
+      );
+      CREATE UNIQUE INDEX improvement_one_active ON improvement_activations ((1)) WHERE rolled_back_at IS NULL;
+      CREATE TABLE improvement_audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL, proposal_id TEXT NOT NULL,
+        actor TEXT NOT NULL, detail_hash TEXT NOT NULL, recorded_at TEXT NOT NULL
+      );
+      CREATE TRIGGER improvement_feedback_immutable BEFORE UPDATE ON improvement_feedback
+      BEGIN SELECT RAISE(ABORT, 'feedback is immutable'); END;
+      CREATE TRIGGER improvement_candidate_immutable BEFORE UPDATE OF feedback_id, change_json, candidate_hash, baseline_digest ON improvement_proposals
+      BEGIN SELECT RAISE(ABORT, 'candidate is immutable'); END;
+      CREATE TRIGGER improvement_audit_immutable BEFORE UPDATE ON improvement_audit
+      BEGIN SELECT RAISE(ABORT, 'audit is immutable'); END;
+      CREATE TABLE improvement_forgetting (task_id TEXT PRIMARY KEY);
+      CREATE TRIGGER improvement_feedback_no_delete BEFORE DELETE ON improvement_feedback
+      WHEN NOT EXISTS (SELECT 1 FROM improvement_forgetting WHERE task_id = old.task_id)
+      BEGIN SELECT RAISE(ABORT, 'forget parent task to delete feedback'); END;
+      CREATE TRIGGER improvement_proposal_no_delete BEFORE DELETE ON improvement_proposals
+      WHEN NOT EXISTS (SELECT 1 FROM improvement_forgetting WHERE task_id IN
+        (SELECT task_id FROM improvement_feedback WHERE id = old.feedback_id))
+      BEGIN SELECT RAISE(ABORT, 'forget parent task to delete proposal'); END;
+      CREATE TRIGGER improvement_activation_no_delete BEFORE DELETE ON improvement_activations
+      WHEN NOT EXISTS (SELECT 1 FROM improvement_forgetting WHERE task_id IN
+        (SELECT f.task_id FROM improvement_feedback f JOIN improvement_proposals p
+          ON p.feedback_id = f.id WHERE p.id = old.proposal_id))
+      BEGIN SELECT RAISE(ABORT, 'forget parent task to delete activation'); END;
+      CREATE TRIGGER improvement_audit_no_delete BEFORE DELETE ON improvement_audit
+      WHEN NOT EXISTS (SELECT 1 FROM improvement_forgetting WHERE task_id IN
+        (SELECT task_id FROM improvement_feedback WHERE id = old.proposal_id
+         UNION SELECT f.task_id FROM improvement_feedback f
+           JOIN improvement_proposals p ON p.feedback_id = f.id WHERE p.id = old.proposal_id))
+      BEGIN SELECT RAISE(ABORT, 'audit is immutable'); END;
+      -- Audit remains append-only during normal operation; task forget cascades delete all derived
+      -- proposal/activation/feedback records and their audit rows to honor the user's erasure.
+      CREATE TRIGGER improvement_task_forget BEFORE DELETE ON agent_tasks
+      BEGIN
+        INSERT INTO improvement_forgetting (task_id) VALUES (old.id);
+        SELECT RAISE(ABORT, 'rollback active improvement before forgetting task')
+          WHERE EXISTS (SELECT 1 FROM improvement_activations a
+            JOIN improvement_proposals p ON p.id = a.proposal_id
+            JOIN improvement_feedback f ON f.id = p.feedback_id
+            WHERE f.task_id = old.id AND a.rolled_back_at IS NULL);
+        DELETE FROM improvement_audit WHERE proposal_id IN
+          (SELECT id FROM improvement_proposals WHERE feedback_id IN
+            (SELECT id FROM improvement_feedback WHERE task_id = old.id))
+          OR proposal_id IN (SELECT id FROM improvement_feedback WHERE task_id = old.id);
+        DELETE FROM improvement_activations WHERE proposal_id IN
+          (SELECT p.id FROM improvement_proposals p JOIN improvement_feedback f
+            ON f.id = p.feedback_id WHERE f.task_id = old.id);
+        DELETE FROM improvement_proposals WHERE feedback_id IN
+          (SELECT id FROM improvement_feedback WHERE task_id = old.id);
+        DELETE FROM improvement_feedback WHERE task_id = old.id;
+      END;
+      CREATE TRIGGER improvement_run_forget BEFORE DELETE ON agent_runs
+      WHEN EXISTS (SELECT 1 FROM improvement_feedback WHERE run_id = old.id)
+        AND NOT EXISTS (SELECT 1 FROM improvement_forgetting WHERE task_id = old.task_id)
+      BEGIN
+        SELECT RAISE(ABORT, 'forget the parent task before deleting feedback-linked run');
+      END;
+      CREATE TRIGGER improvement_task_forgotten AFTER DELETE ON agent_tasks
+      BEGIN DELETE FROM improvement_forgetting WHERE task_id = old.id; END;
+      -- Issue capability event-derived memory has the same deletion contract as git/github.
+      DROP TRIGGER memory_event_deleted;
+      CREATE TRIGGER memory_event_deleted AFTER DELETE ON events
+      BEGIN
+        UPDATE memory_items SET text = '', provenance = '{}', deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+          WHERE deleted_at IS NULL AND source = old.source
+            AND ((old.source = 'git' AND domain = 'git'
+                  AND json_valid(provenance) AND json_extract(provenance, '$.event_id') = old.event_id)
+              OR (old.source = 'github' AND domain IN ('pr', 'repo', 'deployment')
+                  AND json_valid(provenance) AND json_extract(provenance, '$.record_id') = old.event_id)
+              OR (old.source = 'issues' AND domain = 'issue'
+                  AND json_valid(provenance) AND json_extract(provenance, '$.record_id') = old.event_id));
+      END;
+    `,
+  },
 ];

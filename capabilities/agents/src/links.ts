@@ -11,8 +11,8 @@
 //            not after it ended, detected while the session was active or within a short window
 //            after. Commits older than the session start are never linked: later cannot cause earlier.
 //   ci_run   `github.ci.*` whose head commit is a commit already linked ('sha-match').
-//   pr       `github.pr.*` whose head branch is the branch of a commit already linked
-//            ('branch-match'; GitHub's PR events carry no head sha).
+//   pr       `github.pr.*` whose full head sha matches a linked commit ('sha-match'); when GitHub
+//            supplies no head sha, use the head branch ('branch-match').
 // If more than one session qualifies the thing is linked to NEITHER: one `ambiguous` row names the
 // candidates and waits for the user (`link.resolve`).
 import { realpathSync } from "node:fs";
@@ -204,6 +204,17 @@ export class LinkStore {
            AND substr(ref, 1, ?) = ?`,
         )
         .all(repo, prefix.length, prefix) as unknown as LinkRow[]
+    ).map(toView);
+  }
+
+  /** Linked commits of a repository with this exact full head SHA. */
+  commitsBySha(repo: string, sha: string): LinkView[] {
+    return (
+      this.db
+        .prepare(
+          "SELECT * FROM agent_links WHERE kind = 'commit' AND repo = ? AND session_id IS NOT NULL AND ref = ?",
+        )
+        .all(repo, sha) as unknown as LinkRow[]
     ).map(toView);
   }
 
@@ -480,9 +491,16 @@ export class Correlator {
     const branch = str(payload.branch, 200);
     const base = str(payload.base, 200);
     const number = payload.number;
-    if (!repository || !branch || !Number.isSafeInteger(number) || branch === base) return;
+    if (!repository || !Number.isSafeInteger(number)) return;
+    const headSha = payload.head_sha;
+    if (headSha !== undefined && (typeof headSha !== "string" || !/^[0-9a-f]{40}$/i.test(headSha)))
+      return;
+    const sha = typeof headSha === "string" ? headSha.toLowerCase() : undefined;
+    if (!sha && (!branch || branch === base)) return;
     const name = repository.split("/").pop() ?? repository;
-    const linked = this.o.links.commitsOnBranch(name, branch);
+    const linked = sha
+      ? this.o.links.commitsBySha(name, sha)
+      : this.o.links.commitsOnBranch(name, branch!);
     if (linked.length === 0) return;
     const sessions = [...new Set(linked.flatMap((l) => (l.session_id ? [l.session_id] : [])))];
     const ref = String(number);
@@ -492,13 +510,19 @@ export class Correlator {
         ref,
         repo: repository,
         source: event.event_id,
-        why: { rule: "ambiguous", reason: "commits of several sessions are on the PR's branch" },
+        why: {
+          rule: "ambiguous",
+          reason: sha
+            ? "the PR's full head SHA matches commits of several sessions"
+            : "commits of several sessions are on the PR's branch",
+        },
         candidates: sessions,
       });
       return;
     }
     const sessionId = sessions[0];
     if (!sessionId) return;
+    const first = linked[0]!;
     this.notify(
       sessionId,
       this.o.links.upsert({
@@ -506,16 +530,27 @@ export class Correlator {
         kind: "pr",
         ref,
         repo: repository,
-        confidence: "branch-match",
+        confidence: sha ? "sha-match" : "branch-match",
         source: event.event_id,
-        why: {
-          rule: "branch-match",
-          branch,
-          commits: linked.map((l) => l.ref),
-          meaning:
-            "the PR's head branch holds a commit linked to this session (GitHub PR events carry no head sha)",
+        why: sha
+          ? {
+              rule: "sha-match",
+              commit: sha,
+              commit_link: first.id,
+              meaning: "the PR's full head SHA matches a commit linked to this session",
+            }
+          : {
+              rule: "branch-match",
+              branch,
+              commits: linked.map((l) => l.ref),
+              meaning:
+                "the PR's head branch holds a commit linked to this session; no head SHA was supplied",
+            },
+        detail: {
+          event_type: event.event_type,
+          ...(branch ? { branch } : {}),
+          ...(sha ? { head_sha: sha } : {}),
         },
-        detail: { event_type: event.event_type, branch },
       }),
     );
   }

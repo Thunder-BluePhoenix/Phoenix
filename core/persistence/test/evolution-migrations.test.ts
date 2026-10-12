@@ -6,7 +6,7 @@ import { migrate, MIGRATIONS } from "../src";
 
 /** Upgrade a populated pre-18 profile; rebuilding constrained tables must not drop evidence. */
 describe("Phase 46-49 schema upgrades", () => {
-  it("retains memory, FTS, graph provenance and deletion triggers through 18-20", () => {
+  it("retains memory, FTS, graph provenance and deletion triggers through 18-21", () => {
     const db = new DatabaseSync(":memory:");
     db.exec("PRAGMA foreign_keys = ON");
     const upto = MIGRATIONS.filter((m) => m.version <= 17);
@@ -57,7 +57,7 @@ describe("Phase 46-49 schema upgrades", () => {
       (subject_kind,subject_id,source_kind,source_id,capability,observed_at,recorded_at,confidence,asserted_by,scope,domain,sensitivity,detail)
       VALUES ('node','Repository:demo','memory','mem42','project-docs','2026-01-01','2026-01-01',1,'rule','global','project','internal','{}')`,
     ).run();
-    expect(migrate(db)).toBe(3);
+    expect(migrate(db)).toBe(MIGRATIONS.filter((migration) => migration.version > 17).length);
     expect(db.prepare("SELECT seq, text FROM memory_items WHERE id='mem42'").get()).toEqual({
       seq: 42,
       text,

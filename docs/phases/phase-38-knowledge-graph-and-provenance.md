@@ -28,8 +28,8 @@ Model relationships between people, meetings, decisions, features, commits, issu
 - [x] Entities/relations: Person, Project, Repository, Commit, Service, Deployment, Meeting, Decision, Feature, Issue (+ PullRequest, CIRun, Document) — closed sets, enforced by `CHECK` constraints and a relation schema
 - [x] Ingest from existing capabilities — git, github (PR, CI, deploy), docker, issues, meetings, memory, explicit mentions; run for real on this repository's history and the committed GitHub fixtures
 - [x] Answer 'why/which/who' graph questions — the answer is the explanation path with provenance for every hop
-- [ ] UI to inspect origin of important context — **not built** (parent builds the UI); the API it needs is `GraphInspector.inspect` / `neighbors`
-- [ ] Release v0.7 — **not cut**: the value gate is not met by the graph alone, and nothing is wired into Core
+- [ ] UI to inspect origin of important context — **built** at `#/provenance` using the graph inspection API; the release/value gate remains open
+- [ ] Release v0.7 — **not cut**: the graph-alone value gate is not met (see benchmark); Core wiring and the provenance view are built
 
 ## Deliverables
 
@@ -106,17 +106,18 @@ Two generic bugs were fixed between the first and second run, found by reading f
 
 ### Not done / limits
 
-The inspection UI and the release; the gaps are listed in `docs/gaps.md`.
+The inspection UI is built; the release and graph-alone value gate remain open, and other limits are listed in `docs/gaps.md`.
 
 ## Wired into Core
 
 `core/runtime/src/graph.ts` (`GraphRuntime`), routes in `core/api/src/graph-routes.ts`, migration **17** (`kg_event_deleted`), tests in `core/runtime/test/graph.test.ts` (35 cases through the real routes).
 
 - **Ingestion.** The runtime subscribes to the bus for the graph's event types (only when the event's `source` is the family it names: a `git.commit.created` from `terminal` is ignored). A live commit event carries no author or files, so each new sha is also read with a read-only `git log -1` from the repository named in the event's `path` **only if that exact path is configured on the git capability**, and its facts cite the event id (deleting the event deletes them). Memories are ingested at startup and hourly (`ingestMemory`); meetings and their reviewed items are ingested while `allow_sensitive_meetings` is on, after every meeting change and every review action.
+- GitHub deployment events now distinguish descriptive `ref` from a validated immutable 40-hex deployment `sha` when supplied. `DEPLOYED_TO` uses the SHA (or a ref that itself is a full hash) and records which field supplied it; a branch name alone cannot identify a commit. This was tested with mock deployments, not a live GitHub deployment.
 - **Deletion paths** (one runtime test each): event retention and delete-all events (migration 17 trigger on `events`), delete-all memory and forget one memory (migration 11 triggers), delete a meeting and delete-all meetings (migration 11 trigger), rejecting a reviewed item (trigger), turning 'allow sensitive meetings' off (`removeWhere({sourceKind:'meeting'|'meeting_item'})` plus audit `graph.meeting_data.removed`), forget a person (`POST /api/graph/people/forget`). Event-sourced rows are removed by the trigger rather than by a call after `deleteBefore` because the history limit, capability uninstall and delete-all also delete events and none of them can forget to tell the graph.
 - **Viewer.** Every route reads as the runtime's one viewer (`memory.agentContext().viewer`), never as the owner by default; a narrower viewer gets 404 for a node it has no readable provenance for (tested).
 - Narration is off unless the request says `narrate: true` and AI is on; it is labelled sensitive with a purpose the cloud gate never allows for sensitive data, and falls back to the path text when it names an identifier the path lacks.
-- Not wired: `POST /api/graph/edges/:id/confirm|reject` (nothing writes an AI-asserted edge yet), the web provenance view, stale-fact reconciliation.
+- Not wired: `POST /api/graph/edges/:id/confirm|reject` (nothing writes an AI-asserted edge yet), stale-fact reconciliation. The web provenance view is built at `#/provenance`.
 
 ## API contract
 

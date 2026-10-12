@@ -14,7 +14,7 @@ import {
   type StartProblems,
 } from "../core/agent-sessions";
 import { formatAgo, formatDate } from "../core/format";
-import { useCapabilities, useCommandAction, useCommandResult } from "../core/hooks";
+import { useAction, useCapabilities, useCommandAction, useCommandResult } from "../core/hooks";
 import type {
   AgentLauncher,
   AgentLink,
@@ -27,13 +27,18 @@ import { Feedback } from "./Feedback";
 
 const sessionHref = (id: string) => `#/agents/${encodeURIComponent(id)}`;
 
-/** Why the page cannot be used yet, in words; null when sessions can be started. */
+/** Saved settings are not live: the active launcher list comes from the enabled orchestrator. */
 function useAgentsAvailability() {
-  const { data: caps } = useCapabilities();
+  const { data: caps, reload } = useCapabilities();
   const agents = caps.find((c) => c.id === "agents");
-  const launchers = launchersOf(agents?.config);
   const enabled = agents?.status === "enabled";
-  return { agents, enabled, launchers, hasLauncher: Object.keys(launchers).length > 0 };
+  const { data: active } = useCommandResult<{ launchers: Record<string, AgentLauncher> }>(
+    "agents",
+    "launcher.list",
+    enabled,
+    () => false,
+  );
+  return { agents, enabled, launchers: active?.launchers, reload };
 }
 
 /** The status line of a command that waits for the user's approval, then the approval itself. */
@@ -68,6 +73,277 @@ function CommandStatus({
   );
 }
 
+/** Saves configuration only. Restart is a separate, potentially disruptive user action. */
+function LauncherEditor({
+  config,
+  enabled,
+  onSaved,
+}: {
+  config: Record<string, unknown>;
+  enabled: boolean;
+  onSaved: () => void;
+}) {
+  const { run, busy, error } = useAction();
+  const [name, setName] = useState("");
+  const [command, setCommand] = useState("");
+  const [roots, setRoots] = useState("");
+  const [env, setEnv] = useState("");
+  const [waiting, setWaiting] = useState("");
+  const [stdin, setStdin] = useState<"keep_open" | "close_after_prompt">("keep_open");
+  const [problem, setProblem] = useState("");
+  const [preview, setPreview] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const id = useId();
+  const savedLaunchers = launchersOf(config);
+  const names = Object.keys(savedLaunchers);
+  const lines = (text: string) => (text === "" ? [] : text.replace(/\n$/, "").split("\n"));
+  const change = () => {
+    setPreview(false);
+    setSaved(false);
+    setProblem("");
+  };
+
+  const review = (event: FormEvent) => {
+    event.preventDefault();
+    const argv = lines(command);
+    const folders = lines(roots);
+    const allowed = lines(env);
+    const prompts = lines(waiting);
+    const clean = (path: string) =>
+      path.startsWith("/") &&
+      !path.includes("//") &&
+      !path.split("/").some((part) => part === "." || part === "..") &&
+      !/[\u0000-\u001f\u007f]/.test(path);
+    let message = "";
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/.test(name))
+      message = "Use a launcher name of 1–40 slug characters.";
+    else if (!Object.hasOwn(savedLaunchers, name) && names.length >= 8)
+      message = "At most eight launchers are allowed.";
+    else if (
+      argv.length < 1 ||
+      argv.length > 32 ||
+      argv.some((a) => !a.length || a.length > 1000 || /[\u0000-\u001f\u007f]/.test(a)) ||
+      !clean(argv[0]!) ||
+      argv[0]!.endsWith("/") ||
+      /^(sh|bash|zsh|dash|fish|ksh|csh|tcsh)$/.test(argv[0]!.split("/").at(-1) ?? "")
+    )
+      message =
+        "Enter an absolute executable (not a shell) and up to 31 fixed arguments, one per line (1000 characters each).";
+    else if (
+      folders.length < 1 ||
+      folders.length > 8 ||
+      folders.some(
+        (r) =>
+          !r.length ||
+          !clean(r) ||
+          r === "/" ||
+          r.endsWith("/") ||
+          r.includes("*") ||
+          r.length > 1000,
+      )
+    )
+      message = "Enter 1–8 normalised absolute folders (not /), one per line.";
+    else if (
+      allowed.length > 16 ||
+      allowed.some((n) => !/^[A-Z_][A-Z0-9_]{0,63}$/.test(n) || n.startsWith("PHOENIX_"))
+    )
+      message = "Enter at most 16 valid environment variable names (not PHOENIX_ names).";
+    else if (
+      prompts.length > 8 ||
+      prompts.some((p) => !p.length || p.length > 100 || /[\u0000-\u001f\u007f]/.test(p))
+    )
+      message = "Enter at most eight waiting phrases, each at most 100 characters.";
+    setProblem(message);
+    setPreview(!message);
+  };
+  const save = async () => {
+    if (!preview || busy) return;
+    // Preserve all other capability settings and existing full launcher specs.
+    const previous =
+      config.launchers && typeof config.launchers === "object" && !Array.isArray(config.launchers)
+        ? (config.launchers as Record<string, unknown>)
+        : {};
+    const launchers = {
+      ...previous,
+      [name]: {
+        command: lines(command),
+        cwd_roots: lines(roots),
+        ...(lines(env).length ? { env_allow: lines(env) } : {}),
+        ...(lines(waiting).length ? { waiting_prompts: lines(waiting) } : {}),
+        stdin,
+      },
+    };
+    const result = await run("POST", "/api/capabilities/agents/config", {
+      config: { ...config, launchers },
+    });
+    if (result !== undefined) {
+      setSaved(true);
+      setPreview(false);
+      onSaved();
+    }
+  };
+  const select = (selected: string) => {
+    change();
+    setName(selected);
+    const raw =
+      config.launchers && typeof config.launchers === "object" && !Array.isArray(config.launchers)
+        ? Object.entries(config.launchers).find(([key]) => key === selected)?.[1]
+        : undefined;
+    const spec =
+      raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+    const strings = (key: string) =>
+      Array.isArray(spec[key])
+        ? (spec[key] as unknown[]).filter((x): x is string => typeof x === "string").join("\n")
+        : "";
+    setCommand(strings("command"));
+    setRoots(strings("cwd_roots"));
+    setEnv(strings("env_allow"));
+    setWaiting(strings("waiting_prompts"));
+    setStdin(spec.stdin === "close_after_prompt" ? "close_after_prompt" : "keep_open");
+  };
+  return (
+    <section className="card" aria-label="Configure coding-agent launcher">
+      <h2 className="h3">Configure a launcher</h2>
+      <p className="muted small">
+        Only configure programs you trust. Phoenix passes prompts on stdin. Never put credentials in
+        arguments; use environment variable names, never values.
+      </p>
+      <form onSubmit={review} className="settings-form">
+        <label className="field" htmlFor={`${id}-existing`}>
+          Edit a saved launcher
+          <select
+            id={`${id}-existing`}
+            value={Object.hasOwn(savedLaunchers, name) ? name : ""}
+            onChange={(e) => select(e.target.value)}
+          >
+            <option value="">New launcher</option>
+            {names.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          Launcher name
+          <input
+            value={name}
+            onChange={(e) => {
+              change();
+              setName(e.target.value);
+            }}
+          />
+        </label>
+        <label className="field">
+          Executable absolute path, then fixed arguments (one per line)
+          <textarea
+            rows={3}
+            spellCheck={false}
+            value={command}
+            onChange={(e) => {
+              change();
+              setCommand(e.target.value);
+            }}
+          />
+        </label>
+        <label className="field">
+          Allowed absolute workspace folders (one per line)
+          <textarea
+            rows={2}
+            spellCheck={false}
+            value={roots}
+            onChange={(e) => {
+              change();
+              setRoots(e.target.value);
+            }}
+          />
+        </label>
+        <label className="field">
+          Environment variable names (optional, one per line; no values)
+          <textarea
+            rows={2}
+            spellCheck={false}
+            value={env}
+            onChange={(e) => {
+              change();
+              setEnv(e.target.value);
+            }}
+          />
+        </label>
+        <label className="field">
+          Waiting phrases (optional, one per line)
+          <textarea
+            rows={2}
+            value={waiting}
+            onChange={(e) => {
+              change();
+              setWaiting(e.target.value);
+            }}
+          />
+        </label>
+        <label className="field">
+          Input mode
+          <select
+            value={stdin}
+            onChange={(e) => {
+              change();
+              setStdin(e.target.value as "keep_open" | "close_after_prompt");
+            }}
+          >
+            <option value="keep_open">Keep input open for messages</option>
+            <option value="close_after_prompt">Close after first prompt</option>
+          </select>
+        </label>
+        <button className="btn" type="submit">
+          Review launcher configuration…
+        </button>
+      </form>
+      {problem && (
+        <p role="alert" className="error-text">
+          {problem}
+        </p>
+      )}
+      {preview && (
+        <div role="group" aria-label="Launcher configuration preview">
+          <p>
+            Save launcher <strong>{name}</strong> with executable <code>{lines(command)[0]}</code>,{" "}
+            {lines(command).length - 1} fixed arguments (not shown), and allowed folders:{" "}
+            {lines(roots).join(", ")}. Input mode:{" "}
+            {stdin === "keep_open" ? "messages allowed" : "close after prompt"}.
+          </p>
+          <p className="muted small">
+            Environment variable names, fixed arguments and waiting phrases are not shown here.
+            Saving does not start an agent.{" "}
+            {enabled
+              ? "Saved changes require disabling and re-enabling agents in Settings. That stops running sessions; wait until they finish or explicitly approve stopping them."
+              : "Enable agents in Settings to apply saved changes."}
+          </p>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busy}
+            onClick={() => void save()}
+          >
+            Save launcher configuration
+          </button>
+          <button type="button" className="btn" disabled={busy} onClick={() => setPreview(false)}>
+            Back to edit
+          </button>
+        </div>
+      )}
+      {saved && (
+        <p role="status">
+          Saved.{" "}
+          {enabled
+            ? "This launcher is not active until agents is disabled and re-enabled; active sessions are not interrupted."
+            : "Enable agents to use this launcher."}
+        </p>
+      )}
+      <Feedback error={error} />
+    </section>
+  );
+}
+
 function StartSession({ launchers }: { launchers: Record<string, AgentLauncher> }) {
   const names = Object.keys(launchers);
   const start = useCommandAction<OrchestratedSession>("agents", "session.start");
@@ -87,6 +363,7 @@ function StartSession({ launchers }: { launchers: Record<string, AgentLauncher> 
   };
 
   const confirm = () => {
+    if (!Object.hasOwn(launchers, launcher) || !reviewing) return;
     void start.submit({ launcher, workspace: workspace.trim(), prompt });
   };
 
@@ -174,7 +451,8 @@ function StartSession({ launchers }: { launchers: Record<string, AgentLauncher> 
             <dd className="memory-text">{launcher}</dd>
             <dt>It will run</dt>
             <dd className="memory-text">
-              <code>{spec?.command.join(" ") ?? "unknown"}</code>
+              <code>{spec?.command[0] ?? "unknown"}</code> (
+              {Math.max(0, (spec?.command.length ?? 1) - 1)} fixed arguments; values hidden)
             </dd>
             <dt>Workspace</dt>
             <dd className="memory-text">
@@ -190,8 +468,8 @@ function StartSession({ launchers }: { launchers: Record<string, AgentLauncher> 
             </dd>
           </dl>
           <p className="muted small">
-            Core then asks for your approval, because this runs a program on your computer. Nothing
-            starts before you approve.
+            Core asks for approval of <strong>agents: session.start</strong>, which runs a program
+            on your computer. Nothing starts before you approve this named action.
           </p>
           <div className="button-row wrap">
             <button
@@ -279,7 +557,7 @@ function AmbiguousLink({ link, onResolved }: { link: AgentLink; onResolved: () =
 }
 
 export function AgentSessionsPage() {
-  const { enabled, launchers, hasLauncher } = useAgentsAvailability();
+  const { agents, enabled, launchers, reload: reloadCapabilities } = useAgentsAvailability();
   const { data, error, reload } = useCommandResult<OrchestratedSessionList>(
     "agents",
     "session.list",
@@ -301,14 +579,22 @@ export function AgentSessionsPage() {
           The coding-agents capability is off. Turn on <strong>agents</strong> under Capabilities in
           the Pet Panel to use this page.
         </p>
-      ) : !hasLauncher ? (
+      ) : !launchers ? (
+        <p role="status">Loading active launchers…</p>
+      ) : Object.keys(launchers).length === 0 ? (
         <p role="status">
-          No launcher is set up, so Phoenix cannot start an agent. Add a launcher in the
-          capability's settings (<a href="#/settings">Settings</a>), then turn the capability off
-          and on again.
+          No active launcher is set up, so Phoenix cannot start an agent. Save a launcher below,
+          then enable or restart agents in Settings after active sessions have finished.
         </p>
       ) : (
         <StartSession launchers={launchers} />
+      )}
+      {agents && (
+        <LauncherEditor
+          config={agents.config ?? {}}
+          enabled={enabled}
+          onSaved={() => void reloadCapabilities()}
+        />
       )}
       {enabled && (
         <>

@@ -40,7 +40,13 @@ import {
   type ProvenanceView,
 } from "@phoenix/ai-knowledge-graph";
 import type { MeetingItem } from "@phoenix/ai-meetings";
-import { buildMatchQuery, canView, type MemoryStore, type Viewer } from "@phoenix/ai-memory";
+import {
+  buildMatchQuery,
+  canView,
+  MEMORY_DOMAINS,
+  type MemoryStore,
+  type Viewer,
+} from "@phoenix/ai-memory";
 import type { AiService } from "@phoenix/ai-models";
 import type {
   GraphAnswerView,
@@ -71,53 +77,57 @@ const COUNT_CAP = 10_000;
 const DOCUMENT_LIMIT = 5;
 const SHA = /^[0-9a-f]{40}$/;
 
-const provenanceView = (p: ProvenanceView): GraphProvenanceView => ({
-  source_kind: p.sourceKind,
-  source_id: p.sourceId,
-  capability: p.capability,
-  observed_at: p.observedAt,
-  recorded_at: p.recordedAt,
-  confidence: p.confidence,
-  asserted_by: p.assertedBy,
-  scope: p.scope,
-  domain: p.domain,
-  sensitivity: p.sensitivity,
-  detail: { ...p.detail },
-});
+const provenanceView = (p: ProvenanceView, owner = false): GraphProvenanceView => {
+  const detail = { ...p.detail };
+  if (!owner) delete detail.source_quote;
+  return {
+    source_kind: p.sourceKind,
+    source_id: p.sourceId,
+    capability: p.capability,
+    observed_at: p.observedAt,
+    recorded_at: p.recordedAt,
+    confidence: p.confidence,
+    asserted_by: p.assertedBy,
+    scope: p.scope,
+    domain: p.domain,
+    sensitivity: p.sensitivity,
+    detail,
+  };
+};
 
-const nodeView = (n: NodeView): GraphNodeView => ({
+const nodeView = (n: NodeView, owner = false): GraphNodeView => ({
   id: n.id,
   type: n.type,
   key: n.key,
   label: n.label,
   status: n.status,
   detail: { ...n.detail },
-  provenance: n.provenance.map(provenanceView),
+  provenance: n.provenance.map((p) => provenanceView(p, owner)),
 });
 
-const edgeView = (e: EdgeView): GraphEdgeView => ({
+const edgeView = (e: EdgeView, owner = false): GraphEdgeView => ({
   id: e.id,
   src: e.src,
   rel: e.rel,
   dst: e.dst,
   status: e.status,
-  provenance: e.provenance.map(provenanceView),
+  provenance: e.provenance.map((p) => provenanceView(p, owner)),
 });
 
-const pathView = (p: ExplanationPath): GraphPathView => ({
-  nodes: p.nodes.map(nodeView),
+const pathView = (p: ExplanationPath, owner = false): GraphPathView => ({
+  nodes: p.nodes.map((n) => nodeView(n, owner)),
   hops: p.hops.map((h) => ({
     from: h.from,
     to: h.to,
     direction: h.direction,
-    edge: edgeView(h.edge),
+    edge: edgeView(h.edge, owner),
   })),
   text: p.text,
 });
 
 const worldEntityView = (entity: ResolvedEntity): GraphWorldEntityView => ({
   node: nodeView(entity.node),
-  provenance: entity.provenance.map(provenanceView),
+  provenance: entity.provenance.map((p) => provenanceView(p)),
   confidence: entity.confidence,
   observed_at: entity.observedAt,
   age_ms: entity.ageMs,
@@ -127,31 +137,42 @@ const worldHopView = (hop: WorldHop): GraphWorldResultView["chains"][number]["ho
   from: hop.from,
   to: hop.to,
   edge: edgeView(hop.edge),
-  provenance: hop.provenance.map(provenanceView),
+  provenance: hop.provenance.map((p) => provenanceView(p)),
   confidence: hop.confidence,
   observed_at: hop.observedAt,
   age_ms: hop.ageMs,
   meaning: hop.meaning,
 });
 
-function answerView(a: GraphAnswer): GraphAnswerView {
-  const subject = a.subject ? nodeView(a.subject) : null;
+function answerView(a: GraphAnswer, owner = false): GraphAnswerView {
+  const subject = a.subject ? nodeView(a.subject, owner) : null;
   if (a.kind === "why") {
-    return { kind: "why", subject, paths: a.paths.map(pathView), truncated: { ...a.truncated } };
+    return {
+      kind: "why",
+      subject,
+      paths: a.paths.map((p) => pathView(p, owner)),
+      truncated: { ...a.truncated },
+    };
   }
   if (a.kind === "which") {
     return {
       kind: "which",
       subject,
       type: a.type,
-      results: a.results.map((r) => ({ node: nodeView(r.node), path: pathView(r.path) })),
+      results: a.results.map((r) => ({
+        node: nodeView(r.node, owner),
+        path: pathView(r.path, owner),
+      })),
       truncated: { ...a.truncated },
     };
   }
   return {
     kind: "who",
     subject,
-    people: a.people.map((p) => ({ person: nodeView(p.person), paths: p.paths.map(pathView) })),
+    people: a.people.map((p) => ({
+      person: nodeView(p.person, owner),
+      paths: p.paths.map((path) => pathView(path, owner)),
+    })),
     truncated: { ...a.truncated },
   };
 }
@@ -236,7 +257,12 @@ export class GraphRuntime implements GraphApi {
   private onEvent(event: PhoenixEvent): void {
     // Only the capability that owns the event family: a forged `git.commit.created` from another
     // source is not a commit.
-    if (this.closed || event.source !== event.event_type.split(".")[0]) return;
+    if (
+      this.closed ||
+      event.source !== event.event_type.split(".")[0] ||
+      !this.d.db.prepare("SELECT 1 FROM events WHERE event_id = ?").get(event.event_id)
+    )
+      return;
     this.ingestor().handle(event);
     if (event.event_type === "git.commit.created") this.enqueue(() => this.backfillCommit(event));
   }
@@ -265,7 +291,13 @@ export class GraphRuntime implements GraphApi {
     try {
       if (!statSync(path).isDirectory()) return;
       const [commit] = await readGitHistory(path, repository, { limit: 1, rev: sha });
-      if (!commit || commit.sha !== sha || this.closed) return;
+      if (
+        !commit ||
+        commit.sha !== sha ||
+        this.closed ||
+        !this.d.db.prepare("SELECT 1 FROM events WHERE event_id = ?").get(event.event_id)
+      )
+        return;
       this.ingestor().ingestCommit(
         {
           ...commit,
@@ -306,10 +338,7 @@ export class GraphRuntime implements GraphApi {
     if (this.closed || !this.d.meetingsAllowed()) return;
     const ingestor = this.ingestor();
     let count = 0;
-    const all = [
-      ...this.d.meetings.list({ limit: 500 }),
-      ...this.d.meetings.list({ archived: true, limit: 500 }),
-    ];
+    const all = this.d.meetings.listAll();
     for (const meeting of all) {
       if (!MEETING_CAPABILITIES.includes(meeting.capability_id)) continue;
       try {
@@ -322,6 +351,7 @@ export class GraphRuntime implements GraphApi {
             text: i.text,
             status: i.status,
             extractedBy: i.extractedBy,
+            evidence: i.evidence,
           })),
         );
         count++;
@@ -352,6 +382,53 @@ export class GraphRuntime implements GraphApi {
     });
   }
 
+  /** Privacy counts only provenance the current viewer can inspect, never hidden graph rows. */
+  visibleInventory(): { nodes: number; edges: number; provenance: number } {
+    const viewer = this.d.viewer();
+    const nodes = new Map<string, number>();
+    const edges = new Map<string, number>();
+    const rows = this.d.db
+      .prepare("SELECT subject_kind, subject_id, scope, domain, sensitivity FROM kg_provenance")
+      .iterate() as Iterable<{
+      subject_kind: string;
+      subject_id: string;
+      scope: string;
+      domain: string;
+      sensitivity: "public" | "internal" | "sensitive";
+    }>;
+    for (const row of rows) {
+      if (
+        !canView(viewer, {
+          scope: row.scope,
+          domain: (MEMORY_DOMAINS as readonly string[]).includes(row.domain)
+            ? (row.domain as (typeof MEMORY_DOMAINS)[number])
+            : "general",
+          sensitivity: row.sensitivity,
+        })
+      )
+        continue;
+      const visible = row.subject_kind === "node" ? nodes : edges;
+      visible.set(row.subject_id, (visible.get(row.subject_id) ?? 0) + 1);
+    }
+    let provenance = [...nodes.values()].reduce((sum, n) => sum + n, 0);
+    let visibleEdges = 0;
+    const edgeRows = this.d.db.prepare("SELECT id, src, dst FROM kg_edges").iterate() as Iterable<{
+      id: string;
+      src: string;
+      dst: string;
+    }>;
+    for (const edge of edgeRows) {
+      if (nodes.has(edge.src) && nodes.has(edge.dst)) {
+        const count = edges.get(edge.id) ?? 0;
+        if (count > 0) {
+          visibleEdges++;
+          provenance += count;
+        }
+      }
+    }
+    return { nodes: nodes.size, edges: visibleEdges, provenance };
+  }
+
   async close(): Promise<void> {
     this.closed = true;
     this.unsubscribe();
@@ -380,27 +457,32 @@ export class GraphRuntime implements GraphApi {
   }
 
   inspect(nodeId: string): GraphInspectionView | null {
-    const found = this.inspector.inspect(this.d.viewer(), nodeId);
+    const viewer = this.d.viewer();
+    const found = this.inspector.inspect(viewer, nodeId);
     if (!found) return null;
+    const owner = viewer.id === "owner";
     return {
-      node: nodeView(found.node),
-      origin: found.origin.map(provenanceView),
+      node: nodeView(found.node, owner),
+      origin: found.origin.map((p) => provenanceView(p, owner)),
       summary: { ...found.summary },
       visible_edges: found.visibleEdges,
     };
   }
 
   neighbors(nodeId: string, depth: number): GraphNeighborhoodView | null {
-    const found = this.inspector.neighbors(this.d.viewer(), nodeId, { depth });
+    const viewer = this.d.viewer();
+    const found = this.inspector.neighbors(viewer, nodeId, { depth });
     if (!found) return null;
+    const owner = viewer.id === "owner";
     return {
       center: found.center,
-      nodes: found.nodes.map(nodeView),
-      edges: found.edges.map(edgeView),
+      nodes: found.nodes.map((n) => nodeView(n, owner)),
+      edges: found.edges.map((e) => edgeView(e, owner)),
       truncated: found.truncated,
     };
   }
 
+  /** Historical cutoff selects revisions only from currently surviving, viewer-readable assertions. */
   failureChains(
     key: string,
     options: { asOf?: string; maxAgeMs?: number; limit?: number },
@@ -447,10 +529,10 @@ export class GraphRuntime implements GraphApi {
         return this.lexicalDocuments(request.query, request.viewer, request.limit);
       },
     });
-    const answers = answer.graph.map(answerView);
+    const answers = answer.graph.map((a) => answerView(a, viewer.id === "owner"));
     return {
       question: answer.question,
-      seeds: answer.seeds.map(nodeView),
+      seeds: answer.seeds.map((n) => nodeView(n, viewer.id === "owner")),
       answers,
       documents: answer.documents.map((doc) => ({
         id: doc.id,

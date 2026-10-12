@@ -5,7 +5,11 @@
 // runs against the local mock GitHub and a fake Ollama; the observation must carry ids, names,
 // counts, hashes and numbers only, report the model that answered, and say "unknown" for token
 // counts the model service did not report.
-import { observationLeaks } from "@phoenix/ai-evaluation";
+import { rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { CI_FAILURE_SYSTEM_PROMPT } from "@phoenix/ai-agents";
+import { observationLeaks, sha256 } from "@phoenix/ai-evaluation";
 import type { FetchLike } from "@phoenix/ai-models";
 import { createGithubCapability } from "@phoenix/capability-github";
 import { MemorySecretStore } from "@phoenix/persistence";
@@ -56,7 +60,11 @@ interface Observation {
   audit_ids: number[];
 }
 
-async function runCiTask(options: { ai: boolean; usage?: { prompt: number; eval: number } }) {
+async function runCiTask(options: {
+  ai: boolean;
+  usage?: { prompt: number; eval: number };
+  databasePath?: string;
+}) {
   const guard = guardNetwork();
   const gh = await startMockGithub();
   realRunData(gh);
@@ -67,6 +75,7 @@ async function runCiTask(options: { ai: boolean; usage?: { prompt: number; eval:
     net.requests.push({ url, method: init?.method ?? "POST", body: String(init?.body ?? "") });
     return new Response(
       JSON.stringify({
+        model: "llama3.2",
         message: { role: "assistant", content: ANSWER },
         done: true,
         ...(options.usage
@@ -83,7 +92,10 @@ async function runCiTask(options: { ai: boolean; usage?: { prompt: number; eval:
         createGithubCapability({ sleep: () => Promise.withResolvers<void>().promise }),
       ],
       secrets: new MemorySecretStore(),
-      runtime: { fetch: fetchFn },
+      runtime: {
+        fetch: fetchFn,
+        ...(options.databasePath ? { databasePath: options.databasePath } : {}),
+      },
     },
   );
   cleanups.push(async () => {
@@ -103,6 +115,13 @@ async function runCiTask(options: { ai: boolean; usage?: { prompt: number; eval:
     input: { repository: REPO, run_id: RUN_ID },
   });
   expect(created.status).toBe(202);
+  expect(created.json.task.title).toBe(`CI failure in ${REPO}`);
+  expect((await core.api("GET", `/api/agent/tasks/${created.json.task.id}`)).json.task.title).toBe(
+    created.json.task.title,
+  );
+  expect((await core.api("GET", "/api/agent/tasks")).json.tasks[0].title).toBe(
+    created.json.task.title,
+  );
   const id: string = created.json.task.id;
   // The github read tools ask the user once; the simulated user says yes.
   core.runtime.bus.subscribe("test.user", "security.confirmation.requested", () => {
@@ -157,6 +176,22 @@ describe("GET /api/agent/tasks/:id/observation", () => {
     expect(o.audit_ids.length).toBeGreaterThan(0);
     // The local model was the only provider contacted.
     expect(net.cloud()).toEqual([]);
+    expect(o.prompt_version).toBe(sha256(CI_FAILURE_SYSTEM_PROMPT));
+    const history = await core.api("GET", `/api/agent/tasks/${id}/observations`);
+    expect(history.status).toBe(200);
+    expect(history.json.observations).toHaveLength(1);
+    expect(history.json.observations[0].observation).toEqual(o);
+    const row = core.runtime.db
+      .prepare("SELECT observation FROM agent_observations WHERE task_id = ?")
+      .get(id) as { observation: string };
+    expect(JSON.parse(row.observation)).toEqual(o);
+    expect(row.observation).not.toContain(FAKE_GITHUB_TOKEN);
+    const record = await core.api(
+      "GET",
+      `/api/agent/tasks/${id}/observations/${history.json.observations[0].id}`,
+    );
+    expect(record.json).toEqual(o);
+    expect((await fetch(`${core.base}/api/agent/tasks/${id}/observations`)).status).toBe(401);
   });
 
   it("says 'unknown' for tokens the model service did not report, not a number", async () => {
@@ -209,5 +244,48 @@ describe("GET /api/agent/tasks/:id/observation", () => {
     expect(noToken.status).toBe(401);
     const post = await core.api("POST", `/api/agent/tasks/${id}/observation`, {});
     expect(post.status).toBe(405);
+  });
+  it("redacts hostile provider model labels before persistence", async () => {
+    const { core, id } = await runCiTask({ ai: true });
+    const row = core.runtime.db
+      .prepare("SELECT outcome FROM agent_runs WHERE task_id = ?")
+      .get(id) as { outcome: string };
+    const outcome = JSON.parse(row.outcome) as { conclusion: { model: { model: string } } };
+    outcome.conclusion.model.model = `private-${FAKE_GITHUB_TOKEN}`;
+    core.runtime.db
+      .prepare("UPDATE agent_runs SET outcome = ? WHERE task_id = ?")
+      .run(JSON.stringify(outcome), id);
+    const o = await observation(core, id);
+    const history = await core.api("GET", `/api/agent/tasks/${id}/observations`);
+    const stored = core.runtime.db
+      .prepare("SELECT observation FROM agent_observations WHERE task_id = ?")
+      .get(id) as { observation: string };
+    for (const text of [JSON.stringify(o), JSON.stringify(history.json), stored.observation]) {
+      expect(text).not.toContain(FAKE_GITHUB_TOKEN);
+    }
+  });
+
+  it("retains snapshots after restart and removes them on task forget", async () => {
+    const databasePath = join(tmpdir(), `phoenix-observation-${crypto.randomUUID()}.sqlite`);
+    cleanups.push(() => rmSync(databasePath, { force: true }));
+    const { core, id } = await runCiTask({ ai: false, databasePath });
+    const before = await observation(core, id);
+    await core.runtime.stop();
+    const restarted = await startCore({ dataDir: core.dataDir }, { runtime: { databasePath } });
+    cleanups.push(() => restarted.runtime.stop());
+    const after = await observation(restarted, id);
+    expect(after).toEqual(before);
+    expect(
+      (await restarted.api("GET", `/api/agent/tasks/${id}/observations`)).json.observations,
+    ).toHaveLength(1);
+    expect((await restarted.api("DELETE", `/api/agent/tasks/${id}`)).status).toBe(200);
+    expect((await restarted.api("GET", `/api/agent/tasks/${id}/observation`)).status).toBe(404);
+    expect((await restarted.api("GET", `/api/agent/tasks/${id}/observations`)).status).toBe(404);
+    expect((await restarted.api("DELETE", `/api/agent/tasks/${id}`)).status).toBe(404);
+    expect(
+      restarted.runtime.db
+        .prepare("SELECT count(*) AS count FROM agent_observations WHERE task_id = ?")
+        .get(id),
+    ).toMatchObject({ count: 0 });
   });
 });

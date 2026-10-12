@@ -13,6 +13,7 @@ import { proactiveRoutes } from "./proactive-routes";
 import { syncRoutes } from "./sync-routes";
 import { registryRoutes } from "./registry-routes";
 import { multimodalRoutes } from "./multimodal-routes";
+import { improvementRoutes } from "./improvement-routes";
 import type { CoreServices } from "./services";
 
 const notFound = (what: string) =>
@@ -267,8 +268,8 @@ export function buildRoutes(s: CoreServices): Route[] {
       s.permissions.revoke(params.capability!, perms as never);
       return { grants: s.permissions.grants.list(params.capability) };
     }),
-    // Additive: a confirmation raised for an agent run also carries risk, target, preview,
-    // task_id and evidence_ids. Every existing field is unchanged.
+    // The gateway exposes only workflow, run and step identifiers here, never arbitrary action
+    // details or tool input. Non-workflow confirmations have no run linkage.
     route("GET", "/api/confirmations", () => ({
       confirmations: s.permissions.pendingConfirmations().map((c) => {
         const agent = s.agents?.describeConfirmation(c.id);
@@ -301,5 +302,6 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...registryRoutes(s),
     ...syncRoutes(s),
     ...multimodalRoutes(s),
+    ...improvementRoutes(s),
   ];
 }

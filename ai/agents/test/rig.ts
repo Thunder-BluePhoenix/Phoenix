@@ -134,6 +134,7 @@ export async function makeRig(options: RigOptions = {}): Promise<Rig> {
   git(repoDir, "config", "user.email", "a@example.invalid");
   git(repoDir, "config", "user.name", "A");
   git(repoDir, "config", "commit.gpgsign", "false");
+  git(repoDir, "remote", "add", "origin", `https://github.com/${REPO}.git`);
   const commit = (subject: string, files: Record<string, string>): string => {
     for (const [path, content] of Object.entries(files)) {
       mkdirSync(join(repoDir, path, ".."), { recursive: true });

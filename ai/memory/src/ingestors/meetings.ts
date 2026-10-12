@@ -12,7 +12,7 @@ import { digest, emptyReport, tally, type IngestReport } from "./report";
 
 /** The part of MeetingStore the ingestor needs. A MeetingStore satisfies it. */
 export interface MeetingReader {
-  list(options?: { archived?: boolean; limit?: number }): Meeting[];
+  listAll(): Meeting[];
   summary(id: string): Summary | null;
 }
 
@@ -103,7 +103,8 @@ export function ingestMeetings(options: MeetingIngestOptions): IngestReport {
   const { pipeline, store, meetings } = options;
   const report = emptyReport();
   const present: Record<string, true> = {};
-  const all = [...meetings.list({ limit: 500 }), ...meetings.list({ archived: true, limit: 500 })];
+  // Complete enumeration must succeed before any reconciliation can remove absent references.
+  const all = meetings.listAll();
   for (const meeting of all) {
     if (!options.capabilities.includes(meeting.capability_id)) continue;
     present[meeting.id] = true;

@@ -292,7 +292,7 @@ describe("reliability stress (seeded)", () => {
     const allowedDecisions = decisions.filter((d) => d.effect !== "deny");
     expect(calls.log.length).toBeLessThanOrEqual(allowedDecisions.length);
     const outcomes = all<{ details: string }>(
-      "SELECT details FROM audit_log WHERE action IN ('tool.succeeded','tool.failed','tool.timeout','tool.invalid_output')",
+      "SELECT details FROM audit_log WHERE action IN ('tool.succeeded','tool.failed','tool.timeout','tool.cancelled','tool.unknown','tool.invalid_output')",
     ).map((o) => (JSON.parse(o.details) as { decisionAuditId: number }).decisionAuditId);
     expect(new Set(outcomes).size).toBe(outcomes.length); // never two outcomes for one decision
     const decisionIds = new Set(decisions.map((d) => d.id));

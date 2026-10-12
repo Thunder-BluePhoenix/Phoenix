@@ -14,6 +14,7 @@ import { promisify } from "node:util";
 import { digest as memoryDigest, type MemoryItem, type MemoryStore } from "@phoenix/ai-memory";
 import type { PrivacyClass } from "@phoenix/ai-models";
 import type { Meeting, Summary } from "@phoenix/persistence";
+import { redact } from "@phoenix/logging";
 import type { PhoenixEvent } from "@phoenix/protocol";
 import { extractMentions, type MentionContext } from "./extract";
 import { KnowledgeGraph, keyProblem, nodeId, personKeyOf } from "./graph";
@@ -104,6 +105,8 @@ export interface MeetingItemRecord {
   status: string;
   /** `kage`, `manual` or `ai:<model>`. */
   extractedBy: string;
+  /** Verbatim source evidence retained only for reviewed items. */
+  evidence?: { source: "transcript" | "summary"; quote: string } | null;
 }
 
 interface Base {
@@ -119,6 +122,7 @@ interface Base {
 
 const str = (v: unknown, max = 300): string | undefined =>
   typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined;
+const sourceQuote = (quote: string): string | undefined => str(redact(quote.trim()), 300);
 const posInt = (v: unknown): number | undefined =>
   typeof v === "number" && Number.isSafeInteger(v) && v > 0 ? v : undefined;
 
@@ -391,9 +395,23 @@ export class GraphIngestor {
     if (gitRef !== undefined) detail.ref = gitRef;
     this.node(base, ref, detail, out);
     this.edge(base, ref, "PART_OF", { type: "Repository", key: repo }, {}, out);
-    // A deployment names a commit only when its ref is a full hash; a branch name is not a commit.
-    if (gitRef !== undefined && SHA.test(gitRef)) {
-      this.edge(base, { type: "Commit", key: `${repo}@${gitRef}` }, "DEPLOYED_TO", ref, {}, out);
+    // The deployment's immutable sha takes precedence; a ref proves a commit only if it is full hex.
+    const rawSha = event.payload.sha;
+    const deploymentSha =
+      typeof rawSha === "string" && SHA.test(rawSha.toLowerCase())
+        ? rawSha.toLowerCase()
+        : undefined;
+    const refSha = gitRef?.toLowerCase();
+    const sha = deploymentSha ?? (refSha !== undefined && SHA.test(refSha) ? refSha : undefined);
+    if (sha !== undefined) {
+      this.edge(
+        base,
+        { type: "Commit", key: `${repo}@${sha}` },
+        "DEPLOYED_TO",
+        ref,
+        { sha_source: deploymentSha !== undefined ? "deployment.sha" : "deployment.ref" },
+        out,
+      );
     }
     const actor = str(event.payload.actor);
     if (actor !== undefined && actor !== "unknown") {
@@ -536,6 +554,10 @@ export class GraphIngestor {
               ? "user"
               : "capability";
         const itemBase: Base = { ...base, sourceKind: "meeting_item", sourceId: item.id };
+        const quote =
+          (item.status === "accepted" || item.status === "edited") && item.evidence
+            ? sourceQuote(item.evidence.quote)
+            : undefined;
         this.decision(
           itemBase,
           ref,
@@ -543,7 +565,9 @@ export class GraphIngestor {
           `${meeting.id}#${memoryDigest(item.text.trim())}`,
           assertedBy,
           out,
+          quote,
         );
+        if (!quote) this.graph.purgeSourceQuote(item.id);
       }
     });
     return out;
@@ -556,12 +580,22 @@ export class GraphIngestor {
     key: string,
     assertedBy: Assertor,
     out: IngestOutcome,
+    sourceQuote?: string,
   ): void {
     const ref: NodeRef = { type: "Decision", key };
-    this.edge(base, ref, "DECIDED_IN", meeting, {}, out, assertedBy, {
-      title: text.slice(0, 200),
-      text: text.slice(0, 300),
-    });
+    this.edge(
+      base,
+      ref,
+      "DECIDED_IN",
+      meeting,
+      sourceQuote ? { source_quote: sourceQuote } : {},
+      out,
+      assertedBy,
+      {
+        title: text.slice(0, 200),
+        text: text.slice(0, 300),
+      },
+    );
     this.mentions(base, ref, text, undefined, out);
   }
 

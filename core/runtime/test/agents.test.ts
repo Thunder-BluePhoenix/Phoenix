@@ -33,7 +33,7 @@ interface TaskView {
   failure_reason: string | null;
 }
 interface Detail {
-  task: { id: string; input: Record<string, unknown> };
+  task: { id: string; title: string; input: Record<string, unknown> };
   run: { state: string; failure_reason: string | null };
   steps: {
     kind: string;
@@ -364,6 +364,36 @@ describe("GET /api/agent/tasks and /:id", () => {
     expect((await c.api("GET", "/api/agent/tasks?state=failed")).json.tasks).toEqual([]);
     expect((await c.api("GET", "/api/agent/tasks?state=COMPLETED")).json.tasks).toHaveLength(3);
   });
+
+  it("uses one source title for submit, list and detail, ignoring hostile input titles", async () => {
+    const c = await core();
+    await enable(c);
+    const created = await c.api("POST", "/api/agent/tasks", {
+      kind: "ops_read",
+      input: { title: "<img src=x onerror=alert(1)>" },
+    });
+    expect(created.status).toBe(202);
+    const id = created.json.task.id as string;
+    expect(created.json.task.title).toBe("Agent task");
+    expect((await detail(c, id)).task.title).toBe("Agent task");
+    const listed = (await c.api("GET", "/api/agent/tasks")).json.tasks as TaskView[];
+    expect(listed.find((task) => task.id === id)?.title).toBe("Agent task");
+  });
+
+  it.each([
+    ["meeting_decision_review", { meeting_id: "42" }, "Meeting review"],
+    ["planning_review", { plan_id: `plan_${"a".repeat(32)}` }, "Planning review"],
+  ])("projects %s title from submit through detail and list", async (kind, input, title) => {
+    const c = await core();
+    await enable(c);
+    const created = await c.api("POST", "/api/agent/tasks", { kind, input });
+    expect(created.status).toBe(202);
+    const id = created.json.task.id as string;
+    expect(created.json.task.title).toBe(title);
+    expect((await detail(c, id)).task.title).toBe(title);
+    const listed = (await c.api("GET", "/api/agent/tasks")).json.tasks as TaskView[];
+    expect(listed.find((task) => task.id === id)?.title).toBe(title);
+  });
 });
 
 describe("the vertical slice: task → context → plan → permission → capability → verify → audit → Fawkes", () => {
@@ -539,23 +569,24 @@ describe("the emergency stop ends a run that is in the middle of a tool call", (
 });
 
 describe("the CI-failure task over the API, with AI off (the default)", () => {
-  it("makes zero network calls to a model and says so", async () => {
+  it("rejects an unavailable required GitHub tool without creating a run or calling a model", async () => {
     const net = fakeNetwork();
     const c = await startCore({}, { runtime: { fetch: net.fetch } });
     cleanups.push(() => c.runtime.stop());
     await enable(c);
-    // github is installed but not enabled: the plan is rejected, and AI was still never contacted
+    // The GitHub capability is installed but disabled; diagnosis cannot read the required tool.
     const res = await c.api("POST", "/api/agent/tasks", {
       kind: "ci_failure",
       input: { repository: REPO, run_id: RUN_ID },
     });
-    expect(res.status).toBe(202);
-    await c.runtime.agents.orchestrator.settled(res.json.task.id);
-    const d = await detail(c, res.json.task.id);
-    expect(d.run.state).toBe("FAILED");
-    expect(d.run.failure_reason).toMatch(/^Plan rejected/);
+    expect(res.status).toBe(503);
+    expect(res.json).toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+      details: ["GITHUB_TOOL_UNAVAILABLE"],
+    });
+    expect(res.json.message).toMatch(/Enable and configure GitHub/);
+    expect((await c.api("GET", "/api/agent/tasks")).json.tasks).toEqual([]);
     expect(net.requests).toEqual([]);
-    expect(d.ai_used).toBe(false);
   });
 });
 

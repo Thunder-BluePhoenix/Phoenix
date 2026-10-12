@@ -22,7 +22,7 @@ Improve prompts, retrieval and workflows through measured feedback — never by 
 
 ## Tasks
 
-- [ ] Offline task-output→trusted observation→feedback→restricted candidate→scenario re-evaluation→human approval/rollback works; no durable Core production pipeline.
+- [ ] Digest-only feedback→bounded candidate→offline scenario re-evaluation→reviewed hash-bound approval/rollback is persisted in migration 24 and user-only Core routes; trusted real task-output reader, independent pinned baseline and reversible production consumer are not configured.
 - [x] Candidate changes cannot edit policies, grants, security gates or silently write production workflow settings.
 - [x] Training opt-in is recorded as provenance only; no user-data training pipeline exists.
 
@@ -32,11 +32,11 @@ Improve prompts, retrieval and workflows through measured feedback — never by 
 
 ## Exit criteria
 
-- [ ] Offline proposals require measurable scenario improvement and no regression before a human can approve; none is applied to production, so a shipping gate is not met.
+- [ ] Offline proposals reject safety/correctness/grounding/relevance regression before approval; Core's production activation is unavailable by default and no shipping gate was met.
 
 ## Implementation notes
 
-`ImprovementLoop` compares real offline control/candidate scenario reports against a separately pinned baseline, rejects safety/correctness/grounding/relevance regressions and requires human approval for an in-memory activation record. It neither trains a model nor changes Core settings; production activation would require authenticated durable task/feedback/approval/audit storage, an independent baseline digest and explicit reversible runtime application. No v1.9 release or silent “self-improvement” is claimed.
+`ImprovementLoop` evaluates a restricted prompt/retrieval candidate against real offline scenarios. Migration 24 and session-token `/api/improvement/*` routes persist digest-only feedback, candidate/evaluation hashes, reviewed approval and rollback records; task forget cascades those records. Core deliberately supplies no trusted complete task-output reader, independently pinned full baseline or synchronous reversible effective-setting consumer, so feedback and production activation report unavailable unless a trusted host provides all prerequisites. Training opt-in is recorded as provenance but no user-data training or policy/security self-edit exists. No v1.9 release or silent “self-improvement” is claimed.
 
 ## Source documents
 

@@ -1,0 +1,63 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Phoenix SDK 0.1.0 migration</title>
+    <style>
+      body {
+        font:
+          1.1rem/1.55 system-ui,
+          sans-serif;
+        max-width: 54rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      code,
+      pre {
+        background: #eee;
+        padding: 0.15rem 0.3rem;
+      }
+      pre {
+        overflow: auto;
+        padding: 1rem;
+      }
+      a {
+        color: #064d91;
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <a href="index.html">SDK 0.1.0 home</a> ·
+      <a href="../../migration.md">Full migration guide</a>
+    </nav>
+    <main>
+      <h1>Manifest v1 migration</h1>
+      <p>
+        Existing v1 manifests without <code>manifest_version</code> or
+        <code>compatibility</code> remain supported. To make version intent explicit while
+        preserving behavior, add both fields:
+      </p>
+      <pre><code>manifest_version: "1",
+compatibility: { protocol: "1" },</code></pre>
+      <p>
+        Keep your own <code>version</code> SemVer; it does not determine protocol compatibility.
+        Preserve required <code>events</code>, <code>commands</code> and
+        <code>permissions</code> arrays. Unknown manifest fields and major <code>"2"</code> fail
+        closed, not migrated automatically. Event wire samples 1.0 remain readable while current SDK
+        emits 1.1. See the <a href="../../protocol.md">protocol reference</a> and
+        <a href="../../security.md">security guidance</a> before adding permissions. If changing
+        versions of a distributed SDK, test both old/new candidate artifacts against a real Core
+        upgrade pair; this checkout includes only SDK package 0.1.0.
+      </p>
+      <p>
+        Run <code>corepack pnpm --filter @phoenix/sdk build</code> then
+        <code>corepack pnpm --filter @phoenix/sdk check:artifact</code> from the root before
+        considering publication. The latter exercises a packed tarball in an isolated consumer
+        rather than importing SDK sources.
+      </p>
+    </main>
+  </body>
+</html>

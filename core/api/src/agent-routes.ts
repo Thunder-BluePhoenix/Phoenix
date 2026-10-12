@@ -76,6 +76,24 @@ export function agentRoutes(s: CoreServices): Route[] {
       if (!observation) throw notFound();
       return observation;
     }),
+    route("GET", "/api/agent/tasks/:id/observations", ({ params, url }) => {
+      const limit = intParam(url, "limit", 50)!;
+      if (limit < 1 || limit > MAX_PAGE) throw invalid(`"limit" must be between 1 and ${MAX_PAGE}`);
+      const history = agents().observationHistory(params.id!, limit);
+      if (!history) throw notFound();
+      return history;
+    }),
+    route("GET", "/api/agent/tasks/:id/observations/:observationId", ({ params }) => {
+      const observationId = Number(params.observationId);
+      if (!Number.isSafeInteger(observationId) || observationId < 1) throw notFound();
+      const record = agents().observationRecord(params.id!, observationId);
+      if (!record) throw notFound();
+      return record;
+    }),
+    route("DELETE", "/api/agent/tasks/:id", async ({ params }) => {
+      if (!(await agents().forget(params.id!))) throw notFound();
+      return { deleted: params.id! };
+    }),
     route("POST", "/api/agent/tasks/:id/cancel", async ({ params, body }) => {
       exactKeys(expectObject(await body()), []);
       const result = agents().cancel(params.id!);

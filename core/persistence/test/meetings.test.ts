@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { KeychainSecretStore, MeetingStore, openDatabase } from "../src";
 
@@ -32,6 +35,44 @@ describe("MeetingStore", () => {
     s.setSummary("kage:1", { text: "again" });
     expect([s.get("kage:1"), s.summary("kage:1"), s.delete("kage:1")]).toEqual([null, null, false]);
     expect(s.list()).toEqual([]);
+  });
+
+  it("enumerates more than 500 active and archived meetings with tied timestamps after reopen", () => {
+    const dir = mkdtempSync(join(tmpdir(), "phoenix-meeting-pages-"));
+    const path = join(dir, "meetings.db");
+    try {
+      const db = openDatabase(path);
+      const s = new MeetingStore(db);
+      for (let n = 0; n < 1004; n++) {
+        const id = String(n).padStart(4, "0");
+        s.upsert({
+          capabilityId: "kage",
+          externalId: id,
+          status: "ready",
+          startedAt: "2026-10-01T00:00:00Z",
+        });
+        if (n % 2) s.archive(`kage:${id}`);
+      }
+      expect(s.list()).toHaveLength(100);
+      expect(s.list({ limit: 1000 })).toHaveLength(500);
+      expect(s.list({ archived: true, limit: 1000 })).toHaveLength(500);
+      db.close();
+
+      const reopened = openDatabase(path);
+      const again = new MeetingStore(reopened);
+      expect(again.listAll().map((m) => m.id)).toEqual(
+        Array.from({ length: 1004 }, (_, n) => `kage:${String(n).padStart(4, "0")}`),
+      );
+      expect(again.listAll().filter((m) => m.archived_at !== null)).toHaveLength(502);
+      again.archive("kage:1002");
+      again.archive("kage:1003", false);
+      again.delete("kage:0000");
+      expect(again.listAll()).toHaveLength(1003);
+      expect(again.listAll().filter((m) => m.archived_at !== null)).toHaveLength(502);
+      reopened.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

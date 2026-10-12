@@ -132,8 +132,14 @@ export function engineeringCapture(record: EngineeringRecord): RawCapture | null
   )
     return null;
   if (
-    (record.domain === "pr" || record.domain === "issue" || record.domain === "repo") &&
-    !record.scope.startsWith("repo:")
+    (record.domain === "pr" || record.domain === "repo" || record.domain === "issue") &&
+    !record.scope.startsWith("repo:") &&
+    !(
+      record.domain === "issue" &&
+      record.source === "issues" &&
+      (record.sourceRef.startsWith("linear:") || record.sourceRef.startsWith("jira:")) &&
+      record.scope === `issue:${record.sourceRef}`
+    )
   )
     return null;
   if (record.domain === "meeting" && !record.scope.startsWith("meeting:")) return null;

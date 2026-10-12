@@ -21,7 +21,7 @@ Evolve memory into a structured knowledge system across all engineering domains.
 
 ## Tasks
 
-- [ ] Ingest remaining domains (typed 11-domain ingestor exists; production sources for issues, decisions, architecture, infra, people, incidents and Fawkes interactions are not wired).
+- [ ] Ingest all engineering domains (typed 11-domain ingestor exists; trusted issue transitions now join PR/CI/deployments, while decisions, architecture, infra, people, incidents and Fawkes interactions lack verified producers).
 - [x] Answer with per-item source id, source, confidence and freshness; generated text is a separate hypothesis.
 - [x] Distinguish stored fact, retrieved evidence, earlier interpretation and generated hypothesis in the UI.
 
@@ -39,7 +39,7 @@ Evolve memory into a structured knowledge system across all engineering domains.
 
 ## Implementation notes
 
-`@phoenix/ai-memory` accepts bounded source-authenticated structured engineering records, never raw descriptions, transcripts, logs or prompts. Core currently maps only trusted GitHub PR, CI and deployment event identifiers/status plus existing git/meetings/docs. The memory answer API returns `facts`, `retrieved_evidence`, `stored_interpretations` and a separately labelled generated `hypothesis`; source confidence is not confidence in model output. Migration 19 adds the evidence kind without dropping pre-existing FTS, vectors, citations or graph provenance. The source-backed-fact UI invariant has behavioral tests, but “never” across every future model and integration is not proved. Event history deletion does not yet purge derived engineering memory; explicit forget and retention still apply.
+`@phoenix/ai-memory` accepts bounded source-authenticated structured records, never raw descriptions, transcripts, logs or prompts. Core maps validated issue tracker keys/category transitions, GitHub PR/CI/deployment identifiers/status and existing git/meetings/docs. Issue titles, status labels, URLs and people are excluded; owner/issue scope, freshness and retention are enforced. The answer API separates `facts`, `retrieved_evidence`, `stored_interpretations` and generated `hypothesis`; source confidence does not certify model output. Migrations 19 and 24 add evidence kinds and deletion cascades for issue-derived memories without losing FTS/vectors/graph provenance. The UI invariant has behavioral tests, but independent corpus evaluation across domains remains open.
 
 ---
 Back to [TRACKER](TRACKER.md)

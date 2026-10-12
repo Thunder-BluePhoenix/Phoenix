@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { useEffect, useId, useState, type FormEvent } from "react";
-import { formatDate, safeHttpsUrl } from "../core/format";
+import { formatDate, safeHttpUrl, safeHttpsUrl } from "../core/format";
 import {
   useAction,
   useMeetingLinks,
@@ -50,11 +50,18 @@ import { Feedback } from "./Feedback";
 
 export const planHref = (id: string) => `#/plans/${encodeURIComponent(id)}`;
 
-/** An external address: always shown as text, and a link only when it is https. */
-function ExternalUrl({ url }: { url: string }) {
-  const href = safeHttpsUrl(url);
+/** External addresses are shown as text unless HTTPS, or Frappe's configured loopback HTTP. */
+function ExternalUrl({ url, system }: { url: string; system?: Plan["target"] }) {
+  const parsed = system === "frappe" ? safeHttpUrl(url) : safeHttpsUrl(url);
+  const href =
+    parsed &&
+    (parsed.startsWith("https:") ||
+      (system === "frappe" &&
+        ["localhost", "127.0.0.1", "[::1]"].includes(new URL(parsed).hostname)))
+      ? parsed
+      : null;
   return href ? (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="break">
+    <a href={href} target="_blank" rel="noopener noreferrer" className="memory-text break">
       {url}
     </a>
   ) : (
@@ -252,7 +259,11 @@ function LinkRow({ link }: { link: PlanLink }) {
   return (
     <li>
       <span className="mem-badge">{link.system === "github" ? "GitHub" : "Frappe"}</span>{" "}
-      <span className="memory-text">{link.external_id}</span> · <ExternalUrl url={link.url} />
+      <span className="memory-text">
+        {link.system === "frappe" ? "Task " : ""}
+        {link.external_id}
+      </span>{" "}
+      · <ExternalUrl url={link.url} system={link.system} />
       <span className="muted small">
         {" "}
         · task {link.task_index + 1} of <a href={planHref(link.plan_id)}>its plan</a> · approved{" "}
@@ -506,7 +517,15 @@ function Preview({ preview }: { preview: PlanPreview }) {
   );
 }
 
-function Runs({ runs, report }: { runs: PlanTaskRun[]; report: PlanCreationReport | null }) {
+function Runs({
+  runs,
+  report,
+  system,
+}: {
+  runs: PlanTaskRun[];
+  report: PlanCreationReport | null;
+  system: Plan["target"];
+}) {
   if (runs.length === 0) return null;
   return (
     <section aria-labelledby="runs-h" className="card">
@@ -518,11 +537,17 @@ function Runs({ runs, report }: { runs: PlanTaskRun[]; report: PlanCreationRepor
           <li key={r.task_index}>
             <strong>Task {r.task_index + 1}:</strong> {RUN_TEXT[r.status]}
             {r.attempts > 1 && <span className="muted small"> · {r.attempts} attempts</span>}
-            {r.external_id && <span className="memory-text"> · {r.external_id}</span>}
+            {r.external_id && (
+              <span className="memory-text">
+                {" "}
+                · {system === "frappe" ? "Frappe Task " : ""}
+                {r.external_id}
+              </span>
+            )}
             {r.url && (
               <>
                 {" "}
-                · <ExternalUrl url={r.url} />
+                · <ExternalUrl url={r.url} system={system} />
               </>
             )}
             {r.error && <p className="error-text small memory-text">{r.error}</p>}
@@ -675,6 +700,62 @@ export function PlanPage({ planId }: { planId: string }) {
                 </li>
               ))}
             </ol>
+            {plan.destination.system === "frappe" && plan.frappe && (
+              <section aria-labelledby="frappe-design-h">
+                <h3 id="frappe-design-h" className="h4">
+                  Proposed Frappe DocType:{" "}
+                  <span className="memory-text">{plan.frappe.doctype}</span>
+                </h3>
+                <p className="muted small">
+                  Suggested design only. Creating tasks does not create this DocType, its fields,
+                  workflow or permissions.
+                </p>
+                <h4>Fields</h4>
+                {plan.frappe.fields.length ? (
+                  <ul className="task-list" aria-label="Proposed Frappe fields">
+                    {plan.frappe.fields.map((field, i) => (
+                      <li key={i} className="memory-text">
+                        {field.label} · {field.fieldtype}
+                        {field.required ? " · required" : ""}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted small">No fields proposed.</p>
+                )}
+                <h4>Workflow states</h4>
+                {plan.frappe.workflow_states.length ? (
+                  <ol className="task-list" aria-label="Proposed Frappe workflow states">
+                    {plan.frappe.workflow_states.map((state, i) => (
+                      <li key={i} className="memory-text">
+                        {i + 1}. {state}
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="muted small">No workflow states proposed.</p>
+                )}
+                <h4>Permissions</h4>
+                {plan.frappe.permissions.length ? (
+                  <ul className="task-list" aria-label="Proposed Frappe permissions">
+                    {plan.frappe.permissions.map((permission, i) => (
+                      <li key={i} className="memory-text">
+                        {permission.role}:{" "}
+                        {[
+                          permission.read && "read",
+                          permission.write && "write",
+                          permission.create && "create",
+                        ]
+                          .filter(Boolean)
+                          .join(", ") || "no access"}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted small">No permissions proposed.</p>
+                )}
+              </section>
+            )}
             <Statements heading="Acceptance criteria" items={plan.acceptance_criteria} />
             <Statements heading="Risks" items={plan.risks} />
             {plan.open_questions.length > 0 && (
@@ -809,7 +890,7 @@ export function PlanPage({ planId }: { planId: string }) {
         <Feedback error={create.error} />
       </section>
 
-      <Runs runs={data.runs} report={report} />
+      <Runs runs={data.runs} report={report} system={plan.target} />
 
       {data.links.length > 0 && (
         <section aria-labelledby="links-created-h" className="card">

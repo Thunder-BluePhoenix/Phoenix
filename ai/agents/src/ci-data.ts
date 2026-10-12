@@ -137,12 +137,19 @@ export function parseFailureDetails(value: unknown): FailureDetails | null {
 
 export interface CommitResult {
   /** Present when a `ref` was asked for: did that commit exist in the repository? */
+  /** Canonical GitHub identity observed from the watched local repository, if unambiguous. */
+  githubRepository: string | null;
   ref: { requested: string; found: boolean } | null;
   commits: CommitInfo[];
 }
 
 export function parseCommits(value: unknown): CommitResult | null {
   if (!isRecord(value) || !Array.isArray(value.commits)) return null;
+  const githubRepository =
+    typeof value.github_repository === "string" &&
+    /^[a-z0-9][a-z0-9-]{0,38}\/(?!\.{1,2}$)[a-z0-9._-]{1,100}$/.test(value.github_repository)
+      ? value.github_repository
+      : null;
   const ref =
     isRecord(value.ref) &&
     typeof value.ref.requested === "string" &&
@@ -165,7 +172,7 @@ export function parseCommits(value: unknown): CommitResult | null {
       files,
     });
   }
-  return { ref, commits: out };
+  return { ref, commits: out, githubRepository };
 }
 
 /**

@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 //
-// Embeddings always go through the model router (AiService), so the same rules apply as for any
-// other model call: AI off means no call, the privacy class decides which providers may see the
-// text, and sensitive text never reaches a cloud provider for these purposes (neither purpose
-// below is in SENSITIVE_CLOUD_PURPOSES, which is code, not a setting).
+// Embeddings pin a specific local provider through AiService. A missing or failing local model
+// degrades retrieval to lexical rather than trying another provider, including opted-in cloud.
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
 import {
   AiDisabledError,
@@ -108,6 +106,7 @@ export class AiEmbedder implements Embedder {
     const outcome = await this.ai.run({
       kind: "embed",
       request: { input, privacy, purpose, model: this.options.model },
+      localProvider: this.options.provider,
       preferred: this.options.provider,
       signal,
       timeoutMs: this.options.timeoutMs,

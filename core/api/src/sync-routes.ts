@@ -18,6 +18,12 @@ export function syncRoutes(services: CoreServices): Route[] {
     route("POST", "/api/sync/exclusions", async ({ body }) =>
       sync().exclusions(expectObject(await body())),
     ),
+    route("POST", "/api/sync/adapter", async ({ body }) =>
+      sync().adapter(expectObject(await body())),
+    ),
+    route("POST", "/api/sync/adapter/apply", async ({ body }) =>
+      sync().apply(expectObject(await body())),
+    ),
     route("POST", "/api/sync/items", async ({ body }) => sync().upsert(expectObject(await body()))),
     route("POST", "/api/sync/items/delete", async ({ body }) => {
       const input = expectObject(await body());

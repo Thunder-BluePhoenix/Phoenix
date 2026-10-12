@@ -7,7 +7,7 @@ import { Feedback } from "./Feedback";
 
 const bounded = (text: string, limit = 500) => text.slice(0, limit);
 
-/** Manual-only, opt-in suggestions from accepted, unassigned Kage action items. */
+/** Opt-in Kage suggestions with an optional local evaluation cadence. */
 export function ProactiveSettingsSection() {
   const client = useClient();
   const pending = useRef(false);
@@ -82,14 +82,18 @@ export function ProactiveSettingsSection() {
       <p className="muted small">
         Off by default. The only supported source is accepted, unassigned action items from Kage
         meetings. Kage must be available. No deployment prediction, incident or dependency provider
-        is available. Suggestions are evaluated only when you press Evaluate now; this page does not
-        start background notifications.
+        is available. Evaluation is manual unless you explicitly select a cadence after opting in.
+        Scheduled evaluation runs locally and respects quiet hours, rate limits and emergency stop.
       </p>
       {status && (
         <>
           <p role="status">
-            Kage source: {available ? "available" : "unavailable"} (manual only). Suggestions are{" "}
-            {optedIn ? "on" : "off"}.
+            Kage source: {available ? "available" : "unavailable"}. Suggestions are{" "}
+            {optedIn ? "on" : "off"} (
+            {status.preferences.cadenceMinutes
+              ? `every ${status.preferences.cadenceMinutes} minutes`
+              : "manual only"}
+            ).
           </p>
           <fieldset disabled={busy}>
             <legend>Opt in</legend>
@@ -113,6 +117,24 @@ export function ProactiveSettingsSection() {
               Kage accepted, unassigned action items
             </label>
           </fieldset>
+          <label className="field">
+            Automatic evaluation cadence
+            <select
+              disabled={busy || !optedIn || !available}
+              value={status.preferences.cadenceMinutes ?? ""}
+              onChange={(event) =>
+                void save({
+                  cadenceMinutes: event.target.value ? Number(event.target.value) : null,
+                })
+              }
+            >
+              <option value="">Manual only (off)</option>
+              <option value="15">Every 15 minutes</option>
+              <option value="30">Every 30 minutes</option>
+              <option value="60">Every hour</option>
+              <option value="1440">Every day</option>
+            </select>
+          </label>
           <fieldset disabled={busy}>
             <legend>Quiet hours</legend>
             <label className="choice">

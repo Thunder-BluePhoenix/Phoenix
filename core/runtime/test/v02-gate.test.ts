@@ -10,9 +10,14 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { WS_PROTOCOL, WS_TOKEN_PREFIX } from "@phoenix/api";
+import { MemorySecretStore } from "@phoenix/persistence";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import WebSocket from "ws";
+import { startMockGithub } from "../../../capabilities/github/testing/mock-github";
+import { MOCK_KAGE_KEY, startMockKage } from "../../../capabilities/kage/testing/mock-kage";
 import { builtinCapabilities } from "../src/builtins";
-import { connect, startCore } from "./helpers";
+import { connect, startCore, TOKEN } from "./helpers";
 
 interface FeedEvent {
   event: { source: string; severity: string; event_type: string; correlation_id?: string };
@@ -20,7 +25,7 @@ interface FeedEvent {
 interface CapabilityRow {
   id: string;
   status: string;
-  health: { status: string; message?: string };
+  health: { status: string; message?: string; checkedAt?: string };
 }
 
 let stop: (() => Promise<void>) | undefined;
@@ -180,5 +185,194 @@ describe("v0.2 gate: several integrations, one protocol", () => {
     const caps = (await core.api("GET", "/api/capabilities")).json.capabilities as CapabilityRow[];
     expect(caps.find((c) => c.id === "frappe")?.status).toBe("enabled");
     expect(caps.find((c) => c.id === "git")?.status).toBe("enabled");
+  }, 40_000);
+
+  it("cycles every production builtin and the development mock without external services", async () => {
+    const frappe = await frappeFixture();
+    const github = await startMockGithub();
+    const kage = await startMockKage();
+    const core = await startCore(
+      {},
+      { capabilities: builtinCapabilities("dev"), secrets: new MemorySecretStore() },
+    );
+    stop = async () => {
+      try {
+        await core.runtime.stop();
+      } finally {
+        await Promise.all([github.close(), kage.close()]);
+      }
+    };
+    const api = core.api;
+    const configure = async (id: string, config: unknown) => {
+      expect((await api("POST", `/api/capabilities/${id}/config`, { config })).status).toBe(200);
+    };
+    await configure("frappe", {
+      benches: [frappe.bench],
+      sites: { "shop.local": frappe.url },
+      poll_ms: 60_000,
+    });
+    await configure("docker", {
+      socket_path: join(frappe.bench, "absent-docker.sock"),
+      poll_ms: 60_000,
+    });
+    await configure("git", {
+      repositories: [join(frappe.bench, "absent-repository")],
+      poll_ms: 60_000,
+    });
+    await configure("github", {
+      repositories: ["octo/phoenix"],
+      api_url: github.url,
+      poll_ms: 60_000,
+    });
+    await configure("kage", { base_url: kage.url, poll_ms: 60_000 });
+    expect(
+      (await api("POST", "/api/capabilities/kage/secrets/api_key", { value: MOCK_KAGE_KEY }))
+        .status,
+    ).toBe(200);
+    // Issues has no tracker configured; it must not try a remote provider.
+    // Device capture is only lifecycle/permission-smoked here: real media, local models,
+    // hardware, agent launching, and tracker writes need a separate external signal.
+    const ids = [
+      ...builtinCapabilities("prod").map((module) => module.manifest.id),
+      "capture-microphone",
+      "capture-screen",
+      "mock",
+    ];
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(builtinCapabilities("prod").some((module) => module.manifest.id === "mock")).toBe(false);
+    expect(
+      (await api("GET", "/api/capabilities")).json.capabilities
+        .map((cap: CapabilityRow) => cap.id)
+        .sort(),
+    ).toEqual([...ids].sort());
+    const row = async (id: string) => {
+      const response = await api("GET", `/api/capabilities/${id}`);
+      expect(response.status).toBe(200);
+      return response.json as CapabilityRow;
+    };
+    for (const id of ids) {
+      expect((await row(id)).status).toBe("installed");
+      const enabled = await api("POST", `/api/capabilities/${id}/enable`, {});
+      expect(enabled.status).toBe(200);
+      expect((await row(id)).status).toBe("enabled");
+      const checked = await core.runtime.capabilities.checkHealth(id);
+      expect(checked.health.status).toMatch(/^(healthy|degraded|unhealthy)$/);
+      expect(checked.health.checkedAt).toBeTruthy();
+      expect((await api("POST", `/api/capabilities/${id}/disable`, {})).json.status).toBe(
+        "disabled",
+      );
+      expect((await row(id)).health.status).toBe("unknown");
+      if (id === "mock") {
+        expect(
+          (await api("POST", "/api/capabilities/mock/commands/ping", { input: {} })).json.code,
+        ).toBe("CAPABILITY_DISABLED");
+      }
+      expect((await api("POST", `/api/capabilities/${id}/enable`, {})).json.status).toBe("enabled");
+      expect((await row(id)).status).toBe("enabled");
+    }
+    await vi.waitFor(async () => {
+      expect((await core.runtime.capabilities.checkHealth("docker")).health.status).toBe(
+        "degraded",
+      );
+      expect((await core.runtime.capabilities.checkHealth("git")).health.status).toBe("unhealthy");
+      expect((await core.runtime.capabilities.checkHealth("frappe")).health.status).toBe("healthy");
+    });
+    expect((await core.runtime.capabilities.checkHealth("docker")).health.message).toContain(
+      "Docker socket",
+    );
+    expect((await core.runtime.capabilities.checkHealth("git")).health.message).toContain(
+      "absent-repository",
+    );
+    await vi.waitFor(async () => {
+      expect((await core.runtime.capabilities.checkHealth("github")).health.status).toBe("healthy");
+    });
+    expect(github.requests.some((request) => request.path.startsWith("/repos/octo/phoenix/"))).toBe(
+      true,
+    );
+    expect((await core.runtime.capabilities.checkHealth("issues")).health).toMatchObject({
+      status: "degraded",
+      message: "No trackers are configured",
+    });
+    expect((await core.runtime.capabilities.checkHealth("kage")).health.status).toBe("healthy");
+    expect((await core.runtime.capabilities.checkHealth("mock")).health.status).toBe("healthy");
+    const command = async (id: string, name: string, input: unknown) => {
+      const posted = await api("POST", `/api/capabilities/${id}/commands/${name}`, { input });
+      expect(posted.status).toBe(202);
+      let operation: { status: string; result?: unknown; error?: { code: string } } | undefined;
+      await vi.waitFor(async () => {
+        operation = (await api("GET", `/api/operations/${posted.json.id}`)).json;
+        expect(["succeeded", "failed"]).toContain(operation?.status);
+      });
+      return operation!;
+    };
+    expect(await command("mock", "ping", {})).toMatchObject({
+      status: "succeeded",
+      result: "pong",
+    });
+    // Planning has no authorized review service in this fixture; never synthesize plan data.
+    expect(
+      await command("plans", "review_context", {
+        plan_id: `plan_${"0".repeat(32)}`,
+      }),
+    ).toMatchObject({ status: "failed", error: { code: "CAPABILITY_UNAVAILABLE" } });
+    expect(
+      await command("terminal", "report", {
+        phase: "finished",
+        id: "gate-smoke",
+        command: "echo gate",
+        kind: "command",
+        exit_code: 0,
+      }),
+    ).toMatchObject({ status: "succeeded" });
+    await core.runtime.bus.drain();
+    expect(
+      ((await api("GET", "/api/events?limit=200")).json.events as FeedEvent[]).some(
+        ({ event }) => event.source === "terminal" && event.event_type === "command.completed",
+      ),
+    ).toBe(true);
+    // A loopback Kage outage is visible without bringing down Core or the other pollers.
+    kage.setDown(true);
+    expect((await core.runtime.capabilities.checkHealth("kage")).health.status).toBe("unhealthy");
+    expect((await api("GET", "/api/health")).status).toBe(200);
+    expect((await row("frappe")).status).toBe("enabled");
+    expect((await row("github")).status).toBe("enabled");
+    kage.setDown(false);
+    expect((await core.runtime.capabilities.checkHealth("kage")).health.status).toBe("healthy");
+    // Capture grants are isolated; disabling either does not disable the other.
+    expect(core.runtime.permissions.grants.has("capture-microphone", "microphone")).toBe(true);
+    expect(core.runtime.permissions.grants.has("capture-screen", "screen_capture")).toBe(true);
+    expect((await api("POST", "/api/capabilities/capture-screen/disable", {})).status).toBe(200);
+    expect((await row("capture-microphone")).status).toBe("enabled");
+    expect(core.runtime.multimodal.captureAllowed("screen")).toBe(false);
+    expect(core.runtime.multimodal.captureAllowed("microphone")).toBe(true);
+    expect((await api("POST", "/api/capabilities/capture-screen/enable", {})).status).toBe(200);
+    expect(core.runtime.multimodal.captureAllowed("screen")).toBe(true);
+    // Even with a lifecycle grant, no local speech model means no device data is accepted.
+    const capture = new WebSocket(
+      `ws://127.0.0.1:${core.port}/api/multimodal/capture`,
+      [WS_PROTOCOL, WS_TOKEN_PREFIX + TOKEN],
+      { headers: { Origin: core.base } },
+    );
+    try {
+      await new Promise<void>((resolve, reject) => {
+        capture.once("open", resolve);
+        capture.once("error", reject);
+      });
+      const refused = new Promise<{ type: string; error?: unknown }>((resolve, reject) => {
+        capture.on("message", (data) => {
+          const message = JSON.parse(data.toString()) as { type: string; error?: unknown };
+          if (message.type === "error") resolve(message);
+        });
+        capture.once("close", () => reject(new Error("Capture closed before refusing input")));
+      });
+      capture.send(JSON.stringify({ kind: "microphone", agent_id: "user" }));
+      expect((await refused).error).toBeTruthy();
+      expect(core.runtime.permissions.pendingConfirmations()).toHaveLength(0);
+    } finally {
+      capture.terminate();
+    }
+    expect((await api("GET", "/api/health")).status).toBe(200);
+    expect(github.requests.filter((request) => request.method !== "GET")).toEqual([]);
+    expect(github.writes).toEqual([]);
   }, 40_000);
 });

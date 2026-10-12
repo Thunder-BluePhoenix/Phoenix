@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import type { AgentRisk, AgentRunState, AgentStep, AgentTaskDetail } from "./types";
+import type { AgentRisk, AgentRunState, AgentStep } from "./types";
 
 /** Plain-language run states (Phase 31 state machine). Only states Core actually reports. */
 export const RUN_STATE_TEXT: Record<AgentRunState, string> = {
@@ -64,14 +64,3 @@ export const SIDE_EFFECT_ACTION: Record<string, string> = {
   external: "act on an external service",
   production: "change production",
 };
-
-const KIND_TITLE: Record<string, (input: Record<string, unknown>) => string> = {
-  ci_failure: (input) =>
-    typeof input.repository === "string" ? `CI failure in ${input.repository}` : "CI failure",
-};
-
-/** The task's title; Core's detail route does not carry one, so it is derived from kind and input. */
-export function taskTitle(detail: AgentTaskDetail): string {
-  const titleOf = KIND_TITLE[detail.task.kind];
-  return titleOf ? titleOf(detail.task.input) : "Agent task";
-}

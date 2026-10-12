@@ -24,6 +24,7 @@
   "devDependencies": {
     "@phoenix/capability-git": "workspace:*",
     "@phoenix/capability-github": "workspace:*",
+    "@phoenix/capability-planning": "workspace:*",
     "@phoenix/config": "workspace:*",
     "@phoenix/sdk": "workspace:*",
     "@phoenix/sdk-testing": "workspace:*",

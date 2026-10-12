@@ -63,6 +63,8 @@ export interface Confirmation {
   permissions: string[];
   requestedAt: string;
   expiresAt: string;
+  /** Safe workflow identifiers only; other policy requests have no details. */
+  details?: { workflow?: string; run?: string; step?: string };
   /** Optional, present only for a request raised by an active agent run (Phase 31). */
   task_id?: string;
   risk?: AgentRisk;
@@ -366,6 +368,7 @@ export interface AgentVerification {
 export interface AgentTaskDetail {
   task: {
     id: string;
+    title: string;
     kind: string;
     input: Record<string, unknown>;
     requested_by: string;
@@ -755,7 +758,7 @@ export interface RetrievalSettings {
 export interface RetrievalStatus {
   enabled: boolean;
   active: boolean;
-  inactive_reason: "retrieval_disabled" | "ai_disabled" | null;
+  inactive_reason: "retrieval_disabled" | "ai_disabled" | "kill_switch" | null;
   provider: string;
   model: string;
   vector_space: string;
@@ -810,6 +813,14 @@ export interface PlanTask {
   quote?: string;
 }
 
+/** A proposed Frappe DocType design; creation only creates Tasks, not this DocType. */
+export interface FrappePlanDesign {
+  doctype: string;
+  fields: { label: string; fieldtype: string; required: boolean }[];
+  workflow_states: string[];
+  permissions: { role: string; read: boolean; write: boolean; create: boolean }[];
+}
+
 export interface Plan {
   id: string;
   meeting_id: string;
@@ -830,6 +841,7 @@ export interface Plan {
   risks: PlanStatement[];
   open_questions: string[];
   tasks: PlanTask[];
+  frappe: FrappePlanDesign | null;
   source: {
     item_id: string;
     meeting_id: string;
@@ -1043,6 +1055,7 @@ export interface ProactivePreferences {
   capabilities: string[];
   quietHours: { timezone: string; start: string; end: string } | null;
   maxPerHour: number;
+  cadenceMinutes: 15 | 30 | 60 | 1440 | null;
 }
 
 export interface ProactiveNoise {

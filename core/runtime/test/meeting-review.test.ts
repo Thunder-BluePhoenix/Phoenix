@@ -136,6 +136,39 @@ describe("Kage items after the meeting sync", () => {
     expect((await core.api("GET", "/api/memory")).json.total).toBe(0);
   });
 
+  it("imports and resyncs beyond both 500-row groups after archive changes", async () => {
+    const core = await boot();
+    await core.runtime.capabilities.enable("kage");
+    for (let n = 0; n < 1002; n++) {
+      const id = String(n).padStart(4, "0");
+      const row = core.runtime.meetings.upsert({
+        capabilityId: "kage",
+        externalId: id,
+        status: "ready",
+        startedAt: "2026-10-01T10:00:00Z",
+      })!;
+      core.runtime.meetings.setSummary(row.id, {
+        text: `Planning ${id}`,
+        decisions: [`Decision ${id}`],
+      });
+      if (n % 2) core.runtime.meetings.archive(row.id);
+    }
+    expect(core.runtime.meetingReview.importAll().imported).toBe(1002);
+    for (const id of ["kage:0000", "kage:0001", "kage:1000", "kage:1001"]) {
+      expect(core.runtime.meetingReview.service.items.list(id, { kind: "decision" })).toHaveLength(
+        1,
+      );
+    }
+    core.runtime.meetings.archive("kage:1000");
+    core.runtime.meetings.archive("kage:1001", false);
+    expect(core.runtime.meetingReview.importAll().imported).toBe(0);
+    const sync = vi.spyOn(core.runtime.meetingReview.service, "syncMemory");
+    core.runtime.meetingReview.resyncMemory();
+    expect(sync).toHaveBeenCalledTimes(1002);
+    expect(sync).toHaveBeenCalledWith("kage:1000");
+    expect(sync).toHaveBeenCalledWith("kage:1001");
+  });
+
   it("filters by status and kind and rejects unknown filters", async () => {
     const core = await boot();
     const id = await meeting(core);

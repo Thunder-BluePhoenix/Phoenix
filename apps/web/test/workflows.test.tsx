@@ -718,6 +718,7 @@ describe("Workflow run", () => {
             permissions: [],
             requestedAt: "t",
             expiresAt: "t",
+            details: { workflow: "prod-rollback", run: "run_1", step: "gate" },
           },
         ],
       }),
@@ -725,7 +726,77 @@ describe("Workflow run", () => {
     expect(
       await screen.findByRole("button", { name: /^Approve: Policy approval: Read logs/ }),
     ).toBeTruthy();
+    expect(screen.getByText("gate · Tool policy approval")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Waiting for you" })).toBeNull();
+  });
+
+  it("scopes simultaneous run approvals by run and keeps unrelated policy approvals out", async () => {
+    const confirmations = [
+      {
+        id: "conf_gate_one",
+        capabilityId: "workflows",
+        command: "approve.run_1.gate",
+        summary: "Workflow approval: First run gate",
+        sideEffect: "external",
+        permissions: [],
+        requestedAt: "t",
+        expiresAt: "t",
+        details: { workflow: "prod-rollback", run: "run_1", step: "gate" },
+      },
+      {
+        id: "conf_gate_two",
+        capabilityId: "workflows",
+        command: "approve.run_2.review",
+        summary: "Workflow approval: Second run review",
+        sideEffect: "external",
+        permissions: [],
+        requestedAt: "t",
+        expiresAt: "t",
+        details: { workflow: "prod-rollback", run: "run_2", step: "review" },
+      },
+      {
+        id: "conf_other_workflow",
+        capabilityId: "workflows",
+        command: "approve.run_1.gate",
+        summary: "Another workflow's gate",
+        sideEffect: "external",
+        permissions: [],
+        requestedAt: "t",
+        expiresAt: "t",
+        details: { workflow: "another-workflow", run: "run_1", step: "gate" },
+      },
+      {
+        id: "conf_policy",
+        capabilityId: "deploys",
+        command: "rollback",
+        summary: "Unrelated policy approval",
+        sideEffect: "production",
+        permissions: [],
+        requestedAt: "t",
+        expiresAt: "t",
+      },
+    ];
+    runRig(runDetail({ status: "waiting_approval" }), {
+      "GET /api/workflows/runs/run_2": () =>
+        runDetail({ id: "run_2", status: "waiting_approval", current_step: "review" }),
+      "GET /api/confirmations": () => ({ confirmations }),
+    });
+    expect(
+      await screen.findByRole("button", { name: "Approve: Workflow approval: First run gate" }),
+    ).toBeTruthy();
+    expect(screen.getByText("gate · Workflow approval")).toBeTruthy();
+    expect(screen.queryByText("Workflow approval: Second run review")).toBeNull();
+    expect(screen.queryByText("Unrelated policy approval")).toBeNull();
+    expect(screen.queryByText("Another workflow's gate")).toBeNull();
+
+    window.location.hash = "#/workflows/prod-rollback/runs/run_2";
+    act(() => void window.dispatchEvent(new HashChangeEvent("hashchange")));
+    expect(
+      await screen.findByRole("button", { name: "Approve: Workflow approval: Second run review" }),
+    ).toBeTruthy();
+    expect(screen.getByText("review · Workflow approval")).toBeTruthy();
+    expect(screen.queryByText("Workflow approval: First run gate")).toBeNull();
+    expect(screen.queryByText("Unrelated policy approval")).toBeNull();
   });
 
   it("renders hostile step input, output, error, trigger and reason as text", async () => {
@@ -761,5 +832,249 @@ describe("Workflow run", () => {
   it("explains a missing run", async () => {
     openAt("#/workflows/prod-rollback/runs/nope", {});
     expect((await screen.findByRole("alert")).textContent).toContain("Not found");
+  });
+});
+
+describe("Workflow definition authoring", () => {
+  const valid = () => ({
+    valid: true,
+    problems: [],
+    hash: HASH,
+    authorisation: { required: true, reasons: ["production"] },
+  });
+  const draft = { ...definition, enabled: false };
+
+  it("creates only after API validation and an explicit review; never authorises or enables", async () => {
+    const m = openAt("#/workflows", {
+      "GET /api/workflows": () => ({ workflows: [] }),
+      "POST /api/workflows/validate": valid,
+      "POST /api/workflows": () => ({ workflow: workflow({ enabled: false }) }),
+    });
+    const editor = await section("Create workflow");
+    const input = editor.getByRole("textbox", { name: "Workflow definition (JSON)" });
+    fireEvent.change(input, { target: { value: JSON.stringify(draft) } });
+    expect(m.api.posts("/api/workflows")).toHaveLength(0);
+    doubleClick(() => fireEvent.click(editor.getByRole("button", { name: "Check draft" })));
+    await editor.findByText(HASH);
+    expect(m.api.posts("/api/workflows/validate")).toHaveLength(1);
+    expect(m.api.posts("/api/workflows/validate")[0]?.body).toEqual({ definition: draft });
+    expect(editor.getByLabelText("Definition to save").textContent).toContain("prod-rollback");
+    expect(editor.getByText(/Authorisation required separately/)).toBeTruthy();
+    expect(m.api.posts("/api/workflows")).toHaveLength(0);
+    doubleClick(() =>
+      fireEvent.click(
+        editor.getByRole("button", { name: "Confirm: save exactly this definition" }),
+      ),
+    );
+    await waitFor(() => expect(m.api.posts("/api/workflows")).toHaveLength(1));
+    expect(m.api.posts("/api/workflows")[0]?.body).toEqual({
+      definition: draft,
+      create_only: true,
+    });
+    expect(m.api.posts("/api/workflows/prod-rollback/authorise")).toHaveLength(0);
+    expect(m.api.posts("/api/workflows/prod-rollback/enabled")).toHaveLength(0);
+    expect(await editor.findByText(/Definition saved/)).toBeTruthy();
+  });
+
+  it("refuses an ID collision atomically and reports a save failure", async () => {
+    const m = openAt("#/workflows", {
+      "GET /api/workflows": () => ({ workflows: [] }),
+      "POST /api/workflows/validate": valid,
+      "POST /api/workflows": () =>
+        new Response(
+          JSON.stringify({
+            code: "INVALID_REQUEST",
+            message: "A workflow with this ID already exists",
+          }),
+          { status: 400 },
+        ),
+    });
+    const editor = await section("Create workflow");
+    fireEvent.change(editor.getByRole("textbox", { name: "Workflow definition (JSON)" }), {
+      target: { value: JSON.stringify(draft) },
+    });
+    fireEvent.click(editor.getByRole("button", { name: "Check draft" }));
+    await editor.findByText(HASH);
+    fireEvent.click(editor.getByRole("button", { name: "Confirm: save exactly this definition" }));
+    expect(await editor.findByText(/already exists/)).toBeTruthy();
+    expect(m.api.posts("/api/workflows")[0]?.body).toEqual({
+      definition: draft,
+      create_only: true,
+    });
+    expect(
+      editor.queryByRole("button", { name: "Confirm: save exactly this definition" }),
+    ).toBeNull();
+  });
+
+  it("refuses malformed JSON, non-object JSON, and an enabled draft before contacting Core", async () => {
+    const m = openAt("#/workflows", { "GET /api/workflows": () => ({ workflows: [] }) });
+    const editor = await section("Create workflow");
+    const input = editor.getByRole("textbox", { name: "Workflow definition (JSON)" });
+    for (const value of ["{", "[]", JSON.stringify({ ...draft, enabled: true })]) {
+      fireEvent.change(input, { target: { value } });
+      fireEvent.click(editor.getByRole("button", { name: "Check draft" }));
+      expect(editor.getByRole("alert")).toBeTruthy();
+    }
+    expect(m.api.posts("/api/workflows/validate")).toHaveLength(0);
+    expect(m.api.posts("/api/workflows")).toHaveLength(0);
+  });
+
+  it("renders unsafe JSON and server problems as inert text, and blocks invalid saves", async () => {
+    const m = openAt("#/workflows", {
+      "GET /api/workflows": () => ({ workflows: [] }),
+      "POST /api/workflows/validate": () => ({
+        valid: false,
+        problems: [XSS],
+        hash: null,
+        authorisation: null,
+      }),
+    });
+    const editor = await section("Create workflow");
+    fireEvent.change(editor.getByRole("textbox", { name: "Workflow definition (JSON)" }), {
+      target: { value: JSON.stringify({ ...draft, name: XSS }) },
+    });
+    fireEvent.click(editor.getByRole("button", { name: "Check draft" }));
+    await editor.findByRole("alert");
+    expectInert(m.container);
+    expect(
+      editor.queryByRole("button", { name: "Confirm: save exactly this definition" }),
+    ).toBeNull();
+    expect(m.api.posts("/api/workflows")).toHaveLength(0);
+  });
+
+  it("discards the reviewed hash when the draft changes and handles validation API failures", async () => {
+    const m = openAt("#/workflows", {
+      "GET /api/workflows": () => ({ workflows: [] }),
+      "POST /api/workflows/validate": valid,
+    });
+    const editor = await section("Create workflow");
+    const input = editor.getByRole("textbox", { name: "Workflow definition (JSON)" });
+    fireEvent.change(input, { target: { value: JSON.stringify(draft) } });
+    fireEvent.click(editor.getByRole("button", { name: "Check draft" }));
+    await editor.findByText(HASH);
+    fireEvent.change(input, { target: { value: JSON.stringify({ ...draft, name: "Changed" }) } });
+    expect(
+      editor.queryByRole("button", { name: "Confirm: save exactly this definition" }),
+    ).toBeNull();
+    m.api.set(
+      "POST /api/workflows/validate",
+      () =>
+        new Response(JSON.stringify({ code: "INVALID_REQUEST", message: "Core unavailable" }), {
+          status: 400,
+        }),
+    );
+    fireEvent.click(editor.getByRole("button", { name: "Check draft" }));
+    expect(await editor.findByText("Core unavailable")).toBeTruthy();
+    expect(m.api.posts("/api/workflows")).toHaveLength(0);
+  });
+
+  it("does not revive a review when an in-flight validation returns after editing", async () => {
+    const { promise, resolve: finish } = Promise.withResolvers<unknown>();
+    const m = openAt("#/workflows", {
+      "GET /api/workflows": () => ({ workflows: [] }),
+      "POST /api/workflows/validate": () => promise,
+    });
+    const editor = await section("Create workflow");
+    const input = editor.getByRole("textbox", { name: "Workflow definition (JSON)" });
+    fireEvent.change(input, { target: { value: JSON.stringify(draft) } });
+    fireEvent.click(editor.getByRole("button", { name: "Check draft" }));
+    fireEvent.change(input, { target: { value: JSON.stringify({ ...draft, name: "New draft" }) } });
+    await act(async () => finish(valid()));
+    expect(
+      editor.queryByRole("button", { name: "Confirm: save exactly this definition" }),
+    ).toBeNull();
+    expect(m.api.posts("/api/workflows")).toHaveLength(0);
+  });
+
+  it("reports a saved hash mismatch without claiming review or authorisation", async () => {
+    const m = openAt("#/workflows", {
+      "GET /api/workflows": () => ({ workflows: [] }),
+      "POST /api/workflows/validate": valid,
+      "POST /api/workflows": () => ({ workflow: workflow({ hash: HASH2, enabled: false }) }),
+    });
+    const editor = await section("Create workflow");
+    fireEvent.change(editor.getByRole("textbox", { name: "Workflow definition (JSON)" }), {
+      target: { value: JSON.stringify(draft) },
+    });
+    fireEvent.click(editor.getByRole("button", { name: "Check draft" }));
+    await editor.findByText(HASH);
+    fireEvent.click(editor.getByRole("button", { name: "Confirm: save exactly this definition" }));
+    expect(await editor.findByText(/saved definition hash differs/)).toBeTruthy();
+    expect(editor.queryByText(/Definition saved/)).toBeNull();
+    expect(m.api.posts("/api/workflows/prod-rollback/authorise")).toHaveLength(0);
+  });
+
+  it("edits an existing workflow without changing its switch or authorisation", async () => {
+    const m = rig(workflow(), {
+      "POST /api/workflows/validate": valid,
+      "POST /api/workflows": () => ({ workflow: workflow() }),
+    });
+    const editor = await section("Edit definition");
+    const text = editor.getByRole("textbox", {
+      name: "Workflow definition (JSON)",
+    }) as HTMLTextAreaElement;
+    expect(JSON.parse(text.value)).toMatchObject({ id: "prod-rollback", enabled: true });
+    fireEvent.click(editor.getByRole("button", { name: "Check draft" }));
+    await editor.findByText(HASH);
+    doubleClick(() =>
+      fireEvent.click(
+        editor.getByRole("button", { name: "Confirm: save exactly this definition" }),
+      ),
+    );
+    await waitFor(() => expect(m.api.posts("/api/workflows")).toHaveLength(1));
+    expect(m.api.posts("/api/workflows")[0]?.body).toEqual({
+      definition: { ...definition, enabled: true },
+      expected_hash: HASH,
+    });
+    expect(m.api.posts("/api/workflows/prod-rollback/enabled")).toHaveLength(0);
+    expect(m.api.posts("/api/workflows/prod-rollback/authorise")).toHaveLength(0);
+    expect(await editor.findByText(/Existing switch state is unchanged/)).toBeTruthy();
+  });
+
+  it("binds edits to the reviewed stored hash and exposes an atomic stale save refusal", async () => {
+    const m = rig(workflow(), {
+      "POST /api/workflows/validate": valid,
+      "POST /api/workflows": () =>
+        new Response(
+          JSON.stringify({ code: "INVALID_REQUEST", message: "Workflow changed since review" }),
+          { status: 400 },
+        ),
+    });
+    const editor = await section("Edit definition");
+    fireEvent.click(editor.getByRole("button", { name: "Check draft" }));
+    await editor.findByText(HASH);
+    fireEvent.click(editor.getByRole("button", { name: "Confirm: save exactly this definition" }));
+    expect(await editor.findByText("Workflow changed since review")).toBeTruthy();
+    expect(m.api.posts("/api/workflows")).toHaveLength(1);
+    expect(m.api.posts("/api/workflows")[0]?.body).toEqual({
+      definition: { ...definition, enabled: true },
+      expected_hash: HASH,
+    });
+    expect(
+      editor.queryByRole("button", { name: "Confirm: save exactly this definition" }),
+    ).toBeNull();
+    expect(m.api.posts("/api/workflows/prod-rollback/authorise")).toHaveLength(0);
+  });
+
+  it("keeps the editor and review within a 320px viewport", async () => {
+    const previous = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 320 });
+    try {
+      openAt("#/workflows", {
+        "GET /api/workflows": () => ({ workflows: [] }),
+        "POST /api/workflows/validate": valid,
+      });
+      const editor = await section("Create workflow");
+      const input = editor.getByRole("textbox", { name: "Workflow definition (JSON)" });
+      expect(input.classList.contains("wf-editor-input")).toBe(true);
+      fireEvent.change(input, { target: { value: JSON.stringify(draft) } });
+      fireEvent.click(editor.getByRole("button", { name: "Check draft" }));
+      expect(await editor.findByLabelText("Definition to save")).toBeTruthy();
+      expect(
+        editor.getByRole("button", { name: "Confirm: save exactly this definition" }),
+      ).toBeTruthy();
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: previous });
+    }
   });
 });

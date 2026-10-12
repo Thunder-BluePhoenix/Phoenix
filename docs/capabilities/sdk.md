@@ -1,6 +1,8 @@
 # Capability SDK API and compatibility
 
-The stable **capability contract v1** is the manifest schema, event protocol major 1, and the `@phoenix/sdk` entry point. The current workspace package is `0.1.0` and private: this is a contract freeze for the v0.9 release, **not** a claim that the npm package has already been published as 1.0. Until publication, consume the workspace package from this monorepo.
+The stable **capability contract v1** is the manifest schema, event protocol major 1, and the `@phoenix/sdk` entry point. Package `0.1.0` is configured for local packaging, **not** published or signed as 1.0; its release remains subject to owner approval. For source-checkout development, consume the workspace package from this monorepo.
+
+For a local installable candidate (not an npm publication), see the [versioned static SDK 0.1.0 site](site/0.1.0/index.html). From the repository root, install with `corepack pnpm install --frozen-lockfile`, run `corepack pnpm --filter @phoenix/sdk build` and `corepack pnpm --filter @phoenix/sdk check:artifact`, then inspect `npm pack ./sdk/capability --pack-destination /tmp`. The builder emits a bundled Node ESM entry, rolled-up TypeScript declarations and a GPL license; the checker installs the actual tarball into a disposable consumer and exercises runtime imports, TypeScript imports without ambient Node types, legacy/explicit v1 manifest behavior and historical 1.0/current 1.1 wire behavior. Neither command publishes, signs, tags or certifies a release. Source distribution, notices and licence inventory need release-owner sign-off before distribution; the packed artifact is not a substitute for the corresponding GPL source offer.
 
 ## Public TypeScript surface
 

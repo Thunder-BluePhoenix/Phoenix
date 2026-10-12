@@ -39,6 +39,7 @@ describe("built-in capabilities", () => {
         "issues",
         "kage",
         "mock",
+        "plans",
         "terminal",
       ].sort(),
     );

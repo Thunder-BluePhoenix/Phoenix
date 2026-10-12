@@ -357,6 +357,7 @@ describe("failure handling and compensation", () => {
     const t = setup();
     const clock = new ManualClock();
     const calls = newCalls();
+    calls.signals = [];
     const core = await boot({
       path: t.db,
       calls,
@@ -391,6 +392,7 @@ describe("failure handling and compensation", () => {
     core.bus.publish(buildFailed());
     await vi.waitFor(() => expect(calls.held).toHaveLength(1));
     clock.advance(2000);
+    expect(calls.signals).toHaveLength(1);
     await vi.waitFor(async () => {
       await settle(core);
       expect(core.engine.listRuns()[0]?.terminal).toBe(true);
@@ -398,6 +400,12 @@ describe("failure handling and compensation", () => {
     const run = core.engine.getRun(core.engine.listRuns()[0]!.id)!;
     expect(run.status).toBe("failed_needs_attention");
     expect(run.reason).toMatch(/outcome unknown for stuck/);
+    expect(calls.signals?.[0]?.aborted).toBe(true);
+    await vi.waitFor(() =>
+      expect(
+        core.permissions.audit.list({ limit: 1000 }).some((e) => e.action === "tool.unknown"),
+      ).toBe(true),
+    );
     expect(run.steps.find((s) => s.stepId === "stuck")).toMatchObject({
       status: "timed_out",
       destructive: true,
@@ -435,7 +443,6 @@ describe("failure handling and compensation", () => {
       ai: undefined,
       lookup: undefined,
       sleep: () => Promise.resolve(),
-      abandon: undefined,
       approvalWaitMs: 1,
       warn: () => undefined,
     };
@@ -515,6 +522,39 @@ describe("failure handling and compensation", () => {
 });
 
 describe("kill switch", () => {
+  it("aborts an in-flight write on emergency stop and requires attention", async () => {
+    const t = setup();
+    const calls = newCalls();
+    calls.signals = [];
+    const core = await boot({ path: t.db, calls, autoAnswer: approve });
+    await go(core);
+    core.admin.save(
+      user,
+      devWorkflow(
+        "kill-write",
+        [
+          { id: "gate", type: "approval", summary: "go?" },
+          { id: "write", type: "action", tool: "deploys.stuck_write" },
+        ],
+        ["deploys.stuck_write"],
+      ),
+    );
+    core.bus.publish(buildFailed());
+    await vi.waitFor(() => expect(calls.signals).toHaveLength(1));
+    core.permissions.engageKillSwitch("user", "test");
+    await settle(core);
+    expect(calls.signals?.[0]?.aborted).toBe(true);
+    const run = core.engine.listRuns().find((r) => r.workflowId === "kill-write")!;
+    expect(run.status).toBe("failed_needs_attention");
+    expect(run.reason).toMatch(/outcome unknown for write/);
+    expect(core.engine.getRun(run.id)?.steps.at(-1)).toMatchObject({ status: "unknown" });
+    await vi.waitFor(() =>
+      expect(
+        core.permissions.audit.list({ limit: 1000 }).some((e) => e.action === "tool.unknown"),
+      ).toBe(true),
+    );
+  });
+
   it("cancels running workflows, rejects waiting approvals and refuses new runs", async () => {
     const t = setup();
     const calls = newCalls();

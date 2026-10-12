@@ -14,6 +14,30 @@ import {
   type SyncTransport,
 } from "@phoenix/sync";
 
+/** An allowlist of existing, non-content settings; no meeting, person or memory payloads. */
+const sources = {
+  "pet.settings.reduced_motion": {
+    data_class: "preference",
+    storage: "pet.settings",
+    field: "reduced_motion",
+    fallback: "auto",
+  },
+  "retrieval.settings.k": {
+    data_class: "context",
+    storage: "retrieval.settings",
+    field: "k",
+    fallback: 20,
+  },
+} as const;
+export type SyncSource = keyof typeof sources;
+const sourceKeys = Object.keys(sources) as SyncSource[];
+const sourceId = (key: SyncSource) => `settings:${key}`;
+function validSourceValue(key: SyncSource, value: unknown): boolean {
+  return key === "pet.settings.reduced_motion"
+    ? value === "auto" || value === "on" || value === "off"
+    : typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 200;
+}
+
 interface LocalEntry {
   item: SyncItem;
   base: string | null;
@@ -26,6 +50,7 @@ interface SyncState {
   endpoint: string;
   excluded_projects: string[];
   excluded_classes: SyncClass[];
+  adapter_keys?: SyncSource[];
   items: Record<string, LocalEntry>;
 }
 const STATE_KEY = "sync.state.v1";
@@ -35,17 +60,30 @@ const classes = ["preference", "context", "project_profile"];
 const invalid = (message: string) => new PhoenixError(ErrorCode.INVALID_REQUEST, message);
 const itemKey = (item: Pick<SyncItem, "owner" | "scope" | "id">) =>
   JSON.stringify([item.owner, item.scope, item.id]);
+const validAdapterItem = (item: SyncItem): boolean => {
+  if (!item.id.startsWith("settings:")) return true;
+  const source = sourceKeys.find((key) => sourceId(key) === item.id);
+  return (
+    !!source &&
+    item.scope === "owner" &&
+    item.project === null &&
+    item.data_class === sources[source].data_class &&
+    (item.deleted ? item.value === null : validSourceValue(source, item.value))
+  );
+};
 
 export interface SyncStatus {
   enabled: boolean;
+  /** Shared recovery-key account, not a device id. */
   identity: string | null;
   endpoint: string | null;
   excluded_projects: string[];
   excluded_classes: SyncClass[];
+  adapter_keys: SyncSource[];
   pending: number;
   conflicts: number;
 }
-/** Local-first sync. Remote data is staged for inspection, never written into another subsystem. */
+/** Local-first sync: remote rows remain staged; selected settings apply only after explicit review. */
 export class SyncRuntime {
   constructor(
     private readonly settings: SettingsStore,
@@ -63,6 +101,7 @@ export class SyncRuntime {
       endpoint: "",
       excluded_projects: [],
       excluded_classes: [],
+      adapter_keys: [],
       items: {},
     });
   }
@@ -80,6 +119,7 @@ export class SyncRuntime {
       endpoint: state.endpoint || null,
       excluded_projects: state.excluded_projects,
       excluded_classes: state.excluded_classes,
+      adapter_keys: state.adapter_keys ?? [],
       pending: Object.values(state.items).filter((e) => e.pending).length,
       conflicts: Object.values(state.items).filter((e) => e.conflict).length,
     };
@@ -139,13 +179,19 @@ export class SyncRuntime {
     )
       throw invalid("Invalid sync exclusions");
     const state = this.state();
-    state.excluded_projects = [...new Set(projects as string[])];
-    state.excluded_classes = [...new Set(dataClasses as SyncClass[])];
+    const next = {
+      ...state,
+      excluded_projects: [...new Set(projects as string[])],
+      excluded_classes: [...new Set(dataClasses as SyncClass[])],
+    };
     for (const entry of Object.values(state.items)) {
-      if (!entry.item.deleted && entry.base !== null && !this.allowed(state, entry.item))
+      if (!entry.item.deleted && entry.base !== null && !this.allowed(next, entry.item))
         throw invalid("Delete and sync existing project/class items before excluding them");
     }
-    this.save(state);
+    next.adapter_keys = (next.adapter_keys ?? []).filter(
+      (key) => !next.excluded_classes.includes(sources[key].data_class),
+    );
+    this.save(next);
     return this.status();
   }
   private allowed(state: SyncState, item: SyncItem): boolean {
@@ -154,10 +200,131 @@ export class SyncRuntime {
       (!item.project || !state.excluded_projects.includes(item.project))
     );
   }
+  private sourceValue(key: SyncSource): unknown {
+    const source = sources[key];
+    const stored = this.settings.get<Record<string, unknown>>(source.storage, {});
+    const value = stored?.[source.field] ?? source.fallback;
+    if (!validSourceValue(key, value)) throw invalid(`Invalid local setting ${key}`);
+    return value;
+  }
+  /** Selecting allowlisted sources is deliberate and never imports content records. */
+  adapter(input: Record<string, unknown>): SyncStatus {
+    this.requireIdle();
+    if (Object.keys(input).some((field) => field !== "keys" && field !== "refresh"))
+      throw invalid("Invalid sync adapter fields");
+    const keys = input.keys;
+    if (!Array.isArray(keys) || keys.some((key) => !sourceKeys.includes(key)))
+      throw invalid("Invalid sync adapter selection");
+    const refresh = input.refresh;
+    if (
+      refresh !== undefined &&
+      (typeof refresh !== "string" ||
+        !keys.includes(refresh) ||
+        !sourceKeys.includes(refresh as SyncSource))
+    )
+      throw invalid("Invalid sync adapter refresh");
+    const state = this.state();
+    if (!state.enabled) throw invalid("Sync is disabled");
+    const selected = [...new Set(keys as SyncSource[])];
+    if (selected.some((key) => state.excluded_classes.includes(sources[key].data_class)))
+      throw invalid("Source class is excluded");
+    for (const key of selected) {
+      if ((state.adapter_keys ?? []).includes(key) && key !== refresh) continue;
+      const entry = state.items[JSON.stringify([state.owner, "owner", sourceId(key)])];
+      if (entry?.conflict || entry?.item.deleted || entry?.pending)
+        throw invalid("Resolve or sync the source before publishing it again");
+      if (entry && (!validAdapterItem(entry.item) || entry.item.owner !== state.owner))
+        throw invalid("Invalid local adapter source");
+      this.sourceValue(key);
+    }
+    for (const key of selected) {
+      if ((state.adapter_keys ?? []).includes(key) && key !== refresh) continue;
+      const source = sources[key];
+      const value = this.sourceValue(key);
+      const entry = state.items[JSON.stringify([state.owner, "owner", sourceId(key)])];
+      if (
+        entry &&
+        (Object.is(entry.item.value, value) || !(state.adapter_keys ?? []).includes(key))
+      )
+        continue;
+      this.upsertInternal(
+        { id: sourceId(key), scope: "owner", data_class: source.data_class, value },
+        true,
+      );
+    }
+    state.adapter_keys = selected;
+    this.save(state);
+    return this.status();
+  }
+  /** Explicit apply checks the currently observed source to prevent a stale preview overwriting edits. */
+  apply(input: Record<string, unknown>): SyncStatus {
+    this.requireIdle();
+    if (Object.keys(input).some((field) => !["key", "revision", "current"].includes(field)))
+      throw invalid("Invalid source apply fields");
+    const { key, revision, current } = input;
+    if (
+      typeof key !== "string" ||
+      !sourceKeys.includes(key as SyncSource) ||
+      typeof revision !== "string"
+    )
+      throw invalid("Invalid source or revision");
+    const sourceKey = key as SyncSource;
+    const state = this.state();
+    if (!state.enabled || !(state.adapter_keys ?? []).includes(sourceKey))
+      throw invalid("Source is not selected for sync");
+    const source = sources[sourceKey];
+    if (state.excluded_classes.includes(source.data_class))
+      throw invalid("Source class is excluded");
+    const entry = state.items[JSON.stringify([state.owner, "owner", sourceId(sourceKey)])];
+    if (
+      !entry ||
+      entry.conflict ||
+      entry.pending ||
+      entry.item.deleted ||
+      entry.item.revision !== revision ||
+      entry.item.owner !== state.owner ||
+      entry.item.scope !== "owner" ||
+      entry.item.project !== null ||
+      entry.item.data_class !== source.data_class ||
+      entry.base !== entry.item.revision ||
+      !validSourceValue(sourceKey, entry.item.value)
+    )
+      throw invalid("Synced source changed; refresh preview before applying");
+    if (!validSourceValue(sourceKey, current) || !Object.is(this.sourceValue(sourceKey), current))
+      throw invalid("Local setting changed; refresh preview before applying");
+    const stored = this.settings.get<Record<string, unknown>>(source.storage, {});
+    this.settings.set(source.storage, { ...stored, [source.field]: entry.item.value });
+    return this.status();
+  }
+
   inspect() {
     const state = this.state();
     return {
       ...this.status(),
+      adapter_sources: sourceKeys.map((key) => {
+        const entry = state.items[JSON.stringify([state.owner, "owner", sourceId(key)])];
+        const selected = (state.adapter_keys ?? []).includes(key);
+        const current = selected ? this.sourceValue(key) : null;
+        return {
+          key,
+          selected,
+          current,
+          revision: selected ? (entry?.item.revision ?? null) : null,
+          available:
+            selected &&
+            !!entry &&
+            !entry.pending &&
+            !entry.conflict &&
+            !entry.item.deleted &&
+            entry.base === entry.item.revision &&
+            entry.item.owner === state.owner &&
+            entry.item.scope === "owner" &&
+            entry.item.project === null &&
+            !state.excluded_classes.includes(sources[key].data_class) &&
+            validSourceValue(key, entry.item.value) &&
+            !Object.is(current, entry.item.value),
+        };
+      }),
       items: Object.values(state.items).map((e) => ({
         ...e.item,
         pending: e.pending,
@@ -167,6 +334,9 @@ export class SyncRuntime {
     };
   }
   upsert(input: Record<string, unknown>) {
+    return this.upsertInternal(input, false);
+  }
+  private upsertInternal(input: Record<string, unknown>, sourceAdapter: boolean) {
     this.requireIdle();
     const state = this.state();
     if (!state.enabled) throw invalid("Sync is disabled");
@@ -185,6 +355,17 @@ export class SyncRuntime {
       value === undefined
     )
       throw invalid("Invalid synced item");
+    if (
+      id.startsWith("settings:") &&
+      (!sourceAdapter ||
+        !sourceKeys.some(
+          (source) => sourceId(source) === id && data_class === sources[source].data_class,
+        ) ||
+        scope !== "owner" ||
+        project != null ||
+        !validSourceValue(id.slice(9) as SyncSource, value))
+    )
+      throw invalid("Invalid adapter source item");
     if (JSON.stringify(value).length > 32_000) throw invalid("Synced value too large");
     const key = JSON.stringify([state.owner, scope, id]);
     const previous = state.items[key];
@@ -227,6 +408,8 @@ export class SyncRuntime {
     this.requireIdle();
     const state = this.state();
     const entry = state.items[JSON.stringify([state.owner, scope, id])];
+    if (id.startsWith("settings:") && scope !== "owner")
+      throw invalid("Invalid adapter source scope");
     if (!entry?.conflict) throw invalid("No conflict for this item");
     if (entry.conflict === "remote_missing") {
       if (choice === "remote") {
@@ -293,6 +476,7 @@ export class SyncRuntime {
     for (const row of remote) {
       const item = open(key, state.owner, row.envelope);
       if (item.owner !== state.owner) throw new Error("Sync owner mismatch");
+      if (!validAdapterItem(item)) throw new Error("Invalid sync adapter source item");
       if (!this.allowed(state, item) && !item.deleted) continue;
       const id = itemKey(item);
       if (generations.has(id)) throw new Error("Duplicate sync relay item");

@@ -1,0 +1,76 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Phoenix SDK 0.1.0 | Local documentation</title>
+    <style>
+      body {
+        font:
+          1.1rem/1.55 system-ui,
+          sans-serif;
+        max-width: 54rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      code,
+      pre {
+        background: #eee;
+        padding: 0.15rem 0.3rem;
+      }
+      pre {
+        overflow: auto;
+        padding: 1rem;
+      }
+      a {
+        color: #064d91;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Phoenix SDK 0.1.0</h1>
+      <p>
+        Local static documentation snapshot · capability manifest v1 · event protocol major 1, wire
+        1.0/1.1. This is not a publication or a claim that a preview cohort exists.
+      </p>
+    </header>
+    <nav aria-label="SDK documentation">
+      <ul>
+        <li><a href="migration.html">Manifest migration and compatibility</a></li>
+        <li><a href="../../sdk.md">SDK API and examples</a></li>
+        <li><a href="../../protocol.md">Event/manifest protocol</a></li>
+        <li><a href="../../getting-started.md">Capability author guide</a></li>
+        <li><a href="../../../preview/programme.md">Preview programme and release gates</a></li>
+      </ul>
+    </nav>
+    <main>
+      <h2>Prepare an SDK candidate</h2>
+      <p>
+        From a Node ≥22.13 checkout, install workspace dependencies with
+        <code>corepack pnpm install --frozen-lockfile</code>, then run
+        <code>corepack pnpm --filter @phoenix/sdk build</code> and
+        <code>corepack pnpm --filter @phoenix/sdk check:artifact</code>. The build bundles private
+        workspace implementations into one Node ESM entry, rolls up real TypeScript declarations,
+        and includes the GPL license. The check packs the result and exercises ESM/TypeScript
+        imports from a disposable consumer installation, manifest compatibility and event fixtures;
+        it does not publish.
+      </p>
+      <p>
+        Pack locally using <code>npm pack ./sdk/capability --pack-destination /tmp</code>. Inspect
+        the archive, associated source offer, dependency notices and licence review before any
+        distribution. Do not publish or tag without owner approval. SDK 0.1.0 is a package version,
+        not a declaration of stable 1.0 publication.
+      </p>
+      <h2>Compatibility scope</h2>
+      <p>
+        Legacy v1 manifests omit version fields; explicit v1 manifests set
+        <code>manifest_version: "1"</code> and <code>compatibility.protocol: "1"</code>. Historical
+        event samples carry wire 1.0; the current emitter stamps 1.1. No actual second SDK package
+        version, manifest major, or protocol major exists in this checkout. A real upgrade-pair
+        matrix remains an owner-supplied release prerequisite.
+      </p>
+    </main>
+  </body>
+</html>

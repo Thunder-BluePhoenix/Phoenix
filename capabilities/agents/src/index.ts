@@ -283,6 +283,11 @@ export function createAgentsCapability(options: AgentsCapabilityOptions = {}) {
           side_effect: "read",
         },
         {
+          name: "launcher.list",
+          description: "Launchers currently active (saved changes require a capability restart)",
+          side_effect: "read",
+        },
+        {
           name: "session.start",
           description:
             "Start a coding agent (a launcher you configured) in a workspace with a task prompt",
@@ -408,9 +413,49 @@ export function createAgentsCapability(options: AgentsCapabilityOptions = {}) {
           launchers: {
             type: "object",
             maxProperties: MAX_LAUNCHERS,
-            additionalProperties: { type: "object" },
+            propertyNames: { pattern: AGENT_PATTERN.source },
+            additionalProperties: {
+              type: "object",
+              additionalProperties: false,
+              required: ["command", "cwd_roots"],
+              properties: {
+                command: {
+                  type: "array",
+                  minItems: 1,
+                  maxItems: 32,
+                  items: {
+                    type: "string",
+                    minLength: 1,
+                    maxLength: 1000,
+                    pattern: "^[^\\p{Cc}]*$",
+                  },
+                },
+                cwd_roots: {
+                  type: "array",
+                  minItems: 1,
+                  maxItems: 8,
+                  items: {
+                    type: "string",
+                    minLength: 1,
+                    maxLength: 1000,
+                    pattern: "^[^\\p{Cc}]*$",
+                  },
+                },
+                env_allow: {
+                  type: "array",
+                  maxItems: 16,
+                  items: { type: "string", pattern: "^(?!PHOENIX_)[A-Z_][A-Z0-9_]{0,63}$" },
+                },
+                waiting_prompts: {
+                  type: "array",
+                  maxItems: 8,
+                  items: { type: "string", minLength: 1, maxLength: 100, pattern: "^[^\\p{Cc}]*$" },
+                },
+                stdin: { enum: ["keep_open", "close_after_prompt"] },
+              },
+            },
             description:
-              'Coding agents Phoenix may start, by name: { "<name>": { "command": ["/abs/path", ...fixed args], "cwd_roots": ["/abs/folder"], "env_allow": [...], "waiting_prompts": [...], "stdin": "keep_open" } }. Nothing else can be started. Details are checked when a session starts.',
+              "Named executable and workspace restrictions. Saved changes apply only after agents is disabled and re-enabled; runtime checks validate paths and executable permissions when starting.",
           },
           max_sessions: {
             type: "integer",
@@ -531,6 +576,7 @@ export function createAgentsCapability(options: AgentsCapabilityOptions = {}) {
           }));
         return { agents };
       },
+      "launcher.list": () => ({ launchers: connected().launchers }),
       "session.start": (input) => connected().start(input),
       "session.send": (input) => connected().send(input),
       "session.stop": (input) => connected().stop(input),

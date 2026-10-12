@@ -5,7 +5,7 @@
 | Stage | Stage 8 — Automation & Workflows (v0.8) |
 | Release target | v0.8 |
 | Priority | High |
-| Status | 🟨 Engine built and tested in-process (real SQLite, PermissionGateway, CapabilityManager, ToolGateway, EventBus; one real run with Ollama `llama3.2`); wired into Core (routes in the phase-40 doc); read-only web view at `#/workflows` (no authoring) (see [gaps register](../gaps.md)) |
+| Status | 🟨 Engine built and tested in-process (real SQLite, PermissionGateway, CapabilityManager, ToolGateway, EventBus; one real run with Ollama `llama3.2`); wired into Core with user routes; web list, run history, status and authorisation UI built (no workflow authoring UI) (see [gaps register](../gaps.md)) |
 | Depends on | [Phase 38 — Knowledge Graph & Provenance](phase-38-knowledge-graph-and-provenance.md) |
 | Unblocks | [Phase 40 — Workflow Safety & v0.8 Release](phase-40-workflow-safety.md) |
 
@@ -24,7 +24,7 @@ Let users define event-driven WHEN / IF / THEN workflows.
 - [x] Workflow definition format + validation (declared permissions)
 - [x] Engine executing steps with correlation IDs
 - [x] Example: production deploy fails → inspect logs → diagnose → notify → recovery plan → wait for approval
-- [ ] Workflow UI: list, run history, status
+- [x] Workflow UI: list, run history, status, JSON definition authoring and validation; create-only/expected-hash saves reject duplicate IDs and concurrent stale editors.
 
 ## Deliverables
 
@@ -44,7 +44,10 @@ Let users define event-driven WHEN / IF / THEN workflows.
 - Run history API for a UI: `engine.listRuns`, `engine.getRun(runId)` (per-step status; inputs/outputs redacted and truncated), `engine.listWorkflows()`.
 - Example workflow: `test/example.test.ts` (approve and reject paths, restart recovery) and `deployFailedWorkflow()` in `test/fixtures.ts`.
 - Wired into Core: `core/runtime/src/workflows.ts` (`PhoenixRuntime.workflows`) and `core/api/src/workflow-routes.ts`; tests in `core/runtime/test/workflows.test.ts` and `core/workflows/test/manual.test.ts`. The engine gained `startManual` and `cancelRun` (user actor only, same gates as a trigger).
-- Not done: the workflow UI (list, run history, status) is built separately.
+- **Web UI built**: `apps/web/src/components/Workflows.tsx` provides list, run history/detail, schema validation, user-reviewed JSON create/edit, run/cancel and authorisation controls. Core checks `create_only`/`expected_hash` atomically in the write transaction; a save never silently grants production authorisation.
+- Run history can be deleted per terminal run or pruned in bounded batches; active runs and audit-protected evidence are retained unless the user explicitly confirms eligible deletion. Privacy delete-all removes terminal unprotected snapshots and steps.
+- Workflow-run approval cards show only matching sanitized run/step identifiers from the workflow approval gate. Other capability tool-policy prompts remain in the global queue unless a trusted internal run binding exists; agent-supplied identifiers are never trusted.
+- `ToolGateway.call` now forwards a per-call AbortSignal through policy confirmation and capability invocation; timeout/stop cancels only its own pending confirmation. Already-dispatched external writes cannot prove non-execution on abort and remain unknown/needs-attention with audit, not a false success or rollback.
 
 ## API contract
 

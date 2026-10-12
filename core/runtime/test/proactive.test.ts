@@ -205,4 +205,70 @@ describe("trusted meeting proactive insights", () => {
     });
     expect(network.requests).toEqual([]);
   });
+  it("schedules only persisted opted-in cadence and stops on disable or Core stop", async () => {
+    const { core, network } = await boot();
+    await core.runtime.capabilities.enable("kage");
+    await reviewedAction(core);
+    const scheduled = vi.spyOn(core.runtime.proactive, "evaluate");
+    vi.useFakeTimers();
+    try {
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
+      expect(scheduled).not.toHaveBeenCalled();
+      core.runtime.proactive.setPreferences({ enabled: true, capabilities: ["kage"] });
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
+      expect(scheduled).not.toHaveBeenCalled();
+      core.runtime.proactive.setPreferences({ cadenceMinutes: 15 });
+      await vi.advanceTimersByTimeAsync(15 * 60_000);
+      expect(scheduled).toHaveBeenCalledTimes(1);
+      expect(
+        core.runtime.notifications.noiseMetrics(core.runtime.memory.agentContext().viewer.id)
+          .delivered,
+      ).toBe(1);
+      await core.runtime.capabilities.disable("kage");
+      await vi.advanceTimersByTimeAsync(15 * 60_000);
+      expect(scheduled).toHaveBeenCalledTimes(1);
+      await core.runtime.capabilities.enable("kage");
+      core.runtime.proactive.setPreferences({ enabled: false });
+      await vi.advanceTimersByTimeAsync(30 * 60_000);
+      expect(scheduled).toHaveBeenCalledTimes(1);
+      expect(core.runtime.proactive.status().preferences.cadenceMinutes).toBeNull();
+      core.runtime.proactive.setPreferences({ enabled: true, cadenceMinutes: 15 });
+      await core.runtime.stop();
+      await vi.advanceTimersByTimeAsync(30 * 60_000);
+      expect(scheduled).toHaveBeenCalledTimes(1);
+      expect(network.requests).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rechecks emergency stop and current Kage source at scheduled firing", async () => {
+    const { core, network } = await boot();
+    await core.runtime.capabilities.enable("kage");
+    const { meeting } = await reviewedAction(core);
+    const scheduled = vi.spyOn(core.runtime.proactive, "evaluate");
+    vi.useFakeTimers();
+    try {
+      core.runtime.proactive.setPreferences({
+        enabled: true,
+        capabilities: ["kage"],
+        cadenceMinutes: 15,
+      });
+      core.runtime.permissions.engageKillSwitch();
+      await vi.advanceTimersByTimeAsync(15 * 60_000);
+      expect(scheduled).not.toHaveBeenCalled();
+      expect(() => core.runtime.proactive.evaluate()).toThrow();
+      core.runtime.permissions.disengageKillSwitch();
+      await core.runtime.capabilities.enable("kage");
+      core.runtime.meetings.setSummary(meeting.id, { text: "Action removed", action_items: [] });
+      await vi.advanceTimersByTimeAsync(15 * 60_000);
+      expect(
+        core.runtime.notifications.noiseMetrics(core.runtime.memory.agentContext().viewer.id)
+          .delivered,
+      ).toBe(0);
+      expect(network.requests).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

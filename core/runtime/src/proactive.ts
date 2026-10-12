@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { generateInsights, type ReviewedAction } from "@phoenix/ai-proactive";
+import type { EventBus } from "@phoenix/event-bus";
 import type {
   ProactivePreferences,
   NoiseMetrics,
@@ -38,6 +39,11 @@ export interface ProactiveCandidate {
 
 /** Only user-reviewed, still-grounded local meeting actions are a proactive source. */
 export class ProactiveRuntime {
+  private timer: NodeJS.Timeout | null = null;
+  private unsubscribe: (() => void) | null = null;
+  private running = false;
+  private generation = 0;
+
   constructor(
     private readonly d: {
       meetings: MeetingStore;
@@ -45,8 +51,78 @@ export class ProactiveRuntime {
       memory: MemoryRuntime;
       capabilities: CapabilityManager;
       notifications: NotificationService;
+      bus: EventBus;
+      killSwitchEngaged: () => boolean;
     },
   ) {}
+  /** No polling is armed until a persisted opt-in includes an explicit cadence. */
+  startScheduler(): void {
+    if (this.running) return;
+    this.running = true;
+    this.unsubscribe = this.d.bus.subscribe(
+      "proactive-scheduler",
+      [
+        "security.kill_switch.engaged",
+        "security.kill_switch.disengaged",
+        "capability.disabled",
+        "capability.enabled",
+      ],
+      (event) => {
+        if (event.event_type === "security.kill_switch.engaged") this.clearTimer();
+        else if (event.event_type === "security.kill_switch.disengaged") this.schedule();
+        else if (event.subject === SOURCE) this.schedule();
+      },
+    );
+    this.schedule();
+  }
+
+  stopScheduler(): void {
+    this.running = false;
+    this.clearTimer();
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+  }
+
+  private clearTimer(): void {
+    this.generation++;
+    clearTimeout(this.timer ?? undefined);
+    this.timer = null;
+  }
+
+  private schedule(): void {
+    this.clearTimer();
+    if (!this.running || this.d.killSwitchEngaged() || !this.sourceAvailable()) return;
+    let prefs: ProactivePreferences;
+    try {
+      prefs = this.d.notifications.proactivePreferences(this.userId);
+    } catch {
+      return;
+    }
+    if (!prefs.enabled || !prefs.capabilities.includes(SOURCE)) return;
+    const cadence = prefs.cadenceMinutes;
+    if (cadence !== 15 && cadence !== 30 && cadence !== 60 && cadence !== 1440) return;
+    const generation = this.generation;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      if (!this.running || generation !== this.generation || this.d.killSwitchEngaged()) return;
+      try {
+        const current = this.d.notifications.proactivePreferences(this.userId);
+        if (
+          !current.enabled ||
+          !current.capabilities.includes(SOURCE) ||
+          current.cadenceMinutes !== cadence ||
+          !this.sourceAvailable()
+        )
+          return;
+        this.evaluate();
+      } catch {
+        // Unavailable source or revoked consent never produces a notification.
+      } finally {
+        if (this.running && generation === this.generation) this.schedule();
+      }
+    }, cadence * 60_000);
+    this.timer.unref();
+  }
 
   private get userId(): string {
     return this.d.memory.agentContext().viewer.id;
@@ -73,7 +149,7 @@ export class ProactiveRuntime {
       throw new PhoenixError(ErrorCode.INVALID_REQUEST, "Preferences must be an object");
     const record = input as Record<string, unknown>;
     for (const key of Object.keys(record)) {
-      if (!["enabled", "capabilities", "quietHours", "maxPerHour"].includes(key))
+      if (!["enabled", "capabilities", "quietHours", "maxPerHour", "cadenceMinutes"].includes(key))
         throw new PhoenixError(ErrorCode.INVALID_REQUEST, `Unknown preference field: ${key}`);
     }
     if (
@@ -95,6 +171,7 @@ export class ProactiveRuntime {
         error instanceof Error ? error.message : "Invalid preferences",
       );
     }
+    if (this.running) this.schedule();
     return this.status();
   }
 
@@ -216,7 +293,7 @@ export class ProactiveRuntime {
     suppressed: number;
   } {
     const prefs = this.d.notifications.proactivePreferences(this.userId);
-    if (!prefs.enabled || !prefs.capabilities.includes(SOURCE))
+    if (this.d.killSwitchEngaged() || !prefs.enabled || !prefs.capabilities.includes(SOURCE))
       throw new PhoenixError(
         ErrorCode.SECURITY_POLICY_BLOCKED,
         "Proactive meeting notifications require opt-in",
@@ -224,8 +301,11 @@ export class ProactiveRuntime {
     const delivered: { insight_id: string; notification: Notification }[] = [];
     let suppressed = 0;
     for (const candidate of this.preview().insights) {
-      const notification = this.d.notifications.considerInsight(this.userId, candidate, () =>
-        this.current(candidate),
+      if (this.d.killSwitchEngaged()) break;
+      const notification = this.d.notifications.considerInsight(
+        this.userId,
+        candidate,
+        () => !this.d.killSwitchEngaged() && this.current(candidate),
       );
       if (notification) delivered.push({ insight_id: candidate.id, notification });
       else suppressed++;

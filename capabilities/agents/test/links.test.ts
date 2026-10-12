@@ -362,7 +362,7 @@ describe("CI runs and pull requests", () => {
     expect((await links(c, s.id)).filter((l) => l.kind === "ci_run")).toEqual([]);
   });
 
-  it("links a pull request through the branch of a linked commit (GitHub's PR events carry no sha)", async () => {
+  it("links a pull request through the branch of a linked commit when no head SHA is supplied", async () => {
     const c = await ready();
     const s = await linkedCommit(c);
     publish(c, {
@@ -396,6 +396,122 @@ describe("CI runs and pull requests", () => {
     const prs = (await links(c, s.id)).filter((l) => l.kind === "pr");
     expect(prs).toHaveLength(1);
     expect(prs[0]).toMatchObject({ ref: "12", confidence: "branch-match" });
+  });
+
+  it("matches a PR's full head SHA instead of another commit on the same branch", async () => {
+    const c = await ready();
+    const s = await linkedCommit(c);
+    publish(c, {
+      event_type: "github.pr.opened",
+      source: "github",
+      severity: "info",
+      payload: {
+        repository: "me/project",
+        number: 20,
+        branch: "feature/x",
+        base: "main",
+        head_sha: SHA2,
+      },
+    });
+    publish(c, {
+      event_type: "github.pr.opened",
+      source: "github",
+      severity: "info",
+      payload: {
+        repository: "me/other",
+        number: 21,
+        branch: "feature/x",
+        base: "main",
+        head_sha: SHA,
+      },
+    });
+    publish(c, {
+      event_type: "github.pr.opened",
+      source: "github",
+      severity: "info",
+      payload: {
+        repository: "me/project",
+        number: 22,
+        branch: "other",
+        base: "main",
+        head_sha: SHA.toUpperCase(),
+      },
+    });
+    await settle(c);
+    const prs = (await links(c, s.id)).filter((l) => l.kind === "pr");
+    expect(prs).toHaveLength(1);
+    expect(prs[0]).toMatchObject({ ref: "22", repo: "me/project", confidence: "sha-match" });
+    expect(prs[0]?.why).toMatchObject({ rule: "sha-match", commit: SHA });
+    expect(prs[0]?.detail).toMatchObject({ head_sha: SHA });
+  });
+
+  it("does not fall back to branch correlation for a malformed head SHA", async () => {
+    const c = await ready();
+    const s = await linkedCommit(c);
+    for (const head_sha of [SHA.slice(0, 7), "g".repeat(40), 42]) {
+      publish(c, {
+        event_type: "github.pr.opened",
+        source: "github",
+        severity: "info",
+        payload: {
+          repository: "me/project",
+          number: 25,
+          branch: "feature/x",
+          base: "main",
+          head_sha,
+        },
+      });
+    }
+    await settle(c);
+    expect((await links(c, s.id)).filter((l) => l.kind === "pr")).toEqual([]);
+  });
+
+  it("keeps branch-only PRs ambiguous across sessions while an exact SHA selects one", async () => {
+    const c = await ready();
+    const other = workspaceIn();
+    c.h.manager.configure("agents", {
+      launchers: { fake: { ...(c.launchers.fake as object), cwd_roots: [c.root, other.root] } },
+      grace_ms: 150,
+    });
+    await c.h.manager.disable("agents");
+    await c.h.enable("agents");
+    const a = await begin(c);
+    const b = await begin(c, other.workspace);
+    c.commitTimes[SHA] = Date.now();
+    c.commitTimes[SHA2] = Date.now();
+    publish(c, commit(c.workspace, SHA));
+    publish(c, commit(other.workspace, SHA2));
+    await vi.waitFor(async () => {
+      expect(await links(c, a.id)).toHaveLength(1);
+      expect(await links(c, b.id)).toHaveLength(1);
+    });
+    const pr = (number: number, headSha?: string) => ({
+      event_type: "github.pr.opened",
+      source: "github",
+      severity: "info" as const,
+      payload: {
+        repository: "me/project",
+        number,
+        branch: "feature/x",
+        base: "main",
+        ...(headSha ? { head_sha: headSha } : {}),
+      },
+    });
+    publish(c, pr(30));
+    publish(c, pr(31, SHA));
+    await settle(c);
+    expect((await detail(c, a.id)).ambiguous).toEqual([
+      expect.objectContaining({
+        kind: "pr",
+        ref: "30",
+        confidence: "ambiguous",
+        candidates: [a.id, b.id].sort(),
+      }),
+    ]);
+    expect((await links(c, a.id)).filter((l) => l.kind === "pr")).toEqual([
+      expect.objectContaining({ ref: "31", confidence: "sha-match" }),
+    ]);
+    expect((await links(c, b.id)).filter((l) => l.kind === "pr")).toEqual([]);
   });
 
   it("a CI run whose commit prefix matches commits of two sessions is ambiguous, not linked", async () => {

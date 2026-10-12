@@ -68,6 +68,7 @@ function open(
 ) {
   return openAt(hash, {
     "GET /api/capabilities": () => ({ capabilities: [capability("agents", "enabled", config)] }),
+    ...cmd("launcher.list", done({ launchers: config.launchers ?? {} })),
     ...routes,
   });
 }
@@ -131,7 +132,7 @@ describe("Coding-agent sessions list", () => {
     expect(screen.queryByRole("button", { name: /Review before starting/ })).toBeNull();
     cleanup();
     open("#/agents", listRoutes([]), {});
-    expect(await screen.findByText(/No launcher is set up/)).toBeTruthy();
+    expect(await screen.findByText(/No active launcher is set up/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Review before starting/ })).toBeNull();
   });
 
@@ -162,6 +163,89 @@ describe("Coding-agent sessions list", () => {
   });
 });
 
+describe("Launcher configuration", () => {
+  it("rejects unsafe launcher settings locally without saving or starting", async () => {
+    const { api } = open("#/agents", listRoutes([]), {});
+    await screen.findByRole("button", { name: "Review launcher configuration…" });
+    fireEvent.change(screen.getByLabelText("Launcher name"), { target: { value: "fake" } });
+    fireEvent.change(screen.getByLabelText(/Executable absolute path/), {
+      target: { value: "/bin/sh" },
+    });
+    fireEvent.change(screen.getByLabelText(/Allowed absolute workspace folders/), {
+      target: { value: "/work" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Review launcher configuration…" }));
+    expect(await screen.findByText(/not a shell/)).toBeTruthy();
+    expect(api.posts("/api/capabilities/agents/config")).toHaveLength(0);
+    expect(api.posts("/api/capabilities/agents/commands/session.start")).toHaveLength(0);
+  });
+
+  it("rejects malformed roots and credential values instead of echoing them", async () => {
+    const { api } = open("#/agents", listRoutes([]), {});
+    await screen.findByRole("button", { name: "Review launcher configuration…" });
+    fireEvent.change(screen.getByLabelText("Launcher name"), { target: { value: "safe" } });
+    fireEvent.change(screen.getByLabelText(/Executable absolute path/), {
+      target: { value: "/opt/fake/agent" },
+    });
+    fireEvent.change(screen.getByLabelText(/Allowed absolute workspace folders/), {
+      target: { value: "/" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Review launcher configuration…" }));
+    expect(await screen.findByText(/not \/\)/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/Allowed absolute workspace folders/), {
+      target: { value: "/work" },
+    });
+    fireEvent.change(screen.getByLabelText(/Environment variable names/), {
+      target: { value: "API_KEY=secret-value" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Review launcher configuration…" }));
+    expect(await screen.findByText(/valid environment variable names/)).toBeTruthy();
+    expect(api.posts("/api/capabilities/agents/config")).toHaveLength(0);
+  });
+
+  it("previews before saving, keeps other config, and never restarts or starts an agent", async () => {
+    const config = { ...LAUNCHERS, max_sessions: 2 };
+    const { api } = open(
+      "#/agents",
+      {
+        ...listRoutes([]),
+        "POST /api/capabilities/agents/config": () => ({ config }),
+      },
+      config,
+    );
+    await screen.findByRole("button", { name: "Review launcher configuration…" });
+    fireEvent.change(screen.getByLabelText("Edit a saved launcher"), { target: { value: "fake" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review launcher configuration…" }));
+    const preview = await screen.findByRole("group", { name: "Launcher configuration preview" });
+    expect(preview.textContent).toContain("/opt/fake/agent");
+    expect(preview.textContent).not.toContain("SECRET_NAME");
+    expect(api.posts("/api/capabilities/agents/config")).toHaveLength(0);
+    fireEvent.click(within(preview).getByRole("button", { name: "Save launcher configuration" }));
+    await waitFor(() => expect(api.posts("/api/capabilities/agents/config")).toHaveLength(1));
+    const submitted = api.posts("/api/capabilities/agents/config")[0]!.body as {
+      config: Record<string, unknown>;
+    };
+    expect(submitted.config).toMatchObject({
+      max_sessions: 2,
+      launchers: {
+        fake: {
+          command: ["/opt/fake/agent", "--print"],
+          cwd_roots: ["/work"],
+          env_allow: ["SECRET_NAME"],
+        },
+      },
+    });
+    expect(api.calls.some((call) => /\/agents\/(disable|enable)/.test(call.path))).toBe(false);
+    expect(api.posts("/api/capabilities/agents/commands/session.start")).toHaveLength(0);
+  });
+
+  it("does not offer a saved but inactive launcher as a start choice", async () => {
+    open("#/agents", { ...listRoutes([]), ...cmd("launcher.list", done({ launchers: {} })) });
+    expect(await screen.findByText(/No active launcher is set up/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Review before starting…" })).toBeNull();
+  });
+});
+
 describe("Starting a session", () => {
   it("validates the form like the command schema and sends nothing", async () => {
     const { api } = open("#/agents", listRoutes([]));
@@ -183,7 +267,8 @@ describe("Starting a session", () => {
     fireEvent.click(screen.getByRole("button", { name: "Review before starting…" }));
     const preview = await screen.findByRole("group", { name: "Check this before you start" });
     expect(preview.textContent).toContain("fake");
-    expect(preview.textContent).toContain("/opt/fake/agent --print");
+    expect(preview.textContent).toContain("/opt/fake/agent");
+    expect(preview.textContent).not.toContain("--print");
     expect(preview.textContent).toContain("/work/phoenix");
     expect(preview.textContent).toContain("/work");
     expect(preview.textContent).toContain("11 characters");

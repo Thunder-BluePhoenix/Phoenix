@@ -40,7 +40,7 @@ Convert approved action items into structured engineering tasks (GitHub / Frappe
 
 ## Exit criteria
 
-- [ ] Approved action items become tasks linked to source meeting (gate v0.6 → v0.7) — met by the library against mocks; open until Core routes and the web approval panel exist and a creation has been tried against a real GitHub repository and a real Frappe site by the user
+- [ ] Approved action items become tasks linked to source meeting (gate v0.6 → v0.7) — library, Core routes and web approval panel built and checked against local mocks; open until the user tries creation against a real GitHub repository and a real Frappe site
 
 ## Implementation notes
 
@@ -92,7 +92,7 @@ Gates, in order: the capability must be enabled; a write credential must be in t
 
 ### Wired into Core
 
-`core/runtime/src/planning.ts` (`PlanningRuntime`, exposed as `PhoenixRuntime.planning`; `recover()` runs at construction) and `core/api/src/plan-routes.ts`; tests in `core/runtime/test/plans.test.ts`. The route table is the API contract below; the list that follows is the original wiring plan, kept for the web panel requirements. Construct `PlanService` in the runtime with the real `ToolGateway` and `AiService` (`generate: () => generateWith(ai)`), call `plans.recover()` at startup, add routes (suggested: `POST /api/meetings/items/:id/plan`, `GET /api/plans/:id`, `PATCH /api/plans/:id`, `POST /api/plans/:id/propose|approve|create|cancel`, `GET /api/plans/:id/preview`, `GET /api/meetings/:id/links`, `GET /api/task-links?system=&id=`), and a web approval panel that shows the plan with each statement's basis, the exact `preview` of what will be sent and the policy decision, a **default-off** "name the meeting in the created tasks" checkbox, and the per-task result. Set the write token and `api` URL in the capability settings; neither is set by default, so the commands are inert until the user sets them.
+`core/runtime/src/planning.ts` (`PlanningRuntime`, exposed as `PhoenixRuntime.planning`; `recover()` runs at construction) builds `PlanService` with the real `ToolGateway` and `AiService`; `core/api/src/plan-routes.ts` exposes the plan and task-link routes in the API contract below. `apps/web/src/components/Plans.tsx` provides the web approval panel: each statement's basis, the exact preview and policy decision, a **default-off** "name the meeting in the created tasks" checkbox, and per-task results. Tests are in `core/runtime/test/plans.test.ts` and `apps/web/test/plans.test.tsx`. Set the write token and `api` URL in capability settings; neither is set by default, so the commands remain inert until the user configures them.
 
 ## API contract
 

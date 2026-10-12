@@ -23,9 +23,9 @@ Upgrade retrieval to BM25 + embeddings + reranking with grounded, cited answers.
 
 ## Tasks
 
-- [x] Embedding pipeline through model router (local preferred) — `VectorIndexer` + `AiEmbedder`; ran against the real `nomic-embed-text` in Ollama (839 items, 9.3 ms/item); not yet triggered by the runtime
-- [x] Hybrid retrieval + rerank + context assembly + grounding — `Retriever` (bm25 + vectors, reciprocal-rank fusion, feature and model rerankers, cited bundle); package level only, `ContextEngine` does not call it yet
-- [x] Retrieval relevance metrics in eval harness — `evaluateRetrieval` (recall@k, MRR, nDCG@k, per-query) is exported; the Phase 33 harness has not been changed to call it
+- [x] Embedding pipeline through an explicitly local model provider — `VectorIndexer` + `AiEmbedder`; ran against real `nomic-embed-text` earlier (839 items, 9.3 ms/item). A local outage now fails closed to lexical search, never cloud fallback. Indexing is triggered by `MemoryRuntime.maintain()`, settings changes and an explicit bounded rebuild.
+- [x] Hybrid retrieval + rerank + context assembly + grounding — `Retriever` (bm25 + vectors, reciprocal-rank fusion, feature and model rerankers, cited bundle); Core search/ask uses the hybrid path when enabled and the Phase 28 lexical path otherwise
+- [x] Retrieval relevance metrics in eval harness — `evaluateRetrieval` (recall@k, MRR, nDCG@k, per-query) is exported and invoked for lexical scenarios in the Phase 33 harness.
 - [x] Deletion propagates to vector index — triggers in migration 10; tested for forget, `forgetWhere`, `expire()`, purge and meeting purge
 
 ## Deliverables
@@ -89,11 +89,12 @@ Why this may not generalise: 24 held-out queries, one corpus (this repository's 
 
 - **Practical ceiling**: the scan is linear. About 150 ms of the 200 ms at 20k is `node:sqlite` copying the BLOBs into JavaScript (the dot products themselves are about 11 ms), so it will not get faster without an index. The scan is capped at `maxScan` (default 50,000, newest first); the result reports `truncated` when the cap cut candidates off. Tens of thousands of memories is the supported range; beyond that an approximate index is needed and is not built. A permission filter that rejects most rows does not make the scan cheaper (it still reads them).
 
-### Not done
+### Rebuild and remaining verification
 
-- Nothing in the web app shows retrieval settings or status yet (the routes exist, see "Wired into Core").
-- The Phase 33 evaluation harness does not call `evaluateRetrieval` yet.
-- The benchmark scripts need a running local Ollama with `nomic-embed-text` and `llama3.2`; the repository tests do not (they use fakes).
+Core serves `POST /api/retrieval/rebuild` for an explicitly confirmed, bounded full rebuild of the selected local model's vector space; other models' vectors remain intact. Web Settings reports partial/indexing failures and refuses while AI is off or emergency stop is engaged.
+
+The Phase 33 evaluation harness invokes `evaluateRetrieval` for lexical scenarios; a full hybrid-versus-lexical rerun with a local model and held-out owner corpus remains unverified.
+The benchmark scripts require local Ollama with `nomic-embed-text` and `llama3.2`; repository tests use fakes.
 
 ## Wired into Core
 

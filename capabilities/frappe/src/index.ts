@@ -15,20 +15,16 @@
 // else can reach an event, a command result, health text or a log, and parse errors (whose text
 // can quote file content) are discarded.
 //
-// SSRF: the URL that gets polled is `sites[<site>]` from the user's own capability config, else
-// the site's `host_name`, else http://127.0.0.1:<webserver_port>. Only http(s) origins are
-// accepted, redirects are never followed, responses are size-capped and only ever compared with
-// `{"message":"pong"}`; remote text never reaches an event. `host_name` comes from a file in a
-// bench the user selected, so whoever can edit that file can already make Phoenix poll any URL;
-// the per-site override exists so a dev bench whose host_name does not resolve can be pointed at
-// loopback.
+// SSRF: an untrusted site_config host_name is used only when it points at the selected
+// bench's numeric loopback webserver_port. Remote/reverse-proxy or alternate-port layouts
+// require a deliberate per-site `sites` override. Redirects are never followed.
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { redact } from "@phoenix/logging";
 import { defineCapability, type CapabilityContext, type HealthResult } from "@phoenix/sdk";
 import { isRecord } from "./guards";
-import { errorCode, normalizeOrigin, readCapped, SITE_NAME } from "./http";
+import { errorCode, localBenchOrigin, normalizeOrigin, readCapped, SITE_NAME } from "./http";
 import { API_CONFIG_SCHEMA, createTask, TASK_COMMAND, TASK_SECRET } from "./tasks";
 
 export { normalizeOrigin };
@@ -151,13 +147,17 @@ export async function listSiteNames(benchPath: string): Promise<string[]> {
   return names;
 }
 
-/** `host_name` of a site, or undefined. Everything else in site_config.json is discarded. */
-export async function readHostName(benchPath: string, site: string): Promise<string | undefined> {
+/** `host_name` is used only for the selected bench's local web-server binding. */
+export async function readHostName(
+  benchPath: string,
+  site: string,
+  webserverPort = DEFAULT_PORT,
+): Promise<string | undefined> {
   const json = parseJsonObject(
     await readSmallFile(join(benchPath, "sites", site, "site_config.json")),
   );
   const hostName = json?.host_name;
-  return typeof hostName === "string" ? normalizeOrigin(hostName, true) : undefined;
+  return typeof hostName === "string" ? localBenchOrigin(hostName, webserverPort) : undefined;
 }
 
 /** Reads one bench. Throws an Error with a short, content-free message if it is not a bench. */
@@ -174,7 +174,7 @@ export async function discoverBench(benchPath: string): Promise<BenchInfo> {
   ]);
   const sites = await Promise.all(
     names.map(async (name): Promise<SiteInfo> => {
-      const hostName = await readHostName(benchPath, name);
+      const hostName = await readHostName(benchPath, name, common.webserverPort);
       return hostName ? { name, hostName } : { name };
     }),
   );
@@ -191,7 +191,7 @@ export async function discoverBench(benchPath: string): Promise<BenchInfo> {
 
 export type UrlSource = "override" | "host_name" | "default";
 
-/** Where to ping a site: user override, else host_name, else loopback on the bench's port. */
+/** Explicit per-site URL, else a safe host_name on the selected bench port, else loopback. */
 export function resolveSiteUrl(
   site: SiteInfo,
   bench: Pick<BenchInfo, "webserverPort">,
@@ -202,7 +202,8 @@ export function resolveSiteUrl(
     const url = normalizeOrigin(override);
     if (url) return { url, source: "override" };
   }
-  if (site.hostName) return { url: site.hostName, source: "host_name" };
+  const hostName = site.hostName && localBenchOrigin(site.hostName, bench.webserverPort);
+  if (hostName) return { url: hostName, source: "host_name" };
   return { url: `http://127.0.0.1:${bench.webserverPort}`, source: "default" };
 }
 
@@ -383,9 +384,14 @@ function timerSleep(ms: number, signal: AbortSignal): Promise<void> {
 
 const siteKey = (bench: string, site: string) => `${bench}\0${site}`;
 
+/** Opaque bench identity; neither bench paths nor URLs belong in durable event fields. */
+export function benchIdentity(bench: string): string {
+  return createHash("sha256").update(bench).digest("hex").slice(0, 32);
+}
+
 /** One activity per site: a later event with this id replaces the earlier one in Fawkes. */
 export function siteCorrelation(bench: string, site: string): string {
-  return `frappe-site:${createHash("sha1").update(bench).digest("hex").slice(0, 8)}:${site}`;
+  return `frappe-site:${benchIdentity(bench)}:${site}`;
 }
 
 async function mapLimit<T>(items: readonly T[], limit: number, fn: (item: T) => Promise<void>) {
@@ -426,8 +432,7 @@ export function createFrappeCapability(options: FrappeOptions = {}) {
     correlation_id: siteCorrelation(s.bench, s.name),
     payload: {
       site: s.name,
-      bench: s.bench,
-      url: s.url,
+      bench_id: benchIdentity(s.bench),
       ...(s.health.responseMs !== undefined ? { response_ms: s.health.responseMs } : {}),
       ...(type === "frappe.site.unhealthy"
         ? {
@@ -455,7 +460,7 @@ export function createFrappeCapability(options: FrappeOptions = {}) {
         correlation_id: siteCorrelation(info.path, old.name),
         payload: {
           site: old.name,
-          bench: info.path,
+          bench_id: benchIdentity(info.path),
           was_unhealthy: gone?.health.unhealthy ?? false,
         },
       });
@@ -478,10 +483,9 @@ export function createFrappeCapability(options: FrappeOptions = {}) {
         {
           event_type: "frappe.bench.discovered",
           severity: "info",
-          subject: info.path.slice(0, 500),
+          subject: `bench:${benchIdentity(info.path)}`,
           payload: {
-            bench: info.path,
-            name: info.name,
+            bench_id: benchIdentity(info.path),
             apps: info.apps,
             sites: info.sites.map((s) => s.name),
             ...(prev ? { added: added.map((s) => s.name) } : {}),
@@ -604,7 +608,8 @@ export function createFrappeCapability(options: FrappeOptions = {}) {
             additionalProperties: { type: "string", pattern: "^https?://[^\\s]+$", maxLength: 300 },
             description:
               'Per-site URL overrides, e.g. { "erp.localhost": "http://127.0.0.1:8000" }. ' +
-              "Only http(s); redirects are not followed.",
+              "Only http(s); redirects are not followed. Required for remote or alternate-port benches; " +
+              "site_config host_name is limited to the bench's numeric loopback port.",
           },
           poll_ms: { type: "integer", minimum: 250, maximum: 300_000 },
           api: API_CONFIG_SCHEMA,

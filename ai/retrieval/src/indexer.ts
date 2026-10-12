@@ -35,6 +35,8 @@ export interface IndexerOptions {
   /** Injected so tests never really wait. */
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
   now?: () => number;
+  /** A live permission check, including after provider responses but before any database write. */
+  canIndex?: () => boolean;
 }
 
 export interface IndexReport {
@@ -128,7 +130,12 @@ export class VectorIndexer {
     // Least sensitive first: if the provider is only allowed for some classes, those get done.
     for (const privacy of PRIVACY_CLASSES) {
       let stop = false;
-      while (!stop && budget > 0 && signal?.aborted !== true) {
+      while (
+        !stop &&
+        budget > 0 &&
+        signal?.aborted !== true &&
+        this.options.canIndex?.() !== false
+      ) {
         const batch = vectors.pending(
           model,
           privacy,
@@ -200,6 +207,7 @@ export class VectorIndexer {
   private fail(batch: readonly Pending[], error: string, report: IndexReport): void {
     const { vectors, embedder } = this.options;
     for (const item of batch) {
+      if (this.options.canIndex?.() === false) return;
       vectors.recordFailure(item.id, embedder.modelKey, error, this.backoff);
       report.failed++;
     }
@@ -216,12 +224,18 @@ export class VectorIndexer {
   > {
     const { vectors, embedder } = this.options;
     await this.pace(signal);
+    if (this.aborted(signal) || this.options.canIndex?.() === false) {
+      return { kind: "blocked", reason: "ai_disabled" };
+    }
     try {
       const embeddings = await embedder.embedDocuments(
         batch.map((b) => b.text),
         privacy,
         signal,
       );
+      if (this.aborted(signal) || this.options.canIndex?.() === false) {
+        return { kind: "blocked", reason: "ai_disabled" };
+      }
       if (embeddings.length !== batch.length) {
         return { kind: "failed", error: "the provider returned the wrong number of vectors" };
       }
@@ -233,7 +247,7 @@ export class VectorIndexer {
       this.providerSeenUp = true;
       return { kind: "stored", stored };
     } catch (err) {
-      if (signal?.aborted === true) return { kind: "blocked", reason: "provider_unavailable" };
+      if (this.aborted(signal)) return { kind: "blocked", reason: "provider_unavailable" };
       const failure = classifyEmbedFailure(err);
       if (failure === null) throw err;
       // Switched off or not allowed: nothing is wrong with any item, so nothing is recorded.
@@ -242,6 +256,10 @@ export class VectorIndexer {
       }
       return { kind: "failed", error: failure.message };
     }
+  }
+
+  private aborted(signal: AbortSignal | undefined): boolean {
+    return signal?.aborted ?? false;
   }
 
   private async pace(signal: AbortSignal | undefined): Promise<void> {

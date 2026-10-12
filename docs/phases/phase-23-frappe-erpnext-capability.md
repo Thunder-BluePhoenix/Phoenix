@@ -28,7 +28,7 @@ Observe bench, site, build, migration and deployment activity for Frappe develop
 - [x] Bench/site discovery and health polling (never run against a real Frappe site; see Notes)
 - [ ] Events: site health and bench discovery are done (`frappe.site.unhealthy|healthy|removed`, `frappe.bench.discovered`); bench restart, build, migration completed and deployment are **not implemented** (no honest read-only signal, see Notes)
 - [x] Map site.unhealthy → ERROR
-- [ ] Panel view for site health — the `sites` command returns everything the view needs; the web view itself is not built yet
+- [x] Overview panel shows per-site health via the read-only `frappe.sites` command; real bench/browser evidence still pending.
 - [x] Tests against a local bench fixture (tmp-dir bench + mock Frappe HTTP server)
 
 ## Deliverables
@@ -42,7 +42,7 @@ Observe bench, site, build, migration and deployment activity for Frappe develop
 ## Notes (honest status)
 
 - `capabilities/frappe` is read-only: it reads `sites/apps.txt`, `sites/common_site_config.json` (`webserver_port`, `default_site`, `serve_default_site` only), lists `sites/*` directories that contain a `site_config.json` (only `stat`ed; opened solely to read `host_name`), and polls `GET <base>/api/method/ping` with `X-Frappe-Site-Name`. It never runs `bench`, never writes, never reads any other value from `site_config.json` (db passwords, encryption keys).
-- Base URL per site: `sites` override in the capability config, else `host_name`, else `http://127.0.0.1:<webserver_port|8000>`. Only http(s); redirects are not followed; responses are capped at 16 KiB.
+- Base URL per site: an explicit user-configured `sites` override, else only a numeric-loopback `host_name` on the selected bench's configured `webserver_port`, else `http://127.0.0.1:<webserver_port|8000>`. Remote or alternate-port deployments must opt in via a `sites` override. Redirects are not followed; responses are capped at 16 KiB. Event history uses opaque bench ids instead of private bench paths/site URLs; local `sites` command results retain them for the panel.
 - A site is reported unhealthy after 2 consecutive failed pings and healthy again on the first success.
 - **Never run against a real Frappe site**: no site was running here. Discovery was exercised on the directory layout of real benches (apps.txt and site directory names only); health polling was exercised only against a mock server.
 - Not implemented, because Frappe exposes no read-only signal for them without running `bench` or reading site databases/config: `frappe.bench.restarted`, `frappe.build.completed`, `frappe.migration.completed`, `frappe.deploy.*`. They need a small Frappe-side app or `bench` hook that posts to Phoenix.

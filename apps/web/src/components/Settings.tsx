@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError } from "../core/client";
 import { useClient } from "../core/context";
 import {
@@ -12,7 +12,7 @@ import {
   usePrivacy,
   type PetSettings,
 } from "../core/hooks";
-import type { CapabilityView, JsonSchema, PetState } from "../core/types";
+import type { CapabilityView, JsonSchema, OrchestratedSessionList, PetState } from "../core/types";
 import { AutomationSettings } from "./AutomationSettings";
 import { AiSettings, MemorySettingsSection } from "./MemorySettings";
 import { Feedback } from "./Feedback";
@@ -219,6 +219,20 @@ const LABELS: Record<string, string> = {
   speed: "Playback speed",
 };
 
+type AgentOperation = {
+  status: string;
+  result?: OrchestratedSessionList;
+  error?: { message: string };
+};
+
+const activeSessions = (list: OrchestratedSessionList) => {
+  if (!Array.isArray(list.sessions)) throw new Error("Could not check agent sessions");
+  return list.sessions
+    .filter((session) => session.state === "running" || session.state === "waiting")
+    .map((session) => `${session.id}:${session.state}`)
+    .sort();
+};
+
 function CapabilityEditor({
   capability: c,
   recording,
@@ -229,6 +243,19 @@ function CapabilityEditor({
   onChanged: () => void;
 }) {
   const { run, busy, error } = useAction();
+  const client = useClient();
+  const guardInFlight = useRef(false);
+  const currentCapability = useRef(c);
+  currentCapability.current = c;
+  const [guardBusy, setGuardBusy] = useState(false);
+  const [guardError, setGuardError] = useState<string | null>(null);
+  const [stopReview, setStopReview] = useState<{
+    action: "disable" | "restart";
+    version: string;
+    sessions: string[];
+    body: unknown;
+  } | null>(null);
+  const [stopAcknowledged, setStopAcknowledged] = useState(false);
   const [form, setForm] = useState(() => toForm(c.config_schema, c.config));
   const [saved, setSaved] = useState<string | null>(null);
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
@@ -240,7 +267,16 @@ function CapabilityEditor({
   useEffect(() => {
     setDisclosure(null);
     setAcknowledgedVersion(null);
+    setStopReview(null);
+    setStopAcknowledged(false);
+    setGuardError(null);
   }, [c.version]);
+  useEffect(() => {
+    if (c.status !== "enabled") {
+      setStopReview(null);
+      setStopAcknowledged(false);
+    }
+  }, [c.status]);
   const contextSources = c.context_sources ?? [];
   const aiTools = c.ai_tools ?? [];
   const hasAiDeclarations = contextSources.length > 0 || aiTools.length > 0;
@@ -270,17 +306,90 @@ function CapabilityEditor({
     if (await act("POST", `${base}/disable`, {}, ""))
       await act("POST", `${base}/enable`, body, "Restarted.");
   };
+  const loadAgentSessions = async () => {
+    const started = await client.request<{ id: string }>(
+      "POST",
+      "/api/capabilities/agents/commands/session.list",
+      { input: {} },
+    );
+    for (let check = 0; check < 40; check++) {
+      const operation = await client.request<AgentOperation>(
+        "GET",
+        `/api/operations/${encodeURIComponent(started.id)}`,
+      );
+      if (operation.status === "succeeded") {
+        if (!operation.result) throw new Error("Could not check agent sessions");
+        return activeSessions(operation.result);
+      }
+      if (operation.status === "failed" || operation.status === "cancelled")
+        throw new Error(operation.error?.message ?? "Could not check agent sessions");
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(resolve, 150);
+      await promise;
+    }
+    throw new Error("Checking agent sessions took too long");
+  };
+  const guardOperation = async (
+    action: "disable" | "restart",
+    body: unknown = {},
+    review = stopReview,
+  ) => {
+    if (guardInFlight.current || busy) return;
+    guardInFlight.current = true;
+    setGuardBusy(true);
+    setGuardError(null);
+    const version = c.version;
+    try {
+      const sessions = await loadAgentSessions();
+      if (
+        currentCapability.current.version !== version ||
+        currentCapability.current.status !== "enabled"
+      ) {
+        setStopReview(null);
+        setStopAcknowledged(false);
+        setGuardError("Capability changed. Review the current state before trying again.");
+        return;
+      }
+      if (review) {
+        if (review.version !== version || review.action !== action || !stopAcknowledged) return;
+        if (
+          sessions.length !== review.sessions.length ||
+          sessions.some((session, index) => session !== review.sessions[index])
+        ) {
+          setStopReview({ action, version, sessions, body });
+          setStopAcknowledged(false);
+          setGuardError("Agent sessions changed. Review and acknowledge the current sessions.");
+          return;
+        }
+      } else if (sessions.length) {
+        setStopReview({ action, version, sessions, body });
+        setStopAcknowledged(false);
+        return;
+      }
+      setStopReview(null);
+      setStopAcknowledged(false);
+      if (action === "restart") await restart(body);
+      else await act("POST", `${base}/disable`, {}, "Disabled.");
+    } catch (err) {
+      setGuardError(err instanceof Error ? err.message : "Could not check agent sessions");
+    } finally {
+      guardInFlight.current = false;
+      setGuardBusy(false);
+    }
+  };
   const beginActivation = (action: "enable" | "restart") => {
     setAcknowledgedVersion(null);
     setDisclosure({ version: c.version, action });
   };
   const confirmActivation = () => {
-    if (!currentDisclosure || !acknowledged || busy) return;
+    if (!currentDisclosure || !acknowledged || busy || guardBusy) return;
     setDisclosure(null);
     setAcknowledgedVersion(null);
     const body = { manifest_version: currentDisclosure.version };
-    if (currentDisclosure.action === "restart") void restart(body);
-    else void act("POST", `${base}/enable`, body, "Enabled.");
+    if (currentDisclosure.action === "restart") {
+      if (c.id === "agents") void guardOperation("restart", body, null);
+      else void restart(body);
+    } else void act("POST", `${base}/enable`, body, "Enabled.");
   };
 
   return (
@@ -298,12 +407,13 @@ function CapabilityEditor({
         <button
           type="button"
           className={`btn ${enabled ? "" : "btn-primary"}`}
-          disabled={busy || c.status === "disconnected"}
+          disabled={busy || guardBusy || c.status === "disconnected"}
           onClick={() => {
             if (enabled) {
               setDisclosure(null);
               setAcknowledgedVersion(null);
-              void act("POST", `${base}/disable`, {}, "Disabled.");
+              if (c.id === "agents") void guardOperation("disable", {}, null);
+              else void act("POST", `${base}/disable`, {}, "Disabled.");
             } else if (hasAiDeclarations) beginActivation("enable");
             else void act("POST", `${base}/enable`, {}, "Enabled.");
           }}
@@ -314,7 +424,7 @@ function CapabilityEditor({
           <button
             type="button"
             className="btn"
-            disabled={busy || (c.id === "kage" && recording)}
+            disabled={busy || guardBusy || (c.id === "kage" && recording)}
             title={
               c.id === "kage" && recording
                 ? "Restarting Kage now would lose the recording"
@@ -322,6 +432,7 @@ function CapabilityEditor({
             }
             onClick={() => {
               if (hasAiDeclarations) beginActivation("restart");
+              else if (c.id === "agents") void guardOperation("restart", {}, null);
               else void restart();
             }}
           >
@@ -329,6 +440,49 @@ function CapabilityEditor({
           </button>
         )}
       </div>
+      {stopReview && stopReview.version === c.version && c.status === "enabled" && (
+        <section aria-label="Agent session stop acknowledgement" className="settings-form">
+          <h3>Stopping active agent sessions</h3>
+          <p>
+            {stopReview.action === "restart" ? "Restarting" : "Disabling"} {c.name} will stop these
+            running or waiting sessions: {stopReview.sessions.join(", ")}.
+          </p>
+          <label className="choice">
+            <input
+              type="checkbox"
+              checked={stopAcknowledged}
+              onChange={(e) => setStopAcknowledged(e.target.checked)}
+            />
+            I acknowledge that these agent sessions will be stopped.
+          </label>
+          <div className="button-row wrap">
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={busy || guardBusy || !stopAcknowledged}
+              onClick={() => void guardOperation(stopReview.action, stopReview.body)}
+            >
+              Confirm {stopReview.action}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={guardBusy}
+              onClick={() => {
+                setStopReview(null);
+                setStopAcknowledged(false);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </section>
+      )}
+      {guardError && (
+        <p role="alert" className="error-text">
+          {guardError}
+        </p>
+      )}
       {hasAiDeclarations && currentDisclosure && (
         <section aria-label={`AI activation disclosure for ${c.name}`} className="settings-form">
           <h3>

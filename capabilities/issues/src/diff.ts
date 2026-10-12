@@ -29,6 +29,8 @@ export function correlationId(change: Pick<RawIssueChange, "tracker" | "key">): 
   return `issues-${change.tracker}-${change.key}`.slice(0, 200);
 }
 
+/** Consumers may persist only tracker/key and normalized category buckets; title, status and
+ * URL are display-only tracker text, never trusted memory facts. */
 function base(change: RawIssueChange): Pick<IssueEvent, "correlation_id" | "subject"> & {
   payload: Record<string, unknown>;
 } {

@@ -25,7 +25,7 @@ Turn meeting artifacts into reviewable decisions and action items.
 ## Tasks
 
 - [x] Extract decisions, requirements, action items, topics, project references (Kage import + grounded AI extraction)
-- [x] Review service: accept / edit / reject / reopen (the web UI is built by the parent, see notes)
+- [x] Review service: accept / edit / reject / reopen (Core routes and the web review panel are built; see notes)
 - [x] Treat transcripts as untrusted input (prompt-injection tests: 24 adversarial transcripts)
 - [x] Search + ask questions over meeting archive
 
@@ -35,7 +35,7 @@ Turn meeting artifacts into reviewable decisions and action items.
 
 ## Exit criteria
 
-- [ ] Decisions and action items reviewable inside Phoenix (service and Core routes done and tested; open until the web review panel exists)
+- [ ] Decisions and action items reviewable inside Phoenix (service, Core routes and the web review panel built; release/owner gate remains open)
 
 ## Implementation notes
 

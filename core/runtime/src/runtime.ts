@@ -46,6 +46,7 @@ import { syncMeetings } from "./meetings";
 import { PrivacyService, type DerivedInventory } from "./privacy";
 import { ProactiveRuntime } from "./proactive";
 import { RetrievalRuntime } from "./retrieval";
+import { ImprovementRuntime } from "./improvement";
 import { LocalRegistryRuntime, type LocalRegistryConfig } from "./registry";
 import { SyncRuntime } from "./sync";
 import { WorkflowsRuntime } from "./workflows";
@@ -124,6 +125,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly sync: SyncRuntime;
   readonly registry: LocalRegistryRuntime;
   readonly multimodal: MultimodalRuntime;
+  /** Governed improvement history; no trusted task reader/baseline/apply configured by default. */
+  readonly improvement: ImprovementRuntime;
   /**
    * The only path from an agent to a capability (Phase 30). Phase 31 hands this, and nothing
    * else, to the agent runtime.
@@ -135,9 +138,9 @@ export class PhoenixRuntime implements CoreServices {
    */
   readonly agents: AgentRuntime;
   /**
-   * Engineering plans and task creation (Phase 36). Holds the tool gateway but is reached only by
-   * session-token user routes: nothing an agent or a capability can call exposes `approve` or
-   * `create`. Off until AI and a destination are configured.
+   * Engineering plans and user-approved task creation (Phase 36). Agent access is limited to
+   * the separate opted-in, text-free `plans.review_context` aggregate; no capability reaches
+   * preview, approval or creation.
    */
   readonly planning: PlanningRuntime;
   /**
@@ -274,6 +277,7 @@ export class PhoenixRuntime implements CoreServices {
       ai: this.ai.service,
       embeddingProviders: () => this.ai.embeddingProviders(),
       aiEnabled: () => this.ai.aiSettings().enabled,
+      killSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
       audit: this.permissions.audit,
       logger: this.logger,
     });
@@ -320,6 +324,8 @@ export class PhoenixRuntime implements CoreServices {
       memory: this.memory,
       capabilities: this.capabilities,
       notifications: this.notifications,
+      bus: this.bus,
+      killSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
     });
 
     const policyStore = new PolicyStore(this.db);
@@ -384,6 +390,7 @@ export class PhoenixRuntime implements CoreServices {
       autonomy: this.autonomy,
       logger: this.logger,
     });
+    this.improvement = new ImprovementRuntime({ db: this.db });
     this.sync = new SyncRuntime(this.settings, options.secrets);
     this.registry = new LocalRegistryRuntime(options.registry, {
       sdk: "0.1.0",
@@ -400,6 +407,7 @@ export class PhoenixRuntime implements CoreServices {
       capabilities: this.capabilities,
       audit: this.permissions.audit,
       memory: this.memory,
+      workflowHistory: this.workflows,
       derived: () => this.derivedInventory(),
       externalAi: () => this.ai.describeExternalProcessing(),
     });
@@ -496,6 +504,7 @@ export class PhoenixRuntime implements CoreServices {
     }, 60_000);
     this.syncTimer.unref();
     await this.capabilities.restore();
+    this.proactive.startScheduler();
     // After the capabilities are back, so the tool catalog is complete when triggers arrive.
     this.workflows.start();
 
@@ -542,7 +551,7 @@ export class PhoenixRuntime implements CoreServices {
   /** What the privacy inventory lists besides the data classes: derived, deleted with its source. */
   private derivedInventory(): DerivedInventory[] {
     const retrieval = this.retrieval.status();
-    const graph = this.graph.graph.stats();
+    const graph = this.graph.visibleInventory();
     return [
       {
         id: "vectors",
@@ -555,7 +564,7 @@ export class PhoenixRuntime implements CoreServices {
       {
         id: "graph",
         description:
-          "Who changed what, in which commit, issue, meeting or decision, with where each link came from. Built from your events, memories and meetings and deleted with them; people can also be forgotten by name.",
+          "Visible people, commits, issues, meetings and decisions with their sources; hidden graph facts are not counted. Built from events, memories and meetings and deleted with them.",
         count: graph.nodes,
         edges: graph.edges,
         provenance_rows: graph.provenance,
@@ -587,9 +596,9 @@ export class PhoenixRuntime implements CoreServices {
       {
         id: "workflow_runs",
         description:
-          "History of workflow runs: the trigger event (redacted and cut short), each step's status and a redacted, cut-short copy of its input and output. Not deleted by any data class yet: it is kept until Phoenix is reset.",
+          "Workflow run snapshots copy redacted trigger events and step inputs/outputs. Deleting events clears terminal unprotected runs, while active and audit-protected runs remain until separately reviewed.",
         count: this.tableCount("workflow_runs"),
-        deleted_with: "nothing yet",
+        deleted_with: "events (eligible runs); retained protected runs require review",
       },
     ];
   }
@@ -661,6 +670,7 @@ export class PhoenixRuntime implements CoreServices {
   /** Graceful shutdown: stop accepting requests, flush the bus, close the database. Idempotent. */
   stop(): Promise<void> {
     this.stopping ??= (async () => {
+      this.proactive.stopScheduler();
       clearInterval(this.syncTimer ?? undefined);
       if (this.ticker) clearInterval(this.ticker);
       if (this.pruner) clearInterval(this.pruner);

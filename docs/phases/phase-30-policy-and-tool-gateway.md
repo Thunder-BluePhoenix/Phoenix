@@ -5,7 +5,7 @@
 | Stage | Stage 4 — Fawkes Becomes an Agent (v0.4) |
 | Release target | v0.4 |
 | Priority | Critical |
-| Status | 🟨 Built, tested in-process and constructed in Core as `runtime.toolGateway`; no agent uses it yet and no route exposes it (see [gaps register](../gaps.md)) |
+| Status | 🟨 Built, tested in-process and constructed in Core as `runtime.toolGateway`; agents and workflows use it (see [gaps register](../gaps.md)) |
 | Depends on | [Phase 29 — Memory Governance & Inspection UX](phase-29-memory-governance-ux.md) |
 | Unblocks | [Phase 31 — Agent Runtime & First Vertical Slice](phase-31-agent-runtime-first-vertical-slice.md) |
 
@@ -45,7 +45,7 @@ Ensure every AI tool call passes through a policy engine with risk tiers before 
 - `core/policy`: risk table, rules (typed JSON, validated), `PolicyEngine`, `PolicyAdmin` (user-only), temporary approvals. Table and decision order: `core/policy/README.md`. Migration 6 adds `policy_rules` and `policy_approvals`.
 - `ai/tool-gateway`: `ToolRegistry` (tools from manifests), `ToolGateway.call`, `approverFromPermissions` (approval goes through `PermissionGateway.authorize`).
 - Verified in-process only: a real SQLite file (closed and reopened), real `PermissionGateway`, real `CapabilityManager`, the real git capability on a throwaway repo, and a mock write/production capability for approvals. No external service is involved.
-- Not done: the runtime does not construct or expose the gateway yet (no API route; `core/runtime` is not part of this change), and nothing calls it until Phase 31. See `docs/gaps.md`.
+- **Built since this phase's package work**: Core constructs `runtime.toolGateway`; `AgentRuntime` and `WorkflowsRuntime` pass agent/workflow calls through it. The gateway is not a direct user API route; agent and workflow routes expose their respective operations. See `docs/gaps.md` for remaining gates.
 
 ## Source documents
 

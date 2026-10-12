@@ -3,7 +3,7 @@
 //
 // Git capability (Phase 17): watches the repositories the user selected and
 // emits git.* events for commits, branch switches, dirty working trees and
-// merge conflicts. Read-only: it only ever runs `git status` and `git log`.
+// merge conflicts. Read-only: git status/log plus local config reads for remote provenance.
 import { basename, isAbsolute, resolve } from "node:path";
 import { redact } from "@phoenix/logging";
 import { defineCapability, type CapabilityContext, type HealthResult } from "@phoenix/sdk";
@@ -192,7 +192,7 @@ export function createGitCapability() {
         {
           name: "recent_commits",
           description:
-            "The most recent commits of a watched repository: short hash, subject, date and changed paths (no author names or emails). Read-only (git log only).",
+            "Recent commits of a watched repository with canonical GitHub remote identity (null if missing or ambiguous), short hash, subject, dates and changed paths. No author names or emails; read-only local git commands.",
           side_effect: "read",
           permissions: ["repository_access"],
           timeout_ms: 20_000,

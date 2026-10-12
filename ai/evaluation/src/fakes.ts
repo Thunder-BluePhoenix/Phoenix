@@ -181,6 +181,7 @@ export function fakeGit(env: FakeEnv): CapabilityModule {
         const commits = ci && !ci.headMissing ? ci.commits : [];
         return {
           repository: "local",
+          github_repository: "octo/phoenix",
           ...(ref !== null ? { ref: { requested: ref, found: !ci?.headMissing } } : {}),
           commits: commits.map((c) => ({
             sha: c.sha,

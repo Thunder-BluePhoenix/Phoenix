@@ -10,6 +10,18 @@ type ConfigureResult = SyncStatus & { recovery_key?: string };
 type Choice = { id: string; scope: string; choice: "local" | "remote"; remoteMissing: boolean };
 type Delete = { id: string; scope: string };
 const CLASSES: SyncDataClass[] = ["preference", "context", "project_profile"];
+type AdapterKey = "pet.settings.reduced_motion" | "retrieval.settings.k";
+type AdapterSource = {
+  key: AdapterKey;
+  selected: boolean;
+  current: unknown;
+  revision: string | null;
+  available: boolean;
+};
+type AdapterStatus = SyncStatus & {
+  adapter_keys?: AdapterKey[];
+  adapter_sources?: AdapterSource[];
+};
 
 function relayDisplay(endpoint: string | null): string {
   if (!endpoint) return "not configured";
@@ -25,7 +37,7 @@ function relayDisplay(endpoint: string | null): string {
 export function SyncSettingsSection() {
   const client = useClient();
   const { run, busy, error: actionError } = useAction();
-  const [status, setStatus] = useState<SyncStatus | null>(null);
+  const [status, setStatus] = useState<AdapterStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [endpoint, setEndpoint] = useState("");
   const [token, setToken] = useState("");
@@ -35,14 +47,17 @@ export function SyncSettingsSection() {
   const [choice, setChoice] = useState<Choice | null>(null);
   const [deletion, setDeletion] = useState<Delete | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [applySource, setApplySource] = useState<AdapterSource | null>(null);
 
   const reload = useCallback(async () => {
     try {
-      const next = await client.request<SyncStatus>("GET", "/api/sync");
+      const next = await client.request<AdapterStatus>("GET", "/api/sync");
+      setApplySource(null);
       setStatus(next);
       setLoadError(null);
     } catch {
       setStatus(null);
+      setApplySource(null);
       setLoadError(
         "Sync settings are unavailable from Phoenix Core. This status request did not contact the relay.",
       );
@@ -65,8 +80,8 @@ export function SyncSettingsSection() {
     setToken("");
     setRestoreKey("");
     if (result) {
-      const { recovery_key, ...safeStatus } = result;
-      setStatus(safeStatus);
+      const { recovery_key } = result;
+      await reload();
       setEndpoint("");
       setRecoveryKey(recovery_key ?? null);
       setMessage(
@@ -89,11 +104,48 @@ export function SyncSettingsSection() {
       { excluded_projects: projects, excluded_classes: classes },
       "Exclusions saved.",
     );
+  const selectAdapter = async (keys: AdapterKey[]) => {
+    setMessage(null);
+    setApplySource(null);
+    const result = await run("POST", "/api/sync/adapter", { keys });
+    if (result) {
+      await reload();
+      setMessage(
+        "Adapter selection saved. Newly selected current settings are staged; no other sources are included.",
+      );
+    }
+  };
+  const applyAdapter = async () => {
+    if (!applySource?.revision) return;
+    const result = await run("POST", "/api/sync/adapter/apply", {
+      key: applySource.key,
+      revision: applySource.revision,
+      current: applySource.current,
+    });
+    if (result) {
+      await reload();
+      setApplySource(null);
+      setMessage("Selected synced setting applied locally.");
+    }
+  };
+  const publishAdapter = async (key: AdapterKey) => {
+    setMessage(null);
+    setApplySource(null);
+    const result = await run("POST", "/api/sync/adapter", {
+      keys: status?.adapter_keys ?? [],
+      refresh: key,
+    });
+    if (result) {
+      await reload();
+      setMessage("Current local setting staged for encrypted sync.");
+    }
+  };
   const sync = async () => {
     setMessage(null);
+    setApplySource(null);
     const next = await run<SyncStatus>("POST", "/api/sync/run");
     if (next) {
-      setStatus(next);
+      await reload();
       setMessage(
         next.pending
           ? `${next.pending} item(s) still queued. Review status and conflicts below.`
@@ -103,6 +155,7 @@ export function SyncSettingsSection() {
   };
   const resolve = async () => {
     if (!choice) return;
+    setApplySource(null);
     const result = await run("POST", "/api/sync/items/resolve", {
       id: choice.id,
       scope: choice.scope,
@@ -137,8 +190,9 @@ export function SyncSettingsSection() {
         Optional and off by default. Sync requires your own available HTTPS relay and relay
         authentication; Phoenix does not provide a hosted relay. Configuring is explicit opt-in: it
         sends nothing during setup, but queued records sync automatically while online afterward.
-        Sync now starts an immediate attempt. Only explicitly staged sync records are included; this
-        does not automatically sync pet state or memory.
+        Sync now starts an immediate attempt. The adapter stages only the two explicitly selected
+        non-content settings; later local changes require Publish current. Meeting, person and
+        memory text is never included by this adapter.
       </p>
       {loadError && <Feedback error={loadError} />}
       {status && (
@@ -210,12 +264,96 @@ export function SyncSettingsSection() {
               ))}
             </ul>
           )}
+          <fieldset disabled={busy || !status.enabled}>
+            <legend>Opt in existing settings individually</legend>
+            <p className="muted small">
+              Only account-owner-scoped reduced motion (preference) and search result count (context
+              configuration) are eligible; there are no project-scoped sources. Selecting stages the
+              current value. Publish a later local change explicitly. Incoming values remain staged
+              until you review and confirm applying them locally. Excluding a class also removes its
+              adapter selection when allowed; already published records must first be deleted and
+              synced. Deselecting does not erase uploaded ciphertext; delete its synced item
+              separately if needed.
+            </p>
+            {(["pet.settings.reduced_motion", "retrieval.settings.k"] as const).map((key) => (
+              <label className="choice" key={key}>
+                <input
+                  type="checkbox"
+                  checked={(status.adapter_keys ?? []).includes(key)}
+                  onChange={() =>
+                    void selectAdapter(
+                      (status.adapter_keys ?? []).includes(key)
+                        ? (status.adapter_keys ?? []).filter((selected) => selected !== key)
+                        : [...(status.adapter_keys ?? []), key],
+                    )
+                  }
+                />
+                {key === "pet.settings.reduced_motion"
+                  ? "Reduced motion preference"
+                  : "Search result count metadata"}
+              </label>
+            ))}
+          </fieldset>
+          {status.enabled &&
+            (status.adapter_keys ?? []).map((key) => (
+              <button
+                className="btn"
+                type="button"
+                key={key}
+                disabled={busy}
+                onClick={() => void publishAdapter(key)}
+              >
+                Publish current {key}
+              </button>
+            ))}
+          {status.enabled &&
+            (status.adapter_sources ?? [])
+              .filter((source) => source.selected && source.available)
+              .map((source) => (
+                <div key={source.key}>
+                  <button
+                    className="btn"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setApplySource(source)}
+                  >
+                    Review applying {source.key}
+                  </button>
+                </div>
+              ))}
+          {applySource && (
+            <div role="group" aria-label="Setting apply preview">
+              <p>
+                Apply decrypted staged {applySource.key} revision {applySource.revision} to the
+                existing local setting? It will replace the current value only after confirmation.
+                Current and incoming values are hidden; identify the versions by source and
+                revision, or cancel. A changed local value or staged revision invalidates this
+                preview.
+              </p>
+              <button
+                className="btn"
+                type="button"
+                disabled={busy}
+                onClick={() => void applyAdapter()}
+              >
+                Confirm apply setting
+              </button>{" "}
+              <button className="btn" type="button" onClick={() => setApplySource(null)}>
+                Cancel apply
+              </button>
+            </div>
+          )}
           {status.enabled ? (
             <>
               <p className="small">
                 Relay: {relayDisplay(status.endpoint)}. Identity:{" "}
                 {status.identity ?? "not available"}. A reachable relay is required; this status
                 does not prove the relay is available.
+              </p>
+              <p className="muted small">
+                This identity represents the shared recovery-key account, not a distinct device.
+                Devices with the same key and relay token cannot be individually revoked, and relay
+                replay protection is not established.
               </p>
               <div className="button-row wrap">
                 <button className="btn" type="button" disabled={busy} onClick={() => void sync()}>

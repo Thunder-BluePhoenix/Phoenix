@@ -16,6 +16,8 @@ export interface RouteTask {
   maxCostTier?: CostTier;
   /** The user's chosen provider id. Wins among providers that are allowed; never overrides a refusal. */
   preferred?: string;
+  /** Hard restriction for embedding: only this local provider; no alternative local fallback. */
+  localProvider?: string;
   /**
    * Why the call is made. Only matters for sensitive data, where the cloud gate accepts a fixed
    * list of purposes (SENSITIVE_CLOUD_PURPOSES). Absent = no purpose = never a cloud provider.
@@ -80,6 +82,18 @@ export function route(task: RouteTask, state: RouterState): RoutePlan {
     );
     if (!gate.allowed) {
       refused.push({ ...base, reasons: [], refusedBecause: gate.reason });
+      continue;
+    }
+    if (task.kind === "embed" && p.locality !== "local") {
+      refused.push({ ...base, reasons: [], refusedBecause: "embeddings must stay local" });
+      continue;
+    }
+    if (task.localProvider !== undefined && p.id !== task.localProvider) {
+      refused.push({
+        ...base,
+        reasons: [],
+        refusedBecause: `restricted to local provider ${task.localProvider}`,
+      });
       continue;
     }
     // 2. Capability.

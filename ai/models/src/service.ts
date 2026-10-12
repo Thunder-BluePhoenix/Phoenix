@@ -145,6 +145,8 @@ export interface StreamTask extends RoutingHints {
 export interface EmbedTask extends RoutingHints {
   kind: "embed";
   request: EmbedRequest;
+  /** Pin embeddings to this local provider; neither other local nor cloud providers may answer. */
+  localProvider?: string;
 }
 export type AiTask = GenerateTask | StreamTask | EmbedTask;
 
@@ -247,9 +249,16 @@ export class AiService {
     privacy: PrivacyClass,
     settings: AiSettings,
     purpose: string,
+    localProvider?: string,
+    localOnly = false,
   ): Promise<void> {
     const stale = this.deps.registry
       .list()
+      .filter(
+        (p) =>
+          (!localOnly || p.locality === "local") &&
+          (localProvider === undefined || p.id === localProvider),
+      )
       .filter((p) => this.gateFor(p, privacy, settings, purpose).allowed)
       .filter((p) => {
         const entry = this.healthCache[p.id];
@@ -331,7 +340,13 @@ export class AiService {
   async run(task: AiTask): Promise<AiOutcome> {
     const settings = this.requireEnabled();
     const privacy = task.request.privacy;
-    await this.refreshHealth(privacy, settings, task.request.purpose);
+    await this.refreshHealth(
+      privacy,
+      settings,
+      task.request.purpose,
+      task.kind === "embed" ? task.localProvider : undefined,
+      task.kind === "embed",
+    );
     const plan = route(
       {
         kind: task.kind,
@@ -340,6 +355,7 @@ export class AiService {
         latencyBudgetMs: task.latencyBudgetMs,
         maxCostTier: task.maxCostTier,
         preferred: task.preferred ?? settings.preferred,
+        localProvider: task.kind === "embed" ? task.localProvider : undefined,
       },
       this.routerState(settings, this.deps.auditCloudSend !== undefined),
     );

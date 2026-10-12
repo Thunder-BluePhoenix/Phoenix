@@ -83,6 +83,26 @@ export function workflowRoutes(s: CoreServices): Route[] {
         ...(status ? { status } : {}),
       });
     }),
+    route("POST", "/api/workflows/runs/prune", async ({ body }) => {
+      const b = expectObject(await body());
+      exactKeys(b, ["before", "limit", "confirm_evidence"]);
+      if (typeof b.before !== "string" || !Number.isFinite(Date.parse(b.before)))
+        throw invalid('"before" must be an ISO timestamp');
+      if (b.confirm_evidence !== undefined && typeof b.confirm_evidence !== "boolean")
+        throw invalid('"confirm_evidence" must be boolean');
+      if (
+        typeof b.limit !== "number" ||
+        !Number.isInteger(b.limit) ||
+        b.limit < 1 ||
+        b.limit > MAX_PAGE
+      )
+        throw invalid(`"limit" must be between 1 and ${MAX_PAGE}`);
+      return workflows().pruneRuns({
+        before: Date.parse(b.before),
+        limit: b.limit,
+        ...(b.confirm_evidence === undefined ? {} : { confirmEvidence: b.confirm_evidence }),
+      });
+    }),
     route("GET", "/api/workflows/runs/:id", ({ params }) => {
       const run = workflows().getRun(pathId(params.id, "Run"));
       if (!run) throw new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, "Run not found");
@@ -94,11 +114,35 @@ export function workflowRoutes(s: CoreServices): Route[] {
       res.statusCode = 202;
       return result;
     }),
+    route("POST", "/api/workflows/runs/:id/delete", async ({ params, body }) => {
+      const b = expectObject(await body());
+      exactKeys(b, ["confirm_evidence"]);
+      if (b.confirm_evidence !== undefined && typeof b.confirm_evidence !== "boolean")
+        throw invalid('"confirm_evidence" must be boolean');
+      return workflows().deleteRun(pathId(params.id, "Run"), b.confirm_evidence === true);
+    }),
     route("POST", "/api/workflows/validate", async ({ body }) => {
       return workflows().validate(definitionOf(expectObject(await body())));
     }),
     route("POST", "/api/workflows", async ({ body, res }) => {
-      const { created, ...saved } = workflows().save(definitionOf(expectObject(await body())));
+      const b = expectObject(await body());
+      exactKeys(b, ["definition", "expected_hash", "create_only"]);
+      if (!("definition" in b)) throw invalid('"definition" is required');
+      if (
+        b.expected_hash !== undefined &&
+        (typeof b.expected_hash !== "string" ||
+          b.expected_hash.length === 0 ||
+          b.expected_hash.length > 128)
+      )
+        throw invalid('"expected_hash" must be a workflow hash');
+      if (b.create_only !== undefined && typeof b.create_only !== "boolean")
+        throw invalid('"create_only" must be boolean');
+      if (b.create_only === true && b.expected_hash !== undefined)
+        throw invalid('"create_only" cannot be combined with "expected_hash"');
+      const { created, ...saved } = workflows().save(b.definition, {
+        ...(b.expected_hash === undefined ? {} : { expectedHash: b.expected_hash }),
+        ...(b.create_only === undefined ? {} : { createOnly: b.create_only }),
+      });
       res.statusCode = created ? 201 : 200;
       return saved;
     }),

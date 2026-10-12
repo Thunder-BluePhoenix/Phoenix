@@ -9,6 +9,7 @@ import { Feedback } from "./Feedback";
 const INACTIVE_TEXT: Record<string, string> = {
   retrieval_disabled: "Smart search is off.",
   ai_disabled: "Smart search is on, but AI is off, so it is not used. Turn AI on below.",
+  kill_switch: "Smart search is paused by the emergency stop. Disengage it before rebuilding.",
 };
 
 const bytes = (n: number) =>
@@ -40,7 +41,8 @@ function StatusLines({ status }: { status: RetrievalStatus }) {
           <>
             {formatAgo(status.last_run.at)}: {status.last_run.embedded} added,{" "}
             {status.last_run.failed} failed, {status.last_run.remaining} left
-            {status.last_run.capped && " (stopped at its limit; it continues on the next run)"}
+            {status.last_run.capped &&
+              " (stopped at its limit; more can be indexed on a later run)"}
           </>
         ) : (
           "Not built since Phoenix started."
@@ -69,14 +71,17 @@ function RetrievalForm({ settings, reload }: { settings: Settings; reload: () =>
   const { data: status, error: statusError, reload: reloadStatus } = useRetrievalStatus();
   const { run, busy, error } = useAction();
   const [saved, setSaved] = useState<string | null>(null);
+  const [confirmRebuild, setConfirmRebuild] = useState(false);
 
   const refresh = async () => {
+    setConfirmRebuild(false);
     await reload();
     await reloadStatus();
   };
 
   const toggle = async () => {
     setSaved(null);
+    setConfirmRebuild(false);
     const on = !settings.enabled;
     const res = await run<Settings>("POST", "/api/retrieval/settings", { enabled: on });
     if (res) {
@@ -89,16 +94,20 @@ function RetrievalForm({ settings, reload }: { settings: Settings; reload: () =>
     await refresh();
   };
 
-  // Core has no rebuild route. Turning it off and on again is what starts an indexing run, and
-  // an indexing run only embeds memories that have no vector yet.
-  const update = async () => {
+  const rebuild = async () => {
+    if (!status?.active || !confirmRebuild || busy) return;
     setSaved(null);
-    const off = await run<Settings>("POST", "/api/retrieval/settings", { enabled: false });
-    if (off) {
-      const on = await run<Settings>("POST", "/api/retrieval/settings", { enabled: true });
-      if (on) setSaved("Indexing started for memories that are not indexed yet.");
+    setConfirmRebuild(false);
+    const result = await run<RetrievalStatus>("POST", "/api/retrieval/rebuild", { confirm: true });
+    if (result) {
+      const report = result.last_run;
+      setSaved(
+        report
+          ? `Full rebuild finished this bounded run: ${report.embedded} indexed, ${report.failed} failed, ${report.remaining} waiting${report.capped ? "; stopped at its limit" : ""}.${report.degraded.length ? ` Keywords only for some of it: ${report.degraded.join("; ")}` : ""}`
+          : "Full rebuild returned without an indexing report. Check the index status for remaining memories and failures.",
+      );
+      await reloadStatus();
     }
-    await refresh();
   };
 
   return (
@@ -122,23 +131,47 @@ function RetrievalForm({ settings, reload }: { settings: Settings; reload: () =>
       {status && <StatusLines status={status} />}
       {statusError && !status && <Feedback error={statusError} />}
       <div className="button-row wrap">
-        <button
-          type="button"
-          className="btn"
-          disabled={busy || !status?.active}
-          aria-describedby="retrieval-update-note"
-          onClick={() => void update()}
-        >
-          Update the index now
-        </button>
+        {!confirmRebuild ? (
+          <button
+            type="button"
+            className="btn"
+            disabled={busy || !status?.active}
+            aria-describedby="retrieval-rebuild-note"
+            onClick={() => setConfirmRebuild(true)}
+          >
+            Rebuild entire index
+          </button>
+        ) : (
+          <div className="button-row wrap" role="group" aria-label="Confirm full index rebuild">
+            <button
+              type="button"
+              className="btn btn-danger"
+              disabled={busy || !status?.active}
+              aria-describedby="retrieval-rebuild-note"
+              onClick={() => void rebuild()}
+            >
+              Confirm full rebuild
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={busy}
+              onClick={() => setConfirmRebuild(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
         <button type="button" className="btn" disabled={busy} onClick={() => void refresh()}>
           Refresh status
         </button>
       </div>
-      <p id="retrieval-update-note" className="muted small">
-        {status?.active ? "" : "Update is available once smart search is on and AI is on. "}
-        “Update” embeds the memories that are not indexed yet; it briefly switches smart search off
-        and on to do that. Phoenix cannot re-embed everything from scratch.
+      <p id="retrieval-rebuild-note" className="muted small">
+        {!status?.active &&
+          "Rebuild is available only when smart search and AI are on and the emergency stop is disengaged. "}
+        Rebuild replaces every vector for the current model, including memories already indexed.
+        Other models’ vectors are kept. A single rebuild is bounded; remaining memories may need
+        another run. Searches may use keywords while rebuilding.
       </p>
       <Feedback error={error} saved={saved} />
     </>

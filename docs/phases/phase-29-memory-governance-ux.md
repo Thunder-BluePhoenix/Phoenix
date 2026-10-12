@@ -43,7 +43,7 @@ Make memory inspectable, deletable and permission-aware, then release v0.3.
 ## Starting point from Phase 28
 
 - Already in place: tombstone deletes (`MemoryStore.forget`, text/provenance purged, index row removed, dedupe key kept so the source cannot re-add it), `expires_at` enforced at read time plus `expire()` to tombstone, `retention_days` per item (defaults per layer in `DEFAULT_RETENTION_DAYS`), `sensitivity` on every item, `Viewer`/`ScopeGrant` filtering inside retrieval (hidden items never appear, even in counts), and the privacy class of a model request set to the maximum sensitivity of its context (the `ai-models` router already refuses cloud for sensitive data).
-- Phase 29 still has to: expose browse/search/delete (use `MemoryStore.list/search/forget`, which are not permission-filtered, so filter with `canView`), make retention a user setting and run `expire()` on a schedule, back `allowSensitive` of `createDefaultPolicy` with a setting, decide whether redacted sensitive content may go to the cloud (`SENSITIVE_DATA_MAY_USE_CLOUD` in `ai/models/src/gate.ts`), add memory to `PrivacyService` data classes, and revisit transcripts (not stored as memory in Phase 28).
+- **Built in Phase 29**: browse/search/delete routes apply `canView`; retention is a user setting and `expire()` runs on a schedule; `allow_sensitive_meetings` backs sensitive meeting memory, the cloud rule uses purpose-bound opt-in and audit, and `PrivacyService` includes memory. Transcripts remain outside memory (see Implementation notes).
 
 ## Implementation notes
 

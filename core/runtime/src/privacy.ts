@@ -57,6 +57,8 @@ export interface PrivacyDeps {
     /** Deletes every memory (and its index entries); returns how many. */
     deleteAll(): number;
   };
+  /** Workflow run snapshots copy event metadata; delete eligible history with events. */
+  workflowHistory: { deleteHistoryForPrivacy(): number };
   /** Derived data to list in the inventory, counted now. */
   derived(): DerivedInventory[];
   /** One sentence about what is sent to AI providers, derived from the live AI settings. */
@@ -136,7 +138,11 @@ export class PrivacyService {
     }
     const deleted =
       kind === "events"
-        ? this.d.events.deleteBefore()
+        ? (() => {
+            const count = this.d.events.deleteBefore();
+            this.d.workflowHistory.deleteHistoryForPrivacy();
+            return count;
+          })()
         : kind === "notifications"
           ? this.d.notifications.deleteBefore()
           : kind === "meetings"

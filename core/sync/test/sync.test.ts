@@ -23,6 +23,12 @@ const item: SyncItem = {
 };
 
 describe("encrypted sync envelopes", () => {
+  it("derives the same shared account identity from the recovery key across devices", () => {
+    const recovery = newRecoveryKey();
+    const restoredOnAnotherDevice = recovery;
+    expect(identity(restoredOnAnotherDevice)).toBe(identity(recovery));
+    expect(identity(newRecoveryKey())).not.toBe(identity(recovery));
+  });
   it("round trips without exposing owner, project or value in relay ciphertext", () => {
     const key = newRecoveryKey();
     const namespace = identity(key);

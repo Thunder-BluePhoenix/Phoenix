@@ -247,6 +247,125 @@ describe("hybrid retrieval", () => {
   });
 });
 
+describe("explicit vector rebuild", () => {
+  it("requires authentication, confirmation, AI, retrieval and a disengaged emergency stop before deleting anything", async () => {
+    const core = await boot();
+    await commit(core, SHAS[0]!, "make the automobile quick");
+    expect(
+      (await core.api("POST", "/api/retrieval/rebuild", { confirm: true }, { authorization: "" }))
+        .status,
+    ).toBe(401);
+    expect((await core.api("POST", "/api/retrieval/rebuild", {})).status).toBe(400);
+    expect((await core.api("POST", "/api/retrieval/rebuild", { confirm: true })).status).toBe(409);
+    await core.api("POST", "/api/retrieval/settings", { enabled: true });
+    expect((await core.api("POST", "/api/retrieval/rebuild", { confirm: true })).status).toBe(409);
+    await turnOn(core);
+    const before = await status(core);
+    const calls = embedRequests(core).length;
+    core.runtime.permissions.engageKillSwitch("user");
+    expect((await core.api("POST", "/api/retrieval/rebuild", { confirm: true })).status).toBe(409);
+    expect((await status(core)).embedded).toBe(before.embedded);
+    expect(embedRequests(core)).toHaveLength(calls);
+  });
+
+  it("re-embeds existing vectors exactly once for simultaneous requests, without changing settings", async () => {
+    const network = fakeNetwork();
+    let hold = false;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const core = await boot({
+      ...network,
+      fetch: async (url, init) => {
+        if (hold && url.endsWith("/api/embed")) {
+          entered();
+          await gate;
+        }
+        return network.fetch(url, init);
+      },
+    });
+    await commit(core, SHAS[0]!, "make the automobile quick");
+    await turnOn(core);
+    const before = embedRequests(core).length;
+    hold = true;
+    const firstRequest = core.api("POST", "/api/retrieval/rebuild", { confirm: true });
+    await started;
+    const secondRequest = core.runtime.retrieval.rebuild();
+    release();
+    const [first, second] = await Promise.all([firstRequest, secondRequest]);
+    expect(first.status).toBe(200);
+    expect(first.json).toMatchObject({ enabled: true, embedded: 1, unembedded: 0 });
+    expect(second).toMatchObject({ enabled: true, embedded: 1, unembedded: 0 });
+    expect(embedRequests(core)).toHaveLength(before + 1);
+    expect((await core.api("GET", "/api/retrieval/settings")).json.enabled).toBe(true);
+  });
+  it("rebuilds only the current model space and preserves previous model vectors", async () => {
+    const core = await boot();
+    await commit(core, SHAS[0]!, "make the automobile quick");
+    await turnOn(core);
+    await core.api("POST", "/api/retrieval/settings", { model: "other-embed" });
+    await core.runtime.retrieval.settled();
+    const before = embedRequests(core).length;
+    const result = await core.api("POST", "/api/retrieval/rebuild", { confirm: true });
+    expect(result.status).toBe(200);
+    expect(result.json).toMatchObject({
+      vector_space: "ollama/other-embed",
+      embedded: 1,
+      other_models: [{ model: "ollama/nomic-embed-text#prefixed", vectors: 1 }],
+    });
+    expect(embedRequests(core)).toHaveLength(before + 1);
+  });
+
+  it("stops before persisting vectors if emergency stop engages during an embedding call", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const network = fakeNetwork();
+    const core = await boot({
+      ...network,
+      fetch: async (url, init) => {
+        if (url.endsWith("/api/embed")) {
+          entered();
+          await gate;
+        }
+        return network.fetch(url, init);
+      },
+    });
+    await commit(core, SHAS[0]!, "make the automobile quick");
+    await core.api("POST", "/api/ai/settings", { enabled: true });
+    await core.api("POST", "/api/retrieval/settings", { enabled: true });
+    await started;
+    core.runtime.permissions.engageKillSwitch("user");
+    release();
+    await core.runtime.retrieval.settled();
+    expect((await status(core)).embedded).toBe(0);
+    expect((await status(core)).inactive_reason).toBe("kill_switch");
+  });
+
+  it("returns an honest remaining count when the embedding provider cannot finish", async () => {
+    const network = fakeNetwork({ ollama: "down" });
+    const core = await boot(network);
+    await commit(core, SHAS[0]!, "make the automobile quick");
+    await core.api("POST", "/api/ai/settings", { enabled: true });
+    await core.api("POST", "/api/retrieval/settings", { enabled: true });
+    await core.runtime.retrieval.settled();
+    const result = await core.api("POST", "/api/retrieval/rebuild", { confirm: true });
+    expect(result.status).toBe(200);
+    expect(result.json).toMatchObject({ embedded: 0, unembedded: 1 });
+    expect(result.json.last_run).toMatchObject({ remaining: 1, embedded: 0 });
+  });
+});
+
 describe("deletion removes vectors", () => {
   const vectorCount = (core: Core) =>
     core.runtime.retrieval.vectors.models().reduce((n, m) => n + m.count, 0);

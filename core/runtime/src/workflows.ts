@@ -197,17 +197,6 @@ export class WorkflowsRuntime implements WorkflowsApi {
       audit: d.permissions.audit,
       isKillSwitchEngaged: () => d.permissions.isKillSwitchEngaged(),
       ...(d.autonomy ? { autonomy: d.autonomy } : {}),
-      // The call given up on keeps its prompt otherwise: withdraw it.
-      abandon: (tool) => {
-        const dot = tool.indexOf(".");
-        const capability = tool.slice(0, dot);
-        const command = tool.slice(dot + 1);
-        for (const c of d.permissions.pendingConfirmations()) {
-          if (c.capabilityId === capability && c.command === command) {
-            d.permissions.resolveConfirmation(c.id, false, "workflow-abandon");
-          }
-        }
-      },
       // `AiService` refuses every call while AI is off, so an `ai` step then fails the run.
       ai: aiStepFromService(d.ai),
       lookup: lookupFromContext(d.context, WORKFLOW_VIEWER),
@@ -301,7 +290,7 @@ export class WorkflowsRuntime implements WorkflowsApi {
 
   // ── Changing (user only) ───────────────────────────────────────────────────
 
-  save(definition: unknown) {
+  save(definition: unknown, precondition: { expectedHash?: string; createOnly?: boolean } = {}) {
     const id =
       typeof definition === "object" &&
       definition !== null &&
@@ -310,7 +299,7 @@ export class WorkflowsRuntime implements WorkflowsApi {
         ? definition.id
         : undefined;
     const existed = id !== undefined && this.store.readDefinition(id) !== undefined;
-    const stored = mapped(() => this.admin.save(USER, definition));
+    const stored = mapped(() => this.admin.save(USER, definition, precondition));
     const need = requiresAuthorisation(stored.definition, this.catalog);
     return {
       created: !existed,
@@ -401,6 +390,90 @@ export class WorkflowsRuntime implements WorkflowsApi {
   getRun(runId: string): WorkflowRunView | null {
     const run = this.engine.getRun(runId);
     return run ? runView(run) : null;
+  }
+
+  /** A user can erase a finished run; destructive/uncertain evidence requires an explicit choice. */
+  deleteRun(runId: string, confirmEvidence = false): { deleted: true } {
+    const run = this.store.getRun(runId);
+    if (!run) throw new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, "Run not found");
+    if (run.finishedAt === null || !TERMINAL_STATUSES[run.status])
+      throw new PhoenixError(ErrorCode.INVALID_REQUEST, "An active run cannot be deleted", [
+        "RUN_ACTIVE",
+      ]);
+    if (!confirmEvidence && this.store.runHasProtectedEvidence(runId))
+      throw new PhoenixError(
+        ErrorCode.INVALID_REQUEST,
+        "This run contains audit-relevant evidence; confirm deletion explicitly",
+        ["EVIDENCE_CONFIRMATION_REQUIRED"],
+      );
+    this.auditHistoryRemoval("workflow.run.history.deleted", {
+      run: runId,
+      workflow: run.workflowId,
+      confirmEvidence,
+    });
+    const outcome = this.store.deleteRunHistory(runId, confirmEvidence);
+    if (outcome !== "deleted")
+      throw new PhoenixError(ErrorCode.INVALID_REQUEST, "Run changed before deletion");
+    return { deleted: true };
+  }
+
+  private auditHistoryRemoval(action: string, details: Record<string, unknown>): void {
+    try {
+      this.d.permissions.audit.record({ actor: "user:owner", action, decision: "info", details });
+    } catch {
+      throw new PhoenixError(
+        ErrorCode.INTERNAL_ERROR,
+        "Workflow history action could not be audited",
+      );
+    }
+  }
+
+  /** Scan at most `limit` completed rows; protected rows remain available for audit. */
+  pruneRuns(input: { before: number; limit: number; confirmEvidence?: boolean }): {
+    deleted: number;
+    protected: number;
+    scanned: number;
+  } {
+    if (
+      !Number.isFinite(input.before) ||
+      !Number.isInteger(input.limit) ||
+      input.limit < 1 ||
+      input.limit > 200
+    )
+      throw new PhoenixError(
+        ErrorCode.INVALID_REQUEST,
+        "Invalid workflow history retention bounds",
+      );
+    // Rate-limit records must survive the current window even if a caller requests a future cutoff.
+    const before = Math.min(input.before, Date.now() - 60_000);
+    this.auditHistoryRemoval("workflow.run.history.pruned", {
+      before,
+      limit: input.limit,
+      confirmEvidence: input.confirmEvidence === true,
+    });
+    let deleted = 0;
+    let protectedCount = 0;
+    const rows = this.store.historyPage(before, input.limit);
+    for (const row of rows) {
+      const outcome = this.store.deleteRunHistory(row.id, input.confirmEvidence === true);
+      if (outcome === "deleted") deleted++;
+      if (outcome === "protected") protectedCount++;
+    }
+    return { deleted, protected: protectedCount, scanned: rows.length };
+  }
+
+  /** Privacy delete-all never silently destroys active runs or audit-relevant evidence. */
+  deleteHistoryForPrivacy(): number {
+    let deleted = 0;
+    let cursor: { finishedAt: number; id: string } | undefined;
+    this.auditHistoryRemoval("workflow.run.history.privacy_deleted", {});
+    const before = Date.now() + 1;
+    for (;;) {
+      const rows = this.store.historyPage(before, 200, cursor);
+      if (rows.length === 0) return deleted;
+      for (const row of rows) if (this.store.deleteRunHistory(row.id) === "deleted") deleted++;
+      cursor = rows[rows.length - 1];
+    }
   }
 
   metrics(): Record<string, WorkflowMetricsView> {

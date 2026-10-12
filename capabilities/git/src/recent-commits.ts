@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 //
-// `recent_commits`: what changed lately in one watched repository. Runs `git log` and nothing
-// else, with a fixed argument list; the only caller-controlled strings are the commit count
-// (an integer) and the path filter, which is validated here and placed after `--`.
+// `recent_commits`: what changed lately in one watched repository. Reads git configuration to
+// verify its GitHub remote identity, then lists commits without contacting that remote.
 import { isAbsolute } from "node:path";
 import { redact } from "@phoenix/logging";
 import { git } from "./exec";
@@ -24,6 +23,57 @@ const REF = /^[0-9a-f]{7,40}$/i;
 const NO_COMMITS = /does not have any commits yet|bad default revision|unknown revision/;
 const CONTROL = /[\u0000-\u001f\u007f]/;
 const DRIVE = /^[A-Za-z]:/;
+const GITHUB_REPOSITORY = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$/;
+const REMOTE_CONFIG = /^remote\.[^\s]+\.url\s+(.+)$/;
+
+/** Only a canonical GitHub remote is evidence of which repository local commits belong to. */
+export function githubRemoteIdentity(url: string): string | null {
+  let path: string;
+  if (url.startsWith("git@github.com:")) {
+    path = url.slice("git@github.com:".length);
+  } else {
+    const match = /^(https:\/\/[^/?#]+|ssh:\/\/[^/?#]+)\/([^?#]+)$/.exec(url);
+    if (!match) return null;
+    try {
+      const parsed = new URL(match[1]!);
+      if (
+        parsed.hostname !== "github.com" ||
+        parsed.port ||
+        !(
+          parsed.protocol === "https:" ||
+          (parsed.protocol === "ssh:" && parsed.username === "git" && !parsed.password)
+        )
+      )
+        return null;
+      path = match[2]!;
+    } catch {
+      return null;
+    }
+  }
+  if (path.endsWith(".git")) path = path.slice(0, -4);
+  return GITHUB_REPOSITORY.test(path) ? path.toLowerCase() : null;
+}
+
+/** Never expose config output: URLs may contain embedded credentials. */
+async function verifiedRemote(repoPath: string): Promise<string | null> {
+  let stdout: string;
+  try {
+    stdout = await git(repoPath, ["config", "--local", "--get-regexp", "^remote\\..*\\.url$"], {
+      timeoutMs: GIT_LOG_TIMEOUT_MS,
+    });
+  } catch {
+    return null;
+  }
+  const identities = new Set<string>();
+  for (const line of stdout.trim().split("\n")) {
+    const match = REMOTE_CONFIG.exec(line);
+    if (!match) return null;
+    const identity = githubRemoteIdentity(match[1]!);
+    if (!identity) return null;
+    identities.add(identity);
+  }
+  return identities.size === 1 ? [...identities][0]! : null;
+}
 
 export interface CommitSummary {
   sha: string;
@@ -41,6 +91,8 @@ export interface CommitSummary {
 
 export interface RecentCommits {
   repository: string;
+  /** Canonical owner/name of an unambiguous GitHub fetch remote, or null. Never a supplied path. */
+  github_repository: string | null;
   /** Present only when a `ref` was asked for: whether that commit exists in this repository. */
   ref?: { requested: string; found: boolean };
   commits: CommitSummary[];
@@ -148,6 +200,7 @@ export async function readRecentCommits(
   repository: string,
   options: { limit?: number; pathFilter?: string; ref?: string },
 ): Promise<RecentCommits> {
+  const github_repository = await verifiedRemote(repoPath);
   const limit = validateLimit(options.limit);
   const ref = options.ref === undefined ? undefined : validateRef(options.ref);
   if (ref !== undefined) {
@@ -158,7 +211,13 @@ export async function readRecentCommits(
         env: { LC_ALL: "C" },
       });
     } catch {
-      return { repository, ref: { requested: ref, found: false }, commits: [], truncated: false };
+      return {
+        repository,
+        github_repository,
+        ref: { requested: ref, found: false },
+        commits: [],
+        truncated: false,
+      };
     }
   }
   const pathFilter =
@@ -193,7 +252,8 @@ export async function readRecentCommits(
     });
   } catch (err) {
     const stderr = isExecFailure(err) && typeof err.stderr === "string" ? err.stderr : "";
-    if (NO_COMMITS.test(stderr)) return { repository, commits: [], truncated: false };
+    if (NO_COMMITS.test(stderr))
+      return { repository, github_repository, commits: [], truncated: false };
     if (isExecFailure(err) && err.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
       throw new RecentCommitsError(
         "git log output is too large; use a smaller limit or path_filter",
@@ -208,6 +268,7 @@ export async function readRecentCommits(
   }
   return {
     repository,
+    github_repository,
     ...(ref !== undefined ? { ref: { requested: ref, found: true } } : {}),
     commits: commits.slice(0, limit),
     truncated: commits.length > limit,

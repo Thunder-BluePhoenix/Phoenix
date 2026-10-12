@@ -75,6 +75,26 @@ function signed(value: RegistryIndex): Uint8Array {
 describe("local signed capability registry", () => {
   it("discloses exact permissions, data categories and refusal before any install", () => {
     const trusted = service.loadIndex(signed(index()));
+    const provenance = service.provenance(trusted);
+    expect(provenance).toEqual({
+      signer_key_id: "testkey",
+      signature: JSON.parse(Buffer.from(signed(index())).toString()).signature,
+      signature_status: "verified",
+      index_sha256: createHash("sha256").update(canonical(index())).digest("hex"),
+      artifact_verification: "not_verified",
+    });
+    expect(service.preview(trusted, "example", "1.0.0").provenance).toBe(provenance);
+    expect(() => service.provenance(index() as typeof trusted)).toThrowError(
+      expect.objectContaining({ code: "UNTRUSTED_INDEX" }),
+    );
+    const separateService = new RegistryService(new Map([["testkey", publicKey]]), {
+      sdk: "0.1.0",
+      core: "0.1.0",
+      protocol: "1",
+    });
+    expect(() => separateService.provenance(trusted)).toThrowError(
+      expect.objectContaining({ code: "UNTRUSTED_INDEX" }),
+    );
     expect(service.preview(trusted, "example", "1.0.0")).toMatchObject({
       permission_descriptions: { network: "Make network connections" },
       data_categories: ["repository_metadata"],
@@ -178,6 +198,18 @@ describe("local signed capability registry", () => {
     expect(() => service.loadIndex(Buffer.from(JSON.stringify(envelope)))).toThrowError(
       expect.objectContaining({ code: "UNTRUSTED_KEY" }),
     );
+    const trustedSignerTamper = JSON.parse(Buffer.from(signed(index())).toString());
+    trustedSignerTamper.key_id = "anotherkey";
+    const otherService = new RegistryService(
+      new Map([
+        ["testkey", publicKey],
+        ["anotherkey", generateKeyPairSync("ed25519").publicKey],
+      ]),
+      { sdk: "0.1.0", core: "0.1.0", protocol: "1" },
+    );
+    expect(() =>
+      otherService.loadIndex(Buffer.from(JSON.stringify(trustedSignerTamper))),
+    ).toThrowError(expect.objectContaining({ code: "INVALID_SIGNATURE" }));
     const unsupported = index() as unknown as {
       format_version: number;
       entries: RegistryIndex["entries"];

@@ -58,6 +58,7 @@ export type ToolGatewayErrorCode =
   | "APPROVAL_REJECTED"
   | "AUDIT_FAILED"
   | "TIMEOUT"
+  | "CANCELLED"
   | "EXECUTION_FAILED"
   | "INVALID_OUTPUT";
 

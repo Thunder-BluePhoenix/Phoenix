@@ -25,7 +25,7 @@ export interface CapabilityContext {
   readonly id: string;
   readonly config: Readonly<Record<string, unknown>>;
   readonly logger: Logger;
-  /** Aborted when the capability is disabled. */
+  /** Aborted when the capability is disabled, or when this command is cancelled. */
   readonly signal: AbortSignal;
   /** Reads one of this capability's own credentials from OS secret storage. */
   secret(name: string): Promise<string | undefined>;
@@ -97,4 +97,6 @@ export interface Operation {
   updatedAt: string;
   result?: unknown;
   error?: { code: string; message: string; details: readonly string[] };
+  /** Cancellation after dispatch cannot prove whether a side effect happened. */
+  outcomeUnknown?: boolean;
 }

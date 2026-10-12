@@ -7,7 +7,7 @@ import { KnowledgeGraph, nodeId, type VisibilityMemo } from "./graph";
 import type { Detail, EdgeView, NodeRef, NodeView, ProvenanceView, Relation } from "./types";
 
 export interface WorldModelOptions {
-  /** Observation cutoff. Historical queries can only see provenance that has not since been withdrawn. */
+  /** Observation cutoff; revisions of surviving assertions only (withdrawn sources stay withdrawn). */
   asOf?: string;
   /** Maximum age of EACH supporting observation, in milliseconds. Default 90 days. */
   maxAgeMs?: number;
@@ -152,7 +152,12 @@ export class WorldModel {
 
   resolve(viewer: Viewer, ref: NodeRef, options: WorldModelOptions = {}): ResolvedEntity | null {
     const { at, maxAgeMs } = context(options);
-    const node = this.graph.node(viewer, nodeId(ref));
+    const node = this.graph.node(
+      viewer,
+      nodeId(ref),
+      {},
+      options.asOf === undefined ? undefined : new Date(at).toISOString(),
+    );
     return node ? resolved(node, at, maxAgeMs) : null;
   }
 
@@ -201,6 +206,7 @@ export class WorldModel {
           includeProposed: false,
         },
         memo,
+        request.asOf === undefined ? undefined : asOf,
       );
       if (adj.truncated) result.truncated.fanout = true;
       for (const edge of adj.edges) {
@@ -218,7 +224,12 @@ export class WorldModel {
           continue;
         const provenance = evidence(edge.provenance, at, maxAgeMs);
         if (!provenance.length) continue;
-        const nextNode = this.graph.node(viewer, nextId, memo);
+        const nextNode = this.graph.node(
+          viewer,
+          nextId,
+          memo,
+          request.asOf === undefined ? undefined : asOf,
+        );
         const next = nextNode ? resolved(nextNode, at, maxAgeMs) : null;
         if (!next) continue;
         const observedAt = provenance.reduce(

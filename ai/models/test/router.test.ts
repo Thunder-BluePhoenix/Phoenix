@@ -124,11 +124,33 @@ describe("route: availability and capability", () => {
     expect(plan.order).toEqual(["anthropic"]);
   });
 
-  it("refuses a provider that cannot do the task (embeddings on Anthropic)", () => {
-    const plan = route(task({ kind: "embed" }), state());
+  it("refuses cloud embeddings even if the cloud provider supports embedding", () => {
+    const plan = route(
+      task({ kind: "embed", localProvider: "ollama" }),
+      state({
+        providers: [
+          local(),
+          cloud({ capabilities: { generate: true, stream: true, embed: true } }),
+        ],
+      }),
+    );
     expect(plan.order).toEqual(["ollama"]);
     expect(plan.candidates.find((c) => c.providerId === "anthropic")?.refusedBecause).toBe(
-      "does not support embed",
+      "embeddings must stay local",
+    );
+  });
+
+  it("does not substitute another local provider when the pinned one is unavailable", () => {
+    const plan = route(
+      task({ kind: "embed", localProvider: "ollama" }),
+      state({
+        providers: [local(), local({ id: "other-local" })],
+        health: { ollama: false },
+      }),
+    );
+    expect(plan.order).toEqual([]);
+    expect(plan.candidates.find((c) => c.providerId === "other-local")?.refusedBecause).toMatch(
+      /restricted to local provider ollama/,
     );
   });
 

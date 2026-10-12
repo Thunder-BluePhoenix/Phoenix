@@ -6,8 +6,17 @@
 // the model call that goes through the runtime's AiService. Automation is off until the user turns
 // it on (`agents.enabled`, ADR-0010: autonomy is earned); turning it off, or engaging the kill
 // switch, cancels every active run.
-import { createCiFailureAgent, createMeetingReviewAgent, type ModelCall } from "@phoenix/ai-agents";
-import { buildObservation, type RunObservation } from "@phoenix/ai-evaluation";
+import {
+  CI_FAILURE_AGENT_ID,
+  CI_FAILURE_SYSTEM_PROMPT,
+  createCiFailureAgent,
+  createMeetingReviewAgent,
+  createPlanningReviewAgent,
+  parseCiFailureInput,
+  TOOL_FAILURE_DETAILS,
+  type ModelCall,
+} from "@phoenix/ai-agents";
+import { buildObservation, sha256, type RunObservation } from "@phoenix/ai-evaluation";
 import type { AiService } from "@phoenix/ai-models";
 import {
   approvalFeed,
@@ -55,10 +64,13 @@ export interface AgentRuntimeDeps {
   logger: Logger;
 }
 
-const cleanTitle = (task: { kind: string; input: Record<string, unknown> }): string =>
-  task.kind === "ci_failure" && typeof task.input.repository === "string"
-    ? `CI failure in ${task.input.repository}`
-    : TITLE_FALLBACK;
+const cleanTitle = (task: { kind: string; input: Record<string, unknown> }): string => {
+  if (task.kind === "ci_failure" && typeof task.input.repository === "string")
+    return `CI failure in ${task.input.repository}`;
+  if (task.kind === "meeting_decision_review") return "Meeting review";
+  if (task.kind === "planning_review") return "Planning review";
+  return TITLE_FALLBACK;
+};
 
 export class AgentRuntime implements AgentApi {
   readonly orchestrator: Orchestrator;
@@ -85,6 +97,7 @@ export class AgentRuntime implements AgentApi {
           context: d.memory.agentContext(),
         }),
         createMeetingReviewAgent(),
+        createPlanningReviewAgent(),
         ...(d.extraAgents ?? []),
       ],
       logger: d.logger,
@@ -109,6 +122,19 @@ export class AgentRuntime implements AgentApi {
   // ── AgentApi ───────────────────────────────────────────────────────────────
 
   submit(request: { kind: unknown; input: unknown }): AgentTaskSummaryView {
+    if (
+      request.kind === "ci_failure" &&
+      typeof parseCiFailureInput(request.input) !== "string" &&
+      this.enabled() &&
+      !this.d.permissions.isKillSwitchEngaged() &&
+      !this.d.gateway.tools().some((tool) => tool.name === TOOL_FAILURE_DETAILS)
+    ) {
+      throw new PhoenixError(
+        ErrorCode.CAPABILITY_UNAVAILABLE,
+        "CI failure diagnosis needs the GitHub capability. Enable and configure GitHub first.",
+        ["GITHUB_TOOL_UNAVAILABLE"],
+      );
+    }
     try {
       const task = this.orchestrator.submit({
         kind: typeof request.kind === "string" ? request.kind : "",
@@ -183,13 +209,18 @@ export class AgentRuntime implements AgentApi {
 
   observation(id: string): AgentObservationView | null {
     const trace = this.orchestrator.trace(id);
-    if (!trace) return null;
-    const conclusion = conclusionOf(trace);
-    const reported = conclusion?.model;
+    if (!trace || trace.task.requestedBy !== "user") return null;
+    const stored = this.d.db
+      .prepare("SELECT observation FROM agent_observations WHERE run_id = ?")
+      .get(trace.run.id) as { observation: string } | undefined;
+    if (stored) return JSON.parse(stored.observation) as AgentObservationView;
+    const reported = trace.conclusion?.model;
     const observation = buildObservation({
       trace,
       audit: this.auditRows(trace.auditIds),
-      // Tokens the service did not report are 0 here and shown as "unknown" by `observationView`.
+      ...(trace.run.agentId === CI_FAILURE_AGENT_ID
+        ? { systemPrompt: CI_FAILURE_SYSTEM_PROMPT }
+        : {}),
       model: reported
         ? {
             provider: reported.provider,
@@ -201,7 +232,57 @@ export class AgentRuntime implements AgentApi {
           }
         : null,
     });
-    return observationView(observation, reported);
+    const view = redactedObservation(observationView(observation, reported));
+    if (["COMPLETED", "FAILED", "CANCELLED"].includes(trace.run.state)) {
+      this.d.db
+        .prepare(
+          "INSERT OR IGNORE INTO agent_observations (task_id, run_id, created_at, observation) VALUES (?, ?, ?, ?)",
+        )
+        .run(id, trace.run.id, trace.run.updatedAt, JSON.stringify(view));
+    }
+    return view;
+  }
+
+  observationHistory(
+    id: string,
+    limit: number,
+  ): {
+    observations: { id: number; created_at: string; observation: AgentObservationView }[];
+  } | null {
+    const trace = this.orchestrator.trace(id);
+    if (!trace || trace.task.requestedBy !== "user") return null;
+    this.observation(id);
+    const rows = this.d.db
+      .prepare(
+        "SELECT id, created_at, observation FROM agent_observations WHERE task_id = ? ORDER BY id DESC LIMIT ?",
+      )
+      .all(id, limit) as { id: number; created_at: string; observation: string }[];
+    return {
+      observations: rows.map((row) => ({
+        id: row.id,
+        created_at: row.created_at,
+        observation: JSON.parse(row.observation) as AgentObservationView,
+      })),
+    };
+  }
+
+  observationRecord(id: string, observationId: number): AgentObservationView | null {
+    const trace = this.orchestrator.trace(id);
+    if (!trace || trace.task.requestedBy !== "user") return null;
+    this.observation(id);
+    const row = this.d.db
+      .prepare("SELECT observation FROM agent_observations WHERE task_id = ? AND id = ?")
+      .get(id, observationId) as { observation: string } | undefined;
+    return row ? (JSON.parse(row.observation) as AgentObservationView) : null;
+  }
+
+  async forget(id: string): Promise<boolean> {
+    const trace = this.orchestrator.trace(id);
+    if (!trace || trace.task.requestedBy !== "user") return false;
+    this.orchestrator.cancel(id, "cancelled by the user");
+    await this.orchestrator.settled(id);
+    this.d.db.prepare("DELETE FROM agent_tasks WHERE id = ? AND requested_by = 'user'").run(id);
+    return true;
   }
 
   /** The audit rows a trace names, read by id (the log may hold far more than a page). */
@@ -269,6 +350,35 @@ export class AgentRuntime implements AgentApi {
   }
 }
 
+const safeObservationId = (value: string): string =>
+  /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,99}$/.test(value) &&
+  !/(?:secret|token|bearer|password|api[_-]?key|(?:sk|ghp|gho|ghu|ghs|ghr)-?[_a-zA-Z0-9]{8,})/i.test(
+    value,
+  )
+    ? value
+    : `sha256:${sha256(value)}`;
+
+/** Untrusted provider, tool, source and error strings must never become retained body text. */
+function redactedObservation(view: AgentObservationView): AgentObservationView {
+  return {
+    ...view,
+    failure_reason: null,
+    model: view.model
+      ? {
+          ...view.model,
+          provider: safeObservationId(view.model.provider),
+          model: safeObservationId(view.model.model),
+        }
+      : null,
+    memory_ids: view.memory_ids.map(safeObservationId),
+    sources: Object.fromEntries(
+      Object.entries(view.sources).map(([key, count]) => [safeObservationId(key), count]),
+    ),
+    tool_calls: view.tool_calls.map((call) => ({ ...call, tool: safeObservationId(call.tool) })),
+    stages: view.stages.map((stage) => ({ ...stage, name: safeObservationId(stage.name) })),
+  };
+}
+
 /** snake_case view of an observation; unreported token counts and their cost stay "unknown". */
 function observationView(o: RunObservation, reported: Conclusion["model"]): AgentObservationView {
   const input = reported?.inputTokens ?? 0;
@@ -332,6 +442,7 @@ function detailOf(trace: TaskTrace): AgentTaskDetailView {
     task: {
       id: trace.task.id,
       kind: trace.task.kind,
+      title: cleanTitle(trace.task),
       input: trace.task.input,
       requested_by: trace.task.requestedBy,
       created_at: trace.task.createdAt,

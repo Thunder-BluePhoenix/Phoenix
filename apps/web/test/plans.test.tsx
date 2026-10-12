@@ -46,6 +46,7 @@ const plan = (over: Partial<Plan> = {}): Plan => ({
     { title: "Design the flow", body: "Sketch it.", labels: ["design"], basis: "suggested" },
     { title: "Build it", body: "Write code.", labels: [], basis: "user" },
   ],
+  frappe: null,
   source: {
     item_id: "mi_1",
     meeting_id: "kage:7",
@@ -73,6 +74,26 @@ const link = (i: number, url = "https://github.com/octo/phoenix/issues/1"): Plan
   approved_at: "2026-10-09T12:05:00Z",
   created_at: "2026-10-09T12:06:00Z",
 });
+
+const frappePlan = (over: Partial<Plan> = {}): Plan =>
+  plan({
+    target: "frappe",
+    destination: { system: "frappe", site: "erp.localhost" },
+    frappe: {
+      doctype: "Vendor Approval",
+      fields: [
+        { label: "Vendor", fieldtype: "Link", required: true },
+        { label: "Reason", fieldtype: "Small Text", required: false },
+      ],
+      workflow_states: ["Draft", "Pending Approval", "Approved"],
+      permissions: [
+        { role: "Purchase User", read: true, write: true, create: false },
+        { role: "Auditor", read: true, write: false, create: false },
+        { role: "No access", read: false, write: false, create: false },
+      ],
+    },
+    ...over,
+  });
 
 const STATUS_ON: PlanningStatus = {
   enabled: true,
@@ -209,6 +230,72 @@ describe("Plan page", () => {
     expect(screen.getAllByText("(written by you)").length).toBeGreaterThan(0);
     const tasks = screen.getByRole("list", { name: "Tasks" });
     expect(within(tasks).getAllByRole("listitem")).toHaveLength(2);
+  });
+
+  it("shows the proposed Frappe DocType, fields, workflow and permissions without promising creation", async () => {
+    rig(frappePlan());
+    expect(
+      await screen.findByRole("heading", { name: "Proposed Frappe DocType: Vendor Approval" }),
+    ).toBeTruthy();
+    expect(screen.getByText(/Creating tasks does not create this DocType/)).toBeTruthy();
+    expect(screen.getByRole("list", { name: "Proposed Frappe fields" }).textContent).toContain(
+      "Vendor · Link · required",
+    );
+    expect(screen.getByRole("list", { name: "Proposed Frappe fields" }).textContent).toContain(
+      "Reason · Small Text",
+    );
+    expect(
+      screen.getByRole("list", { name: "Proposed Frappe workflow states" }).textContent,
+    ).toContain("2. Pending Approval");
+    expect(screen.getByRole("list", { name: "Proposed Frappe permissions" }).textContent).toContain(
+      "Purchase User: read, write",
+    );
+    expect(screen.getByRole("list", { name: "Proposed Frappe permissions" }).textContent).toContain(
+      "No access: no access",
+    );
+    expect(screen.getByText("Frappe site erp.localhost")).toBeTruthy();
+  });
+
+  it("shows no design when Frappe has none", async () => {
+    rig(frappePlan({ frappe: null }));
+    await screen.findByRole("heading", { name: "Vendor approval flow" });
+    expect(screen.queryByRole("heading", { name: /Proposed Frappe DocType/ })).toBeNull();
+  });
+
+  it("never shows a Frappe design on a GitHub plan", async () => {
+    rig(plan({ frappe: frappePlan().frappe }));
+    await screen.findByRole("heading", { name: "Vendor approval flow" });
+    expect(screen.queryByRole("heading", { name: /Proposed Frappe DocType/ })).toBeNull();
+  });
+
+  it("gives long Frappe design text wrapping classes for narrow screens and keeps hostile text inert", async () => {
+    const longName = "Vendor".repeat(60);
+    const { container } = rig(
+      frappePlan({
+        frappe: {
+          doctype: longName,
+          fields: [{ label: XSS, fieldtype: longName, required: true }],
+          workflow_states: [longName],
+          permissions: [{ role: longName, read: true, write: false, create: false }],
+        },
+      }),
+    );
+    const design = await screen.findByRole("heading", {
+      name: `Proposed Frappe DocType: ${longName}`,
+    });
+    expect(design.querySelector(".memory-text")?.textContent).toBe(longName);
+    for (const list of [
+      "Proposed Frappe fields",
+      "Proposed Frappe workflow states",
+      "Proposed Frappe permissions",
+    ]) {
+      expect(
+        within(screen.getByRole("list", { name: list }))
+          .getAllByRole("listitem")[0]
+          ?.classList.contains("memory-text"),
+      ).toBe(true);
+    }
+    expectInert(container);
   });
 
   it("labels a plan nobody wrote with AI as a rules-based draft", async () => {
@@ -408,6 +495,52 @@ describe("Plan page", () => {
       expect(list.textContent).toContain("javascript:alert(1)");
       expect(list.textContent).toContain("http://example.test/1");
       expect(list.querySelector("img")).toBeNull();
+    });
+
+    it("displays Frappe Task links in runs and plan links, allowing only HTTPS or loopback HTTP", async () => {
+      const urls = [
+        "http://127.0.0.1:8000/app/task/TASK-1",
+        "https://erp.example.test/app/task/TASK-2",
+        "http://erp.example.test/app/task/TASK-3",
+        "javascript:alert(1)",
+        "https://user:password@erp.example.test/app/task/TASK-5",
+      ];
+      const links = urls.map((url, i): PlanLink => ({
+        ...link(i, url),
+        system: "frappe",
+        external_id: `TASK-${i + 1}`,
+      }));
+      const runs: PlanTaskRun[] = urls.map((url, i) => ({
+        task_index: i,
+        idempotency_key: `key_${i}`,
+        status: "created",
+        attempts: 1,
+        external_id: `TASK-${i + 1}`,
+        url,
+        error: null,
+        updated_at: "now",
+      }));
+      openAt("#/plans/plan_1", {
+        "GET /api/plans/status": () => STATUS_ON,
+        "GET /api/plans/plan_1": () => ({ plan: frappePlan({ status: "created" }), runs, links }),
+        "GET /api/plans/plan_1/preview": () => previewOf(),
+      });
+      const created = await screen.findByRole("list", { name: "Tasks created" });
+      const results = screen.getByRole("list", { name: "Task results" });
+      for (const list of [created, results]) {
+        expect(list.textContent).toContain("TASK-1");
+        expect(list.textContent).toContain("http://erp.example.test/app/task/TASK-3");
+        const hrefs = within(list)
+          .getAllByRole("link")
+          .map((a) => a.getAttribute("href"));
+        expect(hrefs).toContain(urls[0]);
+        expect(hrefs).toContain(urls[1]);
+        expect(hrefs).not.toContain(urls[2]);
+        expect(hrefs).not.toContain(urls[3]);
+        expect(hrefs).not.toContain(urls[4]);
+      }
+      expect(created.textContent).toContain("Task TASK-1");
+      expect(results.textContent).toContain("Frappe Task TASK-1");
     });
   });
 
@@ -670,5 +803,31 @@ describe("Make a plan, from an accepted meeting item", () => {
     expect(list.textContent).toContain("http://insecure.test/2");
     expect(screen.getByRole("list", { name: "Plans" }).textContent).toContain(XSS);
     expect(document.querySelector("img")).toBeNull();
+  });
+
+  it("links Frappe Tasks back to their plan from the meeting", async () => {
+    open([item()], STATUS_ON, {
+      "GET /api/meetings/kage:7/plans": () => ({ meeting_id: "kage:7", plans: [] }),
+      "GET /api/meetings/kage:7/links": () => ({
+        meeting_id: "kage:7",
+        links: [
+          {
+            ...link(0, "https://erp.example.test/app/task/TASK-1"),
+            system: "frappe",
+            external_id: "TASK-1",
+          },
+        ],
+      }),
+    });
+    const list = await screen.findByRole("list", { name: "Tasks created from this meeting" });
+    expect(list.textContent).toContain("Frappe Task TASK-1");
+    expect(within(list).getByRole("link", { name: "its plan" }).getAttribute("href")).toBe(
+      "#/plans/plan_1",
+    );
+    expect(
+      within(list)
+        .getByRole("link", { name: "https://erp.example.test/app/task/TASK-1" })
+        .getAttribute("rel"),
+    ).toBe("noopener noreferrer");
   });
 });

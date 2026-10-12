@@ -35,7 +35,12 @@ const MAX_MESSAGE_CHARS = 300;
  * the headers. The whole read also has to finish within `timeoutMs` (a body that drips one byte
  * at a time is cut off).
  */
-async function readCapped(res: Response, maxBytes: number, timeoutMs: number): Promise<string> {
+async function readCapped(
+  res: Response,
+  maxBytes: number,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<string> {
   const declared = Number(res.headers.get("content-length") ?? 0);
   if (declared > maxBytes) {
     await res.body?.cancel();
@@ -43,7 +48,7 @@ async function readCapped(res: Response, maxBytes: number, timeoutMs: number): P
   }
   if (!res.body) return "";
   const reader = res.body.getReader();
-  const deadline = AbortSignal.timeout(timeoutMs);
+  const deadline = AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]);
   const chunks: Uint8Array[] = [];
   let size = 0;
   const onTimeout = () => void reader.cancel().catch(() => {});
@@ -103,12 +108,14 @@ export class ExternalClient {
     input: unknown,
     operationId: string,
     timeoutMs: number,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     const body = await this.request(
       "POST",
       `/commands/${encodeURIComponent(name)}`,
       { input, operation_id: operationId },
       timeoutMs,
+      signal,
     );
     return (body as { result?: unknown })?.result;
   }
@@ -118,7 +125,9 @@ export class ExternalClient {
     path: string,
     body: unknown,
     timeoutMs: number,
+    signal?: AbortSignal,
   ): Promise<unknown> {
+    if (signal?.aborted) throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Command cancelled");
     let res: Response;
     try {
       res = await fetch(new URL(path, this.endpoint), {
@@ -128,18 +137,22 @@ export class ExternalClient {
           ...(body !== undefined ? { "content-type": "application/json" } : {}),
         },
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]),
         redirect: "error",
       });
+      if (signal?.aborted) throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Command cancelled");
     } catch (err) {
+      if (signal?.aborted) throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Command cancelled");
+      if (err instanceof PhoenixError) throw err;
       if ((err as Error).name === "TimeoutError")
         throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT);
       throw new PhoenixError(ErrorCode.CAPABILITY_UNAVAILABLE, "Capability is unreachable");
     }
     let text: string;
     try {
-      text = await readCapped(res, MAX_RESPONSE_BYTES, timeoutMs);
+      text = await readCapped(res, MAX_RESPONSE_BYTES, timeoutMs, signal);
     } catch (err) {
+      if (signal?.aborted) throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Command cancelled");
       if (err instanceof PhoenixError) throw err;
       if ((err as Error).name === "TimeoutError")
         throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT);
@@ -160,6 +173,7 @@ export class ExternalClient {
           : `Capability responded ${res.status}`,
       );
     }
+    if (signal?.aborted) throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Command cancelled");
     return parsed;
   }
 }

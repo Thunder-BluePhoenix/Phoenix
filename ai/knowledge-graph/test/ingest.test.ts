@@ -231,32 +231,86 @@ describe("github events", () => {
     ).toEqual([]);
   });
 
-  it("a deployment links to a commit only when its ref is a full hash", () => {
+  it("links proven deployment SHAs, never a branch label or malformed hash", () => {
     const r = rig(R);
-    r.ingest.handle(
-      event("github.deploy.succeeded", {
-        repository: "o/phoenix",
-        deployment_id: 5,
-        environment: "prod",
-        branch: SHA_B,
-        actor: "octo",
-      }),
-    );
+    const deployed = event("github.deploy.succeeded", {
+      repository: "o/phoenix",
+      deployment_id: 5,
+      environment: "prod",
+      branch: "main",
+      sha: SHA_B.toUpperCase(),
+      sha_source: "deployment.sha",
+      actor: "octo",
+    });
+    r.ingest.handle(deployed);
+    const key = `Commit:o/phoenix@${SHA_B}|DEPLOYED_TO|Deployment:o/phoenix/deploy/5`;
+    expect(r.graph.edge(OWNER, key)?.provenance[0]).toMatchObject({
+      sourceKind: "event",
+      sourceId: deployed.event_id,
+      capability: "github",
+      assertedBy: "capability",
+      detail: { sha_source: "deployment.sha" },
+    });
+    expect(r.graph.node(OWNER, "Deployment:o/phoenix/deploy/5")?.detail.ref).toBe("main");
+    expect(
+      r.graph.edge(
+        OWNER,
+        `Commit:o/phoenix@${SHA_B.toUpperCase()}|DEPLOYED_TO|Deployment:o/phoenix/deploy/5`,
+      ),
+    ).toBeNull();
+    for (const [id, branch, sha] of [
+      [6, "main", undefined],
+      [7, "main", "a".repeat(39)],
+      [8, "main", "z".repeat(40)],
+      [9, "main", 42],
+    ] as const) {
+      r.ingest.handle(
+        event("github.deploy.started", {
+          repository: "o/phoenix",
+          deployment_id: id,
+          branch,
+          sha,
+        }),
+      );
+      expect(
+        r.graph.adjacent(OWNER, `Deployment:o/phoenix/deploy/${id}`, {
+          limit: 10,
+          direction: "in",
+          rel: "DEPLOYED_TO",
+        }).edges,
+      ).toEqual([]);
+    }
     r.ingest.handle(
       event("github.deploy.started", {
         repository: "o/phoenix",
-        deployment_id: 6,
-        environment: "prod",
-        branch: "main",
+        deployment_id: 10,
+        branch: SHA_A.toUpperCase(),
       }),
     );
     expect(
-      r.graph.edge(OWNER, `Commit:o/phoenix@${SHA_B}|DEPLOYED_TO|Deployment:o/phoenix/deploy/5`),
-    ).not.toBeNull();
+      r.graph.edge(OWNER, `Commit:o/phoenix@${SHA_A}|DEPLOYED_TO|Deployment:o/phoenix/deploy/10`)
+        ?.provenance[0]?.detail,
+    ).toMatchObject({ sha_source: "deployment.ref" });
+    r.ingest.handle(
+      event("github.deploy.succeeded", {
+        repository: "o/phoenix",
+        deployment_id: 11,
+        branch: SHA_A,
+        sha: SHA_B,
+      }),
+    );
     expect(
-      r.graph.adjacent(OWNER, "Deployment:o/phoenix/deploy/6", { limit: 10, direction: "in" })
-        .edges,
-    ).toEqual([]);
+      r.graph.edge(OWNER, `Commit:o/phoenix@${SHA_B}|DEPLOYED_TO|Deployment:o/phoenix/deploy/11`)
+        ?.provenance[0]?.detail,
+    ).toMatchObject({ sha_source: "deployment.sha" });
+    expect(
+      r.graph.edge(OWNER, `Commit:o/phoenix@${SHA_A}|DEPLOYED_TO|Deployment:o/phoenix/deploy/11`),
+    ).toBeNull();
+    r.ingest.handle(deployed);
+    expect(r.graph.edge(OWNER, key)?.provenance).toHaveLength(1);
+    r.graph.removeSource("event", deployed.event_id);
+    expect(r.graph.edge(OWNER, key)).toBeNull();
+    expect(r.graph.node(OWNER, "Deployment:o/phoenix/deploy/5")).toBeNull();
   });
 
   it("'unknown' actors (the capability's placeholder) do not become people", () => {
@@ -453,6 +507,114 @@ describe("meetings", () => {
         includeProposed: true,
       }).edges,
     ).toHaveLength(1);
+  });
+  it("stores bounded source evidence only for reviewed items and purges its history", () => {
+    const r = rig(R);
+    const m = r.meetings.upsert({
+      capabilityId: "kage",
+      externalId: "quote",
+      status: "ended",
+      startedAt: T0,
+    })!;
+    const quote = "We agreed to ship the graph " + "x".repeat(400);
+    r.ingest.ingestMeeting(m, null, [
+      {
+        id: "reviewed",
+        kind: "decision",
+        text: "Ship graph",
+        status: "accepted",
+        extractedBy: "ai:local",
+        evidence: { source: "transcript", quote },
+      },
+      {
+        id: "pending",
+        kind: "decision",
+        text: "Wait",
+        status: "proposed",
+        extractedBy: "ai:local",
+        evidence: { source: "transcript", quote },
+      },
+      {
+        id: "no-evidence",
+        kind: "decision",
+        text: "Manual",
+        status: "accepted",
+        extractedBy: "manual",
+        evidence: null,
+      },
+    ]);
+    const rows = r.db
+      .prepare(
+        "SELECT source_id, detail FROM kg_provenance WHERE source_kind='meeting_item' AND subject_kind='edge' AND detail LIKE '%\"source_quote\":\"%'",
+      )
+      .all() as { source_id: string; detail: string }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.source_id).toBe("reviewed");
+    expect(JSON.parse(rows[0]!.detail)).toMatchObject({ source_quote: quote.slice(0, 300) });
+    expect(
+      r.db
+        .prepare(
+          "SELECT detail FROM kg_provenance WHERE source_id='no-evidence' AND subject_kind='edge'",
+        )
+        .get(),
+    ).toEqual({ detail: "{}" });
+    r.ingest.ingestMeeting(m, null, [
+      {
+        id: "summary",
+        kind: "decision",
+        text: "Use SQLite",
+        status: "accepted",
+        extractedBy: "kage",
+        evidence: { source: "summary", quote: "We agreed to use SQLite" },
+      },
+    ]);
+    expect(
+      r.db
+        .prepare(
+          "SELECT detail FROM kg_provenance WHERE source_id='summary' AND subject_kind='edge'",
+        )
+        .get(),
+    ).toEqual({ detail: '{"source_quote":"We agreed to use SQLite"}' });
+    r.ingest.ingestMeeting(m, null, [
+      {
+        id: "reviewed",
+        kind: "decision",
+        text: "Ship graph",
+        status: "proposed",
+        extractedBy: "kage",
+        evidence: null,
+      },
+    ]);
+    expect(
+      r.db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM kg_provenance_history WHERE source_id='reviewed' AND detail LIKE '%\"source_quote\":\"%'",
+        )
+        .get(),
+    ).toEqual({ n: 0 });
+    r.ingest.ingestMeeting(m, null, [
+      {
+        id: "secret",
+        kind: "decision",
+        text: "Configure token",
+        status: "accepted",
+        extractedBy: "manual",
+        evidence: { source: "transcript", quote: `Use ${FAKE_AWS_KEY} for CI` },
+      },
+    ]);
+    expect(
+      JSON.stringify(
+        r.db.prepare("SELECT detail FROM kg_provenance WHERE source_id='secret'").all(),
+      ),
+    ).not.toContain(FAKE_AWS_KEY);
+    r.meetings.delete(m.id);
+    expect(
+      r.db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM kg_provenance_history WHERE detail LIKE '%source_quote%'",
+        )
+        .get(),
+    ).toEqual({ n: 0 });
   });
 });
 

@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 //
-// SQLite persistence (migrations 12 and 13). The write methods of this class are only reachable
-// from `WorkflowAdmin` (definitions, authorisations) and `WorkflowEngine` (runs, counters);
-// nothing else in Phoenix is given a store.
+// SQLite persistence (migrations 12 and 13). Definitions and authorisations are written only
+// by WorkflowAdmin; run history is removed only through the user-owned runtime.
 import type { Database } from "@phoenix/persistence";
 import { boundValue } from "./bound";
 import { definitionHash } from "./canonical";
 import type { Value } from "./expr";
 import { checkShape } from "./schema";
-import type { RunStatus, StepStatus, WorkflowDefinition } from "./types";
+import {
+  TERMINAL_STATUSES,
+  type RunStatus,
+  type StepStatus,
+  type WorkflowDefinition,
+} from "./types";
 
 type Row = Record<string, string | number | null>;
 
@@ -303,6 +307,66 @@ export class WorkflowStore {
       )
       .get(workflowId, since) as { n: number };
     return row.n;
+  }
+
+  /** Destructive/uncertain operations and unresolved runs require explicit user confirmation. */
+  runHasProtectedEvidence(id: string): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT status, EXISTS(SELECT 1 FROM workflow_run_steps WHERE run_id = workflow_runs.id
+         AND (destructive = 1 OR status = 'unknown')) AS evidence
+       FROM workflow_runs WHERE id = ?`,
+      )
+      .get(id) as { status: RunStatus; evidence: number } | undefined;
+    return row !== undefined && (row.status === "failed_needs_attention" || row.evidence !== 0);
+  }
+
+  /** Removes only a completed run. The run's definition/trigger snapshot and steps leave together. */
+  deleteRunHistory(
+    id: string,
+    confirmEvidence = false,
+  ): "deleted" | "missing" | "active" | "protected" {
+    return transaction(this.db, () => {
+      const row = this.db
+        .prepare(
+          `SELECT status, finished_at,
+           EXISTS(SELECT 1 FROM workflow_run_steps WHERE run_id = workflow_runs.id
+             AND (destructive = 1 OR status = 'unknown')) AS evidence
+         FROM workflow_runs WHERE id = ?`,
+        )
+        .get(id) as { status: RunStatus; finished_at: number | null; evidence: number } | undefined;
+      if (!row) return "missing";
+      if (row.finished_at === null || !TERMINAL_STATUSES[row.status]) return "active";
+      if (!confirmEvidence && (row.status === "failed_needs_attention" || row.evidence !== 0))
+        return "protected";
+      const result = this.db
+        .prepare("DELETE FROM workflow_runs WHERE id = ? AND finished_at IS NOT NULL")
+        .run(id);
+      return Number(result.changes) === 1 ? "deleted" : "active";
+    });
+  }
+
+  /** Keyset page of completed runs, oldest first. A page is bounded even when none can be erased. */
+  historyPage(
+    before: number,
+    limit: number,
+    after?: { finishedAt: number; id: string },
+  ): {
+    id: string;
+    finishedAt: number;
+  }[] {
+    const size = Math.min(Math.max(Math.floor(limit), 1), 200);
+    return this.db
+      .prepare(
+        `SELECT id, finished_at AS finishedAt FROM workflow_runs
+       WHERE finished_at IS NOT NULL AND finished_at < ?
+         AND (finished_at > ? OR (finished_at = ? AND id > ?))
+       ORDER BY finished_at, id LIMIT ?`,
+      )
+      .all(before, after?.finishedAt ?? -1, after?.finishedAt ?? -1, after?.id ?? "", size) as {
+      id: string;
+      finishedAt: number;
+    }[];
   }
 
   private runFromRow(row: Row): RunRecord {
