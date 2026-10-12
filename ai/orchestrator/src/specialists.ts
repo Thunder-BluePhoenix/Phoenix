@@ -30,6 +30,30 @@ export interface SpecialistContract<Input, Output> {
   evaluate(output: Output, evidenceIds: ReadonlySet<string>): readonly string[];
 }
 
+/** Citation-bearing handoffs cannot claim evidence from another run. */
+function citationProblems(output: unknown, evidenceIds: ReadonlySet<string>): string[] {
+  const problems: string[] = [];
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    for (const [key, item] of Object.entries(value)) {
+      if (key === "evidence_id" && (typeof item !== "string" || !evidenceIds.has(item)))
+        problems.push("Handoff references foreign evidence");
+      else if (
+        key === "evidence_ids" &&
+        (!Array.isArray(item) || item.some((id) => typeof id !== "string" || !evidenceIds.has(id)))
+      )
+        problems.push("Handoff references foreign evidence");
+      else visit(item);
+    }
+  };
+  visit(output);
+  return problems;
+}
+
 export type RegisteredSpecialist = AgentDefinition & {
   specialist: SpecialistContract<unknown, unknown>;
 };
@@ -104,7 +128,11 @@ export class SpecialistRegistry {
     const validator = this.validators.get(kind);
     if (!definition || !validator) return ["Unknown specialist"];
     const output = definition.specialist.handoff(conclusion);
-    return [...validator.output(output), ...definition.specialist.evaluate(output, evidenceIds)];
+    return [
+      ...validator.output(output),
+      ...citationProblems(output, evidenceIds),
+      ...definition.specialist.evaluate(output, evidenceIds),
+    ];
   }
 }
 
@@ -117,6 +145,7 @@ export function specialistHandoff<Input, Output>(
   const output = contract.handoff(conclusion);
   const problems = [
     ...compileSchema(contract.outputSchema)(output),
+    ...citationProblems(output, evidenceIds),
     ...contract.evaluate(output, evidenceIds),
   ];
   if (problems.length)

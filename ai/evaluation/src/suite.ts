@@ -31,12 +31,14 @@ export async function runSuite(
   scenarios: readonly Scenario[],
   seed?: number,
   realProvider?: ModelProvider,
+  candidate?: { promptAddendum?: string; retrievalLimit?: number; maxFollowUps?: number },
 ): Promise<SuiteOutcome> {
   const verdicts: ScenarioVerdict[] = [];
   const observations: Record<string, RunObservation> = {};
   for (const scenario of scenarios) {
     await runScenario(scenario, {
       ...(realProvider ? { realProvider } : {}),
+      ...(candidate ? { candidate } : {}),
       inspect: (run) => {
         verdicts.push(verdictOf(run, realProvider !== undefined));
         if (run.trace) {

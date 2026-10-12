@@ -41,8 +41,10 @@ import { MemoryRuntime } from "./memory";
 import { GraphRuntime } from "./graph";
 import { MeetingReviewRuntime } from "./meeting-review";
 import { PlanningRuntime } from "./planning";
+import { MultimodalRuntime } from "./multimodal";
 import { syncMeetings } from "./meetings";
 import { PrivacyService, type DerivedInventory } from "./privacy";
+import { ProactiveRuntime } from "./proactive";
 import { RetrievalRuntime } from "./retrieval";
 import { LocalRegistryRuntime, type LocalRegistryConfig } from "./registry";
 import { SyncRuntime } from "./sync";
@@ -77,6 +79,10 @@ export interface RuntimeOptions {
   ollamaUrl?: string;
   /** Anthropic base URL; tests only. */
   anthropicUrl?: string;
+  /** Host-selected local Whisper model file; no capture is started by Core. */
+  whisperModelPath?: string;
+  /** Host-selected local Ollama vision model; no remote/cloud selection. */
+  visionModel?: string;
   /**
    * Who the memory browser, search and ask run as. Defaults to the device owner. Core has one
    * user, so this is the seam for a narrower view (and for the permission-scoping tests).
@@ -112,10 +118,12 @@ export class PhoenixRuntime implements CoreServices {
   readonly retrieval: RetrievalRuntime;
   /** Review of meeting decisions and action items (Phase 35). */
   readonly meetingReview: MeetingReviewRuntime;
+  readonly proactive: ProactiveRuntime;
   /** Knowledge graph and provenance (Phase 38). */
   readonly graph: GraphRuntime;
   readonly sync: SyncRuntime;
   readonly registry: LocalRegistryRuntime;
+  readonly multimodal: MultimodalRuntime;
   /**
    * The only path from an agent to a capability (Phase 30). Phase 31 hands this, and nothing
    * else, to the agent runtime.
@@ -223,6 +231,12 @@ export class PhoenixRuntime implements CoreServices {
       ...(options.ollamaUrl ? { ollamaUrl: options.ollamaUrl } : {}),
       ...(options.anthropicUrl ? { anthropicUrl: options.anthropicUrl } : {}),
     });
+    this.multimodal = new MultimodalRuntime(this.permissions, {
+      ...(options.whisperModelPath ? { whisperModelPath: options.whisperModelPath } : {}),
+      ...(options.visionModel ? { visionModel: options.visionModel } : {}),
+      ...(options.ollamaUrl ? { ollamaUrl: options.ollamaUrl } : {}),
+      ...(options.fetch ? { fetch: options.fetch } : {}),
+    });
     this.memory = new MemoryRuntime({
       db: this.db,
       settings: this.settings,
@@ -281,6 +295,13 @@ export class PhoenixRuntime implements CoreServices {
         },
         meetingsRevoked: () => this.graph.removeMeetingData(),
       },
+    });
+    this.proactive = new ProactiveRuntime({
+      meetings: this.meetings,
+      review: this.meetingReview,
+      memory: this.memory,
+      capabilities: this.capabilities,
+      notifications: this.notifications,
     });
 
     const policyStore = new PolicyStore(this.db);

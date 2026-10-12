@@ -152,11 +152,11 @@ Next up: finish **Phase 14 — floating desktop Fawkes** and **Phase 20 — hard
 | 48 | [Phoenix World Model](phase-48-world-model.md) | v1.4 | Medium | 47 | 🟨 | | Explicit sourced six-hop association traversal and UI; no automatic full-chain producer or historical snapshots |
 | 49 | [Controlled Autonomous Agents](phase-49-controlled-autonomy.md) | v1.5 | High | 48 | 🟨 | | Settings/budgets/stop implemented; executable autonomy and CI→PR runner refused without OS sandbox; gate not met |
 | 50 | [AI Capability Ecosystem](phase-50-ai-capability-ecosystem.md) | v1.6 | Medium | 49 | 🟨 | | Additive AI manifest metadata and explicit user disclosure; third-party install and cloud AI fail closed |
-| 51 | [Agent-to-Agent Collaboration](phase-51-agent-to-agent-collaboration.md) | v1.7 | Medium | 50 | ⬜ | | |
-| 52 | [Predictive & Proactive Intelligence](phase-52-proactive-intelligence.md) | v1.8 | Medium | 51 | ⬜ | | |
-| 53 | [Self-Improving Workflows & Evaluation Loop](phase-53-evaluation-feedback-loop.md) | v1.9 | Medium | 52 | ⬜ | | |
-| 54 | [Multimodal Interaction (Speech & Vision)](phase-54-multimodal-interaction.md) | v2.0 | Medium | 53 | ⬜ | | |
-| 55 | [v2.0 — Ambient AI Operating Layer](phase-55-v2-0-ambient-ai-layer.md) | v2.0 | High | 54 | ⬜ | | |
+| 51 | [Agent-to-Agent Collaboration](phase-51-agent-to-agent-collaboration.md) | v1.7 | Medium | 50 | 🟨 | | Typed specialist delegation, intersection, conflict records and ancestry audit; no coding/test/devops specialists or v1.7 tag |
+| 52 | [Predictive & Proactive Intelligence](phase-52-proactive-intelligence.md) | v1.8 | Medium | 51 | 🟨 | | Opt-in manual grounded Kage unassigned-action insights with quiet/noise controls; no deploy/incident/dependency producers |
+| 53 | [Self-Improving Workflows & Evaluation Loop](phase-53-evaluation-feedback-loop.md) | v1.9 | Medium | 52 | 🟨 | | Offline governed re-evaluation and human approval only; no durable authenticated Core activation/rollback or release |
+| 54 | [Multimodal Interaction (Speech & Vision)](phase-54-multimodal-interaction.md) | v2.0 | Medium | 53 | 🟨 | | Local adapters and scoped capture built; no Core-authorized user capture or installed models verified |
+| 55 | [v2.0 — Ambient AI Operating Layer](phase-55-v2-0-ambient-ai-layer.md) | v2.0 | High | 54 | 🟨 | | 14 DoD + 8 anti-goal evidence plan, NO-GO; critical sandbox/preview/review/multimodal gates open |
 
 **Stage gate:** v2.0 Definition of Done (AI Evolution §26) met.
 

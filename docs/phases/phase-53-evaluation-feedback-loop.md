@@ -5,7 +5,7 @@
 | Stage | Stage 11 — AI Evolution (v1.1 → v2.0) |
 | Release target | v1.9 |
 | Priority | Medium |
-| Status | ⬜ Not started |
+| Status | 🟨 Governed offline feedback/proposal/re-evaluation/approval/rollback loop built; no durable authenticated Core activation or v1.9 release |
 | Depends on | [Phase 52 — Predictive & Proactive Intelligence](phase-52-proactive-intelligence.md) |
 | Unblocks | [Phase 54 — Multimodal Interaction (Speech & Vision)](phase-54-multimodal-interaction.md) |
 
@@ -22,9 +22,9 @@ Improve prompts, retrieval and workflows through measured feedback — never by 
 
 ## Tasks
 
-- [ ] Task → output → evaluation → feedback → improvement → re-evaluation pipeline
-- [ ] Hard guards: no self-granting permissions, no policy edits, no silent production workflow changes
-- [ ] Opt-in governance for any training use of user data
+- [ ] Offline task-output→trusted observation→feedback→restricted candidate→scenario re-evaluation→human approval/rollback works; no durable Core production pipeline.
+- [x] Candidate changes cannot edit policies, grants, security gates or silently write production workflow settings.
+- [x] Training opt-in is recorded as provenance only; no user-data training pipeline exists.
 
 ## Deliverables
 
@@ -32,7 +32,11 @@ Improve prompts, retrieval and workflows through measured feedback — never by 
 
 ## Exit criteria
 
-- [ ] Improvements ship only after re-evaluation passes
+- [ ] Offline proposals require measurable scenario improvement and no regression before a human can approve; none is applied to production, so a shipping gate is not met.
+
+## Implementation notes
+
+`ImprovementLoop` compares real offline control/candidate scenario reports against a separately pinned baseline, rejects safety/correctness/grounding/relevance regressions and requires human approval for an in-memory activation record. It neither trains a model nor changes Core settings; production activation would require authenticated durable task/feedback/approval/audit storage, an independent baseline digest and explicit reversible runtime application. No v1.9 release or silent “self-improvement” is claimed.
 
 ## Source documents
 

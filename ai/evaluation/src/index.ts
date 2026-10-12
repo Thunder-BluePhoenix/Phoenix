@@ -6,6 +6,7 @@
 // opt-in command against a real local model.
 export * from "./gate";
 export * from "./golden";
+export * from "./improvement";
 export * from "./metrics";
 export * from "./observation";
 export * from "./oracles";

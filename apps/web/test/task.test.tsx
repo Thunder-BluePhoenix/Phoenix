@@ -163,6 +163,44 @@ describe("Current task", () => {
     expect(text("classify")).not.toMatch(/Risk/);
   });
 
+  it("shows delegated grants and conflicting conclusions for human review, never as an automatic decision", async () => {
+    openOverview(
+      taskDetail("COMPLETED", {
+        parent: { task_id: "parent-1", run_id: "run-parent" },
+        delegations: [
+          {
+            parent_task_id: "parent-1",
+            parent_run_id: "run-parent",
+            child_task_id: "child-1",
+            child_run_id: "run-child",
+            kind: "research",
+            status: "completed",
+            grant: {
+              tools: ["ops.read_state"],
+              context: { scopes: ["repo:demo"], domains: ["project"], max_sensitivity: "internal" },
+            },
+          },
+        ],
+        conflicts: [
+          {
+            subject: "deploy risk",
+            children: ["child-1", "child-2"],
+            conclusions: ["Risk present", "<img src=x onerror=alert(1)>"],
+            evidence: [["E1"], ["E2"]],
+          },
+        ],
+      }),
+      "COMPLETED",
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Show details" }));
+    const section = await screen.findByRole("region", { name: "Specialist delegation" });
+    expect(section.textContent).toContain("parent-1");
+    expect(section.textContent).toContain("repo:demo");
+    expect(section.textContent).toContain("Human review required");
+    expect(section.textContent).toContain("<img src=x onerror=alert(1)>");
+    expect(section.querySelector("img")).toBeNull();
+  });
+
   it("shows evidence with excerpts and truncated markers", async () => {
     openOverview(taskDetail("COMPLETED", done), "COMPLETED");
     fireEvent.click(await screen.findByRole("button", { name: "Show details" }));

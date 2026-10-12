@@ -205,6 +205,10 @@ export class AgentStore {
     return row ? toTask(row) : undefined;
   }
 
+  hasRun(id: string): boolean {
+    return this.db.prepare("SELECT 1 FROM agent_runs WHERE id = ?").get(id) !== undefined;
+  }
+
   /** The most recent run of a task. */
   runForTask(taskId: string): StoredRun | undefined {
     const row = this.db

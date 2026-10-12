@@ -9,8 +9,10 @@ import { meetingReviewRoutes } from "./meeting-routes";
 import { memoryRoutes } from "./memory-routes";
 import { planRoutes } from "./plan-routes";
 import { workflowRoutes } from "./workflow-routes";
+import { proactiveRoutes } from "./proactive-routes";
 import { syncRoutes } from "./sync-routes";
 import { registryRoutes } from "./registry-routes";
+import { multimodalRoutes } from "./multimodal-routes";
 import type { CoreServices } from "./services";
 
 const notFound = (what: string) =>
@@ -240,6 +242,8 @@ export function buildRoutes(s: CoreServices): Route[] {
       notes().setPreferences(await body()),
     ),
 
+    ...proactiveRoutes(s),
+
     // ── Permissions, confirmations, audit, kill switch ──────────────────────
     route("GET", "/api/permissions", ({ url }) => {
       const cap = url.searchParams.get("capability") ?? undefined;
@@ -296,5 +300,6 @@ export function buildRoutes(s: CoreServices): Route[] {
     }),
     ...registryRoutes(s),
     ...syncRoutes(s),
+    ...multimodalRoutes(s),
   ];
 }

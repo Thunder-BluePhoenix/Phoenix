@@ -113,6 +113,7 @@ export interface BootOptions {
   limits?: Partial<Limits>;
   setTimer?: SetTimer;
   now?: () => number;
+  newId?: (prefix: string) => string;
   confirmationTimeoutMs?: number;
   /** The feed never tells the orchestrator about confirmations (a cancel that beats the bus). */
   deafApprovals?: boolean;
@@ -207,6 +208,7 @@ export async function boot(options: BootOptions): Promise<Booted> {
     ...(options.limits ? { limits: options.limits } : {}),
     ...(options.setTimer ? { setTimer: options.setTimer } : {}),
     ...(options.now ? { now: options.now } : {}),
+    ...(options.newId ? { newId: options.newId } : {}),
   });
   return {
     db,

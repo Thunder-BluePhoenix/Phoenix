@@ -43,6 +43,47 @@ export interface NotificationsService {
   setPreferences(input: unknown): unknown;
 }
 
+export interface ProactiveNoiseView {
+  delivered: number;
+  dismissed: number;
+  suppressed: number;
+  dismissalRate: number;
+}
+export interface ProactiveStatusView {
+  preferences: {
+    enabled: boolean;
+    capabilities: string[];
+    quietHours: { timezone: string; start: string; end: string } | null;
+    maxPerHour: number;
+  };
+  source: { capability_id: "kage"; available: boolean; mode: "manual" };
+  noise: ProactiveNoiseView;
+}
+export interface ProactiveCandidateView {
+  id: string;
+  kind: "unassigned_action";
+  capabilityId: "kage";
+  title: string;
+  body: string;
+  evidenceIds: string[];
+  subjectId: string;
+  evidence: {
+    meeting_id: string;
+    item_id: string;
+    source: "transcript" | "summary";
+    quote: string;
+  };
+}
+/** Authenticated, user-owned local meeting-action insights. No background source polling. */
+export interface ProactiveApi {
+  status(): ProactiveStatusView;
+  setPreferences(input: unknown): ProactiveStatusView;
+  preview(): { insights: ProactiveCandidateView[] };
+  evaluate(): { delivered: { insight_id: string; notification: unknown }[]; suppressed: number };
+  dismiss(id: string): { dismissed: string };
+  noise(): ProactiveNoiseView;
+}
+
 /** One memory as the owner sees it. Never carries provenance internals or the dedupe key. */
 export interface MemoryItemView {
   id: string;
@@ -598,6 +639,29 @@ export interface AgentTaskDetailView {
   };
   steps: AgentStepView[];
   evidence: AgentEvidenceView[];
+  parent: { task_id: string; run_id: string } | null;
+  delegations: {
+    parent_task_id: string;
+    parent_run_id: string;
+    child_task_id: string;
+    child_run_id: string;
+    kind: string;
+    status: "running" | "completed" | "failed" | "cancelled";
+    grant: {
+      tools: string[];
+      context: {
+        scopes: string[];
+        domains: string[];
+        max_sensitivity: "public" | "internal" | "sensitive";
+      };
+    };
+  }[];
+  conflicts: {
+    subject: string;
+    children: [string, string];
+    conclusions: [string, string];
+    evidence: [string[], string[]];
+  }[];
   summary: string | null;
   diagnosis: {
     summary: string;
@@ -1042,6 +1106,18 @@ export interface AutonomyApi {
   stop(runId: string): void;
 }
 
+/** Model probes only; no device permission, capture authorization or bytes. */
+export interface MultimodalStatusView {
+  kill_switch_engaged: boolean;
+  speech: { available: boolean; detail: string };
+  vision: { available: boolean; detail: string };
+  capture: { available: false; detail: string };
+}
+
+export interface MultimodalApi {
+  status(): Promise<MultimodalStatusView>;
+}
+
 /** Everything the API needs from Phoenix Core. */
 export interface CoreServices {
   config: PhoenixConfig;
@@ -1052,6 +1128,7 @@ export interface CoreServices {
   permissions: PermissionGateway;
   capabilities?: CapabilityService;
   notifications?: NotificationsService;
+  proactive?: ProactiveApi;
   meetings?: MeetingStore;
   privacy?: {
     inventory(): unknown;
@@ -1070,6 +1147,7 @@ export interface CoreServices {
   autonomyApi?: AutonomyApi;
   sync?: SyncApi;
   registry?: RegistryApi;
+  multimodal?: MultimodalApi;
   petSettings?(): unknown;
   setPetSettings?(input: unknown): unknown;
   /** Persists the user's sleep preference. */

@@ -242,6 +242,12 @@ importers:
         specifier: workspace:*
         version: link:../../protocol
 
+  ai/multimodal:
+    dependencies:
+      '@phoenix/ai-models':
+        specifier: workspace:*
+        version: link:../models
+
   ai/orchestrator:
     dependencies:
       '@phoenix/ai-context':
@@ -351,6 +357,8 @@ importers:
       '@phoenix/state-engine':
         specifier: workspace:*
         version: link:../../core/state-engine
+
+  ai/proactive: {}
 
   ai/retrieval:
     dependencies:
@@ -712,12 +720,18 @@ importers:
       '@phoenix/ai-models':
         specifier: workspace:*
         version: link:../../ai/models
+      '@phoenix/ai-multimodal':
+        specifier: workspace:*
+        version: link:../../ai/multimodal
       '@phoenix/ai-orchestrator':
         specifier: workspace:*
         version: link:../../ai/orchestrator
       '@phoenix/ai-planning':
         specifier: workspace:*
         version: link:../../ai/planning
+      '@phoenix/ai-proactive':
+        specifier: workspace:*
+        version: link:../../ai/proactive
       '@phoenix/ai-retrieval':
         specifier: workspace:*
         version: link:../../ai/retrieval

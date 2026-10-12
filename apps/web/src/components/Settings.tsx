@@ -17,6 +17,7 @@ import { AutomationSettings } from "./AutomationSettings";
 import { AiSettings, MemorySettingsSection } from "./MemorySettings";
 import { Feedback } from "./Feedback";
 import { QuickActions } from "./Overview";
+import { ProactiveSettingsSection } from "./ProactiveSettings";
 import { RetrievalSettingsSection } from "./RetrievalSettings";
 import { RegistrySettingsSection } from "./RegistrySettings";
 import { SyncSettingsSection } from "./SyncSettings";
@@ -34,6 +35,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <AiSettings />
       <RetrievalSettingsSection />
       <AutomationSettings />
+      <ProactiveSettingsSection />
       <RegistrySettingsSection />
       <SyncSettingsSection />
       <SupportSettings />

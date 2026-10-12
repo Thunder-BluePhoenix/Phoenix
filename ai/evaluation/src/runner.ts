@@ -53,6 +53,8 @@ export interface RunOptions {
   realProvider?: ModelProvider;
   /** Called with the finished run before the world is closed. */
   inspect?: (run: RunResult) => void | Promise<void>;
+  /** Offline-only bounded candidate, carried into the real harness world. */
+  candidate?: { promptAddendum?: string; retrievalLimit?: number; maxFollowUps?: number };
 }
 
 function taskText(trace: TaskTrace | null): string {
@@ -86,6 +88,12 @@ export async function runScenario(
         engine: w.engine,
         viewer: w.viewer,
         allowedTools: scenario.setup.opsAllowedTools ?? DEFAULT_OPS_TOOLS,
+        ...(options.candidate?.promptAddendum
+          ? { promptAddendum: options.candidate.promptAddendum }
+          : {}),
+        ...(options.candidate?.maxFollowUps !== undefined
+          ? { maxFollowUps: options.candidate.maxFollowUps }
+          : {}),
       }),
       createHostileAgent({
         attempts: () => scenario.hostile?.attempts ?? [],
@@ -127,7 +135,7 @@ export async function runScenario(
           const bundle = world.engine.assemble({
             question: q.query,
             viewer: world.viewer,
-            limit: spec.k,
+            limit: Math.max(1, Math.min(spec.k, options.candidate?.retrievalLimit ?? spec.k)),
             tokenBudget: 4000,
           });
           return Promise.resolve(bundle.items.map((i) => `${i.source}:${i.sourceRef}`));

@@ -5,6 +5,7 @@
 export const PERMISSIONS = [
   "microphone",
   "camera",
+  "screen_capture",
   "meeting_recording",
   "filesystem_read",
   "filesystem_write",
@@ -21,6 +22,7 @@ export type Permission = (typeof PERMISSIONS)[number];
 export const PERMISSION_DESCRIPTIONS: Readonly<Record<Permission, string>> = {
   microphone: "Use the microphone",
   camera: "Use the camera",
+  screen_capture: "Capture a chosen screen or window",
   meeting_recording: "Record meetings",
   filesystem_read: "Read files on this computer",
   filesystem_write: "Write or delete files on this computer",
@@ -40,6 +42,7 @@ export const PERMISSION_DESCRIPTIONS: Readonly<Record<Permission, string>> = {
 export const ALWAYS_CONFIRM: ReadonlySet<Permission> = new Set([
   "microphone",
   "camera",
+  "screen_capture",
   "meeting_recording",
   "production_action",
 ]);

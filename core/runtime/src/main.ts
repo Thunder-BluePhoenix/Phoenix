@@ -35,6 +35,8 @@ try {
 }
 const trustedKeyFile = process.env.PHOENIX_REGISTRY_TRUSTED_KEY_FILE;
 const indexFile = process.env.PHOENIX_REGISTRY_INDEX_FILE;
+const whisperModelPath = process.env.PHOENIX_WHISPER_MODEL_PATH;
+const visionModel = process.env.PHOENIX_VISION_MODEL;
 if ((trustedKeyFile === undefined) !== (indexFile === undefined)) {
   fail(
     new Error(
@@ -49,6 +51,8 @@ try {
     logger,
     ...(secrets ? { secrets } : {}),
     ...(trustedKeyFile && indexFile ? { registry: { trustedKeyFile, indexFile } } : {}),
+    ...(whisperModelPath ? { whisperModelPath } : {}),
+    ...(visionModel ? { visionModel } : {}),
     capabilities: builtinCapabilities(config.env, () => runtime.agentsServices()),
   });
 } catch (err) {

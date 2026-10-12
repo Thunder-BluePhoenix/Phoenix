@@ -10,6 +10,7 @@ export * from "./gate";
 export * from "./router";
 export * from "./registry";
 export * from "./service";
+export * from "./multimodal";
 export {
   AnthropicProvider,
   ANTHROPIC_ID,

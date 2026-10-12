@@ -35,6 +35,14 @@ import { EvidenceBook } from "./evidence";
 import { checkPlan, safeText } from "./plan";
 import { AgentStore, type StoredOutcome, type StoredRun, type StoredStep } from "./store";
 import { SpecialistRegistry } from "./specialists";
+import type {
+  DelegationConflict,
+  DelegationGrant,
+  DelegationLink,
+  DelegationLimits,
+  DelegationRequest,
+  DelegationResult,
+} from "./delegation";
 import {
   DEFAULT_LIMITS,
   STAGES,
@@ -105,6 +113,7 @@ export interface OrchestratorOptions {
   approvals?: ApprovalFeed;
   agents: readonly AgentDefinition[];
   limits?: Partial<Limits>;
+  delegationLimits?: Partial<DelegationLimits>;
   /** Epoch ms. Used for timestamps and the wall-time budget. */
   now?: () => number;
   /** Schedules the wall-time deadline. Tests drive it by hand. */
@@ -140,6 +149,10 @@ interface RunState {
   inflight: Inflight | null;
   deadline: TimerHandle | null;
   done: Promise<void>;
+  parent?: RunState;
+  depth: number;
+  grant?: DelegationGrant;
+  children: Set<string>;
 }
 
 export interface TaskTrace {
@@ -151,6 +164,9 @@ export interface TaskTrace {
   verification: Verification | null;
   /** Every audit record this run wrote or caused: stage records and policy decisions. */
   auditIds: number[];
+  parent?: { taskId: string; runId: string };
+  delegations: DelegationLink[];
+  conflicts: DelegationConflict[];
 }
 
 type Detail = StageDetail;
@@ -167,11 +183,13 @@ function cleanDetail(detail: Detail): Detail {
 
 export class Orchestrator {
   readonly limits: Limits;
+  readonly delegationLimits: DelegationLimits;
   private readonly store: AgentStore;
   readonly specialists = new SpecialistRegistry();
   private readonly defs: Record<string, AgentDefinition> = {};
   private readonly active: Record<string, RunState> = {};
   private readonly now: () => number;
+  private readonly knownIds = new Set<string>();
   private readonly setTimer: SetTimer;
   private readonly newId: (prefix: string) => string;
   private readonly logger: Logger;
@@ -180,6 +198,14 @@ export class Orchestrator {
 
   constructor(private readonly o: OrchestratorOptions) {
     this.limits = { ...DEFAULT_LIMITS, ...o.limits };
+    this.delegationLimits = { maxDepth: 3, maxFanout: 4, ...o.delegationLimits };
+    if (
+      !Number.isSafeInteger(this.delegationLimits.maxDepth) ||
+      this.delegationLimits.maxDepth < 1 ||
+      !Number.isSafeInteger(this.delegationLimits.maxFanout) ||
+      this.delegationLimits.maxFanout < 1
+    )
+      throw new Error("Invalid delegation limits");
     this.store = new AgentStore(o.db);
     this.now = o.now ?? Date.now;
     this.setTimer = o.setTimer ?? realTimer;
@@ -213,6 +239,14 @@ export class Orchestrator {
    * KillSwitchEngagedError, InvalidTaskError or TooManyRunsError; nothing is stored then.
    */
   submit(request: { kind: string; input: unknown; requestedBy: string }): AgentTask {
+    return this.submitOwned(request);
+  }
+
+  private submitOwned(
+    request: { kind: string; input: unknown; requestedBy: string },
+    parent?: RunState,
+    grant?: DelegationGrant,
+  ): AgentTask {
     if (this.closed) throw new AgentsDisabledError();
     if (!this.o.isEnabled()) throw new AgentsDisabledError();
     if (this.o.isKillSwitchEngaged()) throw new KillSwitchEngagedError();
@@ -234,6 +268,12 @@ export class Orchestrator {
       createdAt: stamp,
       correlationId: this.newId("corr"),
     };
+    if (
+      this.knownIds.has(task.id) ||
+      this.store.task(task.id) ||
+      this.knownIds.has(task.correlationId)
+    )
+      throw new InvalidTaskError("Task identifier collision");
     const classified = def.classify(task);
     if (!classified.ok) throw new InvalidTaskError(classified.reason);
     if (def.specialist) {
@@ -245,6 +285,13 @@ export class Orchestrator {
         classified.target.dataClass !== def.specialist.scope.dataClass
       )
         throw new InvalidTaskError("Specialist target exceeds its declared scope");
+      if (
+        parent &&
+        (classified.target.resource !== parent.target?.resource ||
+          classified.target.environment !== parent.target.environment ||
+          classified.target.dataClass !== parent.target.dataClass)
+      )
+        throw new InvalidTaskError("Delegated target exceeds parent scope");
     }
 
     const run: AgentRun = {
@@ -255,6 +302,8 @@ export class Orchestrator {
       createdAt: stamp,
       updatedAt: stamp,
     };
+    if (this.knownIds.has(run.id) || this.store.hasRun(run.id))
+      throw new InvalidTaskError("Run identifier collision");
     this.store.insertTask(task);
     this.store.insertRun(run, def.descriptor.version);
     const controller = new AbortController();
@@ -276,8 +325,16 @@ export class Orchestrator {
       inflight: null,
       deadline: null,
       done: Promise.resolve(),
+      parent,
+      depth: (parent?.depth ?? -1) + 1,
+      grant,
+      children: new Set(),
     };
+    this.knownIds.add(task.id);
+    this.knownIds.add(run.id);
+    this.knownIds.add(task.correlationId);
     this.active[run.id] = rs;
+    if (parent) parent.children.add(run.id);
     const maxWallMs = Math.min(
       this.limits.maxWallMs,
       def.specialist?.timeoutMs ?? this.limits.maxWallMs,
@@ -334,6 +391,56 @@ export class Orchestrator {
       if (s.policyAuditId !== null) auditIds.add(s.policyAuditId);
       if (s.stageAuditId !== null) auditIds.add(s.stageAuditId);
     }
+    const links = steps
+      .filter((step) => step.kind === "stage" && step.name === "delegation")
+      .map((step) => {
+        const link = step.detail as unknown as DelegationLink;
+        const state = this.store.runForTask(link.childTaskId)?.state;
+        return {
+          ...link,
+          status:
+            state === "COMPLETED"
+              ? ("completed" as const)
+              : state === "CANCELLED"
+                ? ("cancelled" as const)
+                : state === "FAILED"
+                  ? ("failed" as const)
+                  : ("running" as const),
+        };
+      });
+    const parentStep = steps.find(
+      (step) => step.kind === "stage" && step.name === "delegated_from",
+    );
+    const parent = parentStep?.detail as { taskId: string; runId: string } | undefined;
+    const conflicts: DelegationConflict[] = [];
+    for (let i = 0; i < links.length; i++) {
+      for (let j = i + 1; j < links.length; j++) {
+        const a = this.trace(links[i]!.childTaskId);
+        const b = this.trace(links[j]!.childTaskId);
+        if (
+          !a ||
+          !b ||
+          a.run.state !== "COMPLETED" ||
+          b.run.state !== "COMPLETED" ||
+          !a.conclusion ||
+          !b.conclusion ||
+          a.conclusion.summary === b.conclusion.summary
+        )
+          continue;
+        const subjectA = a.steps.find((step) => step.name === "classify")?.detail.resource;
+        const subjectB = b.steps.find((step) => step.name === "classify")?.detail.resource;
+        if (typeof subjectA !== "string" || subjectA !== subjectB) continue;
+        conflicts.push({
+          subject: subjectA,
+          children: [a.task.id, b.task.id],
+          conclusions: [a.conclusion.summary, b.conclusion.summary],
+          evidence: [
+            a.evidence.map((e) => `${a.run.id}:${e.id}`),
+            b.evidence.map((e) => `${b.run.id}:${e.id}`),
+          ],
+        });
+      }
+    }
     return {
       task,
       run,
@@ -342,6 +449,9 @@ export class Orchestrator {
       conclusion: run.outcome?.conclusion ?? null,
       verification: run.outcome?.verification ?? null,
       auditIds: [...auditIds].sort((a, b) => a - b),
+      ...(parent ? { parent } : {}),
+      delegations: links,
+      conflicts,
     };
   }
 
@@ -414,6 +524,10 @@ export class Orchestrator {
     rs.abort = { kind, reason: safeText(reason, 200) };
     rs.controller.abort();
     this.rejectPendingApproval(rs);
+    for (const childId of rs.children) {
+      const child = this.active[childId];
+      if (child) this.abort(child, kind, reason);
+    }
   }
 
   private abortError(rs: RunState): Error {
@@ -532,6 +646,12 @@ export class Orchestrator {
         failure = { state: "FAILED", reason: "Internal error; see the Phoenix log" };
       }
     }
+    if (failure.state !== "COMPLETED") {
+      for (const childId of rs.children) {
+        const child = this.active[childId];
+        if (child) this.abort(child, "cancel", "parent task ended");
+      }
+    }
     try {
       this.finish(rs, failure.state, failure.reason);
     } catch (err) {
@@ -589,7 +709,9 @@ export class Orchestrator {
         this.checkpoint(rs);
         const checked = checkPlan(raw, {
           tools: this.o.gateway.tools(),
-          allowedTools: def.allowedTools,
+          allowedTools: rs.grant
+            ? def.allowedTools.filter((tool) => rs.grant!.tools.includes(tool))
+            : def.allowedTools,
           allowedCapabilities: def.allowedCapabilities,
           maxSteps: Math.min(
             this.limits.maxSteps,
@@ -846,18 +968,213 @@ export class Orchestrator {
       task: rs.task,
       runId: rs.run.id,
       target,
-      specialist: rs.def.specialist,
+      specialist:
+        rs.grant && rs.def.specialist
+          ? { ...rs.def.specialist, tools: rs.grant.tools, context: rs.grant.context }
+          : rs.def.specialist,
+      delegationGrant: rs.grant,
       evidence: rs.evidence,
       signal: rs.controller.signal,
       availableTools: () =>
         this.o.gateway
           .tools()
-          .filter((t) => rs.def.allowedTools.includes(t.name))
+          .filter(
+            (t) =>
+              rs.def.allowedTools.includes(t.name) &&
+              (!rs.grant || rs.grant.tools.includes(t.name)),
+          )
           .map((t) => ({ name: t.name, description: t.description, sideEffect: t.sideEffect })),
       callTool: (request) => orchestrator.callTool(rs, request),
       countModelCall: () => {
         rs.modelCalls++;
       },
+      delegate: (request) => orchestrator.delegate(rs, request),
+    };
+  }
+
+  private async delegate<Output>(
+    parent: RunState,
+    request: DelegationRequest,
+  ): Promise<DelegationResult<Output>> {
+    this.checkpoint(parent);
+    if (!parent.def.specialist)
+      throw new InvalidTaskError("Only a registered specialist may delegate");
+    if (
+      !request ||
+      typeof request.kind !== "string" ||
+      !request.input ||
+      typeof request.input !== "object" ||
+      Array.isArray(request.input)
+    )
+      throw new InvalidTaskError("Invalid delegation request");
+    const child = this.specialists.get(request.kind);
+    if (!child) throw new InvalidTaskError(`Unsupported specialist: ${safeText(request.kind, 40)}`);
+    if (parent.depth >= this.delegationLimits.maxDepth)
+      throw new InvalidTaskError("Delegation depth budget exceeded");
+    if (parent.children.size >= this.delegationLimits.maxFanout)
+      throw new InvalidTaskError("Delegation fanout budget exceeded");
+    for (let ancestor: RunState | undefined = parent; ancestor; ancestor = ancestor.parent) {
+      if (ancestor.def.descriptor.kind === request.kind)
+        throw new InvalidTaskError("Delegation cycle refused");
+    }
+    const source = parent.grant ?? {
+      tools: [...parent.def.specialist.tools],
+      context: {
+        scopes: [...parent.def.specialist.context.scopes],
+        domains: [...parent.def.specialist.context.domains],
+        maxSensitivity: parent.def.specialist.context.maxSensitivity,
+      },
+    };
+    if (
+      request.context !== undefined &&
+      (!request.context || typeof request.context !== "object" || Array.isArray(request.context))
+    )
+      throw new InvalidTaskError("Invalid delegation context");
+    if (
+      request.tools !== undefined &&
+      (!Array.isArray(request.tools) ||
+        request.tools.some((tool) => typeof tool !== "string" || !source.tools.includes(tool)))
+    )
+      throw new InvalidTaskError("Delegation cannot expand tool permissions");
+    if (
+      request.context?.scopes !== undefined &&
+      (!Array.isArray(request.context.scopes) ||
+        request.context.scopes.some(
+          (scope) => typeof scope !== "string" || !source.context.scopes.includes(scope),
+        ))
+    )
+      throw new InvalidTaskError("Delegation cannot expand context scope");
+    if (
+      request.context?.domains !== undefined &&
+      (!Array.isArray(request.context.domains) ||
+        request.context.domains.some(
+          (domain) => typeof domain !== "string" || !source.context.domains.includes(domain),
+        ))
+    )
+      throw new InvalidTaskError("Delegation cannot expand context domains");
+    const sensitivity = { public: 0, internal: 1, sensitive: 2 } as const;
+    const requestedSensitivity = request.context?.maxSensitivity;
+    if (
+      requestedSensitivity !== undefined &&
+      (typeof requestedSensitivity !== "string" ||
+        !Object.hasOwn(sensitivity, requestedSensitivity) ||
+        sensitivity[requestedSensitivity as keyof typeof sensitivity] >
+          sensitivity[source.context.maxSensitivity])
+    )
+      throw new InvalidTaskError("Delegation cannot expand sensitivity");
+    const scopes = child.specialist.context.scopes.filter(
+      (scope) =>
+        source.context.scopes.includes(scope) &&
+        (!request.context?.scopes || request.context.scopes.includes(scope)),
+    );
+    const domains = child.specialist.context.domains.filter(
+      (domain) =>
+        source.context.domains.includes(domain) &&
+        (!request.context?.domains || request.context.domains.includes(domain)),
+    );
+    if (!scopes.length || !domains.length)
+      throw new InvalidTaskError("No shared context grant for specialist");
+    const permittedTools = request.tools ?? source.tools;
+    const sensitivityIndex = Math.min(
+      sensitivity[source.context.maxSensitivity],
+      sensitivity[child.specialist.context.maxSensitivity],
+      requestedSensitivity === undefined ? 2 : sensitivity[requestedSensitivity],
+    );
+    const maxSensitivity: DelegationGrant["context"]["maxSensitivity"] =
+      sensitivityIndex === 0 ? "public" : sensitivityIndex === 1 ? "internal" : "sensitive";
+    const grant: DelegationGrant = {
+      tools: child.specialist.tools.filter(
+        (tool) => permittedTools.includes(tool) && source.tools.includes(tool),
+      ),
+      context: { scopes, domains, maxSensitivity },
+    };
+    const task = this.submitOwned(
+      { kind: request.kind, input: request.input, requestedBy: `agent:${parent.task.id}` },
+      parent,
+      grant,
+    );
+    const childRun = Object.values(this.active).find((rs) => rs.task.id === task.id)!;
+    const link: DelegationLink = {
+      parentTaskId: parent.task.id,
+      parentRunId: parent.run.id,
+      childTaskId: task.id,
+      childRunId: childRun.run.id,
+      kind: task.kind,
+      grant,
+      status: "running",
+    };
+    const auditDetails = {
+      parentTaskId: parent.task.id,
+      parentRunId: parent.run.id,
+      childTaskId: task.id,
+      childRunId: childRun.run.id,
+      kind: task.kind,
+      tools: grant.tools,
+      scopes: grant.context.scopes,
+      domains: grant.context.domains,
+      maxSensitivity: grant.context.maxSensitivity,
+    };
+    try {
+      const auditId = this.o.audit.record({
+        actor: `agent:${parent.def.descriptor.id}`,
+        action: "agent.delegation",
+        decision: "info",
+        details: auditDetails,
+      }).id;
+      const created = this.iso();
+      this.store.addStep({
+        runId: parent.run.id,
+        kind: "stage",
+        name: "delegation",
+        status: "ok",
+        detail: link as unknown as Record<string, unknown>,
+        policyAuditId: null,
+        decision: null,
+        risk: null,
+        stageAuditId: auditId,
+        startedAt: created,
+        finishedAt: created,
+      });
+      this.store.addStep({
+        runId: childRun.run.id,
+        kind: "stage",
+        name: "delegated_from",
+        status: "ok",
+        detail: { taskId: parent.task.id, runId: parent.run.id },
+        policyAuditId: null,
+        decision: null,
+        risk: null,
+        stageAuditId: auditId,
+        startedAt: created,
+        finishedAt: created,
+      });
+    } catch (error) {
+      this.abort(childRun, "cancel", "delegation audit unavailable");
+      throw error;
+    }
+    await this.raceAbort(parent, childRun.done);
+    this.checkpoint(parent);
+    const trace = this.trace(task.id)!;
+    if (trace.run.state !== "COMPLETED" || !trace.conclusion)
+      throw new RunFailure(
+        `Delegated specialist ${safeText(task.kind, 40)} ${trace.run.state.toLowerCase()}`,
+      );
+    const evidenceIds = new Set(trace.evidence.map((e) => e.id));
+    let output: unknown;
+    try {
+      output = child.specialist.handoff(trace.conclusion);
+      const problems = this.specialists.outputProblems(task.kind, trace.conclusion, evidenceIds);
+      if (problems.length) throw new Error(problems[0]);
+    } catch {
+      throw new RunFailure("Delegated specialist handoff failed validation");
+    }
+    return {
+      taskId: task.id,
+      runId: childRun.run.id,
+      kind: task.kind,
+      output: output as Output,
+      evidence: trace.evidence,
+      grant,
     };
   }
 
@@ -899,7 +1216,11 @@ export class Orchestrator {
     };
     if (!parsed.ok) throw reject("INVALID_REQUEST", "The tool request is malformed");
     const capability = tool.slice(0, tool.indexOf("."));
-    if (!rs.def.allowedCapabilities.includes(capability) || !rs.def.allowedTools.includes(tool)) {
+    if (
+      !rs.def.allowedCapabilities.includes(capability) ||
+      !rs.def.allowedTools.includes(tool) ||
+      (rs.grant && !rs.grant.tools.includes(tool))
+    ) {
       throw reject("NOT_ALLOWED", `"${safeText(tool)}" is not allowed for this kind of task`);
     }
     const maxToolCalls = Math.min(

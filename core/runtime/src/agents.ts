@@ -367,6 +367,29 @@ function detailOf(trace: TaskTrace): AgentTaskDetailView {
       excerpt: e.excerpt,
       truncated: e.truncated,
     })),
+    parent: trace.parent ? { task_id: trace.parent.taskId, run_id: trace.parent.runId } : null,
+    delegations: trace.delegations.map((d) => ({
+      parent_task_id: d.parentTaskId,
+      parent_run_id: d.parentRunId,
+      child_task_id: d.childTaskId,
+      child_run_id: d.childRunId,
+      kind: d.kind,
+      status: d.status,
+      grant: {
+        tools: d.grant.tools,
+        context: {
+          scopes: d.grant.context.scopes,
+          domains: d.grant.context.domains,
+          max_sensitivity: d.grant.context.maxSensitivity,
+        },
+      },
+    })),
+    conflicts: trace.conflicts.map((c) => ({
+      subject: c.subject,
+      children: c.children,
+      conclusions: c.conclusions,
+      evidence: c.evidence,
+    })),
     summary: conclusion?.summary ?? null,
     diagnosis: diagnosis
       ? {

@@ -5,6 +5,7 @@
 // live in @phoenix/ai-agents and act only through the ToolGateway handed to `Orchestrator`.
 export * from "./approvals";
 export * from "./errors";
+export * from "./delegation";
 export * from "./events";
 export * from "./evidence";
 export * from "./orchestrator";

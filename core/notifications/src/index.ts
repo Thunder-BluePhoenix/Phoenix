@@ -12,6 +12,19 @@ import {
   type Severity,
 } from "@phoenix/protocol";
 import type { StateEngine } from "@phoenix/state-engine";
+import {
+  ProactiveNotificationPolicy,
+  type ProactiveInsight,
+  type ProactivePreferences,
+  type NoiseMetrics,
+} from "./policy";
+export {
+  ProactiveNotificationPolicy,
+  type ProactiveInsight,
+  type ProactivePreferences,
+  type QuietHours,
+  type NoiseMetrics,
+} from "./policy";
 
 export interface Notification {
   id: string;
@@ -75,12 +88,14 @@ export class NotificationService {
   private readonly logger: Logger;
   private readonly now: () => number;
   private readonly recent = new Map<string, number>();
+  readonly proactive: ProactiveNotificationPolicy;
   private readonly unsubscribe: () => void;
 
   constructor(private readonly o: NotificationServiceOptions) {
     this.settings = new SettingsStore(o.db);
     this.logger = (o.logger ?? silentLogger).child("notifications");
     this.now = o.now ?? Date.now;
+    this.proactive = new ProactiveNotificationPolicy(this.settings, this.now);
     this.unsubscribe = o.bus.subscribe("notifications", "*", (event) => {
       this.consider(event);
     });
@@ -182,6 +197,65 @@ export class NotificationService {
     return Number(
       this.o.db.prepare("UPDATE notifications SET read = 1 WHERE read = 0").run().changes,
     );
+  }
+
+  proactivePreferences(userId: string): ProactivePreferences {
+    return this.proactive.preferences(userId);
+  }
+  setProactivePreferences(
+    userId: string,
+    input: Partial<ProactivePreferences>,
+  ): ProactivePreferences {
+    return this.proactive.setPreferences(userId, input);
+  }
+  dismissInsight(userId: string, insightId: string): void {
+    this.proactive.dismiss(userId, insightId);
+  }
+  noiseMetrics(userId: string): NoiseMetrics {
+    return this.proactive.metrics(userId);
+  }
+
+  /** Recheck the currently trusted source snapshot before accepting a stale candidate. */
+  considerInsight(
+    userId: string,
+    insight: ProactiveInsight,
+    isCurrent: (insight: ProactiveInsight) => boolean,
+  ): Notification | null {
+    if (!isCurrent(insight) || !this.proactive.allow(userId, insight)) return null;
+    const nowMs = this.now();
+    const n: Notification = {
+      id: `ntf_${nowMs.toString(36)}${randomBytes(5).toString("hex")}`,
+      eventId: null,
+      eventType: `insight.${insight.kind}`,
+      source: insight.capabilityId,
+      severity: "info",
+      title: insight.title,
+      body: insight.body,
+      read: false,
+      createdAt: new Date(nowMs).toISOString(),
+    };
+    this.o.db
+      .prepare(
+        "INSERT INTO notifications (id, event_id, severity, title, body, read, created_at, source, event_type) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)",
+      )
+      .run(n.id, n.eventId, n.severity, n.title, n.body, n.createdAt, n.source, n.eventType);
+    this.o.db
+      .prepare(
+        "DELETE FROM notifications WHERE rowid NOT IN (SELECT rowid FROM notifications ORDER BY created_at DESC LIMIT ?)",
+      )
+      .run(MAX_STORED);
+    const published = this.o.bus.publish(
+      createEvent({
+        event_type: "notification.created",
+        source: "core",
+        severity: n.severity,
+        payload: { notification: n as unknown as Record<string, unknown> },
+      }),
+      { ephemeral: true },
+    );
+    if (!published.ok)
+      this.logger.warn("failed to announce notification", { code: published.error.code });
+    return n;
   }
 
   /** Decides whether an event deserves a notification; returns it if created. */

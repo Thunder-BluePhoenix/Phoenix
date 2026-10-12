@@ -198,6 +198,7 @@
       "enum": [
         "microphone",
         "camera",
+        "screen_capture",
         "meeting_recording",
         "filesystem_read",
         "filesystem_write",

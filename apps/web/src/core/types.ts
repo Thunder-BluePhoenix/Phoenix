@@ -383,6 +383,29 @@ export interface AgentTaskDetail {
   };
   steps: AgentStep[];
   evidence: AgentEvidence[];
+  parent?: { task_id: string; run_id: string } | null;
+  delegations?: {
+    parent_task_id: string;
+    parent_run_id: string;
+    child_task_id: string;
+    child_run_id: string;
+    kind: string;
+    status: "running" | "completed" | "failed" | "cancelled";
+    grant: {
+      tools: string[];
+      context: {
+        scopes: string[];
+        domains: string[];
+        max_sensitivity: "public" | "internal" | "sensitive";
+      };
+    };
+  }[];
+  conflicts?: {
+    subject: string;
+    children: [string, string];
+    conclusions: [string, string];
+    evidence: [string[], string[]];
+  }[];
   summary: string | null;
   diagnosis: AgentDiagnosis | null;
   proposals: AgentProposal[];
@@ -1012,4 +1035,41 @@ export interface WorkflowMetrics {
   approvals_approved: number;
   approvals_rejected: number;
   approvals_expired: number;
+}
+
+/** Phase 52: manual Kage action-item suggestions. */
+export interface ProactivePreferences {
+  enabled: boolean;
+  capabilities: string[];
+  quietHours: { timezone: string; start: string; end: string } | null;
+  maxPerHour: number;
+}
+
+export interface ProactiveNoise {
+  delivered: number;
+  dismissed: number;
+  suppressed: number;
+  dismissalRate: number;
+}
+
+export interface ProactiveStatus {
+  preferences: ProactivePreferences;
+  source: { capability_id: "kage"; available: boolean; mode: "manual" };
+  noise: ProactiveNoise;
+}
+
+export interface ProactiveInsight {
+  id: string;
+  kind: "unassigned_action";
+  capabilityId: "kage";
+  title: string;
+  body: string;
+  evidenceIds: string[];
+  subjectId: string;
+  evidence: {
+    meeting_id: string;
+    item_id: string;
+    source: "summary" | "transcript";
+    quote: string;
+  };
 }

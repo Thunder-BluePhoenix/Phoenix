@@ -15,6 +15,7 @@ import type {
 } from "@phoenix/protocol";
 import type { EvidenceBook } from "./evidence";
 import type { SpecialistContract } from "./specialists";
+import type { DelegationGrant, DelegationRequest, DelegationResult } from "./delegation";
 
 /** The request lifecycle, in order. Every stage writes one audit record. */
 export const STAGES = [
@@ -117,6 +118,8 @@ export interface RunContext {
   readonly target: TrustedTarget;
   /** Code-owned contract; context retrieval must intersect its grant with the caller's viewer. */
   readonly specialist?: SpecialistContract<unknown, unknown>;
+  /** Effective permission and retrieval grant inherited from the parent. */
+  readonly delegationGrant?: DelegationGrant;
   readonly evidence: EvidenceBook;
   /** Aborted when the run is cancelled or the kill switch is engaged. */
   readonly signal: AbortSignal;
@@ -129,6 +132,8 @@ export interface RunContext {
   callTool(request: ToolRequest): Promise<ToolCallOutput>;
   /** Counts a model request (the orchestrator reports the total in the trace). */
   countModelCall(): void;
+  /** Spawn a bounded registered specialist; only the parent owns the child task. */
+  delegate<Output = unknown>(request: DelegationRequest): Promise<DelegationResult<Output>>;
 }
 
 /** A kind of task and the code that handles it. Registered with the orchestrator by the runtime. */

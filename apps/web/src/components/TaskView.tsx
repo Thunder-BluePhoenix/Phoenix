@@ -200,6 +200,57 @@ function TaskBody({ detail, onChanged }: { detail: AgentTaskDetail; onChanged: (
         )}
       </details>
 
+      {(detail.parent ||
+        (detail.delegations?.length ?? 0) > 0 ||
+        (detail.conflicts?.length ?? 0) > 0) && (
+        <section className="task-section" aria-label="Specialist delegation">
+          <h5>Specialist delegation</h5>
+          {detail.parent && (
+            <p>
+              Delegated by task <code>{detail.parent.task_id}</code>; no inherited access beyond the
+              parent's grant.
+            </p>
+          )}
+          {(detail.delegations?.length ?? 0) > 0 && (
+            <ul className="task-claims">
+              {detail.delegations?.map((link) => (
+                <li key={link.child_task_id}>
+                  <strong>{link.kind}</strong> — {link.status}. Child task{" "}
+                  <code>{link.child_task_id}</code>.
+                  <p className="muted small">
+                    Granted tools: {link.grant.tools.join(", ") || "none"}; scopes:{" "}
+                    {link.grant.context.scopes.join(", ") || "none"}; sensitivity ceiling:{" "}
+                    {link.grant.context.max_sensitivity}.
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+          {(detail.conflicts?.length ?? 0) > 0 && (
+            <div role="status" aria-label="Unresolved specialist conflicts">
+              <strong>
+                Human review required: specialist conclusions disagree. No automatic reconciliation.
+              </strong>
+              <ul className="task-claims">
+                {detail.conflicts?.map((conflict, i) => (
+                  <li key={`${conflict.subject}-${i}`}>
+                    <p>Subject: {conflict.subject}</p>
+                    <p>
+                      {conflict.children[0]}: {conflict.conclusions[0]} (evidence{" "}
+                      {conflict.evidence[0].join(", ") || "none"})
+                    </p>
+                    <p>
+                      {conflict.children[1]}: {conflict.conclusions[1]} (evidence{" "}
+                      {conflict.evidence[1].join(", ") || "none"})
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
+
       <section className="task-section" aria-label="Evidence">
         <h5>Evidence ({detail.evidence.length})</h5>
         {detail.evidence.length === 0 ? (
