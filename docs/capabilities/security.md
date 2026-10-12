@@ -1,0 +1,17 @@
+# Capability security model
+
+Capabilities execute under a **declared** trust boundary, not an implicit sandbox: Core validates manifest declarations and mediates its own command and event APIs, but cannot prevent arbitrary network or filesystem access by an independently run third-party process. Review and isolate third-party code according to your operating-system policy. Builtins are trusted in-process code; prefer external processes for third parties.
+
+## Before installation
+
+- Inspect the source and manifest: stable id, declared event names, `permissions`, per-command `side_effect`, per-command permissions, `data_categories`, config schema, secrets and state rules. Reject claims of reserved Phoenix event namespaces. A local mock must not silently become a remote client: a network integration needs `network`/`external_api` permissions and a meaningful privacy disclosure; database access needs appropriate storage/network permissions. No command should accept arbitrary shell or SQL solely for convenience.
+- Use narrow credentials and trust domains. Keep remote API keys in an OS secret store or an external process's own protected credential facility, **not** manifest, config, CLI arguments, events, logs, fixtures or command inputs. Builtin manifest `secrets` are set write-only through Core and accessed by `ctx.secret(name)`; external capabilities manage their own secrets.
+- Treat `manifest_version`/`compatibility.protocol` as explicit compatibility declarations, not negotiation: unsupported values fail registration. New permissions after upgrade must be approved again. Read [migration](migration.md).
+
+## At runtime
+
+- Core grants declared permissions on enable, validates command input schemas, ensures command permissions are declared, and requires per-action confirmation for write, execute, external, production and microphone/camera/recording actions. Even a granted capability must not auto-approve a confirmation. Record the operation id when correlating results, redact sensitive content, and fail closed on denied/failed operations.
+- Bind callbacks to loopback, require the Core-to-capability callback secret on **every** route (including health), keep Core's separately issued event token confidential, and use current session tokens to register. SDK `runExternalCapability` does these checks and re-registers after token rotation when posting an event. Do not publish a callback server to the network, forward its port, or persist session tokens in source control. If writing another-language adapter, implement the full authentication contract in [protocol](protocol.md).
+- Event source is the registered capability id; only declared event types pass. Avoid PII/secrets in payloads; the event store, audit log and UI can retain metadata. On disable or emergency stop, do not continue doing work independently of Core. If an external command has already made a remote write, disabling does not roll it back; design idempotency and explicit retry policy for real writes.
+
+The [GitLab, Slack and Postgres examples](sdk.md#executable-examples-and-smoke) deliberately use _in-memory read-only adapters_ and no credentials. Replacing an adapter with a real service is a separate security review, not a hidden feature of the examples. The SDK smoke script runs an actual local Core and checks registration, enablement and command results without touching any real third-party service.

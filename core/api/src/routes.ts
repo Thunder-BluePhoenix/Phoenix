@@ -8,6 +8,8 @@ import { meetingReviewRoutes } from "./meeting-routes";
 import { memoryRoutes } from "./memory-routes";
 import { planRoutes } from "./plan-routes";
 import { workflowRoutes } from "./workflow-routes";
+import { syncRoutes } from "./sync-routes";
+import { registryRoutes } from "./registry-routes";
 import type { CoreServices } from "./services";
 
 const notFound = (what: string) =>
@@ -275,5 +277,7 @@ export function buildRoutes(s: CoreServices): Route[] {
       else s.permissions.disengageKillSwitch("user");
       return { engaged };
     }),
+    ...registryRoutes(s),
+    ...syncRoutes(s),
   ];
 }

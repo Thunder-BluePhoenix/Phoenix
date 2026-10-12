@@ -2,6 +2,8 @@
 
 A capability connects Phoenix to something else — a build tool, a meeting system, a deployment pipeline. This guide walks through both kinds. Read [the capability model](model.md) for the rules Phoenix enforces.
 
+Start with the [v1 protocol](protocol.md), [frozen SDK API and real-Core example walkthrough](sdk.md), [migration guide](migration.md) and [security model](security.md). The walkthrough runs three local-only GitLab/Slack/Postgres adapters and verifies real registration and command execution without external writes.
+
 ## 1. Pick a kind
 
 | Use…                                   | When                                                                                                                                                                                                    |

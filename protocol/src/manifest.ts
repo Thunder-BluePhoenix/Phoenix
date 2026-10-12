@@ -14,6 +14,12 @@ const validateSchema = ajv.compile(schema);
 
 export const CAPABILITY_MANIFEST_SCHEMA_V1 = schema;
 
+/** Capability manifest schema major supported by this release. Omission means v1. */
+export const CAPABILITY_MANIFEST_VERSION = "1" as const;
+
+/** Event protocol major supported by capability manifests (event wire version is 1.x). */
+export const CAPABILITY_PROTOCOL_MAJOR = "1" as const;
+
 /** Sources Phoenix reserves for itself; capabilities may not use them as ids. */
 export const RESERVED_SOURCES: ReadonlySet<string> = new Set([
   "core",
@@ -36,7 +42,7 @@ export interface CommandSpec {
 }
 
 export interface CapabilityManifest {
-  manifest_version?: "1";
+  manifest_version?: typeof CAPABILITY_MANIFEST_VERSION;
   id: string;
   name: string;
   version: string;
@@ -44,7 +50,7 @@ export interface CapabilityManifest {
   license: string;
   author?: string;
   homepage?: string;
-  compatibility?: { protocol?: "1" };
+  compatibility?: { protocol?: typeof CAPABILITY_PROTOCOL_MAJOR };
   events: string[];
   commands: CommandSpec[];
   permissions: Permission[];

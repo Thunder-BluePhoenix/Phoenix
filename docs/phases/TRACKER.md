@@ -8,7 +8,7 @@ Single source of truth for delivery progress. Derived from the five vision docum
 
 ## Current focus
 
-Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still needs the Linux and Windows spikes, a multi-monitor check and automated desktop tests) and **Phase 20 — hardening & v0.1 release** (security review, E2E, diagnostics, dependency scan and a real-Kage run done; still needs packaging, a live Meet capture and AI-summary run, and the release tag).
+Next up: finish **Phase 14 — floating desktop Fawkes** and **Phase 20 — hardening & v0.1 release**. Phases 41–45 now have SDK docs, a fail-closed signed registry, preview/release procedures and optional encrypted staged-record sync; their external release gates remain open (see [gaps](../gaps.md)).
 
 ## Summary
 
@@ -128,8 +128,8 @@ Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still 
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 41 | [SDK Stabilisation & Developer Docs](phase-41-sdk-stabilization-and-docs.md) | v0.9 | High | 40 | ⬜ | | |
-| 42 | [Capability Registry & v0.9 Release](phase-42-capability-registry.md) | v0.9 | High | 41 | ⬜ | | |
+| 41 | [SDK Stabilisation & Developer Docs](phase-41-sdk-stabilization-and-docs.md) | v0.9 | High | 40 | 🟨 | | Manifest/protocol v1 boundary, examples, docs and real-Core walkthrough; independent third-party docs-only build and package publication unverified |
+| 42 | [Capability Registry & v0.9 Release](phase-42-capability-registry.md) | v0.9 | High | 41 | 🟨 | | Signed local index and disclosure built; executable third-party install refused without OS sandbox; v0.9 not cut |
 
 **Stage gate:** SDK/ecosystem and core are stable enough for external users.
 
@@ -137,8 +137,8 @@ Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still 
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 43 | [Developer Preview Programme](phase-43-developer-preview-program.md) | v1.0 | High | 42 | ⬜ | | |
-| 44 | [v1.0 — Developer Operating Layer Release](phase-44-v1-0-operating-layer-release.md) | v1.0 | Critical | 43 | ⬜ | | |
+| 43 | [Developer Preview Programme](phase-43-developer-preview-program.md) | v1.0 | High | 42 | 🟨 | | Bundle, stage gates, feedback loop and release checklist documented; no cohort or preview artifact released |
+| 44 | [v1.0 — Developer Operating Layer Release](phase-44-v1-0-operating-layer-release.md) | v1.0 | Critical | 43 | 🟨 | | Compatibility and v1 verification plan; human L2–L3 evidence, beta and independent sign-offs missing; no v1.0 tag |
 
 **Stage gate:** v1.0 capability set stable; AI reliably at L2–L3.
 
@@ -146,7 +146,7 @@ Next up: finish **Phase 14 — floating desktop Fawkes** (works on macOS; still 
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 45 | [Cross-Device Context & Sync](phase-45-cross-device-context.md) | v1.1 | Medium | 44 | ⬜ | | |
+| 45 | [Cross-Device Context & Sync](phase-45-cross-device-context.md) | v1.1 | Medium | 44 | 🟨 | | Opt-in encrypted staged-record sync, Core routes and Settings UI; no deployed relay, automatic preference integration or rollback-resistant freshness |
 | 46 | [Personal Knowledge Engine](phase-46-personal-knowledge-engine.md) | v1.2 | High | 45 | ⬜ | | |
 | 47 | [Multi-Agent Runtime](phase-47-multi-agent-runtime.md) | v1.3 | High | 46 | ⬜ | | |
 | 48 | [Phoenix World Model](phase-48-world-model.md) | v1.4 | Medium | 47 | ⬜ | | |

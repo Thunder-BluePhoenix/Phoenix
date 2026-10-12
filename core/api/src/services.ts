@@ -932,6 +932,25 @@ export interface WorkflowsApi {
   metrics(): Record<string, WorkflowMetricsView>;
 }
 
+/** User-only encrypted sync surface. No credential is returned except a new one-time recovery key. */
+export interface SyncApi {
+  inspect(): unknown;
+  configure(input: Record<string, unknown>): Promise<unknown>;
+  disable(): unknown;
+  exclusions(input: Record<string, unknown>): unknown;
+  upsert(input: Record<string, unknown>): unknown;
+  delete(id: string, scope: string): unknown;
+  resolve(id: string, scope: string, choice: "local" | "remote"): unknown;
+  sync(): Promise<unknown>;
+}
+
+/** Authenticated, read-only view of a host-provisioned signed local catalogue. */
+export interface RegistryApi {
+  browse(): Promise<unknown>;
+  preview(id: string, version: string): Promise<unknown>;
+  install(): never;
+}
+
 /** Everything the API needs from Phoenix Core. */
 export interface CoreServices {
   config: PhoenixConfig;
@@ -957,6 +976,8 @@ export interface CoreServices {
   agents?: AgentApi;
   planning?: PlanningApi;
   workflows?: WorkflowsApi;
+  sync?: SyncApi;
+  registry?: RegistryApi;
   petSettings?(): unknown;
   setPetSettings?(input: unknown): unknown;
   /** Persists the user's sleep preference. */

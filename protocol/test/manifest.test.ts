@@ -31,6 +31,14 @@ describe("validateManifest", () => {
     expect(validateManifest(base()).ok).toBe(true);
   });
 
+  it("accepts explicit v1 versions but rejects unsupported manifest and event majors", () => {
+    expect(errors({ ...base(), manifest_version: "1", compatibility: { protocol: "1" } })).toEqual(
+      [],
+    );
+    expect(errors({ ...base(), manifest_version: "2" }).length).toBeGreaterThan(0);
+    expect(errors({ ...base(), compatibility: { protocol: "2" } }).length).toBeGreaterThan(0);
+  });
+
   it.each([
     ["bad id", { id: "Git!" }],
     ["bad version", { version: "1.0" }],

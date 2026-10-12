@@ -610,6 +610,49 @@ export interface AgentLauncher {
   cwd_roots: string[];
 }
 
+/** Decrypted relay version returned only for explicit conflict inspection. */
+export interface SyncRemoteItem {
+  id: string;
+  owner: string;
+  scope: string;
+  project: string | null;
+  data_class: SyncDataClass;
+  value: unknown;
+  revision: string;
+  updated_at: string;
+  deleted: boolean;
+}
+
+/** Local sync inspection; value is decrypted for the client but never displayed in Settings. */
+export interface SyncItem {
+  id: string;
+  owner: string;
+  scope: string;
+  project: string | null;
+  data_class: SyncDataClass;
+  value: unknown;
+  revision: string;
+  updated_at: string;
+  deleted: boolean;
+  pending: boolean;
+  base_revision: string | null;
+  conflict: SyncRemoteItem | "remote_missing" | null;
+}
+
+export type SyncDataClass = "preference" | "context" | "project_profile";
+
+/** GET /api/sync and POST /api/sync/run; configuration adds a one-time recovery_key. */
+export interface SyncStatus {
+  enabled: boolean;
+  identity: string | null;
+  endpoint: string | null;
+  excluded_projects: string[];
+  excluded_classes: SyncDataClass[];
+  pending: number;
+  conflicts: number;
+  items: SyncItem[];
+}
+
 /** Phase 37: GET/POST /api/retrieval/settings. */
 export interface RetrievalSettings {
   enabled: boolean;

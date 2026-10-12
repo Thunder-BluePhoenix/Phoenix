@@ -5,7 +5,7 @@
 | Stage | Stage 9 — Capability Ecosystem (v0.9) |
 | Release target | v0.9 |
 | Priority | High |
-| Status | ⬜ Not started |
+| Status | 🟨 SDK v1 manifest/protocol boundary and examples documented; real-Core docs walkthrough passes; third-party independent docs-only build and public SDK publication remain unverified |
 | Depends on | [Phase 40 — Workflow Safety & v0.8 Release](phase-40-workflow-safety.md) |
 | Unblocks | [Phase 42 — Capability Registry & v0.9 Release](phase-42-capability-registry.md) |
 
@@ -23,10 +23,11 @@ Freeze a stable Capability SDK with versioning guarantees, docs and examples.
 
 ## Tasks
 
-- [ ] Review and freeze SDK surface; semantic versioning
-- [ ] Migration guide for manifest changes
-- [ ] Examples: phoenix-gitlab, phoenix-slack, phoenix-postgres (or similar)
-- [ ] Full docs site: protocols, SDK, security model
+- [x] Review and document the v1 manifest/protocol SDK surface and semantic-versioning policy (workspace SDK remains private 0.1.0; no published 1.0 artifact).
+- [x] Migration guide for manifest changes (`docs/capabilities/migration.md`).
+- [x] Local-only runnable examples: phoenix-gitlab, phoenix-slack, phoenix-postgres.
+- [x] In-repository developer docs: protocol, SDK and security model (`docs/capabilities/`).
+- [ ] Hosted full docs site for external users (not deployed).
 
 ## Deliverables
 
@@ -35,7 +36,7 @@ Freeze a stable Capability SDK with versioning guarantees, docs and examples.
 
 ## Exit criteria
 
-- [ ] A third party builds a capability using only docs (PRD Phase 8 exit)
+- [ ] An independent third party builds a capability using only docs (the in-repo docs-only walkthrough passes, but its author was not independent).
 
 ## Source documents
 

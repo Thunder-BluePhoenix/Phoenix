@@ -5,7 +5,7 @@
 | Stage | Stage 11 — AI Evolution (v1.1 → v2.0) |
 | Release target | v1.1 |
 | Priority | Medium |
-| Status | ⬜ Not started |
+| Status | 🟨 Optional encrypted staged-metadata sync, Core API and Settings UI built; no deployed relay, automatic preference/context integration or rollback-resistant freshness; v1.1 not released |
 | Depends on | [Phase 44 — v1.0 — Developer Operating Layer Release](phase-44-v1-0-operating-layer-release.md) |
 | Unblocks | [Phase 46 — Personal Knowledge Engine](phase-46-personal-knowledge-engine.md) |
 
@@ -25,11 +25,12 @@ Make Phoenix's context persistent across devices while staying local-first.
 
 ## Tasks
 
-- [ ] End-to-end encrypted sync service (optional)
-- [ ] Per-project / per-data-class sync exclusions
-- [ ] Owner/scope on every synced item
-- [ ] Conflict detection (never silent overwrite)
-- [ ] Inspect + delete synced context
+- [x] Optional end-to-end encrypted staged-record sync with HTTPS CAS transport (no hosted relay).
+- [x] Per-project / per-data-class exclusions for selected staged records.
+- [x] Owner and scope on every encrypted item; recovery-key-derived device identity.
+- [x] Conflict detection with explicit choice (except old-valid-envelope replay to a fresh device; see gaps).
+- [x] Offline queue, automatic retry after opt-in and manual sync.
+- [x] Inspect staged records and queue encrypted deletion markers (not guaranteed relay erasure).
 
 ## Deliverables
 
@@ -42,6 +43,10 @@ Make Phoenix's context persistent across devices while staying local-first.
 ## Source documents
 
 - AI Evolution v1.0→v2.0 §5
+
+## Implementation notes
+
+`@phoenix/sync` encrypts selected records with AES-256-GCM before an authenticated HTTPS relay sees them. The recovery key and relay bearer token are stored in OS secret storage; no relay is bundled. `GET /api/sync` inspects local staged items, while `POST /api/sync/configure`, `/exclusions`, `/items`, `/run`, `/items/resolve`, `/items/delete` and `/disable` are session-token routes. The Settings panel makes opt-in, exclusions, conflict choices and deletion explicit. Sync does **not** automatically export/apply existing pet or memory preferences; a compatible hosted/user-run relay and credential provisioning are needed for a real cross-device run. A malicious relay can replay an old valid encrypted record to a freshly restored device because there is no independent monotonic checkpoint. Encrypted tombstones do not prove physical erasure by the relay. The v1.1 exit criterion is therefore not met.
 
 ---
 Back to [TRACKER](TRACKER.md)

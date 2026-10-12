@@ -43,6 +43,8 @@ import { PlanningRuntime } from "./planning";
 import { syncMeetings } from "./meetings";
 import { PrivacyService, type DerivedInventory } from "./privacy";
 import { RetrievalRuntime } from "./retrieval";
+import { LocalRegistryRuntime, type LocalRegistryConfig } from "./registry";
+import { SyncRuntime } from "./sync";
 import { WorkflowsRuntime } from "./workflows";
 
 export interface PetSettings {
@@ -81,6 +83,8 @@ export interface RuntimeOptions {
   memoryViewer?: Viewer;
   /** Further agent kinds (embedding, tests). Automation is still off until the user enables it. */
   agents?: readonly AgentDefinition[];
+  /** Local catalogue files selected by the Core host; no configured trust by default. */
+  registry?: LocalRegistryConfig;
 }
 
 /**
@@ -109,6 +113,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly meetingReview: MeetingReviewRuntime;
   /** Knowledge graph and provenance (Phase 38). */
   readonly graph: GraphRuntime;
+  readonly sync: SyncRuntime;
+  readonly registry: LocalRegistryRuntime;
   /**
    * The only path from an agent to a capability (Phase 30). Phase 31 hands this, and nothing
    * else, to the agent runtime.
@@ -139,6 +145,7 @@ export class PhoenixRuntime implements CoreServices {
   private readonly policyAdmin: PolicyAdmin;
   readonly token: string;
   private pruner: NodeJS.Timeout | null = null;
+  private syncTimer: NodeJS.Timeout | null = null;
   private readonly stopMeetingSync: () => void;
   /** Gives up the claim on the data directory (see lockDatabaseFile). */
   private readonly releaseDatabase: () => void;
@@ -327,6 +334,12 @@ export class PhoenixRuntime implements CoreServices {
       context: this.memory.agentContext().engine,
       logger: this.logger,
     });
+    this.sync = new SyncRuntime(this.settings, options.secrets);
+    this.registry = new LocalRegistryRuntime(options.registry, {
+      sdk: "0.1.0",
+      core: "0.1.0",
+      protocol: "1",
+    });
 
     this.privacy = new PrivacyService({
       dataDir: this.config.dataDir,
@@ -423,6 +436,15 @@ export class PhoenixRuntime implements CoreServices {
       void this.memory.maintain().then(() => this.graph.ingestMemory());
     }, 3_600_000);
     this.pruner.unref();
+    this.syncTimer = setInterval(() => {
+      if (this.sync.status().enabled)
+        void this.sync.sync().catch((error: unknown) =>
+          this.logger.warn("Encrypted sync unavailable; queue retained", {
+            error: String(error),
+          }),
+        );
+    }, 60_000);
+    this.syncTimer.unref();
     await this.capabilities.restore();
     // After the capabilities are back, so the tool catalog is complete when triggers arrive.
     this.workflows.start();
@@ -504,6 +526,15 @@ export class PhoenixRuntime implements CoreServices {
         deleted_with: "meetings",
       },
       {
+        id: "synced_context",
+        description:
+          "Explicitly selected preferences and context metadata. Local staged copies live in settings; encrypted copies can be retained by the configured HTTPS relay until replaced with an encrypted deletion marker.",
+        count: this.sync.inspect().items.filter((item) => !item.deleted).length,
+        deleted_with:
+          "Delete each synced item from Sync and run sync; deleting local data alone does not remove remote ciphertext",
+        enabled: this.sync.status().enabled,
+      },
+      {
         id: "workflow_runs",
         description:
           "History of workflow runs: the trigger event (redacted and cut short), each step's status and a redacted, cut-short copy of its input and output. Not deleted by any data class yet: it is kept until Phoenix is reset.",
@@ -580,6 +611,7 @@ export class PhoenixRuntime implements CoreServices {
   /** Graceful shutdown: stop accepting requests, flush the bus, close the database. Idempotent. */
   stop(): Promise<void> {
     this.stopping ??= (async () => {
+      clearInterval(this.syncTimer ?? undefined);
       if (this.ticker) clearInterval(this.ticker);
       if (this.pruner) clearInterval(this.pruner);
       await this.api?.close();

@@ -683,6 +683,12 @@ importers:
         specifier: workspace:*
         version: link:../../protocol
 
+  core/registry:
+    dependencies:
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+
   core/runtime:
     dependencies:
       '@phoenix/ai-agents':
@@ -775,9 +781,15 @@ importers:
       '@phoenix/protocol':
         specifier: workspace:*
         version: link:../../protocol
+      '@phoenix/registry':
+        specifier: workspace:*
+        version: link:../registry
       '@phoenix/state-engine':
         specifier: workspace:*
         version: link:../state-engine
+      '@phoenix/sync':
+        specifier: workspace:*
+        version: link:../sync
       '@phoenix/workflows':
         specifier: workspace:*
         version: link:../workflows
@@ -794,6 +806,8 @@ importers:
       '@phoenix/protocol':
         specifier: workspace:*
         version: link:../../protocol
+
+  core/sync: {}
 
   core/workflows:
     dependencies:

@@ -120,8 +120,8 @@ describe("pet settings", () => {
   });
 });
 
-describe("derived data in the inventory (Phases 35-38)", () => {
-  it("lists vectors, the graph and review items with counts, and their deletion rule", async () => {
+describe("derived data in the inventory (Phases 35-45)", () => {
+  it("lists derived records and staged sync context with counts and deletion rules", async () => {
     const core = await startCore();
     const inv = (await core.api("GET", "/api/privacy")).json;
     expect(inv.derived.map((d: { id: string }) => d.id)).toEqual([
@@ -129,6 +129,7 @@ describe("derived data in the inventory (Phases 35-38)", () => {
       "graph",
       "meeting_items",
       "plans",
+      "synced_context",
       "workflow_runs",
     ]);
     expect(inv.derived).toEqual([
@@ -136,6 +137,7 @@ describe("derived data in the inventory (Phases 35-38)", () => {
       expect.objectContaining({ id: "graph", count: 0, edges: 0, provenance_rows: 0 }),
       expect.objectContaining({ id: "meeting_items", count: 0, deleted_with: "meetings" }),
       expect.objectContaining({ id: "plans", count: 0, deleted_with: "meetings" }),
+      expect.objectContaining({ id: "synced_context", count: 0, enabled: false }),
       expect.objectContaining({ id: "workflow_runs", count: 0, deleted_with: "nothing yet" }),
     ]);
     // With AI off the sentence is unchanged: nothing is sent anywhere.

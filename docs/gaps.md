@@ -1,8 +1,6 @@
 # Gap register
 
-Everything that is **not done, not verified, or decided on someone else's behalf** while building
-phases 22–30. One row per gap. A gap is closed by deleting its row in the same change that closes
-it, not by rewording it.
+Everything that is **not done, not verified, or decided on someone else's behalf** through Phase 45. One row per gap. Older rows marked `resolved` retain the discovery history; new gaps are closed by deleting or marking the row resolved with evidence.
 
 How to read the columns:
 
@@ -14,7 +12,7 @@ How to read the columns:
 | #   | Phase | Kind | Gap | What closes it |
 | --- | ----- | ---- | --- | -------------- |
 
-This file is filled in as each phase is completed. See [TRACKER](phases/TRACKER.md) for status.
+This file is updated as phases are implemented and verified. See [TRACKER](phases/TRACKER.md) for release status.
 | 23 | unverified | Frappe health polling was never run against a real Frappe site (no bench was running). `GET /api/method/ping` returning `{message:"pong"}` and routing by the `X-Frappe-Site-Name` header come from reading Frappe's source and a mock written from it. | Start a bench, enable the capability against it: healthy site reports healthy; stopping the server gives `frappe.site.unhealthy` after 2 polls and Fawkes ERROR; restarting gives `frappe.site.healthy`. |
 | 23 | missing | `frappe.bench.restarted` is not implemented: Frappe's ping gives no uptime, so a restart is only visible as unhealthy-then-healthy. | A Frappe-side signal (small Frappe app or bench hook exposing boot time or posting to Phoenix) or a process watcher with `shell_command` permission. |
 | 23 | missing | `frappe.build.completed`, `frappe.migration.completed` and `frappe.deploy.*` are not implemented: Frappe has no read-only non-secret signal for them, and `site_config.json` is a secrets file that must not be watched. | A small Frappe app or bench hook (`after_migrate`, after `bench build`) posting these events to Phoenix, or an explicit decision to grant `shell_command`/database access. |
@@ -281,3 +279,15 @@ This file is filled in as each phase is completed. See [TRACKER](phases/TRACKER.
 | 39 | limitation | Policy-confirmation prompts and a workflow's own approval step both appear in the generic confirmation list with no run or step reference, so the run page shows the whole pending list, not only that run's. | Add `run` and `step` to Confirmation in Core. |
 | 40 | limitation | A user cancel runs no declared undo steps (the Core gap above); the run page says so but cannot offer to run the undo. | Decide undo-on-cancel semantics. |
 | 39 | limitation | The authorisation expiry input is a native `datetime-local`; browser automation could drive it only with native input events, so that control was verified by script, not by typing. | A person tries it in a real browser. |
+
+| 41 | unverified | SDK docs and three local-only GitLab/Slack/Postgres examples pass a real-Core walkthrough, but no independent third party used only the docs to build and install a capability; `@phoenix/sdk` remains private at 0.1.0. | Independent documented attempt, compatibility fixture across release pairs and a distributable SDK artifact. |
+| 41 | missing | Protocol, SDK, migration and security docs are in the repository, not a hosted versioned docs site for external users. | Publish versioned docs and verify navigation and independent third-party onboarding. |
+| 42 | missing | The registry verifies a signed local index and discloses metadata but cannot install executable third-party code: no audited OS sandbox exists; the install endpoint always refuses. No remote index, updates, distributed signer trust or revocation is implemented. | Implement and audit an OS sandbox plus installer and trust/revocation process, then independently validate on supported platforms before v0.9. |
+| 42 | unverified | Licence allowlist is a conservative policy, not a legal sign-off for bundled source/assets. Registry metadata verification and local digest checking do not audit artifact contents or license obligations. | Review every artifact and dependency with licence counsel/owner and produce notices/source offer. |
+| 42 | limitation | Registry preview does not expose the verified signer key ID; Settings describes a host-trusted signature and shows the artifact digest but does not claim the artifact was verified. | Expose key ID/provenance in the authenticated preview without letting HTTP callers supply trust keys. |
+| 43 | missing | Internal alpha, private/public preview and beta were documented but not run: no external cohort, install feedback, reproducible release artifact or stage evidence ledger is recorded. | Run stages in order with real participants, opt-in feedback, support ownership, reproducible artifacts and owner-signed evidence. |
+| 44 | missing | v1.0 is not released or tagged. No independent security/licence sign-off, complete supported-platform matrix, approved human-reviewed L2–L3 real-model thresholds or beta exit evidence. | Meet `docs/release/v1-verification.md` gates, resolve v0.9 blockers, obtain owner go/no-go, then build/tag and verify release artifacts. |
+| 45 | missing | No deployed authenticated TLS CAS relay or user provisioning exists. HTTPS transport was exercised with in-process relay mocks only; no cross-device network smoke was run. | Deploy or configure a compliant relay with bearer provisioning, then exercise two actual devices offline/online over HTTPS. |
+| 45 | missing | Sync handles only explicitly staged records; existing Fawkes/pet and memory preferences or context profiles are not automatically exported to or applied from sync. A shared recovery key identifies the account, not separate device identities. | Add selected preference/context adapters and per-device identity/key lifecycle without broadening sync consent. |
+| 45 | limitation | An untrusted relay can replay an older valid encrypted envelope after a tombstone to a fresh device; AES-GCM authenticates contents but not freshness without an independent rollback-resistant checkpoint. Encrypted tombstones do not prove relay-side physical erasure. | Independent trusted monotonic checkpoint or a relay trust/retention guarantee with a candid threat model and audited purge contract. |
+| 45 | limitation | A missing previously synced relay item now creates an explicit `remote_missing` conflict and resolution, and relay list bodies are capped at 4 MiB. These fixes do not solve old-valid-envelope replay on fresh devices. | No further fix for these two defects; see replay row above. |

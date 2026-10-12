@@ -33,12 +33,22 @@ try {
     error: (err as Error).message,
   });
 }
+const trustedKeyFile = process.env.PHOENIX_REGISTRY_TRUSTED_KEY_FILE;
+const indexFile = process.env.PHOENIX_REGISTRY_INDEX_FILE;
+if ((trustedKeyFile === undefined) !== (indexFile === undefined)) {
+  fail(
+    new Error(
+      "Both PHOENIX_REGISTRY_TRUSTED_KEY_FILE and PHOENIX_REGISTRY_INDEX_FILE are required",
+    ),
+  );
+}
 let runtime: PhoenixRuntime;
 try {
   runtime = new PhoenixRuntime({
     config,
     logger,
     ...(secrets ? { secrets } : {}),
+    ...(trustedKeyFile && indexFile ? { registry: { trustedKeyFile, indexFile } } : {}),
     capabilities: builtinCapabilities(config.env, () => runtime.agentsServices()),
   });
 } catch (err) {

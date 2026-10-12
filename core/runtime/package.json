@@ -38,7 +38,9 @@
     "@phoenix/persistence": "workspace:*",
     "@phoenix/policy": "workspace:*",
     "@phoenix/protocol": "workspace:*",
+    "@phoenix/registry": "workspace:*",
     "@phoenix/state-engine": "workspace:*",
+    "@phoenix/sync": "workspace:*",
     "@phoenix/workflows": "workspace:*"
   },
   "devDependencies": {

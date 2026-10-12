@@ -7,6 +7,7 @@ export type {
   HealthResult,
 } from "@phoenix/capability-manager";
 export type { CapabilityManifest, CommandSpec, Permission, SideEffect } from "@phoenix/protocol";
+export { CAPABILITY_MANIFEST_VERSION, CAPABILITY_PROTOCOL_MAJOR } from "@phoenix/protocol";
 export * as events from "@phoenix/sdk-events";
 export { defineCapability } from "./define";
 export * from "./external";
