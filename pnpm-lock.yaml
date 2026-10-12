@@ -410,6 +410,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@phoenix/ai-multimodal':
+        specifier: workspace:*
+        version: link:../../ai/multimodal
       '@phoenix/pet-runtime':
         specifier: workspace:*
         version: link:../../pet/runtime

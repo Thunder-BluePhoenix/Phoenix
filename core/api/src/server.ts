@@ -7,6 +7,7 @@ import { ErrorCode, PhoenixError } from "@phoenix/protocol";
 import { decodeParams, matchRoute, readJsonBody, sendError, sendJson, type Route } from "./http";
 import { buildRoutes } from "./routes";
 import { isAllowedHost, isAllowedOrigin, requestToken, tokensEqual } from "./security";
+import { MultimodalCaptureSocket } from "./multimodal-capture";
 import { StaticSite } from "./static";
 import type { CoreServices } from "./services";
 import { WebSocketHub } from "./websocket";
@@ -23,6 +24,7 @@ export interface ApiServerOptions {
 export class ApiServer {
   readonly server: Server;
   readonly hub: WebSocketHub;
+  readonly capture: MultimodalCaptureSocket;
   private readonly routes: Route[];
   private readonly s: CoreServices;
   private readonly token: string;
@@ -34,6 +36,7 @@ export class ApiServer {
     this.site = options.webRoot ? new StaticSite(options.webRoot, options.token) : null;
     this.routes = buildRoutes(this.s);
     this.hub = new WebSocketHub(this.s);
+    this.capture = new MultimodalCaptureSocket(this.s);
     this.server = createServer((req, res) => void this.onRequest(req, res));
     this.server.on("upgrade", (req, socket, head) => this.onUpgrade(req, socket, head));
   }
@@ -48,6 +51,7 @@ export class ApiServer {
 
   async close(): Promise<void> {
     await this.hub.close();
+    this.capture.close();
     await new Promise<void>((resolve) => {
       this.server.close(() => resolve());
       this.server.closeAllConnections();
@@ -129,7 +133,29 @@ export class ApiServer {
       socket.destroy();
     };
     const url = new URL(req.url ?? "/", "http://localhost");
-    if (url.pathname !== "/api/ws") return reject(404, "Not Found");
+    if (url.pathname !== "/api/ws" && url.pathname !== "/api/multimodal/capture")
+      return reject(404, "Not Found");
+    if (url.pathname === "/api/multimodal/capture") {
+      const host = req.headers.host;
+      const origin = req.headers.origin;
+      if (
+        !host ||
+        !isAllowedHost(host, false) ||
+        !origin ||
+        origin !== `http://${host}` ||
+        url.search ||
+        url.hash ||
+        req.headers.cookie
+      )
+        return reject(403, "Forbidden");
+      try {
+        this.authenticate(req);
+      } catch {
+        return reject(401, "Unauthorized");
+      }
+      this.capture.handleUpgrade(req, socket, head);
+      return;
+    }
     if (!isAllowedHost(req.headers.host, this.s.config.allowRemote))
       return reject(403, "Forbidden");
     if (!isAllowedOrigin(req.headers.origin, req.headers.host, this.s.config.allowedOrigins)) {

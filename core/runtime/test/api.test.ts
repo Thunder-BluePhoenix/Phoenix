@@ -263,9 +263,9 @@ describe("capabilities", () => {
 
   it("builtin: list, enable, run a command, poll the operation, disable", async () => {
     const { api } = await start({}, { capabilities: demo(() => ({ clean: true })) });
-    expect((await api("GET", "/api/capabilities")).json.capabilities).toEqual([
+    expect((await api("GET", "/api/capabilities")).json.capabilities).toContainEqual(
       expect.objectContaining({ id: "demo", status: "installed", kind: "builtin" }),
-    ]);
+    );
     expect((await api("POST", "/api/capabilities/demo/commands/status", {})).json.code).toBe(
       "CAPABILITY_DISABLED",
     );
@@ -323,7 +323,11 @@ describe("capabilities", () => {
       expect(
         (await api("POST", "/api/capabilities/demo/uninstall", { retain_data: false })).status,
       ).toBe(200);
-      expect((await api("GET", "/api/capabilities")).json.capabilities).toEqual([]);
+      expect(
+        (await api("GET", "/api/capabilities")).json.capabilities.filter(
+          (c: { id: string }) => c.id === "demo",
+        ),
+      ).toEqual([]);
     } finally {
       ext.close();
     }
@@ -340,7 +344,11 @@ describe("capabilities", () => {
     expect(reg.json.details).toEqual([
       '/events "security.*" is in the reserved "security" namespace',
     ]);
-    expect((await api("GET", "/api/capabilities")).json.capabilities).toEqual([]);
+    expect(
+      (await api("GET", "/api/capabilities")).json.capabilities.filter(
+        (c: { id: string }) => c.id === "evil",
+      ),
+    ).toEqual([]);
 
     // Phoenix's own approval prompt still reaches Fawkes; only the forgery is shut out.
     runtime.permissions.grant("github", ["external_api"]);

@@ -128,7 +128,7 @@ describe("GET /api/diagnostics", () => {
   it("reports capability state by name only", async () => {
     const core = await setup();
     const { capabilities } = (await core.api("GET", "/api/diagnostics")).json;
-    expect(capabilities).toEqual([
+    expect(capabilities).toContainEqual(
       expect.objectContaining({
         id: "kage",
         status: "enabled",
@@ -137,7 +137,7 @@ describe("GET /api/diagnostics", () => {
         secrets_set: ["api_key"],
         commands: expect.arrayContaining(["meeting.start", "meeting.get_transcript"]),
       }),
-    ]);
+    );
   });
 
   it("times Kage processing and summarises the bus, audit trail and counts", async () => {

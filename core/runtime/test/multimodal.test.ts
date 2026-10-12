@@ -12,7 +12,7 @@ afterEach(async () => {
 const statusPath = "/api/multimodal/status";
 
 describe("real Core multimodal status boundary", () => {
-  it("requires the session token, reports absent local models and never exposes capture routes", async () => {
+  it("requires the session token, reports absent local models and never accepts HTTP capture bytes", async () => {
     const fetchModel = vi.fn(() => {
       throw new Error("Unconfigured models must not probe the network");
     });
@@ -27,7 +27,7 @@ describe("real Core multimodal status boundary", () => {
       vision: { available: false, detail: "Local vision model not configured" },
       capture: {
         available: false,
-        detail: "Browser capture and per-use authorization are not connected to Core",
+        detail: "Enable a device capability and install its local model before capture",
       },
     });
     expect(
@@ -54,11 +54,17 @@ describe("real Core multimodal status boundary", () => {
     );
     expect((await core.api("GET", statusPath)).json).toEqual({
       kill_switch_engaged: false,
-      speech: { available: false, detail: "Local Whisper model is not installed or readable" },
+      speech: {
+        available: false,
+        detail: "Local Whisper model is not installed or readable",
+        provider: "whisper.cpp",
+        locality: "local",
+        model: "/nonexistent/phoenix-multimodal-test-model.bin",
+      },
       vision: { available: false, detail: "Local vision model not configured" },
       capture: {
         available: false,
-        detail: "Browser capture and per-use authorization are not connected to Core",
+        detail: "Enable a device capability and install its local model before capture",
       },
     });
     core.runtime.permissions.engageKillSwitch("user");
@@ -68,7 +74,7 @@ describe("real Core multimodal status boundary", () => {
       vision: { available: false, detail: "Kill switch engaged" },
       capture: {
         available: false,
-        detail: "Browser capture and per-use authorization are not connected to Core",
+        detail: "Kill switch engaged",
       },
     });
     expect(fetchModel).not.toHaveBeenCalled();

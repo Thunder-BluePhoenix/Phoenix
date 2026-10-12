@@ -142,6 +142,61 @@ describe("WebSocket connection", () => {
   });
 });
 
+describe("single-use capture socket", () => {
+  it("keeps the token in subprotocols and requires the Core page origin", () => {
+    const c = new PhoenixClient({
+      token: "capture-secret",
+      baseUrl: window.location.origin,
+      WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    expect(() => c.openCaptureSocket()).toThrow("not connected");
+    c.connect();
+    FakeWebSocket.last.open();
+    const socket = c.openCaptureSocket() as unknown as FakeWebSocket;
+    expect(socket.url).toBe(
+      new URL("/api/multimodal/capture", window.location.origin).href.replace(/^http/, "ws"),
+    );
+    expect(socket.url).not.toContain("capture-secret");
+    expect(socket.protocols).toEqual(["phoenix.v1", "phoenix.token.capture-secret"]);
+    const otherOrigin = new URL(window.location.origin);
+    otherOrigin.port = otherOrigin.port === "49123" ? "49124" : "49123";
+    const crossOrigin = new PhoenixClient({
+      token: "tok",
+      baseUrl: otherOrigin.origin,
+      WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    crossOrigin.connect();
+    FakeWebSocket.last.open();
+    expect(() => crossOrigin.openCaptureSocket()).toThrow("share an origin");
+    crossOrigin.close();
+    c.close();
+  });
+
+  it("uses the refreshed token after Core restarts", async () => {
+    const tokens = ["first", "second"];
+    const c = new PhoenixClient({
+      token: null,
+      baseUrl: window.location.origin,
+      WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+      refreshToken: async () => tokens.shift() ?? null,
+      minReconnectMs: 100,
+    });
+    c.connect();
+    await vi.advanceTimersByTimeAsync(0);
+    FakeWebSocket.last.open();
+    expect((c.openCaptureSocket() as unknown as FakeWebSocket).protocols[1]).toBe(
+      "phoenix.token.first",
+    );
+    FakeWebSocket.instances[0]!.drop();
+    await vi.advanceTimersByTimeAsync(100);
+    FakeWebSocket.last.open();
+    expect((c.openCaptureSocket() as unknown as FakeWebSocket).protocols[1]).toBe(
+      "phoenix.token.second",
+    );
+    c.close();
+  });
+});
+
 describe("HTTP requests", () => {
   it("sends the bearer token and parses JSON", async () => {
     const fetchImpl = vi.fn(

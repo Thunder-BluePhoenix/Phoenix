@@ -206,6 +206,24 @@ export class PhoenixRuntime implements CoreServices {
       logger: this.logger,
       ...(options.secrets ? { secrets: options.secrets } : {}),
     });
+    for (const [id, name, permission] of [
+      ["capture-microphone", "Microphone capture", "microphone"],
+      ["capture-screen", "Screen capture", "screen_capture"],
+    ] as const) {
+      this.capabilities.registerBuiltin({
+        manifest: {
+          id,
+          name,
+          version: "0.1.0",
+          description: `Allow user-selected ${name.toLowerCase()} for local-only AI processing after each-use approval`,
+          license: "GPL-3.0-or-later",
+          events: [],
+          permissions: [permission],
+          data_categories: [],
+          commands: [],
+        },
+      });
+    }
     for (const module of options.capabilities ?? []) this.capabilities.registerBuiltin(module);
     this.notifications = new NotificationService({
       db: this.db,
@@ -231,7 +249,7 @@ export class PhoenixRuntime implements CoreServices {
       ...(options.ollamaUrl ? { ollamaUrl: options.ollamaUrl } : {}),
       ...(options.anthropicUrl ? { anthropicUrl: options.anthropicUrl } : {}),
     });
-    this.multimodal = new MultimodalRuntime(this.permissions, {
+    this.multimodal = new MultimodalRuntime(this.permissions, this.capabilities, {
       ...(options.whisperModelPath ? { whisperModelPath: options.whisperModelPath } : {}),
       ...(options.visionModel ? { visionModel: options.visionModel } : {}),
       ...(options.ollamaUrl ? { ollamaUrl: options.ollamaUrl } : {}),

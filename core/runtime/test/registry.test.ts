@@ -128,7 +128,7 @@ describe("real Core local registry API", () => {
     });
     expect((await api("GET", "/api/registry/example/2.0.0")).status).toBe(404);
     expect((await api("POST", "/api/registry/example/1.0.0/install")).status).toBe(403);
-    expect(runtime.capabilities.list()).toEqual([]);
+    expect(runtime.capabilities.list().filter((c) => c.id === "example")).toEqual([]);
     expect(
       (await api("GET", "/api/registry?indexFile=/tmp/other.json&trustedKeyFile=/tmp/other.pem"))
         .json,

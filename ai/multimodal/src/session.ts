@@ -38,7 +38,7 @@ export class ScopedCaptureSession {
   private input?: CapturedInput;
   private pending = false;
   private state: CaptureStatus = "idle";
-  private expiry?: NodeJS.Timeout;
+  private expiry?: number;
   private borrowed?: Uint8Array;
   private reading = false;
   readonly capabilityId: string;
@@ -108,7 +108,7 @@ export class ScopedCaptureSession {
       }
       this.input = input;
       this.state = "capturing";
-      this.expiry = setTimeout(() => this.stop(), this.maxDurationMs);
+      this.expiry = Number(setTimeout(() => this.stop(), this.maxDurationMs));
     } finally {
       this.pending = false;
     }

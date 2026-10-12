@@ -28,7 +28,19 @@ describe("built-in capabilities", () => {
       .capabilities as CapabilityRow[];
     const ids = listed.map((c) => c.id).sort();
     expect(ids).toEqual(
-      ["agents", "docker", "frappe", "git", "github", "issues", "kage", "mock", "terminal"].sort(),
+      [
+        "agents",
+        "capture-microphone",
+        "capture-screen",
+        "docker",
+        "frappe",
+        "git",
+        "github",
+        "issues",
+        "kage",
+        "mock",
+        "terminal",
+      ].sort(),
     );
     expect(listed.every((c) => c.status === "installed")).toBe(true);
   });

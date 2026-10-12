@@ -1106,16 +1106,39 @@ export interface AutonomyApi {
   stop(runId: string): void;
 }
 
-/** Model probes only; no device permission, capture authorization or bytes. */
+/** Core-owned local inference and first-party device authorization, never exposed to agents. */
+export type CaptureKind = "microphone" | "screen";
 export interface MultimodalStatusView {
   kill_switch_engaged: boolean;
-  speech: { available: boolean; detail: string };
-  vision: { available: boolean; detail: string };
-  capture: { available: false; detail: string };
+  speech: {
+    available: boolean;
+    detail: string;
+    provider?: "whisper.cpp";
+    locality?: "local";
+    model?: string;
+  };
+  vision: {
+    available: boolean;
+    detail: string;
+    provider?: "ollama";
+    locality?: "local";
+    model?: string;
+  };
+  capture: { available: boolean; detail: string };
 }
 
 export interface MultimodalApi {
   status(): Promise<MultimodalStatusView>;
+  captureAllowed(kind: CaptureKind): boolean;
+  authorizeCapture(kind: CaptureKind, command: string, signal: AbortSignal): Promise<void>;
+  processCapture(
+    kind: CaptureKind,
+    bytes: Uint8Array,
+    signal: AbortSignal,
+  ): Promise<
+    | { transcript: string; provider: "whisper.cpp"; locality: "local" }
+    | { description: string; provider: "ollama"; locality: "local" }
+  >;
 }
 
 /** Everything the API needs from Phoenix Core. */

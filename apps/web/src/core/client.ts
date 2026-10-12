@@ -104,6 +104,17 @@ export class PhoenixClient {
     this.ws = null;
   }
 
+  /** A single user-initiated capture uses the current authenticated session, never a URL token. */
+  openCaptureSocket(): WebSocket {
+    if (this.closed || this.status_ !== "online" || !this.token)
+      throw new Error("Phoenix Core is not connected");
+    if (typeof location === "undefined" || new URL(this.base).origin !== location.origin)
+      throw new Error("Capture requires the Phoenix page and Core to share an origin");
+    const url = new URL("/api/multimodal/capture", this.base);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    return new this.WS(url.href, [WS_PROTOCOL, WS_TOKEN_PREFIX + this.token]);
+  }
+
   async request<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await this.fetchImpl(this.base + path, {
       method,

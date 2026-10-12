@@ -16,6 +16,7 @@ import type { CapabilityView, JsonSchema, PetState } from "../core/types";
 import { AutomationSettings } from "./AutomationSettings";
 import { AiSettings, MemorySettingsSection } from "./MemorySettings";
 import { Feedback } from "./Feedback";
+import { Multimodal } from "./Multimodal";
 import { QuickActions } from "./Overview";
 import { ProactiveSettingsSection } from "./ProactiveSettings";
 import { RetrievalSettingsSection } from "./RetrievalSettings";
@@ -33,6 +34,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <PrivacySettings />
       <MemorySettingsSection />
       <AiSettings />
+      <Multimodal />
       <RetrievalSettingsSection />
       <AutomationSettings />
       <ProactiveSettingsSection />

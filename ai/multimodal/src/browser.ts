@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 import { BrowserCaptureDriver } from "./browser-capture";
 import { ScopedCaptureSession, type CaptureAuthorization, type CaptureKind } from "./session";
+export type { CaptureKind, ScopedCaptureSession } from "./session";
 
 /** Grant and per-use confirmation run before this browser driver can request OS capture. */
 export function createBrowserCaptureSession(options: {
