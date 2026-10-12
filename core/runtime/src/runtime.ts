@@ -30,11 +30,12 @@ import {
   type SecretStore,
 } from "@phoenix/persistence";
 import { createEvent, ErrorCode, PhoenixError, PROTOCOL_VERSION } from "@phoenix/protocol";
-import { PolicyAdmin, PolicyEngine, PolicyStore } from "@phoenix/policy";
+import { AutonomyController, PolicyAdmin, PolicyEngine, PolicyStore } from "@phoenix/policy";
 import { StateEngine } from "@phoenix/state-engine";
 import type { AgentsServices } from "@phoenix/capability-agents";
 import { AgentRuntime } from "./agents";
 import { AiRuntime } from "./ai";
+import { AutonomyRuntime } from "./autonomy";
 import { collectDiagnostics, type Diagnostics } from "./diagnostics";
 import { MemoryRuntime } from "./memory";
 import { GraphRuntime } from "./graph";
@@ -137,6 +138,10 @@ export class PhoenixRuntime implements CoreServices {
    * session-token routes. Stopped by `stop()`; interrupted runs are reconciled at `start()`.
    */
   readonly workflows: WorkflowsRuntime;
+  /** User-configured autonomy ceiling; executable autonomous runs still refuse without an OS sandbox. */
+  readonly autonomy: AutonomyController;
+  /** Authenticated HTTP view: settings and stop only, never run creation. */
+  readonly autonomyApi: AutonomyRuntime;
   /**
    * Changes policy. Deliberately private and unused by any route: only code that holds the
    * runtime (never an agent, never a tool result) could reach it, and every method also refuses
@@ -279,12 +284,17 @@ export class PhoenixRuntime implements CoreServices {
     });
 
     const policyStore = new PolicyStore(this.db);
+    this.autonomy = new AutonomyController(policyStore, this.permissions.audit, () =>
+      this.permissions.isKillSwitchEngaged(),
+    );
+    this.autonomyApi = new AutonomyRuntime(this.autonomy);
     const registry = new ToolRegistry({ manifests: enabledManifests(this.capabilities, this.db) });
     const policy = new PolicyEngine({
       store: policyStore,
       audit: this.permissions.audit,
       isKillSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
       isKnownTool: (tool) => registry.has(tool),
+      autonomy: this.autonomy,
     });
     this.policyAdmin = new PolicyAdmin({ store: policyStore, audit: this.permissions.audit });
     this.toolGateway = new ToolGateway({
@@ -332,6 +342,7 @@ export class PhoenixRuntime implements CoreServices {
       permissions: this.permissions,
       ai: this.ai.service,
       context: this.memory.agentContext().engine,
+      autonomy: this.autonomy,
       logger: this.logger,
     });
     this.sync = new SyncRuntime(this.settings, options.secrets);

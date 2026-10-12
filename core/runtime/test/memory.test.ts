@@ -692,9 +692,14 @@ describe("AI settings", () => {
       }),
     ]);
     expect(a.facts.map((f: { text: string }) => f.text)).not.toContain(a.interpretation);
-    expect(Object.keys(a.facts[0]).sort()).toEqual(
-      ["domain", "id", "observed_at", "sensitivity", "source", "source_ref", "text"].sort(),
-    );
+    expect(a.facts[0]).toMatchObject({
+      classification: "stored_fact",
+      freshness: "fresh",
+      confidence: expect.any(Number),
+    });
+    expect(a.retrieved_evidence).toEqual([]);
+    expect(a.stored_interpretations).toEqual([]);
+    expect(a.interpretation_classification).toBe("hypothesis");
   });
 
   it("the preferred provider is validated against the registered ones", async () => {

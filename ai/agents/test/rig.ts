@@ -183,7 +183,7 @@ export async function makeRig(options: RigOptions = {}): Promise<Rig> {
     pipeline.capture({
       source: "project-docs",
       sourceRef: "docs/notes.md",
-      scope: m.scope ?? "path:/docs",
+      scope: m.scope ?? `repo:${REPO}`,
       contentType: m.contentType ?? "doc",
       observedAt: observed.toISOString(),
       provenance: {},

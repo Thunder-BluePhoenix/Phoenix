@@ -3,6 +3,7 @@
 import { ErrorCode, isPermission, PhoenixError } from "@phoenix/protocol";
 import { expectBoolean, expectObject, intParam, route, type Route } from "./http";
 import { agentRoutes } from "./agent-routes";
+import { autonomyRoutes } from "./autonomy-routes";
 import { graphRoutes } from "./graph-routes";
 import { meetingReviewRoutes } from "./meeting-routes";
 import { memoryRoutes } from "./memory-routes";
@@ -113,7 +114,22 @@ export function buildRoutes(s: CoreServices): Route[] {
       return result;
     }),
     route("GET", "/api/capabilities/:id", ({ params }) => caps().get(params.id!)),
-    route("POST", "/api/capabilities/:id/enable", ({ params }) => caps().enable(params.id!)),
+    route("POST", "/api/capabilities/:id/enable", async ({ params, body }) => {
+      const b = expectObject(await body());
+      for (const key of Object.keys(b)) {
+        if (key !== "manifest_version")
+          throw new PhoenixError(ErrorCode.INVALID_REQUEST, `Unknown enable field: ${key}`);
+      }
+      if (b.manifest_version !== undefined && typeof b.manifest_version !== "string")
+        throw new PhoenixError(ErrorCode.INVALID_REQUEST, '"manifest_version" must be a string');
+      return caps().enable(
+        params.id!,
+        "user",
+        typeof b.manifest_version === "string"
+          ? { manifestVersion: b.manifest_version }
+          : undefined,
+      );
+    }),
     route("POST", "/api/capabilities/:id/disable", ({ params }) => caps().disable(params.id!)),
     route("POST", "/api/capabilities/:id/config", async ({ params, body }) => {
       const b = expectObject(await body());
@@ -208,6 +224,7 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...graphRoutes(s),
     ...agentRoutes(s),
     ...workflowRoutes(s),
+    ...autonomyRoutes(s),
 
     // ── Notifications ───────────────────────────────────────────────────────
     route("GET", "/api/notifications", ({ url }) =>

@@ -41,6 +41,32 @@ export interface CommandSpec {
   timeout_ms?: number;
 }
 
+/** AI data access is an explicit subset of the manifest's privacy disclosure. */
+export interface AIDataAccess {
+  category: string;
+  sensitivity: "public" | "internal" | "confidential" | "restricted";
+}
+
+export interface AIProviderConstraint {
+  /** Local means on-device processing; cloud is permitted for public data only. */
+  locality: "local" | "cloud";
+  provider: string;
+}
+
+export interface AIContextSource {
+  name: string;
+  description: string;
+  data_access: AIDataAccess[];
+  permissions: Permission[];
+  provider: AIProviderConstraint;
+}
+
+export interface AITool extends AIContextSource {
+  /** Must name a declared command; invocation uses the normal permission gateway. */
+  command: string;
+  kind: "tool" | "model_provider" | "embedding_provider";
+}
+
 export interface CapabilityManifest {
   manifest_version?: typeof CAPABILITY_MANIFEST_VERSION;
   id: string;
@@ -55,6 +81,12 @@ export interface CapabilityManifest {
   commands: CommandSpec[];
   permissions: Permission[];
   data_categories?: string[];
+  /** Optional v1 additions: existing v1 manifests need no migration. Adding either declaration
+   * requires a version bump and fresh user disclosure before enable; never implies a grant.
+   * Breaking authorization/schema changes require manifest major 2 and an explicit migration.
+   */
+  context_sources?: AIContextSource[];
+  ai_tools?: AITool[];
   healthcheck?: { interval_ms?: number; timeout_ms?: number };
   config_schema?: Record<string, unknown>;
   /** Credentials the user provides; stored in OS secret storage (ctx.secret(name)). */
@@ -115,6 +147,54 @@ export function validateManifest(value: unknown): ManifestResult {
         problems.push(
           `/commands/${c.name}/input_schema is not a valid JSON Schema: ${(err as Error).message}`,
         );
+      }
+    }
+  }
+  for (const [field, items] of [
+    ["context_sources", m.context_sources],
+    ["ai_tools", m.ai_tools],
+  ] as const) {
+    const seen = new Set<string>();
+    for (const item of items ?? []) {
+      if (seen.has(item.name)) problems.push(`/${field} duplicate name "${item.name}"`);
+      seen.add(item.name);
+      for (const access of item.data_access) {
+        if (!m.data_categories?.includes(access.category)) {
+          problems.push(
+            `/${field}/${item.name} uses undeclared data category "${access.category}"`,
+          );
+        }
+        if (item.provider.locality === "cloud" && access.sensitivity !== "public") {
+          problems.push(`/${field}/${item.name} cannot send sensitive data to cloud`);
+        }
+      }
+      for (const permission of item.permissions) {
+        if (!declared.has(permission)) {
+          problems.push(`/${field}/${item.name} uses undeclared permission "${permission}"`);
+        }
+      }
+      const required: Permission[] =
+        item.provider.locality === "cloud"
+          ? ["network", "external_api", "AI_external_processing"]
+          : ["network"];
+      for (const permission of required) {
+        if (!item.permissions.includes(permission)) {
+          problems.push(`/${field}/${item.name} requires "${permission}"`);
+        }
+      }
+      if (field === "ai_tools") {
+        const tool = item as AITool;
+        const command = m.commands.find((c) => c.name === tool.command);
+        if (!command) {
+          problems.push(`/ai_tools/${tool.name} has no declared command "${tool.command}"`);
+        } else
+          for (const permission of item.permissions) {
+            if (!command.permissions?.includes(permission)) {
+              problems.push(
+                `/ai_tools/${tool.name} command lacks required permission "${permission}"`,
+              );
+            }
+          }
       }
     }
   }

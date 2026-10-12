@@ -147,11 +147,11 @@ Next up: finish **Phase 14 — floating desktop Fawkes** and **Phase 20 — hard
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
 | 45 | [Cross-Device Context & Sync](phase-45-cross-device-context.md) | v1.1 | Medium | 44 | 🟨 | | Opt-in encrypted staged-record sync, Core routes and Settings UI; no deployed relay, automatic preference integration or rollback-resistant freshness |
-| 46 | [Personal Knowledge Engine](phase-46-personal-knowledge-engine.md) | v1.2 | High | 45 | ⬜ | | |
-| 47 | [Multi-Agent Runtime](phase-47-multi-agent-runtime.md) | v1.3 | High | 46 | ⬜ | | |
-| 48 | [Phoenix World Model](phase-48-world-model.md) | v1.4 | Medium | 47 | ⬜ | | |
-| 49 | [Controlled Autonomous Agents](phase-49-controlled-autonomy.md) | v1.5 | High | 48 | ⬜ | | |
-| 50 | [AI Capability Ecosystem](phase-50-ai-capability-ecosystem.md) | v1.6 | Medium | 49 | ⬜ | | |
+| 46 | [Personal Knowledge Engine](phase-46-personal-knowledge-engine.md) | v1.2 | High | 45 | 🟨 | | Typed 11-domain ingestion, PR/CI/deployment producers and classified answers; remaining producers, deletion propagation and v1.2 gate open |
+| 47 | [Multi-Agent Runtime](phase-47-multi-agent-runtime.md) | v1.3 | High | 46 | 🟨 | | CI + meeting specialists under typed contracts; planning specialist and v1.3 evaluation/release missing |
+| 48 | [Phoenix World Model](phase-48-world-model.md) | v1.4 | Medium | 47 | 🟨 | | Explicit sourced six-hop association traversal and UI; no automatic full-chain producer or historical snapshots |
+| 49 | [Controlled Autonomous Agents](phase-49-controlled-autonomy.md) | v1.5 | High | 48 | 🟨 | | Settings/budgets/stop implemented; executable autonomy and CI→PR runner refused without OS sandbox; gate not met |
+| 50 | [AI Capability Ecosystem](phase-50-ai-capability-ecosystem.md) | v1.6 | Medium | 49 | 🟨 | | Additive AI manifest metadata and explicit user disclosure; third-party install and cloud AI fail closed |
 | 51 | [Agent-to-Agent Collaboration](phase-51-agent-to-agent-collaboration.md) | v1.7 | Medium | 50 | ⬜ | | |
 | 52 | [Predictive & Proactive Intelligence](phase-52-proactive-intelligence.md) | v1.8 | Medium | 51 | ⬜ | | |
 | 53 | [Self-Improving Workflows & Evaluation Loop](phase-53-evaluation-feedback-loop.md) | v1.9 | Medium | 52 | ⬜ | | |

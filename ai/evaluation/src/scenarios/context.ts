@@ -156,6 +156,7 @@ export const STALE_MEMORY: Scenario[] = [
         {
           key: "old-note",
           text: "phoenix CI failure note: secret-scan fails because the gitleaks allowlist is missing the vendor directory.",
+          scope: `repo:${CI_INPUT.repository}`,
           ageDays: 200,
           ttlDays: 30,
         },
@@ -188,6 +189,7 @@ export const STALE_MEMORY: Scenario[] = [
         {
           key: "old-note",
           text: "phoenix CI failure note: secret-scan fails because the gitleaks allowlist is missing the vendor directory.",
+          scope: `repo:${CI_INPUT.repository}`,
           ageDays: 200,
           ttlDays: 30,
         },
@@ -209,6 +211,7 @@ export const STALE_MEMORY: Scenario[] = [
         {
           key: "new-note",
           text: "phoenix CI failure note: secret-scan fails because the gitleaks allowlist is missing the vendor directory.",
+          scope: `repo:${CI_INPUT.repository}`,
           ageDays: 3,
           ttlDays: 30,
         },

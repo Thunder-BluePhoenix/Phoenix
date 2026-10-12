@@ -59,6 +59,22 @@ capped at 24 h, revocable, at most 100 live. Expiry is evaluated at decision tim
 (`expiresAt > now`; at exactly `expiresAt` it is gone). It cannot cover critical actions, and
 cannot lift high-risk actions for agents.
 
+## Controlled autonomy (Phase 49)
+
+`AutonomyController.configure` records per-capability/environment ladder level and bounded
+`maxActions` / `maxDurationMs` in `autonomy_settings` (migration 18), user-only and audited.
+`begin` creates a process-local observation/analysis/proposal run; restarting never resumes it.
+Explicit `ToolRequest.autonomy` opts into the additional scope, deadline, budget and stop checks.
+Requests without that context retain their prior policy behavior, including user-started workflows.
+Preview `evaluate` never consumes an action. `decide` reserves only after a baseline allow; budget
+exhaustion is an audited denial. A failed audit may conservatively consume a reservation.
+
+Bounded Execute, Supervised Execute and Autonomous Workflow are **refused** even when configured:
+Phoenix has no audited OS sandbox for autonomous execution. The setting is not proof of sandboxing,
+and approval does not override this hard gate. There is no autonomous CI→patch→tests→PR executor.
+The emergency stop and user stop block further calls; an in-flight tool may still finish outside
+Phoenix, so no rollback can be claimed for such a call.
+
 ## Audit
 
 Decisions go to the `AuditLog` of `@phoenix/permissions` (same table, same ordering and

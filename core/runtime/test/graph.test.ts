@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createGitCapability } from "@phoenix/capability-git";
 import type { CapabilityModule } from "@phoenix/capability-manager";
+import type { NodeRef, ProvenanceInput, Relation } from "@phoenix/ai-knowledge-graph";
 import { createEvent } from "@phoenix/protocol";
 import { MemorySecretStore, type Summary } from "@phoenix/persistence";
 import type { Viewer } from "@phoenix/ai-memory";
@@ -457,6 +458,109 @@ describe("every deletion path reaches the graph", () => {
     }[];
     const entry = audit.find((e) => e.action === "graph.person.forgotten")!;
     expect(JSON.stringify(entry.details)).not.toMatch(/ada|lovelace/i);
+  });
+});
+
+const worldRefs: NodeRef[] = [
+  { type: "Failure", key: "prod:incident-7" },
+  { type: "Deployment", key: "o/r/deploy/7" },
+  { type: "Commit", key: `o/r@${"a".repeat(40)}` },
+  { type: "Service", key: "payments" },
+  { type: "Issue", key: "ENG-7" },
+  { type: "Decision", key: "ADR-7" },
+  { type: "Meeting", key: "meeting-7" },
+];
+const worldEdges: [number, Relation, number][] = [
+  [0, "ASSOCIATED_WITH", 1],
+  [2, "DEPLOYED_TO", 1],
+  [2, "TOUCHES", 3],
+  [4, "REFERENCES", 3],
+  [4, "MENTIONS", 5],
+  [5, "DECIDED_IN", 6],
+];
+
+function seedWorld(core: Core): void {
+  const graph = core.runtime.graph.graph;
+  const provenance = (sourceId: string): ProvenanceInput => ({
+    sourceKind: "event",
+    sourceId,
+    capability: "git",
+    observedAt: new Date(Date.now() - 60_000).toISOString(),
+    assertedBy: "capability",
+    scope: "repo:secret",
+    domain: "git",
+    sensitivity: "internal",
+  });
+  worldRefs.forEach((ref, i) => graph.upsertNode(ref, provenance(`world-node-${i}`)));
+  worldEdges.forEach(([src, relation, dst], i) =>
+    graph.assertEdge(worldRefs[src]!, relation, worldRefs[dst]!, provenance(`world-edge-${i}`)),
+  );
+}
+
+describe("world failure chains through Core", () => {
+  const path = `/api/graph/world/failures/${enc(worldRefs[0]!.key)}/chains`;
+
+  it("returns six sourced fresh hops as documented associations, never causal claims", async () => {
+    const core = await boot();
+    seedWorld(core);
+    const before = stats(core);
+    const response = await core.api("GET", `${path}?limit=1`);
+    expect(response.status).toBe(200);
+    expect(response.json.subject.node).toMatchObject({ type: "Failure", key: worldRefs[0]!.key });
+    expect(response.json.chains).toHaveLength(1);
+    const chain = response.json.chains[0];
+    expect(chain.interpretation).toBe("documented association; causation not established");
+    expect(chain.nodes.map((n: { node: { type: string } }) => n.node.type)).toEqual(
+      worldRefs.map((r) => r.type),
+    );
+    expect(chain.hops.map((h: { edge: { rel: string } }) => h.edge.rel)).toEqual(
+      worldEdges.map((e) => e[1]),
+    );
+    expect(
+      chain.hops.every(
+        (h: { provenance: unknown[]; edge: { provenance: unknown[] } }) =>
+          h.provenance.length > 0 && h.edge.provenance.length > 0,
+      ),
+    ).toBe(true);
+    expect(chain.nodes.every((n: { provenance: unknown[] }) => n.provenance.length > 0)).toBe(true);
+    expect(stats(core)).toEqual(before);
+
+    const stale = await core.api("GET", `${path}?maxAgeMs=0`);
+    expect(stale.status).toBe(200);
+    expect(stale.json.subject).toBeNull();
+    expect(stale.json.chains).toEqual([]);
+  });
+
+  it("does not leak a restricted failure or chain to an ungranted viewer", async () => {
+    const core = await boot(fakeNetwork(), {
+      id: "guest",
+      grants: [{ scope: "repo:other", maxSensitivity: "internal" }],
+    });
+    seedWorld(core);
+    const response = await core.api("GET", path);
+    expect(response.status).toBe(200);
+    expect(response.json.subject).toBeNull();
+    expect(response.json.chains).toEqual([]);
+    expect(JSON.stringify(response.json)).not.toContain("prod:incident-7");
+  });
+
+  it("rejects unbounded and malformed query input", async () => {
+    const core = await boot();
+    for (const query of [
+      "limit=0",
+      "limit=51",
+      "maxAgeMs=-1",
+      "maxAgeMs=31536000001",
+      "asOf=invalid",
+      "limit=1&limit=2",
+      "unknown=x",
+    ]) {
+      expect((await core.api("GET", `${path}?${query}`)).status, query).toBe(400);
+    }
+    expect(
+      (await core.api("GET", `/api/graph/world/failures/${"x".repeat(401)}/chains`)).status,
+    ).toBe(404);
+    expect((await core.api("GET", path, undefined, { authorization: "" })).status).toBe(401);
   });
 });
 

@@ -3,6 +3,7 @@
 import type { Database } from "@phoenix/persistence";
 import { validateRule, type PolicyRule } from "./rules";
 import { PolicyError, type Environment } from "./types";
+import type { AutonomySetting } from "./autonomy";
 
 export interface TemporaryApproval {
   id: string;
@@ -39,10 +40,75 @@ interface RuleRow {
   id: string;
   rule: string;
 }
+interface AutonomyRow {
+  capability_id: string;
+  environment: string;
+  level: AutonomySetting["level"];
+  max_actions: number;
+  max_duration_ms: number;
+  updated_by: string;
+  updated_at: number;
+}
 
 /** SQLite persistence for rules and temporary approvals (tables from migration 6). */
 export class PolicyStore {
   constructor(private readonly db: Database) {}
+  autonomySetting(capabilityId: string, environment: Environment): AutonomySetting | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM autonomy_settings WHERE capability_id = ? AND environment = ?")
+      .get(capabilityId, environment) as AutonomyRow | undefined;
+    if (!row) return undefined;
+    if (
+      row.capability_id !== capabilityId ||
+      row.environment !== environment ||
+      ![
+        "observe",
+        "analyze",
+        "propose",
+        "bounded_execute",
+        "supervised_execute",
+        "autonomous_workflow",
+      ].includes(row.level) ||
+      !Number.isInteger(row.max_actions) ||
+      row.max_actions < 1 ||
+      row.max_actions > 100 ||
+      !Number.isInteger(row.max_duration_ms) ||
+      row.max_duration_ms < 1 ||
+      row.max_duration_ms > 3_600_000
+    )
+      throw new PolicyError("INVALID_REQUEST", "Stored autonomy setting is invalid");
+    return {
+      capabilityId: row.capability_id,
+      environment,
+      level: row.level,
+      maxActions: row.max_actions,
+      maxDurationMs: row.max_duration_ms,
+      updatedBy: row.updated_by,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  saveAutonomySetting(setting: AutonomySetting): void {
+    this.db
+      .prepare(
+        `INSERT INTO autonomy_settings
+      (capability_id, environment, level, max_actions, max_duration_ms, updated_by, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(capability_id, environment) DO UPDATE SET
+      level = excluded.level, max_actions = excluded.max_actions,
+      max_duration_ms = excluded.max_duration_ms, updated_by = excluded.updated_by,
+      updated_at = excluded.updated_at`,
+      )
+      .run(
+        setting.capabilityId,
+        setting.environment,
+        setting.level,
+        setting.maxActions,
+        setting.maxDurationMs,
+        setting.updatedBy,
+        setting.updatedAt,
+      );
+  }
 
   /** Throws PolicyError when a stored rule no longer validates (the engine then fails closed). */
   rules(): PolicyRule[] {

@@ -34,7 +34,7 @@ export function actionItemText(item: unknown): string | null {
   return extra.length ? `${body} (${extra.join(", ")})` : body;
 }
 
-/** Captures for one meeting's summary, decisions and action items. All are facts Kage extracted. */
+/** Captures for one meeting's summary, decisions and action items. Transcript is never stored. */
 export function meetingCaptures(meeting: Meeting, summary: Summary): RawCapture[] {
   const observedAt = meeting.started_at ?? meeting.ended_at ?? meeting.updated_at;
   const title = meeting.title ?? `Meeting ${meeting.external_id}`;

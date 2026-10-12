@@ -3,7 +3,7 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { GraphEdge, GraphNode, GraphProvenance } from "../src/core/types";
+import type { GraphEdge, GraphNode, GraphProvenance, GraphWorldResult } from "../src/core/types";
 import { FakeWebSocket } from "./fake-ws";
 import { doubleClick, expectInert, openAt, XSS } from "./views-harness";
 
@@ -122,6 +122,119 @@ describe("Provenance page", () => {
   it("shows an error when the graph is not available", async () => {
     openAt("#/provenance", {});
     expect((await screen.findByRole("alert")).textContent).toBe("Not found");
+  });
+});
+describe("Failure association trails", () => {
+  const failure = node("Failure:failed/42", "Failure", XSS);
+  const deployment = node("Deployment:release42", "Deployment", "Release 42");
+  const association = edge(failure, "ASSOCIATED_WITH", deployment);
+  const entity = (n: GraphNode) => ({
+    node: n,
+    provenance: [prov({ detail: { text: XSS } })],
+    confidence: 0.7,
+    observed_at: "2026-10-10T00:00:00Z",
+    age_ms: 7200000,
+  });
+  const result: GraphWorldResult = {
+    subject: entity(failure),
+    chains: [
+      {
+        nodes: [entity(failure), entity(deployment)],
+        hops: [
+          {
+            from: failure.id,
+            to: deployment.id,
+            edge: association,
+            provenance: [prov({ detail: { text: XSS } })],
+            confidence: 0.6,
+            observed_at: "2026-10-10T00:00:00Z",
+            age_ms: 7200000,
+            meaning: "failure explicitly associated with deployment; not evidence of causation",
+          },
+        ],
+        confidence: 0.6,
+        interpretation: "documented association; causation not established",
+      },
+    ],
+    truncated: {},
+    as_of: "2026-10-10T02:00:00Z",
+    max_age_ms: 86400000,
+  };
+
+  const search = (key: string) => {
+    const input = screen.getByLabelText("Exact failure id");
+    fireEvent.change(input, { target: { value: key } });
+    fireEvent.submit(input.closest("form")!);
+  };
+
+  it("requests an exact encoded id and shows per-hop and per-entity provenance, recency and non-causal status as inert text", async () => {
+    const { api, container } = openAt("#/provenance", {
+      "GET /api/graph/world/failures/failed/42/chains": () => result,
+    });
+    search("failed/42");
+    const trail = await screen.findByRole("list", { name: "Failure association trails" });
+    const failureEvidence = screen.getByRole("button", { name: /Why do you think this\? Failure/ });
+    fireEvent.click(failureEvidence);
+    expect(screen.getByRole("list", { name: /Evidence for Failure/ })).toBeTruthy();
+    expect(
+      api.calls.some((call) => call.path.includes("/api/graph/world/failures/failed%2F42/chains")),
+    ).toBe(true);
+    expect(
+      within(trail).getByText(/documented association; causation not established/),
+    ).toBeTruthy();
+    expect(within(trail).getByText(/confidence 60% · observed/)).toBeTruthy();
+    expect(within(trail).getAllByText(/age 7200000 ms/)).toHaveLength(2);
+    const why = within(trail).getAllByRole("button", { name: /Why do you think this/ });
+    expect(why).toHaveLength(2);
+    fireEvent.click(why[0]!);
+    fireEvent.click(why[1]!);
+    expect(within(trail).getAllByText(XSS).length).toBeGreaterThan(0);
+    expectInert(container);
+    expect(screen.queryByText(/root cause found/i)).toBeNull();
+  });
+  it("sends an optional as-of cutoff with its timezone to Core", async () => {
+    const { api } = openAt("#/provenance", {
+      "GET /api/graph/world/failures/failed/chains": () => ({ ...result, chains: [] }),
+    });
+    fireEvent.change(screen.getByLabelText(/As-of timestamp/), {
+      target: { value: "2026-10-10T02:00:00+02:00" },
+    });
+    search("failed");
+    await screen.findByText(/No complete documented association trail/);
+    expect(
+      api.calls.some(
+        (call) =>
+          call.path ===
+          "/api/graph/world/failures/failed/chains?asOf=2026-10-10T02%3A00%3A00%2B02%3A00",
+      ),
+    ).toBe(true);
+  });
+
+  it("reports absent failure and missing complete chains without implying a cause", async () => {
+    openAt("#/provenance", {
+      "GET /api/graph/world/failures/unknown/chains": () => ({
+        ...result,
+        subject: null,
+        chains: [],
+      }),
+    });
+    search("unknown");
+    expect(
+      await screen.findByText(/No visible failure with fresh supporting evidence/),
+    ).toBeTruthy();
+    cleanup();
+    openAt("#/provenance", {
+      "GET /api/graph/world/failures/failed/chains": () => ({
+        ...result,
+        chains: [],
+        truncated: { time: true },
+      }),
+    });
+    search("failed");
+    expect(await screen.findByText(/No complete documented association trail/)).toBeTruthy();
+    expect(
+      screen.getByText(/This answer is incomplete: it stopped at the time limit/),
+    ).toBeTruthy();
   });
 });
 

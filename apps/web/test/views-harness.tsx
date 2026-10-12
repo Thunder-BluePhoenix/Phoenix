@@ -61,6 +61,8 @@ export const capability = (
   permissions: [],
   commands: [],
   data_categories: [],
+  context_sources: [],
+  ai_tools: [],
   config,
 });
 

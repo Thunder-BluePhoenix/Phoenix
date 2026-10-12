@@ -57,6 +57,26 @@ const codeOf = (fn: () => unknown): string | undefined => {
   return undefined;
 };
 
+describe("autonomous workflow safety", () => {
+  it("refuses executable runs without a sandbox and never calls tools", async () => {
+    const t = setup();
+    const calls = newCalls();
+    const core = await boot({ path: t.db, calls, autoAnswer: () => true });
+    go(core);
+    core.admin.save(user, echo("autonomy_refusal"));
+    expect(() =>
+      core.engine.startAutonomous(agent, "autonomy_refusal", "autonomous_workflow"),
+    ).toThrow(WorkflowError);
+    expect(core.engine.listRuns()).toEqual([]);
+    expect(calls.log).toEqual([]);
+    expect(
+      core.permissions.audit
+        .list({ limit: 200 })
+        .some((e) => e.action === "workflow.autonomy.refused" && e.decision === "denied"),
+    ).toBe(true);
+  });
+});
+
 describe("startManual: the same gates as a trigger", () => {
   it("starts a run for a user with a clearly marked synthetic trigger and audits the user", async () => {
     const t = setup();

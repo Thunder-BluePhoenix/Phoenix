@@ -21,6 +21,30 @@ const base = (): CapabilityManifest => ({
   ],
 });
 
+const aiManifest = (): CapabilityManifest => ({
+  ...base(),
+  permissions: ["network", "repository_access"],
+  data_categories: ["repository_content"],
+  commands: [
+    {
+      name: "generate",
+      description: "Generate locally",
+      side_effect: "read",
+      permissions: ["network", "repository_access"],
+    },
+  ],
+  ai_tools: [
+    {
+      name: "local_model",
+      description: "Local model",
+      kind: "model_provider",
+      command: "generate",
+      data_access: [{ category: "repository_content", sensitivity: "confidential" }],
+      permissions: ["network", "repository_access"],
+      provider: { locality: "local", provider: "ollama" },
+    },
+  ],
+});
 const errors = (m: unknown) => {
   const r = validateManifest(m);
   return r.ok ? [] : r.error.details;
@@ -93,6 +117,49 @@ describe("validateManifest", () => {
 
   it("rejects invalid embedded JSON Schemas", () => {
     expect(errors({ ...base(), config_schema: { type: "nope" } })[0]).toMatch(/config_schema/);
+  });
+  it("accepts optional local model and embedding declarations without changing legacy v1", () => {
+    const m = aiManifest();
+    expect(errors(m)).toEqual([]);
+    expect(errors(base())).toEqual([]);
+    expect(errors({ ...m, manifest_version: "2" })[0]).toMatch(/manifest_version/);
+  });
+
+  it("rejects underdeclared data and permission escalation", () => {
+    const m = aiManifest();
+    m.data_categories = [];
+    expect(errors(m).join(" ")).toMatch(/undeclared data category/);
+    m.data_categories = ["repository_content"];
+    m.ai_tools![0]!.permissions = ["network", "repository_access", "filesystem_read"];
+    expect(errors(m).join(" ")).toMatch(/undeclared permission "filesystem_read"/);
+    m.permissions.push("filesystem_read");
+    expect(errors(m).join(" ")).toMatch(/command lacks required permission "filesystem_read"/);
+  });
+
+  it("refuses sensitive cloud data and cloud without external processing permission", () => {
+    const m = aiManifest();
+    m.ai_tools![0]!.provider = { locality: "cloud", provider: "remote" };
+    expect(errors(m).join(" ")).toMatch(/cannot send sensitive data to cloud/);
+    expect(errors(m).join(" ")).toMatch(/requires "AI_external_processing"/);
+    m.ai_tools![0]!.data_access = [{ category: "repository_content", sensitivity: "public" }];
+    expect(errors(m).join(" ")).not.toMatch(/cannot send sensitive data/);
+  });
+  it("validates context source categories, locality and provider permissions", () => {
+    const m = aiManifest();
+    m.context_sources = [
+      {
+        name: "repository",
+        description: "Repository context",
+        data_access: [{ category: "repository_content", sensitivity: "internal" }],
+        permissions: ["repository_access", "network"],
+        provider: { locality: "local", provider: "ollama" },
+      },
+    ];
+    expect(errors(m)).toEqual([]);
+    m.context_sources[0]!.provider = { locality: "cloud", provider: "remote" };
+    expect(errors(m).join(" ")).toMatch(/cannot send sensitive data to cloud/);
+    m.context_sources[0]!.data_access[0]!.category = "secrets";
+    expect(errors(m).join(" ")).toMatch(/undeclared data category "secrets"/);
   });
 });
 

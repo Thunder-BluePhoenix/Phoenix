@@ -28,6 +28,9 @@ import {
   NODE_TYPES,
   pathsOf,
   readGitHistory,
+  WorldModel,
+  type ResolvedEntity,
+  type WorldHop,
   type DocumentHit,
   type DocumentRoot,
   type EdgeView,
@@ -49,6 +52,8 @@ import type {
   GraphNodeView,
   GraphPathView,
   GraphProvenanceView,
+  GraphWorldEntityView,
+  GraphWorldResultView,
   GraphStatusView,
 } from "@phoenix/api";
 import type { CapabilityManager } from "@phoenix/capability-manager";
@@ -110,6 +115,25 @@ const pathView = (p: ExplanationPath): GraphPathView => ({
   text: p.text,
 });
 
+const worldEntityView = (entity: ResolvedEntity): GraphWorldEntityView => ({
+  node: nodeView(entity.node),
+  provenance: entity.provenance.map(provenanceView),
+  confidence: entity.confidence,
+  observed_at: entity.observedAt,
+  age_ms: entity.ageMs,
+});
+
+const worldHopView = (hop: WorldHop): GraphWorldResultView["chains"][number]["hops"][number] => ({
+  from: hop.from,
+  to: hop.to,
+  edge: edgeView(hop.edge),
+  provenance: hop.provenance.map(provenanceView),
+  confidence: hop.confidence,
+  observed_at: hop.observedAt,
+  age_ms: hop.ageMs,
+  meaning: hop.meaning,
+});
+
 function answerView(a: GraphAnswer): GraphAnswerView {
   const subject = a.subject ? nodeView(a.subject) : null;
   if (a.kind === "why") {
@@ -154,6 +178,7 @@ export class GraphRuntime implements GraphApi {
   readonly graph: KnowledgeGraph;
   private readonly query: GraphQuery;
   private readonly inspector: GraphInspector;
+  private readonly world: WorldModel;
   private readonly unsubscribe: () => void;
   private readonly stopMeetings: () => void;
   private chain: Promise<unknown> = Promise.resolve();
@@ -165,6 +190,7 @@ export class GraphRuntime implements GraphApi {
     this.graph = new KnowledgeGraph(d.db);
     this.query = new GraphQuery(this.graph);
     this.inspector = new GraphInspector(this.graph);
+    this.world = new WorldModel(this.graph);
     this.unsubscribe = d.bus.subscribe("knowledge-graph", GRAPH_EVENT_PATTERNS, (event) =>
       this.onEvent(event),
     );
@@ -372,6 +398,28 @@ export class GraphRuntime implements GraphApi {
       nodes: found.nodes.map(nodeView),
       edges: found.edges.map(edgeView),
       truncated: found.truncated,
+    };
+  }
+
+  failureChains(
+    key: string,
+    options: { asOf?: string; maxAgeMs?: number; limit?: number },
+  ): GraphWorldResultView {
+    const result = this.world.rootCauseChains(this.d.viewer(), {
+      failure: { type: "Failure", key },
+      ...options,
+    });
+    return {
+      subject: result.subject ? worldEntityView(result.subject) : null,
+      chains: result.chains.map((chain) => ({
+        nodes: chain.nodes.map(worldEntityView),
+        hops: chain.hops.map(worldHopView),
+        confidence: chain.confidence,
+        interpretation: chain.interpretation,
+      })),
+      truncated: { ...result.truncated },
+      as_of: result.asOf,
+      max_age_ms: result.maxAgeMs,
     };
   }
 

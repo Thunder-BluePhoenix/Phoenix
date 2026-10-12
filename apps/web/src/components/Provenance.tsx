@@ -11,6 +11,8 @@ import type {
   GraphNode,
   GraphPath,
   GraphProvenance,
+  GraphWorldEntity,
+  GraphWorldResult,
   GraphTruncation,
 } from "../core/types";
 import { Feedback } from "./Feedback";
@@ -375,6 +377,139 @@ function GraphSearch() {
     </section>
   );
 }
+/** An exact failure key, not a free-text guess or a causal diagnosis. */
+function FailureSearch() {
+  const { run, busy, error } = useAction();
+  const [key, setKey] = useState("");
+  const [asOf, setAsOf] = useState("");
+  const [result, setResult] = useState<GraphWorldResult | null>(null);
+  const id = useId();
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const exact = key.trim();
+    if (!exact) return;
+    setResult(null);
+    const query = asOf.trim() ? `?asOf=${encodeURIComponent(asOf.trim())}` : "";
+    const response = await run<GraphWorldResult>(
+      "GET",
+      `/api/graph/world/failures/${encodeURIComponent(exact)}/chains${query}`,
+    );
+    if (response) setResult(response);
+  };
+  return (
+    <section className="card" aria-labelledby="failure-search-h">
+      <h2 id="failure-search-h" className="h3">
+        Failure association trails
+      </h2>
+      <p className="muted small">
+        Search by exact failure id. These are documented associations, not an established root
+        cause.
+      </p>
+      <form className="memory-form" onSubmit={(event) => void submit(event)} role="search">
+        <label htmlFor={id}>Exact failure id</label>
+        <div className="memory-row">
+          <input
+            id={id}
+            type="text"
+            className="break"
+            maxLength={400}
+            value={key}
+            onChange={(event) => setKey(event.target.value)}
+          />
+          <button type="submit" className="btn btn-primary" disabled={busy || !key.trim()}>
+            Find trails
+          </button>
+        </div>
+        <label htmlFor={`${id}-as-of`}>As-of timestamp (ISO with timezone, optional)</label>
+        <input
+          id={`${id}-as-of`}
+          type="text"
+          maxLength={35}
+          value={asOf}
+          onChange={(event) => setAsOf(event.target.value)}
+          placeholder="2026-10-10T02:00:00Z"
+        />
+        <Feedback error={error} />
+      </form>
+      {result && <WorldTrails result={result} />}
+    </section>
+  );
+}
+
+function WorldEntity({ entity, label }: { entity: GraphWorldEntity; label: string }) {
+  return (
+    <div className="memory-text">
+      <p>
+        {label}: <NodeLink node={entity.node} />
+      </p>
+      <p className="muted small">
+        Confidence {percent(entity.confidence)} · observed{" "}
+        <time dateTime={entity.observed_at}>{formatDate(entity.observed_at)}</time> · age{" "}
+        {entity.age_ms} ms
+      </p>
+      <WhyButton label={`${label} ${entity.node.label}`} rows={entity.provenance} />
+    </div>
+  );
+}
+
+function WorldTrails({ result }: { result: GraphWorldResult }) {
+  return (
+    <div aria-live="polite">
+      <p className="muted small">
+        As of <time dateTime={result.as_of}>{formatDate(result.as_of)}</time> · maximum evidence age{" "}
+        {result.max_age_ms} ms. Each shown observation is within this window; older evidence is
+        excluded.
+      </p>
+      {!result.subject ? (
+        <p>No visible failure with fresh supporting evidence matches that exact id.</p>
+      ) : (
+        <>
+          <WorldEntity entity={result.subject} label="Failure" />
+          {result.chains.length === 0 ? (
+            <p>No complete documented association trail is available for this failure.</p>
+          ) : (
+            <ol aria-label="Failure association trails" className="card-list">
+              {result.chains.map((chain, index) => (
+                <li className="card" key={index}>
+                  <h3 className="h4">Association trail {index + 1}</h3>
+                  <p className="small">
+                    {chain.interpretation} · trail confidence {percent(chain.confidence)}
+                  </p>
+                  <ol aria-label={`Association trail ${index + 1} steps`} className="path-steps">
+                    {chain.hops.map((hop, step) => {
+                      const entity = chain.nodes[step + 1];
+                      return (
+                        <li key={`${hop.edge.id}:${step}`}>
+                          <p className="memory-text">
+                            {hop.meaning} ({hop.edge.rel})
+                          </p>
+                          <p className="muted small memory-text">
+                            From {hop.from} to {hop.to} · confidence {percent(hop.confidence)} ·
+                            observed{" "}
+                            <time dateTime={hop.observed_at}>{formatDate(hop.observed_at)}</time> ·
+                            age {hop.age_ms} ms
+                          </p>
+                          <WhyButton
+                            label={`step ${step + 1} ${hop.meaning}`}
+                            rows={hop.provenance}
+                          />
+                          {entity && (
+                            <WorldEntity entity={entity} label={`Step ${step + 1} entity`} />
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </li>
+              ))}
+            </ol>
+          )}
+        </>
+      )}
+      <TruncationNote truncated={result.truncated} />
+    </div>
+  );
+}
 
 export function ProvenancePage() {
   const { data: status, error } = useGraphStatus();
@@ -387,6 +522,7 @@ export function ProvenancePage() {
         it, how sure it is, and what it is connected to. Everything is written out as text.
       </p>
       <GraphSearch />
+      <FailureSearch />
       <section aria-labelledby="graph-status-h" className="card">
         <h2 id="graph-status-h" className="h3">
           What the graph knows

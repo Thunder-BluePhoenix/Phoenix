@@ -27,6 +27,8 @@ export const CONTENT_TYPES = [
   "preference",
   "working",
   "note",
+  "engineering_fact",
+  "engineering_evidence",
 ] as const;
 export type ContentType = (typeof CONTENT_TYPES)[number];
 
@@ -50,6 +52,8 @@ export const CLASSIFICATION: Record<ContentType, Classification> = {
   preference: { layer: "preference", domain: "preference", sensitivity: "internal" },
   working: { layer: "working", domain: "general", sensitivity: "internal" },
   note: { layer: "episodic", domain: "general", sensitivity: "internal" },
+  engineering_fact: { layer: "episodic", domain: "general", sensitivity: "internal" },
+  engineering_evidence: { layer: "episodic", domain: "general", sensitivity: "internal" },
 };
 
 /** Days a working-layer memory lives unless the caller says otherwise. */
@@ -73,6 +77,8 @@ export interface RawCapture {
   /** Stable identity of the source fact: capturing the same fact twice must produce the same key. */
   dedupeKey: string;
   provenance: MemoryProvenance;
+  /** Explicit domain for typed engineering records; other captures use content-type rules. */
+  domain?: MemoryDomain;
   confidence?: number;
   /** Stated by the source; overrides the rule (for example a public repository). */
   sensitivity?: PrivacyClass;
@@ -160,7 +166,10 @@ export function classifyStage(c: Candidate, ctx: ClassifyContext): StageResult<C
         owner: ctx.owner,
         scope: c.scope,
         layer: rule.layer,
-        domain: rule.domain,
+        domain:
+          c.contentType === "engineering_fact" || c.contentType === "engineering_evidence"
+            ? (c.domain ?? rule.domain)
+            : rule.domain,
         kind: c.kind,
         text,
         observedAt: c.observedAt,

@@ -248,12 +248,40 @@ export class CapabilityManager {
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
-  async enable(id: string, by = "user"): Promise<CapabilityView> {
+  async enable(
+    id: string,
+    by = "user",
+    disclosure?: { manifestVersion: string },
+  ): Promise<CapabilityView> {
     const entry = this.require(id);
     if (this.o.permissions.isKillSwitchEngaged()) {
       throw new PhoenixError(ErrorCode.SECURITY_POLICY_BLOCKED, "Emergency stop is engaged");
     }
     if (entry.status === "enabled") return this.view(entry);
+    if (entry.manifest.ai_tools?.length || entry.manifest.context_sources?.length) {
+      if (by === "system" || disclosure?.manifestVersion !== entry.manifest.version) {
+        throw new PhoenixError(
+          ErrorCode.PERMISSION_DENIED,
+          "AI data access disclosure requires user acknowledgment of the current manifest version",
+        );
+      }
+      if (entry.kind === "external") {
+        throw new PhoenixError(
+          ErrorCode.SECURITY_POLICY_BLOCKED,
+          "Third-party AI executable requires an OS sandbox; external registration is not installation",
+        );
+      }
+      if (
+        [...(entry.manifest.ai_tools ?? []), ...(entry.manifest.context_sources ?? [])].some(
+          (item) => item.provider.locality === "cloud",
+        )
+      ) {
+        throw new PhoenixError(
+          ErrorCode.SECURITY_POLICY_BLOCKED,
+          "Cloud AI transfer requires a runtime data-class enforcement boundary",
+        );
+      }
+    }
     this.validateConfig(entry, entry.config);
 
     const missing = this.o.permissions.grants.missing(id, entry.manifest.permissions);
@@ -825,6 +853,8 @@ export class CapabilityManager {
       })),
       events: e.manifest.events,
       data_categories: e.manifest.data_categories ?? [],
+      context_sources: e.manifest.context_sources ?? [],
+      ai_tools: e.manifest.ai_tools ?? [],
       config: e.config,
       ...(e.manifest.config_schema ? { config_schema: e.manifest.config_schema } : {}),
       secrets: this.secretViews(e),

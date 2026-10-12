@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { ApiError } from "../core/client";
 import { useClient } from "../core/context";
 import {
@@ -228,6 +228,20 @@ function CapabilityEditor({
   const [form, setForm] = useState(() => toForm(c.config_schema, c.config));
   const [saved, setSaved] = useState<string | null>(null);
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
+  const [disclosure, setDisclosure] = useState<{
+    version: string;
+    action: "enable" | "restart";
+  } | null>(null);
+  const [acknowledgedVersion, setAcknowledgedVersion] = useState<string | null>(null);
+  useEffect(() => {
+    setDisclosure(null);
+    setAcknowledgedVersion(null);
+  }, [c.version]);
+  const contextSources = c.context_sources ?? [];
+  const aiTools = c.ai_tools ?? [];
+  const hasAiDeclarations = contextSources.length > 0 || aiTools.length > 0;
+  const currentDisclosure = disclosure?.version === c.version ? disclosure : null;
+  const acknowledged = currentDisclosure !== null && acknowledgedVersion === c.version;
   const enabled = c.status === "enabled";
   const fields = fieldsOf(c.config_schema);
   const base = `/api/capabilities/${encodeURIComponent(c.id)}`;
@@ -248,9 +262,21 @@ function CapabilityEditor({
       enabled ? `Saved. Restart ${c.name} to apply.` : "Saved.",
     );
   };
-  const restart = async () => {
+  const restart = async (body: unknown = {}) => {
     if (await act("POST", `${base}/disable`, {}, ""))
-      await act("POST", `${base}/enable`, {}, "Restarted.");
+      await act("POST", `${base}/enable`, body, "Restarted.");
+  };
+  const beginActivation = (action: "enable" | "restart") => {
+    setAcknowledgedVersion(null);
+    setDisclosure({ version: c.version, action });
+  };
+  const confirmActivation = () => {
+    if (!currentDisclosure || !acknowledged || busy) return;
+    setDisclosure(null);
+    setAcknowledgedVersion(null);
+    const body = { manifest_version: currentDisclosure.version };
+    if (currentDisclosure.action === "restart") void restart(body);
+    else void act("POST", `${base}/enable`, body, "Enabled.");
   };
 
   return (
@@ -269,14 +295,14 @@ function CapabilityEditor({
           type="button"
           className={`btn ${enabled ? "" : "btn-primary"}`}
           disabled={busy || c.status === "disconnected"}
-          onClick={() =>
-            void act(
-              "POST",
-              `${base}/${enabled ? "disable" : "enable"}`,
-              {},
-              enabled ? "Disabled." : "Enabled.",
-            )
-          }
+          onClick={() => {
+            if (enabled) {
+              setDisclosure(null);
+              setAcknowledgedVersion(null);
+              void act("POST", `${base}/disable`, {}, "Disabled.");
+            } else if (hasAiDeclarations) beginActivation("enable");
+            else void act("POST", `${base}/enable`, {}, "Enabled.");
+          }}
         >
           {enabled ? `Disable ${c.name}` : `Enable ${c.name}`}
         </button>
@@ -290,12 +316,123 @@ function CapabilityEditor({
                 ? "Restarting Kage now would lose the recording"
                 : undefined
             }
-            onClick={() => void restart()}
+            onClick={() => {
+              if (hasAiDeclarations) beginActivation("restart");
+              else void restart();
+            }}
           >
             Restart
           </button>
         )}
       </div>
+      {hasAiDeclarations && currentDisclosure && (
+        <section aria-label={`AI activation disclosure for ${c.name}`} className="settings-form">
+          <h3>
+            Review AI access before{" "}
+            {currentDisclosure.action === "restart" ? "restarting" : "enabling"}
+          </h3>
+          <p>
+            Manifest version: {c.version}. Review the declared access and provider locality before
+            activation.
+          </p>
+          <p>
+            Capability: {c.name} — {c.description} ({c.kind})
+          </p>
+          <p>
+            Data categories:{" "}
+            {c.data_categories.length ? c.data_categories.join(", ") : "None declared"}
+          </p>
+          <h4>Capability permissions</h4>
+          <ul>
+            {c.permissions.map((p) => (
+              <li key={p.permission}>
+                {p.permission}: {p.description} ({p.granted ? "granted" : "not granted"})
+              </li>
+            ))}
+          </ul>
+          <h4>Context sources</h4>
+          {contextSources.length === 0 && <p>None declared</p>}
+          {contextSources.map((source, index) => (
+            <div key={index}>
+              <h5>{source.name}</h5>
+              <p>{source.description}</p>
+              <p>
+                Provider: {source.provider.provider}; locality:{" "}
+                {source.provider.locality === "cloud" ? "external/cloud" : "local"}
+              </p>
+              <p>
+                Permissions:{" "}
+                {source.permissions.length ? source.permissions.join(", ") : "None declared"}
+              </p>
+              <p>Data access:</p>
+              <ul>
+                {source.data_access.map((item, itemIndex) => (
+                  <li key={itemIndex}>
+                    {item.category}: {item.sensitivity}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          <h4>AI tools and providers</h4>
+          {aiTools.length === 0 && <p>None declared</p>}
+          {aiTools.map((tool, index) => (
+            <div key={index}>
+              <h5>{tool.name}</h5>
+              <p>{tool.description}</p>
+              <p>
+                Kind: {tool.kind}; command: {tool.command}
+              </p>
+              <p>
+                Provider: {tool.provider.provider}; locality:{" "}
+                {tool.provider.locality === "cloud" ? "external/cloud" : "local"}
+              </p>
+              <p>
+                Permissions:{" "}
+                {tool.permissions.length ? tool.permissions.join(", ") : "None declared"}
+              </p>
+              <p>Data access:</p>
+              <ul>
+                {tool.data_access.map((item, itemIndex) => (
+                  <li key={itemIndex}>
+                    {item.category}: {item.sensitivity}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          <label className="choice">
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              onChange={(e) => setAcknowledgedVersion(e.target.checked ? c.version : null)}
+            />
+            I have reviewed AI access for manifest version {c.version} and acknowledge this
+            activation.
+          </label>
+          <div className="button-row wrap">
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={busy || !acknowledged}
+              onClick={confirmActivation}
+            >
+              Confirm {currentDisclosure.action === "restart" ? "restart" : "enable"} for version{" "}
+              {c.version}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setDisclosure(null);
+                setAcknowledgedVersion(null);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </section>
+      )}
 
       {fields.length > 0 && (
         <form onSubmit={saveConfig} className="settings-form">

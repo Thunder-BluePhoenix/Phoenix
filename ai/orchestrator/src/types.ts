@@ -14,6 +14,7 @@ import type {
   Verification,
 } from "@phoenix/protocol";
 import type { EvidenceBook } from "./evidence";
+import type { SpecialistContract } from "./specialists";
 
 /** The request lifecycle, in order. Every stage writes one audit record. */
 export const STAGES = [
@@ -114,6 +115,8 @@ export interface RunContext {
   readonly task: AgentTask;
   readonly runId: string;
   readonly target: TrustedTarget;
+  /** Code-owned contract; context retrieval must intersect its grant with the caller's viewer. */
+  readonly specialist?: SpecialistContract<unknown, unknown>;
   readonly evidence: EvidenceBook;
   /** Aborted when the run is cancelled or the kill switch is engaged. */
   readonly signal: AbortSignal;
@@ -130,6 +133,8 @@ export interface RunContext {
 
 /** A kind of task and the code that handles it. Registered with the orchestrator by the runtime. */
 export interface AgentDefinition {
+  /** Optional bounded, typed specialist contract. */
+  specialist?: SpecialistContract<unknown, unknown>;
   descriptor: AgentDescriptor;
   /** Capability ids this kind of task may call. A plan naming any other capability is rejected. */
   allowedCapabilities: readonly string[];

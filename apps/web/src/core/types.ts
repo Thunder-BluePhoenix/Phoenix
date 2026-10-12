@@ -72,6 +72,19 @@ export interface Confirmation {
   evidence_ids?: string[];
 }
 
+export interface AIContextSource {
+  name: string;
+  description: string;
+  data_access: { category: string; sensitivity: string }[];
+  permissions: string[];
+  provider: { locality: "local" | "cloud"; provider: string };
+}
+
+export interface AITool extends AIContextSource {
+  command: string;
+  kind: "tool" | "model_provider" | "embedding_provider";
+}
+
 export interface CapabilityView {
   id: string;
   name: string;
@@ -83,6 +96,8 @@ export interface CapabilityView {
   permissions: { permission: string; description: string; granted: boolean }[];
   commands: { name: string; description: string; side_effect: string }[];
   data_categories: string[];
+  context_sources: AIContextSource[];
+  ai_tools: AITool[];
   config?: Record<string, unknown>;
   config_schema?: JsonSchema;
   secrets?: { name: string; description?: string; set: boolean }[];
@@ -177,23 +192,39 @@ export interface MemorySettings {
   capture_git: boolean;
 }
 
+export type AnswerFreshness = "fresh" | "stale";
+
 export interface MemoryFact {
   id: string;
   text: string;
   domain: string;
   source: string;
-  source_ref: string | null;
+  source_ref: string;
   observed_at: string;
   sensitivity: MemorySensitivity;
+  classification: "stored_fact";
+  confidence: number | null;
+  freshness: AnswerFreshness;
 }
 
-/** POST /api/memory/ask. `facts` are stored data; `interpretation` is generated and never a fact. */
+export interface MemoryEvidence extends Omit<MemoryFact, "classification"> {
+  classification: "retrieved_evidence";
+}
+export interface MemoryStoredInterpretation extends Omit<MemoryFact, "classification"> {
+  classification: "stored_interpretation";
+}
+
+/** POST /api/memory/ask: source assertions and retrieved material remain separate from generated text. */
 export interface MemoryAnswer {
   facts: MemoryFact[];
+  stored_interpretations: MemoryStoredInterpretation[];
+  retrieved_evidence: MemoryEvidence[];
   interpretation: string | null;
+  interpretation_classification: "hypothesis" | null;
   processed_by: string | null;
   ai_used: boolean;
   note: string | null;
+  retrieval: RetrievalInfo;
 }
 
 export interface AiProviderStatus {
@@ -519,6 +550,40 @@ export interface GraphPath {
   nodes: GraphNode[];
   hops: { from: string; to: string; direction: "forward" | "backward"; edge: GraphEdge }[];
   text: string;
+}
+/** GET /api/graph/world/failures/:key/chains. Each node and hop carries its own support. */
+export interface GraphWorldEntity {
+  node: GraphNode;
+  provenance: GraphProvenance[];
+  confidence: number;
+  observed_at: string;
+  age_ms: number;
+}
+
+export interface GraphWorldHop {
+  from: string;
+  to: string;
+  edge: GraphEdge;
+  provenance: GraphProvenance[];
+  confidence: number;
+  observed_at: string;
+  age_ms: number;
+  meaning: string;
+}
+
+export interface GraphWorldChain {
+  nodes: GraphWorldEntity[];
+  hops: GraphWorldHop[];
+  confidence: number;
+  interpretation: "documented association; causation not established";
+}
+
+export interface GraphWorldResult {
+  subject: GraphWorldEntity | null;
+  chains: GraphWorldChain[];
+  truncated: Partial<Record<"fanout" | "visited" | "time" | "results", true>>;
+  as_of: string;
+  max_age_ms: number;
 }
 
 export type GraphTruncation = Partial<

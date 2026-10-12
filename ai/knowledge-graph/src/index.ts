@@ -12,3 +12,4 @@ export * from "./ingest";
 export * from "./query";
 export * from "./inspect";
 export * from "./answer";
+export * from "./world-model";

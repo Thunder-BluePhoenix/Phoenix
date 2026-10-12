@@ -11,6 +11,7 @@ export const NODE_TYPES = [
   "Commit",
   "Service",
   "Deployment",
+  "Failure",
   "Meeting",
   "Decision",
   "Feature",
@@ -38,6 +39,7 @@ export const RELATIONS = [
   "ASSIGNED_TO",
   "REFERENCES",
   "PARTICIPATED_IN",
+  "ASSOCIATED_WITH",
 ] as const;
 export type Relation = (typeof RELATIONS)[number];
 
@@ -61,8 +63,9 @@ export const RELATION_SCHEMA: Record<Relation, RelationSchema> = {
   },
   TOUCHES: {
     from: ["Commit", "PullRequest"],
-    to: ["Feature", "Document"],
-    meaning: "the change modified the file (Document) or a path mapped to the feature",
+    to: ["Feature", "Document", "Service"],
+    meaning:
+      "the change modified the file, a path mapped to the feature, or an explicitly identified service",
   },
   PART_OF: {
     from: [
@@ -87,7 +90,7 @@ export const RELATION_SCHEMA: Record<Relation, RelationSchema> = {
   MENTIONS: {
     from: ["Commit", "PullRequest", "Issue", "Decision", "Meeting", "Document"],
     to: ["Issue", "PullRequest", "Commit", "Decision"],
-    meaning: "the text of the source names the issue, pull request or commit",
+    meaning: "the text of the source names the issue, pull request, commit or decision",
   },
   FIXES: {
     from: ["Commit", "PullRequest"],
@@ -111,8 +114,14 @@ export const RELATION_SCHEMA: Record<Relation, RelationSchema> = {
   },
   REFERENCES: {
     from: ["Commit", "PullRequest", "Issue", "Decision", "Meeting", "Document"],
-    to: ["Repository", "Feature", "Project"],
-    meaning: "the source names the repository, feature or project",
+    to: ["Repository", "Feature", "Project", "Service"],
+    meaning: "the source names the repository, feature, project or service",
+  },
+  ASSOCIATED_WITH: {
+    from: ["Failure"],
+    to: ["Deployment"],
+    meaning:
+      "a source explicitly associates the observed failure with this deployment; this does not establish causation",
   },
   PARTICIPATED_IN: {
     from: ["Person"],

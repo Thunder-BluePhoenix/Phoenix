@@ -770,4 +770,154 @@ export const MIGRATIONS: readonly Migration[] = [
       END;
     `,
   },
+  {
+    version: 18,
+    name: "autonomy_settings",
+    sql: `
+      CREATE TABLE autonomy_settings (
+        capability_id TEXT NOT NULL,
+        environment TEXT NOT NULL,
+        level TEXT NOT NULL,
+        max_actions INTEGER NOT NULL,
+        max_duration_ms INTEGER NOT NULL,
+        updated_by TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (capability_id, environment)
+      );
+    `,
+  },
+  {
+    version: 19,
+    name: "memory_evidence_kind",
+    sql: `
+      -- Rebuild the CHECK constraint without changing ids/seq (FTS rowids) or touching derived
+      -- vectors, agent citations, or graph provenance. The copy happens in migrate()'s transaction.
+      DROP TRIGGER meeting_items_meeting_deleted;
+      DROP TRIGGER memory_items_unindex_delete;
+      DROP TRIGGER memory_items_unindex_update;
+      DROP TRIGGER agent_evidence_unmemory_update;
+      DROP TRIGGER agent_evidence_unmemory_delete;
+      DROP TRIGGER memory_items_unvector_delete;
+      DROP TRIGGER memory_items_unvector_update;
+      DROP TRIGGER kg_memory_tombstoned;
+      DROP TRIGGER kg_memory_deleted;
+      ALTER TABLE memory_items RENAME TO memory_items_old;
+      CREATE TABLE memory_items (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT NOT NULL UNIQUE,
+        dedupe_key TEXT NOT NULL UNIQUE,
+        source TEXT NOT NULL,
+        source_ref TEXT NOT NULL,
+        owner TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        layer TEXT NOT NULL CHECK (layer IN ('working', 'episodic', 'project', 'preference')),
+        domain TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('fact', 'evidence', 'interpretation')),
+        text TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        last_confirmed_at TEXT NOT NULL,
+        freshness_ttl_days INTEGER,
+        sensitivity TEXT NOT NULL CHECK (sensitivity IN ('public', 'internal', 'sensitive')),
+        provenance TEXT NOT NULL,
+        confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+        retention_days INTEGER,
+        expires_at TEXT,
+        deleted_at TEXT
+      );
+      INSERT INTO memory_items SELECT * FROM memory_items_old;
+      DROP TABLE memory_items_old;
+      CREATE INDEX memory_items_domain_observed ON memory_items (domain, observed_at);
+      CREATE INDEX memory_items_source_ref ON memory_items (source, source_ref);
+      CREATE INDEX memory_items_scope ON memory_items (scope);
+      CREATE INDEX memory_items_expires ON memory_items (expires_at);
+      CREATE TRIGGER memory_items_unindex_delete AFTER DELETE ON memory_items
+      BEGIN DELETE FROM memory_fts WHERE rowid = old.seq; END;
+      CREATE TRIGGER memory_items_unindex_update AFTER UPDATE OF text, deleted_at ON memory_items
+      BEGIN DELETE FROM memory_fts WHERE rowid = old.seq; END;
+      CREATE TRIGGER agent_evidence_unmemory_update AFTER UPDATE OF text, deleted_at ON memory_items
+      BEGIN UPDATE agent_evidence SET excerpt = '', truncated = 0
+        WHERE kind = 'memory' AND source = old.id; END;
+      CREATE TRIGGER agent_evidence_unmemory_delete AFTER DELETE ON memory_items
+      BEGIN UPDATE agent_evidence SET excerpt = '', truncated = 0
+        WHERE kind = 'memory' AND source = old.id; END;
+      CREATE TRIGGER memory_items_unvector_delete AFTER DELETE ON memory_items
+      BEGIN
+        DELETE FROM memory_vectors WHERE memory_id = old.id;
+        DELETE FROM memory_vector_failures WHERE memory_id = old.id;
+      END;
+      CREATE TRIGGER memory_items_unvector_update AFTER UPDATE OF text, deleted_at ON memory_items
+      BEGIN
+        DELETE FROM memory_vectors WHERE memory_id = old.id;
+        DELETE FROM memory_vector_failures WHERE memory_id = old.id;
+      END;
+      CREATE TRIGGER kg_memory_tombstoned AFTER UPDATE OF deleted_at ON memory_items
+      WHEN new.deleted_at IS NOT NULL
+      BEGIN DELETE FROM kg_provenance WHERE source_kind = 'memory' AND source_id = old.id; END;
+      CREATE TRIGGER kg_memory_deleted AFTER DELETE ON memory_items
+      BEGIN DELETE FROM kg_provenance WHERE source_kind = 'memory' AND source_id = old.id; END;
+      CREATE TRIGGER meeting_items_meeting_deleted AFTER UPDATE OF deleted_at ON meetings
+      WHEN new.deleted_at IS NOT NULL
+      BEGIN
+        DELETE FROM meeting_items WHERE meeting_id = new.id;
+        DELETE FROM memory_items WHERE source = 'meeting-review' AND source_ref = new.id;
+      END;
+    `,
+  },
+  {
+    version: 20,
+    name: "world_model_relations",
+    sql: `
+      -- Copy tables with new CHECK vocabularies while preserving ids, provenance and source rows.
+      -- Drop deletion triggers before replacing the old tables, or DROP would erase provenance.
+      DROP TRIGGER kg_nodes_unprovenance;
+      DROP TRIGGER kg_edges_unprovenance;
+      DROP TRIGGER kg_provenance_edge_orphan;
+      DROP TRIGGER kg_provenance_node_orphan;
+      CREATE TABLE kg_nodes_new (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL CHECK (type IN (
+          'Person', 'Project', 'Repository', 'Commit', 'Service', 'Deployment', 'Meeting',
+          'Decision', 'Feature', 'Issue', 'PullRequest', 'CIRun', 'Document', 'Failure')),
+        key TEXT NOT NULL,
+        key_lc TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE (type, key)
+      );
+      CREATE TABLE kg_edges_new (
+        id TEXT PRIMARY KEY,
+        src TEXT NOT NULL REFERENCES kg_nodes_new (id) ON DELETE CASCADE,
+        rel TEXT NOT NULL CHECK (rel IN (
+          'AUTHORED', 'TOUCHES', 'PART_OF', 'DECIDED_IN', 'MENTIONS', 'FIXES', 'DEPLOYED_TO',
+          'TRIGGERED', 'ASSIGNED_TO', 'REFERENCES', 'PARTICIPATED_IN', 'ASSOCIATED_WITH')),
+        dst TEXT NOT NULL REFERENCES kg_nodes_new (id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL,
+        UNIQUE (src, rel, dst)
+      );
+      INSERT INTO kg_nodes_new SELECT * FROM kg_nodes;
+      INSERT INTO kg_edges_new SELECT * FROM kg_edges;
+      DROP TABLE kg_edges;
+      DROP TABLE kg_nodes;
+      ALTER TABLE kg_nodes_new RENAME TO kg_nodes;
+      ALTER TABLE kg_edges_new RENAME TO kg_edges;
+      CREATE INDEX kg_nodes_key_lc ON kg_nodes (key_lc);
+      CREATE INDEX kg_edges_dst ON kg_edges (dst, rel);
+      CREATE TRIGGER kg_provenance_edge_orphan AFTER DELETE ON kg_provenance
+      WHEN old.subject_kind = 'edge'
+      BEGIN
+        DELETE FROM kg_edges WHERE id = old.subject_id
+          AND NOT EXISTS (SELECT 1 FROM kg_provenance WHERE subject_kind = 'edge' AND subject_id = old.subject_id);
+      END;
+      CREATE TRIGGER kg_provenance_node_orphan AFTER DELETE ON kg_provenance
+      WHEN old.subject_kind = 'node'
+      BEGIN
+        DELETE FROM kg_nodes WHERE id = old.subject_id
+          AND NOT EXISTS (SELECT 1 FROM kg_provenance WHERE subject_kind = 'node' AND subject_id = old.subject_id);
+      END;
+      CREATE TRIGGER kg_edges_unprovenance AFTER DELETE ON kg_edges
+      BEGIN DELETE FROM kg_provenance WHERE subject_kind = 'edge' AND subject_id = old.id; END;
+      CREATE TRIGGER kg_nodes_unprovenance AFTER DELETE ON kg_nodes
+      BEGIN DELETE FROM kg_provenance WHERE subject_kind = 'node' AND subject_id = old.id; END;
+    `,
+  },
 ];

@@ -8,6 +8,8 @@ import type { CoreServices } from "./services";
 const MAX_NODE_ID_CHARS = 400;
 const MAX_NAME_CHARS = 200;
 const MAX_DEPTH = 2;
+const MAX_CHAIN_LIMIT = 50;
+const MAX_CHAIN_AGE_MS = 365 * 86_400_000;
 
 const invalid = (message: string) => new PhoenixError(ErrorCode.INVALID_REQUEST, message);
 const notFound = () => new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, "Node not found");
@@ -26,6 +28,39 @@ function text(value: unknown, key: string, max: number): string {
   return trimmed;
 }
 
+function worldOptions(url: URL): { asOf?: string; maxAgeMs?: number; limit?: number } {
+  for (const key of url.searchParams.keys()) {
+    if (!["asOf", "maxAgeMs", "limit"].includes(key) || url.searchParams.getAll(key).length !== 1) {
+      throw invalid(`Unknown or repeated query parameter "${key.slice(0, 40)}"`);
+    }
+  }
+  const asOf = url.searchParams.get("asOf");
+  if (
+    asOf !== null &&
+    (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?(?:Z|[+-]\d\d:\d\d)$/.test(asOf) ||
+      !Number.isFinite(Date.parse(asOf)))
+  ) {
+    throw invalid('"asOf" must be an ISO timestamp with timezone');
+  }
+  const boundedInteger = (key: string, max: number, min: number): number | undefined => {
+    const raw = url.searchParams.get(key);
+    if (raw === null) return undefined;
+    if (!/^\d+$/.test(raw) || raw.length > 16) throw invalid(`"${key}" must be ${min}..${max}`);
+    const value = Number(raw);
+    if (!Number.isSafeInteger(value) || value < min || value > max) {
+      throw invalid(`"${key}" must be ${min}..${max}`);
+    }
+    return value;
+  };
+  const maxAgeMs = boundedInteger("maxAgeMs", MAX_CHAIN_AGE_MS, 0);
+  const limit = boundedInteger("limit", MAX_CHAIN_LIMIT, 1);
+  return {
+    ...(asOf !== null ? { asOf } : {}),
+    ...(maxAgeMs !== undefined ? { maxAgeMs } : {}),
+    ...(limit !== undefined ? { limit } : {}),
+  };
+}
+
 /** Knowledge graph: provenance inspection, questions, forgetting a person (Phase 38). */
 export function graphRoutes(s: CoreServices): Route[] {
   const graph = () => {
@@ -42,6 +77,9 @@ export function graphRoutes(s: CoreServices): Route[] {
 
   return [
     route("GET", "/api/graph/status", () => graph().status()),
+    route("GET", "/api/graph/world/failures/:key/chains", ({ params, url }) =>
+      graph().failureChains(nodeId(params.key), worldOptions(url)),
+    ),
     route("GET", "/api/graph/nodes/:id", ({ params }) => {
       const found = graph().inspect(nodeId(params.id));
       if (!found) throw notFound();

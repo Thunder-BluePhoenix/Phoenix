@@ -3,6 +3,7 @@
 import { isPermission, SIDE_EFFECTS } from "@phoenix/protocol";
 import { assessRisk, riskAtLeast } from "./risk";
 import { matchPattern, ruleMatches, type PolicyRule } from "./rules";
+import type { AutonomyController } from "./autonomy";
 import { PolicyStore, type TemporaryApproval } from "./store";
 import {
   ACTOR_KINDS,
@@ -27,6 +28,8 @@ export interface PolicyEngineOptions {
   /** The tool registry's view: unknown tools are denied. */
   isKnownTool: (tool: string) => boolean;
   now?: () => number;
+  /** Optional controlled-autonomy gate; absence refuses autonomous requests. */
+  autonomy?: AutonomyController;
 }
 
 /** A decision that has been written to the audit log. Execution needs one of these. */
@@ -91,6 +94,12 @@ export class PolicyEngine {
     if (malformed) return deny(`Malformed request: ${malformed}`, "builtin:malformed-request");
     if (!this.o.isKnownTool(request.tool)) {
       return deny(`Unknown tool "${clip(request.tool, 100)}"`, "builtin:unknown-tool");
+    }
+    if (request.autonomy) {
+      if (!this.o.autonomy) return deny("Autonomy controller is unavailable", "builtin:autonomy");
+      // A preview must not consume an action budget. decide() reserves it after the audit write.
+      const refusal = this.o.autonomy.check(request);
+      if (refusal) return deny(refusal, "builtin:autonomy");
     }
 
     let rules: PolicyRule[];
@@ -189,7 +198,20 @@ export class PolicyEngine {
    * fails this throws and no decision is returned, so nothing can run on an unrecorded decision.
    */
   decide(request: ToolRequest, context: Record<string, unknown> = {}): AuditedDecision {
-    const decision = this.evaluate(request);
+    const evaluated = this.evaluate(request);
+    // Count only actions permitted by baseline policy; exhaustion becomes an audited denial.
+    const budgetRefusal =
+      evaluated.effect === "allow" && request.autonomy
+        ? this.o.autonomy?.reserve(request)
+        : undefined;
+    const decision: PolicyDecision = budgetRefusal
+      ? {
+          effect: "deny",
+          risk: evaluated.risk,
+          reasons: [budgetRefusal],
+          matched: ["builtin:autonomy"],
+        }
+      : evaluated;
     let auditId: number;
     try {
       auditId = this.o.audit.record({
@@ -213,6 +235,9 @@ export class PolicyEngine {
           resource: clip(request.resource, 200),
           dataClass: request.dataClass,
           trustedByUser: request.actor.trustedByUser,
+          autonomy: request.autonomy
+            ? { runId: clip(request.autonomy.runId, 100), level: request.autonomy.level }
+            : undefined,
           reasons: decision.reasons,
           matched: decision.matched,
           expiresAt: decision.expiresAt?.toISOString(),

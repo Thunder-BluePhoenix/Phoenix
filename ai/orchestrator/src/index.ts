@@ -10,4 +10,5 @@ export * from "./evidence";
 export * from "./orchestrator";
 export * from "./plan";
 export * from "./store";
+export * from "./specialists";
 export * from "./types";

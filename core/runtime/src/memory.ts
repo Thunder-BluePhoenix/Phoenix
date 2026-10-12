@@ -3,8 +3,8 @@
 //
 // Memory inside Core (Phase 28 wiring, Phase 29 governance).
 //
-// What flows in: git commits (live events), meeting summaries (after the meeting sync stores one)
-// and the markdown files the user listed. What flows out: the browser, search and "ask" routes.
+// What flows in: git commits (live events), curated GitHub PR/CI/deployment metadata,
+// meeting summaries (after the meeting sync stores one), and user-listed markdown files.
 // EVERY read goes through `canView` with the viewer this runtime was built with (the device owner
 // unless a test or a future multi-user build says otherwise), so totals, counts and the page never
 // reflect an item the viewer cannot see.
@@ -16,6 +16,7 @@ import {
   DEFAULT_RETENTION_DAYS,
   docPathProblem,
   ingestCommits,
+  ingestEngineeringRecords,
   ingestDocs,
   ingestGitEvent,
   ingestMeetings,
@@ -25,6 +26,7 @@ import {
   MemoryStore,
   nodeDocReader,
   ownerViewer,
+  type EngineeringRecord,
   type IngestReport,
   type MemoryDomain,
   type MemoryItem,
@@ -45,9 +47,9 @@ import type { CapabilityManager } from "@phoenix/capability-manager";
 import type { EventBus } from "@phoenix/event-bus";
 import type { Logger } from "@phoenix/logging";
 import type { AuditLog } from "@phoenix/permissions";
-import type { RetrievalRuntime } from "./retrieval";
 import type { Database, MeetingStore, SettingsStore } from "@phoenix/persistence";
-import { ErrorCode, PhoenixError } from "@phoenix/protocol";
+import { ErrorCode, PhoenixError, type PhoenixEvent } from "@phoenix/protocol";
+import type { RetrievalRuntime } from "./retrieval";
 
 const SETTINGS_KEY = "memory.settings";
 /** Longest memory text returned by a list, search or ask response. */
@@ -134,12 +136,64 @@ export interface MemoryHooks {
 
 const REVIEW_SOURCE = "meeting-review";
 
+/** Do not allow an event payload to turn arbitrary text into a repository permission scope. */
+const REPOSITORY =
+  /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\/[A-Za-z0-9_](?:[A-Za-z0-9_.-]{0,98}[A-Za-z0-9_])?$/;
+// Only these GitHub event shapes have checked identifiers. Issue, decision, architecture,
+// infra, people, incident and Fawkes still lack trusted structured producers here.
+const GITHUB_STATES = {
+  "github.pr.opened": ["pr", "opened", "number", "PR"],
+  "github.pr.merged": ["pr", "merged", "number", "PR"],
+  "github.pr.closed": ["pr", "closed", "number", "PR"],
+  "github.ci.started": ["repo", "started", "run_id", "CI"],
+  "github.ci.passed": ["repo", "succeeded", "run_id", "CI"],
+  "github.ci.failed": ["repo", "failed", "run_id", "CI"],
+  "github.ci.cancelled": ["repo", "cancelled", "run_id", "CI"],
+  "github.deploy.started": ["deployment", "started", "deployment_id", "Deployment"],
+  "github.deploy.succeeded": ["deployment", "succeeded", "deployment_id", "Deployment"],
+  "github.deploy.failed": ["deployment", "failed", "deployment_id", "Deployment"],
+} as const;
+
+function githubEngineeringRecord(event: PhoenixEvent): EngineeringRecord | null {
+  if (event.source !== "github" || !Object.hasOwn(GITHUB_STATES, event.event_type)) return null;
+  const [domain, state, key, label] = GITHUB_STATES[event.event_type as keyof typeof GITHUB_STATES];
+  const repo = event.payload.repository;
+  const id = event.payload[key];
+  if (
+    typeof repo !== "string" ||
+    !REPOSITORY.test(repo) ||
+    repo.includes("..") ||
+    typeof id !== "number" ||
+    !Number.isSafeInteger(id) ||
+    id <= 0
+  )
+    return null;
+  const sourceRef = `${repo}/${key}/${id}`;
+  return {
+    domain,
+    source: "github",
+    sourceRef,
+    recordId: event.event_id,
+    scope: `repo:${repo}`,
+    observedAt: event.timestamp,
+    sensitivity: "internal",
+    evidenceKind: "fact",
+    subject: `${label}#${id}`,
+    state,
+    evidenceId: event.event_id,
+    confidence: 1,
+    freshnessTtlDays: 7,
+    retentionDays: 90,
+  };
+}
+
 export class MemoryRuntime implements MemoryApi {
   readonly store: MemoryStore;
   readonly pipeline: MemoryPipeline;
   private readonly engine: ContextEngine;
   private readonly viewer: Viewer;
   private readonly unsubscribe: () => void;
+  private readonly stopGithub: () => void;
   private readonly stopMeetingSync: () => void;
   private hooks: MemoryHooks | null = null;
   private retrieval: RetrievalRuntime | null = null;
@@ -171,6 +225,15 @@ export class MemoryRuntime implements MemoryApi {
       if (event.source !== "git" || !this.current().capture_git) return;
       ingestGitEvent(this.pipeline, event);
     });
+    this.stopGithub = d.bus.subscribe(
+      "memory-github-engineering",
+      ["github.pr.*", "github.ci.*", "github.deploy.*"],
+      (event) => {
+        if (!this.isSourceEnabled("github")) return;
+        const record = githubEngineeringRecord(event);
+        if (record) ingestEngineeringRecords(this.pipeline, [record]);
+      },
+    );
     this.stopMeetingSync = d.meetings.onChange(() => this.scheduleMeetingSync());
   }
 
@@ -291,6 +354,7 @@ export class MemoryRuntime implements MemoryApi {
   async close(): Promise<void> {
     this.closed = true;
     this.unsubscribe();
+    this.stopGithub();
     this.stopMeetingSync();
     await this.docChain.catch(() => undefined);
   }
@@ -543,8 +607,36 @@ export class MemoryRuntime implements MemoryApi {
         source_ref: f.sourceRef,
         observed_at: f.observedAt,
         sensitivity: f.sensitivity,
+        classification: "stored_fact" as const,
+        confidence: f.confidence ?? null,
+        freshness: f.freshness,
+      })),
+      retrieved_evidence: (answer.retrievedEvidence ?? []).map((e) => ({
+        id: e.id,
+        text: cap(e.text),
+        domain: e.domain,
+        source: e.source,
+        source_ref: e.sourceRef,
+        observed_at: e.observedAt,
+        sensitivity: e.sensitivity,
+        classification: "retrieved_evidence" as const,
+        confidence: e.confidence ?? null,
+        freshness: e.freshness,
+      })),
+      stored_interpretations: answer.storedInterpretations.map((item) => ({
+        id: item.id,
+        text: cap(item.text),
+        domain: item.domain,
+        source: item.source,
+        source_ref: item.sourceRef,
+        observed_at: item.observedAt,
+        sensitivity: item.sensitivity,
+        classification: "stored_interpretation" as const,
+        confidence: item.confidence ?? null,
+        freshness: item.freshness,
       })),
       interpretation: answer.interpretation,
+      interpretation_classification: answer.interpretation === null ? null : "hypothesis",
       processed_by: answer.model?.processedBy ?? null,
       ai_used: answer.interpretation !== null,
       note: answer.noInterpretationReason,

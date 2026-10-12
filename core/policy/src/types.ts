@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import type { Permission, SideEffect } from "@phoenix/protocol";
+import type { AutonomyContext } from "./autonomy";
 
 export const ACTOR_KINDS = ["user", "agent", "capability", "system"] as const;
 export type ActorKind = (typeof ACTOR_KINDS)[number];
@@ -39,6 +40,8 @@ export interface ToolRequest {
   resource?: string;
   dataClass?: DataClass;
   at: Date;
+  /** Explicit autonomous run provenance; never inferred from actor kind. */
+  autonomy?: AutonomyContext;
 }
 
 export interface PolicyDecision {

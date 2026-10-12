@@ -2,7 +2,13 @@
 // Copyright (C) 2026 Phoenix contributors
 import type { PublishResult } from "@phoenix/event-bus";
 import type { Logger } from "@phoenix/logging";
-import type { CapabilityManifest, NewEvent, Permission } from "@phoenix/protocol";
+import type {
+  AITool,
+  AIContextSource,
+  CapabilityManifest,
+  NewEvent,
+  Permission,
+} from "@phoenix/protocol";
 
 export type HealthStatus = "unknown" | "healthy" | "degraded" | "unhealthy";
 
@@ -69,6 +75,9 @@ export interface CapabilityView {
   commands: { name: string; description: string; side_effect: string }[];
   events: string[];
   data_categories: string[];
+  /** AI disclosures displayed before explicit user-only activation. */
+  context_sources: AIContextSource[];
+  ai_tools: AITool[];
   config: Record<string, unknown>;
   config_schema?: Record<string, unknown>;
   /** Declared and stored credentials (never the values). */

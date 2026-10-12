@@ -325,7 +325,7 @@ export class KnowledgeGraph {
       this.upsertNode(dst, endpoint);
       this.db
         .prepare(
-          "INSERT OR IGNORE INTO kg_edges (id, src, rel, dst, created_at) VALUES (?, ?, ?, ?, ?)",
+          "INSERT INTO kg_edges (id, src, rel, dst, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
         )
         .run(id, nodeId(src), rel, nodeId(dst), this.stamp());
       this.addProvenance("edge", id, provenance);
@@ -747,7 +747,7 @@ export class KnowledgeGraph {
     const id = nodeId(ref);
     if (this.isSuppressed(id)) return null;
     this.prepare(
-      "INSERT OR IGNORE INTO kg_nodes (id, type, key, key_lc, created_at) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO kg_nodes (id, type, key, key_lc, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
     ).run(id, ref.type, ref.key, ref.key.toLowerCase(), this.stamp());
     return id;
   }

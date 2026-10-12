@@ -440,6 +440,7 @@ describe("AI on: a model helps with the diagnosis, and its output is checked by 
         memory: [
           {
             text: "Decision: gitleaks scans run on every pull request; allowlist lives in .gitleaks.toml",
+            scope: `repo:${REPO}`,
             dedupeKey: "m1",
           },
         ],
@@ -464,6 +465,22 @@ describe("AI on: a model helps with the diagnosis, and its output is checked by 
     expect(prompt).toContain(".gitleaks.toml");
     const model = trace.conclusion!.diagnosis!.claims.filter((x) => x.origin === "model");
     expect(model[0]!.evidenceIds).toEqual([memory[0]!.id]);
+  });
+
+  it("does not pass another repository's memory into a CI diagnosis", async () => {
+    const { rig, trace } = await run({
+      ai: true,
+      memory: [
+        {
+          text: "OTHER-REPO-PRIVATE gitleaks decision",
+          dedupeKey: "other",
+          scope: "repo:elsewhere/secret",
+        },
+      ],
+    });
+    expect(trace.run.state).toBe("COMPLETED");
+    expect(JSON.stringify(trace.evidence)).not.toContain("OTHER-REPO-PRIVATE");
+    expect(JSON.stringify(rig.probe.calls)).not.toContain("OTHER-REPO-PRIVATE");
   });
 
   it("cancelling while the model is thinking abandons it: CANCELLED, no conclusion stored", async () => {

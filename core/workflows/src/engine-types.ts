@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 import type { Logger } from "@phoenix/logging";
 import type { ToolCall, ToolCallResult, ToolContract } from "@phoenix/ai-tool-gateway";
-import type { PolicyAuditSink } from "@phoenix/policy";
+import type { AutonomyController, PolicyAuditSink } from "@phoenix/policy";
 import type { PhoenixEvent } from "@phoenix/protocol";
 import type { AiStep } from "./ai-step";
 import type { ApprovalPort } from "./approvals";
@@ -73,6 +73,8 @@ export interface EngineDeps {
   audit: PolicyAuditSink;
   /** Read before every step and every tool call: the emergency stop. */
   isKillSwitchEngaged: () => boolean;
+  /** Controlled autonomy settings; no autonomous execution without an audited OS sandbox. */
+  autonomy?: AutonomyController;
   /**
    * Called when the engine gives up on a tool call that is still running (step timeout, stop).
    * The runtime wires it to withdraw that call's pending confirmation. The capability itself is

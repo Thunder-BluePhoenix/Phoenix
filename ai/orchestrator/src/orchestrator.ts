@@ -34,6 +34,7 @@ import { runEvent, type RunEventFacts, type RunEventKind } from "./events";
 import { EvidenceBook } from "./evidence";
 import { checkPlan, safeText } from "./plan";
 import { AgentStore, type StoredOutcome, type StoredRun, type StoredStep } from "./store";
+import { SpecialistRegistry } from "./specialists";
 import {
   DEFAULT_LIMITS,
   STAGES,
@@ -167,6 +168,7 @@ function cleanDetail(detail: Detail): Detail {
 export class Orchestrator {
   readonly limits: Limits;
   private readonly store: AgentStore;
+  readonly specialists = new SpecialistRegistry();
   private readonly defs: Record<string, AgentDefinition> = {};
   private readonly active: Record<string, RunState> = {};
   private readonly now: () => number;
@@ -188,6 +190,12 @@ export class Orchestrator {
         throw new Error(`Agent kind "${def.descriptor.kind}" is registered twice`);
       }
       this.defs[def.descriptor.kind] = def;
+      if (def.specialist)
+        this.specialists.register(
+          def as AgentDefinition & { specialist: NonNullable<AgentDefinition["specialist"]> },
+        );
+      if (def.specialist?.approval === "none" && def.specialist.tools.some((t) => !t.includes(".")))
+        throw new Error("Specialist tools must name a capability command");
     }
     this.unsubscribeApprovals = o.approvals?.subscribe((s) => this.onApproval(s)) ?? (() => {});
     this.recoverInterrupted();
@@ -228,6 +236,16 @@ export class Orchestrator {
     };
     const classified = def.classify(task);
     if (!classified.ok) throw new InvalidTaskError(classified.reason);
+    if (def.specialist) {
+      const problems = this.specialists.inputProblems(def.descriptor.kind, task.input);
+      if (problems.length)
+        throw new InvalidTaskError(`Invalid specialist input: ${safeText(problems[0], 120)}`);
+      if (
+        classified.target.resource !== this.specialists.resource(def.descriptor.kind, task.input) ||
+        classified.target.dataClass !== def.specialist.scope.dataClass
+      )
+        throw new InvalidTaskError("Specialist target exceeds its declared scope");
+    }
 
     const run: AgentRun = {
       id: this.newId("run"),
@@ -260,8 +278,12 @@ export class Orchestrator {
       done: Promise.resolve(),
     };
     this.active[run.id] = rs;
-    rs.deadline = this.setTimer(this.limits.maxWallMs, () =>
-      this.abort(rs, "budget", `the run exceeded its ${this.limits.maxWallMs} ms time budget`),
+    const maxWallMs = Math.min(
+      this.limits.maxWallMs,
+      def.specialist?.timeoutMs ?? this.limits.maxWallMs,
+    );
+    rs.deadline = this.setTimer(maxWallMs, () =>
+      this.abort(rs, "budget", `the run exceeded its ${maxWallMs} ms time budget`),
     );
     rs.done = this.execute(rs);
     return task;
@@ -408,8 +430,12 @@ export class Orchestrator {
       this.abort(rs, "cancel", "the emergency stop is engaged");
       throw this.abortError(rs);
     }
-    if (this.now() - rs.startedMs > this.limits.maxWallMs) {
-      this.abort(rs, "budget", `the run exceeded its ${this.limits.maxWallMs} ms time budget`);
+    const maxWallMs = Math.min(
+      this.limits.maxWallMs,
+      rs.def.specialist?.timeoutMs ?? this.limits.maxWallMs,
+    );
+    if (this.now() - rs.startedMs > maxWallMs) {
+      this.abort(rs, "budget", `the run exceeded its ${maxWallMs} ms time budget`);
       throw this.abortError(rs);
     }
   }
@@ -525,6 +551,12 @@ export class Orchestrator {
       (): { target: TrustedTarget } => {
         const c = def.classify(task);
         if (!c.ok) throw new RunFailure(c.reason);
+        if (
+          def.specialist &&
+          (c.target.resource !== this.specialists.resource(def.descriptor.kind, task.input) ||
+            c.target.dataClass !== def.specialist.scope.dataClass)
+        )
+          throw new RunFailure("Specialist target exceeds its declared scope");
         return { target: c.target };
       },
       (c) => ({
@@ -559,8 +591,19 @@ export class Orchestrator {
           tools: this.o.gateway.tools(),
           allowedTools: def.allowedTools,
           allowedCapabilities: def.allowedCapabilities,
-          maxSteps: this.limits.maxSteps,
+          maxSteps: Math.min(
+            this.limits.maxSteps,
+            def.specialist?.scope.maxSteps ?? this.limits.maxSteps,
+          ),
         });
+        if (
+          def.specialist?.approval === "none" &&
+          checked.ok &&
+          checked.plan.steps.some(
+            (s) => this.o.gateway.tools().find((t) => t.name === s.tool)?.sideEffect !== "read",
+          )
+        )
+          throw new PlanRejectedError(["Advisory specialist cannot execute a non-read tool"]);
         if (!checked.ok) {
           this.logger.warn("agent plan rejected", { runId: rs.run.id, problems: checked.problems });
           throw new PlanRejectedError(checked.problems);
@@ -577,6 +620,8 @@ export class Orchestrator {
         const needsApproval: string[] = [];
         for (const step of plan.steps) {
           const decision = this.o.gateway.preview?.(this.callFor(rs, step.tool, step.input));
+          if (def.specialist?.approval === "none" && decision?.effect === "require_approval")
+            throw new RunFailure("Specialist contract does not permit approval-requiring tools");
           if (decision?.effect === "deny") {
             throw new RunFailure(
               `Policy would refuse ${safeText(step.tool)}: ${safeText(decision.reasons[0] ?? "denied", 120)}`,
@@ -639,6 +684,21 @@ export class Orchestrator {
       "verify",
       async () => {
         const result = await def.verify(rc, conclusion);
+        if (def.specialist) {
+          let problems: string[];
+          try {
+            problems = this.specialists.outputProblems(
+              def.descriptor.kind,
+              result.conclusion,
+              new Set(rc.evidence.list().map((e) => e.id)),
+            );
+          } catch {
+            throw new RunFailure("Invalid specialist output: handoff could not be projected");
+          }
+          if (problems.length)
+            throw new RunFailure(`Invalid specialist output: ${safeText(problems[0], 120)}`);
+        }
+        // A verifier's failed result is still evidence of why the run was refused.
         rs.conclusion = result.conclusion;
         rs.verification = result.verification;
         if (!result.verification.passed) {
@@ -786,6 +846,7 @@ export class Orchestrator {
       task: rs.task,
       runId: rs.run.id,
       target,
+      specialist: rs.def.specialist,
       evidence: rs.evidence,
       signal: rs.controller.signal,
       availableTools: () =>
@@ -841,12 +902,26 @@ export class Orchestrator {
     if (!rs.def.allowedCapabilities.includes(capability) || !rs.def.allowedTools.includes(tool)) {
       throw reject("NOT_ALLOWED", `"${safeText(tool)}" is not allowed for this kind of task`);
     }
-    if (rs.toolCalls >= this.limits.maxToolCalls) {
-      throw reject("BUDGET", `A run may make at most ${this.limits.maxToolCalls} tool calls`);
+    const maxToolCalls = Math.min(
+      this.limits.maxToolCalls,
+      rs.def.specialist?.scope.maxToolCalls ?? this.limits.maxToolCalls,
+    );
+    if (rs.toolCalls >= maxToolCalls) {
+      throw reject("BUDGET", `A run may make at most ${maxToolCalls} tool calls`);
     }
-    rs.toolCalls++;
 
     const call = this.callFor(rs, tool, parsed.value.input);
+    if (
+      rs.def.specialist?.approval === "none" &&
+      this.o.gateway.tools().find((t) => t.name === tool)?.sideEffect !== "read"
+    )
+      throw reject("NOT_ALLOWED", "Advisory specialist cannot execute a non-read tool");
+    if (
+      rs.def.specialist?.approval === "none" &&
+      this.o.gateway.preview?.(call).effect === "require_approval"
+    )
+      throw reject("NOT_ALLOWED", "Specialist contract does not permit approval-requiring tools");
+    rs.toolCalls++;
     const contract = this.o.gateway.tools().find((t) => t.name === tool);
     let risk = "unknown";
     try {

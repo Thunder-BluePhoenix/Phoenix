@@ -86,6 +86,79 @@ async function errCode(p: Promise<unknown> | (() => unknown)): Promise<string> {
   }
 }
 
+const aiManifest = (): CapabilityManifest =>
+  manifest({
+    data_categories: ["repository_content"],
+    permissions: ["repository_access", "network"],
+    commands: [
+      {
+        name: "status",
+        description: "Read status",
+        side_effect: "read",
+        permissions: ["repository_access", "network"],
+      },
+    ],
+    ai_tools: [
+      {
+        name: "local_model",
+        description: "Process on device",
+        kind: "embedding_provider",
+        command: "status",
+        data_access: [{ category: "repository_content", sensitivity: "confidential" }],
+        permissions: ["repository_access", "network"],
+        provider: { locality: "local", provider: "ollama" },
+      },
+    ],
+  });
+
+describe("AI disclosure activation", () => {
+  it("exposes data classes and requires current-version user acknowledgment before any grants", async () => {
+    const { manager, permissions } = setup();
+    const view = manager.registerBuiltin(builtin({}, aiManifest()));
+    expect(view.ai_tools[0]?.data_access[0]?.sensitivity).toBe("confidential");
+    expect(view.data_categories).toEqual(["repository_content"]);
+    expect(await errCode(manager.enable("demo"))).toBe(ErrorCode.PERMISSION_DENIED);
+    expect(await errCode(manager.enable("demo", "system", { manifestVersion: "1.0.0" }))).toBe(
+      ErrorCode.PERMISSION_DENIED,
+    );
+    expect(await errCode(manager.enable("demo", "user", { manifestVersion: "0.9.0" }))).toBe(
+      ErrorCode.PERMISSION_DENIED,
+    );
+    expect(permissions.grants.list("demo")).toEqual([]);
+    expect((await manager.enable("demo", "user", { manifestVersion: "1.0.0" })).status).toBe(
+      "enabled",
+    );
+  });
+
+  it("refuses external AI execution even with acknowledged disclosure without an OS sandbox", async () => {
+    const { manager } = setup();
+    await manager.registerExternal(aiManifest(), "http://127.0.0.1:34561");
+    expect(await errCode(manager.enable("demo", "user", { manifestVersion: "1.0.0" }))).toBe(
+      ErrorCode.SECURITY_POLICY_BLOCKED,
+    );
+    expect(manager.get("demo").status).toBe("installed");
+  });
+  it("blocks cloud AI activation without a runtime data-class boundary", async () => {
+    const { manager, permissions } = setup();
+    const m = aiManifest();
+    m.ai_tools![0]!.provider = { locality: "cloud", provider: "remote" };
+    m.ai_tools![0]!.data_access[0]!.sensitivity = "public";
+    m.ai_tools![0]!.permissions = [
+      "repository_access",
+      "network",
+      "external_api",
+      "AI_external_processing",
+    ];
+    m.permissions.push("external_api", "AI_external_processing");
+    m.commands[0]!.permissions = [...m.ai_tools![0]!.permissions];
+    manager.registerBuiltin(builtin({}, m));
+    expect(await errCode(manager.enable("demo", "user", { manifestVersion: "1.0.0" }))).toBe(
+      ErrorCode.SECURITY_POLICY_BLOCKED,
+    );
+    expect(permissions.grants.list("demo")).toEqual([]);
+  });
+});
+
 describe("registration", () => {
   it("rejects invalid manifests and missing handlers", async () => {
     const { manager } = setup();

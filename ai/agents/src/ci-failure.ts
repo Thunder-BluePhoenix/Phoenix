@@ -17,7 +17,7 @@
 //   * With AI off (the default) or unavailable, the agent returns the same evidence and a
 //     rule-based summary, and makes no model call.
 import type { ContextEngine } from "@phoenix/ai-context";
-import type { Viewer } from "@phoenix/ai-memory";
+import { canView, type Viewer } from "@phoenix/ai-memory";
 import type { GenerateRequest, GenerateResult, PrivacyClass } from "@phoenix/ai-models";
 import {
   type AgentDefinition,
@@ -55,6 +55,7 @@ import {
   type StaleEvidence,
 } from "./grounding";
 import { isRecord } from "./guards";
+import { CI_SPECIALIST_CONTRACT } from "./ci-specialist";
 
 export const CI_FAILURE_KIND = "ci_failure";
 export const CI_FAILURE_AGENT_ID = "ci-failure";
@@ -232,15 +233,35 @@ export function createCiFailureAgent(options: CiFailureAgentOptions = {}): Agent
   function addContext(rc: RunContext, d: RunData, query: string): void {
     const ctx = options.context;
     if (!ctx) return;
+    const repository = ciInputOf(rc.task).repository;
+    const grant = rc.specialist?.context;
+    if (!grant || !grant.domains.includes("project") || grant.maxSensitivity !== "internal")
+      throw new Error("CI specialist context grant missing");
+    const viewer: Viewer = {
+      id: ctx.viewer.id,
+      grants: [
+        {
+          scope: `repo:${repository}`,
+          maxSensitivity: grant.maxSensitivity,
+          domains: grant.domains,
+        },
+      ],
+    };
     const bundle = ctx.engine.assemble({
       question: query,
-      viewer: ctx.viewer,
+      viewer,
       limit: CONTEXT_ITEMS,
       tokenBudget: CONTEXT_TOKENS,
     });
     for (const item of bundle.items) {
-      // Sensitive memories (meeting content) are never copied into an agent trace.
-      if (item.sensitivity === "sensitive") continue;
+      // A caller's broad viewer does not expand this specialist's own domain or sensitivity grant.
+      if (
+        !canView(ctx.viewer, item) ||
+        !CI_SPECIALIST_CONTRACT.context.domains.includes(item.domain) ||
+        item.sensitivity === "sensitive" ||
+        item.scope !== `repo:${repository}`
+      )
+        continue;
       const stale = item.freshness === "stale";
       // Freshness is part of the evidence text, so the model and a reader both see it.
       const marker = stale
@@ -587,6 +608,7 @@ export function createCiFailureAgent(options: CiFailureAgentOptions = {}): Agent
   // ── Definition ────────────────────────────────────────────────────────────
 
   return {
+    specialist: CI_SPECIALIST_CONTRACT,
     descriptor: {
       id: CI_FAILURE_AGENT_ID,
       kind: CI_FAILURE_KIND,

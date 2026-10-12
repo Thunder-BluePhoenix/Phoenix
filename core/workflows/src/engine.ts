@@ -7,7 +7,7 @@
 // `WorkflowAdmin`, which only the user-authenticated API layer is given.
 import { matchesPattern } from "@phoenix/event-bus";
 import { silentLogger, type Logger } from "@phoenix/logging";
-import type { Actor } from "@phoenix/policy";
+import type { Actor, AutonomyLevel } from "@phoenix/policy";
 import { createEvent, type PhoenixEvent } from "@phoenix/protocol";
 import { boundRecord, boundValue } from "./bound";
 import { realSleep, DEFAULT_CONCURRENCY, DEFAULT_RATE, type EngineDeps } from "./engine-types";
@@ -421,6 +421,35 @@ export class WorkflowEngine {
   // Held only by the runtime's user-route wrapper. Both refuse every actor that is not a trusted
   // user and audit who asked; neither is reachable from a workflow step, the tool gateway or an
   // agent (none of them is given the engine).
+
+  /** Autonomous initiation never borrows the user-only manual route. An audited OS sandbox
+   * is required before any executable autonomy level can dispatch a tool. */
+  startAutonomous(by: Actor, workflowId: string, level: AutonomyLevel): never {
+    const read = this.d.store.readDefinition(workflowId);
+    const reason =
+      by?.kind !== "agent" || !by.id
+        ? "Only an agent may request an autonomous workflow"
+        : !read || !read.ok
+          ? "Autonomous workflow definition is unavailable"
+          : (this.d.autonomy?.refusal(
+              read.definition.declares.tools.map((tool) => tool.split(".")[0] ?? ""),
+              read.definition.environment,
+              level,
+            ) ?? "Autonomous workflows require an audited OS sandbox");
+    try {
+      this.d.audit.record({
+        actor: `${by?.kind ?? "unknown"}:${by?.id ?? "unknown"}`,
+        action: "workflow.autonomy.refused",
+        decision: "denied",
+        details: { workflow: workflowId, level, reason },
+      });
+    } catch (err) {
+      throw new WorkflowError("AUDIT_FAILED", "Autonomous workflow refusal could not be audited", [
+        String(err),
+      ]);
+    }
+    throw new WorkflowError("INVALID_REQUEST", reason);
+  }
 
   /**
    * Starts one run of `workflowId` for the user, with a synthetic trigger event. It passes the

@@ -56,6 +56,8 @@ export interface ContextItem {
   observedAt: string;
   sensitivity: PrivacyClass;
   freshness: Freshness;
+  /** Source confidence, not model confidence. */
+  confidence?: number;
   /**
    * Whole days since the source last confirmed this item, by the engine's clock. Lets a caller say
    * HOW stale an item is, truthfully. Optional: a caller that builds items itself may omit it.
@@ -204,6 +206,7 @@ export class ContextEngine {
         score: c.scored.score,
         observedAt: item.observedAt,
         sensitivity: item.sensitivity,
+        confidence: item.confidence,
         freshness: freshnessOf(item, clock.now()),
         confirmedDaysAgo: Math.max(
           0,

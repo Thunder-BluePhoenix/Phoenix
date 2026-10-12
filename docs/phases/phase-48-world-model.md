@@ -5,7 +5,7 @@
 | Stage | Stage 11 — AI Evolution (v1.1 → v2.0) |
 | Release target | v1.4 |
 | Priority | Medium |
-| Status | ⬜ Not started |
+| Status | 🟨 Sourced temporal six-hop association traversal and Core/UI read path built; no automatic producer for full chain or historical snapshot guarantee; v1.4 not released |
 | Depends on | [Phase 47 — Multi-Agent Runtime](phase-47-multi-agent-runtime.md) |
 | Unblocks | [Phase 49 — Controlled Autonomous Agents](phase-49-controlled-autonomy.md) |
 
@@ -21,9 +21,9 @@ Maintain a continuously updated model of the authorised engineering environment.
 
 ## Tasks
 
-- [ ] Temporal graph layer
-- [ ] Entity identity resolution
-- [ ] Reasoning chain: prod failure → deployment → commits → service → issue → decision → meeting
+- [x] Temporal graph read layer with per-hop surviving provenance, freshness and bounded traversal (historical snapshots do not survive source replacement/deletion).
+- [x] Exact typed entity identity resolution; ambiguous display names never resolve automatically.
+- [ ] Production failure → deployment → commit → service → issue → decision → meeting chain automatically ingested (route traverses only explicitly sourced existing edges; no complete producer pipeline).
 
 ## Deliverables
 
@@ -36,6 +36,10 @@ Maintain a continuously updated model of the authorised engineering environment.
 ## Source documents
 
 - AI Evolution v1.0→v2.0 §8
+
+## Implementation notes
+
+`WorldModel.rootCauseChains` returns only complete six-hop trails with visible fresh evidence on every node/edge. The authenticated `GET /api/graph/world/failures/:key/chains` and Provenance UI say **documented association; causation not established**. Migration 20 adds `Failure` and `ASSOCIATED_WITH` while preserving existing graph rows. An `asOf` query sees only currently surviving provenance, not overwritten or withdrawn historical observations. No evidence-backed causal root cause or v1.4 release is claimed.
 
 ---
 Back to [TRACKER](TRACKER.md)

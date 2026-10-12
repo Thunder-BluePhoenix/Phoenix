@@ -6,7 +6,7 @@
 // the model call that goes through the runtime's AiService. Automation is off until the user turns
 // it on (`agents.enabled`, ADR-0010: autonomy is earned); turning it off, or engaging the kill
 // switch, cancels every active run.
-import { createCiFailureAgent, type ModelCall } from "@phoenix/ai-agents";
+import { createCiFailureAgent, createMeetingReviewAgent, type ModelCall } from "@phoenix/ai-agents";
 import { buildObservation, type RunObservation } from "@phoenix/ai-evaluation";
 import type { AiService } from "@phoenix/ai-models";
 import {
@@ -84,6 +84,7 @@ export class AgentRuntime implements AgentApi {
           aiEnabled: d.aiEnabled,
           context: d.memory.agentContext(),
         }),
+        createMeetingReviewAgent(),
         ...(d.extraAgents ?? []),
       ],
       logger: d.logger,

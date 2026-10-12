@@ -32,7 +32,7 @@ import type { EventBus } from "@phoenix/event-bus";
 import type { Logger } from "@phoenix/logging";
 import type { PermissionGateway } from "@phoenix/permissions";
 import type { Database } from "@phoenix/persistence";
-import type { Actor } from "@phoenix/policy";
+import type { Actor, AutonomyController } from "@phoenix/policy";
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
 import {
   approvalsFromPermissions,
@@ -173,6 +173,7 @@ export interface WorkflowsDeps {
   permissions: PermissionGateway;
   ai: AiService;
   context: ContextEngine;
+  autonomy?: AutonomyController;
   logger: Logger;
 }
 
@@ -195,6 +196,7 @@ export class WorkflowsRuntime implements WorkflowsApi {
       approvals: approvalsFromPermissions(d.permissions),
       audit: d.permissions.audit,
       isKillSwitchEngaged: () => d.permissions.isKillSwitchEngaged(),
+      ...(d.autonomy ? { autonomy: d.autonomy } : {}),
       // The call given up on keeps its prompt otherwise: withdraw it.
       abandon: (tool) => {
         const dot = tool.indexOf(".");
