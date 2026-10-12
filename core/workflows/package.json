@@ -19,5 +19,8 @@
     "@phoenix/persistence": "workspace:*",
     "@phoenix/policy": "workspace:*",
     "@phoenix/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@phoenix/state-engine": "workspace:*"
   }
 }

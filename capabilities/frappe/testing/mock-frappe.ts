@@ -36,6 +36,7 @@ export type WriteMode =
   | "huge"
   | "huge-declared"
   | "bad-name"
+  | "truncated"
   | "hang"
   | "drop-after-create";
 
@@ -108,8 +109,15 @@ export async function startMockFrappe(): Promise<MockFrappe> {
     filters.every((f) => {
       if (!Array.isArray(f) || f[1] !== "like" || typeof f[0] !== "string") return false;
       const value = doc[f[0]];
-      const needle = String(f[2]).replace(/^%|%$/g, "");
-      return typeof value === "string" && value.includes(needle);
+      const pattern = String(f[2]);
+      const regex = new RegExp(
+        `^${pattern
+          .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+          .replace(/%/g, ".*")
+          .replace(/_/g, ".")}$`,
+        "s",
+      );
+      return typeof value === "string" && regex.test(value);
     });
 
   const readBody = (req: IncomingMessage) =>
@@ -178,6 +186,8 @@ export async function startMockFrappe(): Promise<MockFrappe> {
       case "hang":
         return;
       case "ok":
+      case "truncated":
+        break;
       case "drop-after-create":
         break;
     }
@@ -189,11 +199,19 @@ export async function startMockFrappe(): Promise<MockFrappe> {
       } catch {
         return json(res, 400, { exc_type: "ValidationError" });
       }
+      if (mode === "truncated") return json(res, 200, { data: [{ name: "TASK-00001" }] });
       const limit = Number(url.searchParams.get("limit_page_length") ?? 20);
+      const start = Number(url.searchParams.get("limit_start") ?? 0);
+      const fields = JSON.parse(url.searchParams.get("fields") ?? '["name"]') as string[];
       const data = tasks
         .filter((t) => matches(t.doc, filters))
-        .slice(0, limit)
-        .map((t) => ({ name: t.name }));
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .slice(start, start + limit)
+        .map((t) =>
+          Object.fromEntries(
+            fields.map((field) => [field, field === "name" ? t.name : t.doc[field]]),
+          ),
+        );
       return json(res, 200, { data });
     }
     if (method !== "POST") return json(res, 405, { exc_type: "MethodNotAllowed" });

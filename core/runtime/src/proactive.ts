@@ -193,7 +193,16 @@ export class ProactiveRuntime {
                 (raw as Record<string, unknown>).task ??
                 (raw as Record<string, unknown>).description)
               : null;
-        return typeof value === "string" && value.trim().slice(0, 500) === text;
+        const assigned =
+          raw && typeof raw === "object"
+            ? ((raw as Record<string, unknown>).owner ?? (raw as Record<string, unknown>).assignee)
+            : null;
+        return (
+          typeof value === "string" &&
+          value.trim().slice(0, 500) === text &&
+          !(typeof assigned === "string" && assigned.trim()) &&
+          (source !== "summary" || quote === value.trim().slice(0, 500))
+        );
       }) === true;
     return (
       inSummary &&

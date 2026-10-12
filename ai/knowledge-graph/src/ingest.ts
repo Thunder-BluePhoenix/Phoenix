@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 //
-// Capability events, meetings and memory -> graph. Every function here is deterministic: a fact is
-// either carried by the source (a commit's author and files, a PR's number and branch, an issue's
-// assignee) or spelled out in its text (`#12`, `PROJ-45`, `ADR-0014`, `Phase 13`). Nothing is guessed
-// and no model is called. A person is a name or login and nothing else.
-//
-// Provenance: what a capability reported is asserted by `capability`; what a pattern found in text is
-// asserted by `rule` (with the matched words in the detail). Both are facts. Only `ai:<model>` rows,
-// which this module never writes, make an edge `proposed`.
+// Capability events, meetings and memory -> graph. A token in text is a candidate reference, not
+// proof that its target exists. Text mentions become rule-backed facts only for existing graph
+// targets; configured repository names retain their explicit REFERENCES behavior. Unknown targets
+// are omitted. Capability facts (such as an issue event, commit file or documented ADR/phase) may
+// establish targets independently of text extraction. Provenance retains source scope/sensitivity.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { digest as memoryDigest, type MemoryItem, type MemoryStore } from "@phoenix/ai-memory";
@@ -133,6 +130,8 @@ export class GraphIngestor {
   private readonly prefixes: Record<string, true> = {};
   private readonly rules: readonly FeatureRule[];
   private readonly roots: readonly DocumentRoot[];
+  private pendingMentions:
+    { base: Base; from: NodeRef; text: string; repo: string | undefined }[] | null = null;
 
   constructor(private readonly options: IngestorOptions) {
     this.graph = options.graph;
@@ -608,10 +607,22 @@ export class GraphIngestor {
    */
   ingestMemory(store: MemoryStore): IngestOutcome {
     const out: IngestOutcome = { written: 0, skipped: 0 };
-    for (let offset = 0; ; offset += 500) {
-      const page = store.list({ limit: 500, offset });
-      for (const item of page) this.ingestMemoryItem(item, out);
-      if (page.length < 500) break;
+    const pending: { base: Base; from: NodeRef; text: string; repo: string | undefined }[] = [];
+    this.pendingMentions = pending;
+    try {
+      for (let offset = 0; ; offset += 500) {
+        const page = store.list({ limit: 500, offset });
+        for (const item of page) this.ingestMemoryItem(item, out);
+        if (page.length < 500) break;
+      }
+    } finally {
+      this.pendingMentions = null;
+    }
+    // Resolve text only after every target in this batch has been materialized.
+    for (const mention of pending) {
+      this.graph.transaction(() =>
+        this.mentions(mention.base, mention.from, mention.text, mention.repo, out),
+      );
     }
     return out;
   }
@@ -789,22 +800,25 @@ export class GraphIngestor {
     repo: string | undefined,
     out: IngestOutcome,
   ): void {
+    if (this.pendingMentions !== null) {
+      this.pendingMentions.push({ base, from, text, repo });
+      return;
+    }
     const source = from.type;
     for (const m of extractMentions(text, this.mentionContext(repo))) {
       if (nodeId(m.target) === nodeId(from)) continue;
       // The relation must fit the source's type; a document cannot FIX an issue, a Decision cannot MENTION a Commit.
       try {
-        this.edge(
-          base,
-          from,
-          m.rel,
-          m.target,
-          { matched: m.matched, from_type: source },
-          out,
-          "rule",
-          undefined,
-          m.confidence,
-        );
+        if (
+          this.graph.assertEdge(
+            from,
+            m.rel,
+            m.target,
+            this.provenance(base, "rule", { matched: m.matched, from_type: source }, m.confidence),
+            m.target.type !== "Repository",
+          ) !== null
+        )
+          out.written++;
       } catch {
         out.skipped++;
       }

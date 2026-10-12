@@ -296,14 +296,16 @@ export class KnowledgeGraph {
 
   /**
    * Creates the edge (and its endpoints, with the same provenance but no detail) and records one
-   * provenance row. Null when a suppressed person or a rejected AI proposal blocks it. Throws when
-   * the relation does not join these node types.
+   * provenance row. A verified textual reference may request `existingTarget`: its target must
+   * already exist and receives no provenance from merely being mentioned. Null when a suppressed
+   * person or a rejected AI proposal blocks it. Throws for incompatible node types.
    */
   assertEdge(
     src: NodeRef,
     rel: Relation,
     dst: NodeRef,
     provenance: ProvenanceInput,
+    existingTarget = false,
   ): string | null {
     if (!isRelation(rel)) throw invalid(`unknown relation "${String(rel)}"`);
     const schema = RELATION_SCHEMA[rel];
@@ -317,12 +319,13 @@ export class KnowledgeGraph {
       if (problem) throw invalid(`${ref.type}: ${problem}`);
     }
     if (this.isSuppressed(nodeId(src)) || this.isSuppressed(nodeId(dst))) return null;
+    if (existingTarget && !this.hasNode(nodeId(dst))) return null;
     if (provenance.assertedBy.startsWith("ai:") && this.isRejected(id)) return null;
     let result: string | null = null;
     this.transaction(() => {
       const endpoint: ProvenanceInput = { ...provenance, detail: {} };
       this.upsertNode(src, endpoint);
-      this.upsertNode(dst, endpoint);
+      if (!existingTarget) this.upsertNode(dst, endpoint);
       this.db
         .prepare(
           "INSERT INTO kg_edges (id, src, rel, dst, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",

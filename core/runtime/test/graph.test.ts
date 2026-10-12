@@ -119,7 +119,7 @@ async function ingestCommits(core: Core, dir: string, shas: string[]) {
 }
 
 describe("commits become graph facts", () => {
-  it("a live commit event is enriched from the repository: author name, files and mentions, all citing the event", async () => {
+  it("a live commit event is enriched from the repository: author and files cite the event; unknown mentions are not facts", async () => {
     const { dir, shas } = repo();
     const core = await boot();
     await ingestCommits(core, dir, shas);
@@ -137,7 +137,7 @@ describe("commits become graph facts", () => {
     expect(commit.origin[0]).toMatchObject({ capability: "git", sensitivity: "internal" });
     // Author EMAIL addresses are never stored.
     expect(JSON.stringify(commit)).not.toContain("example.invalid");
-    expect(commit.visible_edges).toBeGreaterThanOrEqual(4);
+    expect(commit.visible_edges).toBeGreaterThanOrEqual(3);
   });
 
   it("answers 'which commits touched <path>' with the explanation path for each", async () => {

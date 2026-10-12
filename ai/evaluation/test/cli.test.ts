@@ -30,6 +30,41 @@ describe("cli output", () => {
     if (!report) throw new Error("no golden report");
     expect(formatVerdict(evaluateGate(report, GATES["v0.7"]!))).toContain("PROPOSAL, not agreed");
   });
+  it("prints real quality evidence separately from safety findings", () => {
+    const report = readReport(GOLDEN_PATH);
+    if (!report) throw new Error("no golden report");
+    const real = {
+      ...report,
+      suite: "real-ollama",
+      scenarios: [
+        {
+          ...report.scenarios[0]!,
+          category: "prompt_injection" as const,
+          id: "reviewed-real",
+          metrics: {
+            ...report.scenarios[0]!.metrics,
+            grounding: { claims: 1, reportedCoverage: 1, citedExists: 1, supported: 0 },
+          },
+        },
+      ],
+    };
+    const verdict = evaluateGate(
+      {
+        report,
+        realReport: real,
+        realQuality: {
+          requiredCategories: ["prompt_injection"],
+          requiredScenarioIds: ["reviewed-real"],
+        },
+      },
+      GATES["v0.5"]!,
+    );
+    const text = formatVerdict(verdict);
+    expect(text).toContain("real quality: 1 claims, supported 0.000, cited 1.000");
+    expect(text).toContain("real scenarios: reviewed-real");
+    expect(text).toContain("unsupported claims");
+    expect(text).not.toContain("SAFETY defect");
+  });
   it("the report table has one line per category with its interval", () => {
     const report = readReport(GOLDEN_PATH);
     if (!report) throw new Error("no golden report");

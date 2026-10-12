@@ -6,7 +6,7 @@
 import { createHarness, type Harness } from "@phoenix/sdk-testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FAKE_GITHUB_TOKEN } from "../../../protocol/testing/fake-secrets";
-import { createGithubCapability, issueMarker, issuePayload } from "../src";
+import { createGithubCapability, createIssue, issueMarker, issuePayload } from "../src";
 import {
   MOCK_REMOTE_MARKER,
   MOCK_TOKEN,
@@ -18,6 +18,15 @@ import {
 
 const REPO = "octo/phoenix";
 const KEY = "plan1-task1-abcdef0123456789";
+const OTHER_KEY = "plan1-task2-abcdef0123456789";
+const recentPath = `/repos/${REPO}/issues?state=all&sort=created&direction=desc&per_page=30`;
+
+function direct(key = KEY) {
+  return createIssue(
+    { repository: REPO, idempotency_key: key, title: "T" },
+    { baseUrl: gh!.url, token: MOCK_WRITE_TOKEN, signal: new AbortController().signal },
+  );
+}
 
 let h: Harness | undefined;
 let gh: MockGithub | undefined;
@@ -142,6 +151,112 @@ describe("creating an issue", () => {
     await create({ title: "T" });
     await create({ title: "T", idempotency_key: ["other-key", "abcdef", "0123456789"].join("-") });
     expect(posts()).toHaveLength(2);
+  });
+
+  it("shares one pending lookup and POST for concurrent calls with the same repository/key", async () => {
+    await ready();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    gh!.control.respond = (path, res) => {
+      if (path !== recentPath) return false;
+      entered.resolve();
+      void release.promise.then(() => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end("[]");
+      });
+      return true;
+    };
+    const first = direct();
+    await entered.promise;
+    const second = direct();
+    expect(gh!.requests.filter((r) => r.path === recentPath)).toHaveLength(1);
+    release.resolve();
+    const [one, two] = await Promise.all([first, second]);
+    expect(one).toEqual(two);
+    expect(one.status).toBe("created");
+    expect(posts()).toHaveLength(1);
+    expect(gh!.issues).toHaveLength(1);
+  });
+
+  it("allows another key to finish while the first key's lookup is pending", async () => {
+    await ready();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let held = false;
+    gh!.control.respond = (path, res) => {
+      if (path !== recentPath || held) return false;
+      held = true;
+      entered.resolve();
+      void release.promise.then(() => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end("[]");
+      });
+      return true;
+    };
+    const first = direct();
+    await entered.promise;
+    const other = await direct(OTHER_KEY);
+    expect(other).toMatchObject({ status: "created", idempotency_key: OTHER_KEY });
+    expect(posts()).toHaveLength(1);
+    release.resolve();
+    expect(await first).toMatchObject({ status: "created", idempotency_key: KEY });
+    expect(posts()).toHaveLength(2);
+  });
+
+  it("shares a failed lookup, then permits an explicit retry after the flight settles", async () => {
+    await ready();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    gh!.control.respond = (path, res) => {
+      if (path !== recentPath) return false;
+      entered.resolve();
+      void release.promise.then(() => {
+        res.writeHead(503);
+        res.end();
+      });
+      return true;
+    };
+    const first = direct().catch((error: unknown) => error);
+    await entered.promise;
+    const second = direct().catch((error: unknown) => error);
+    release.resolve();
+    const [one, two] = await Promise.all([first, second]);
+    expect(one).toBeInstanceOf(Error);
+    expect(two).toBe(one);
+    expect(posts()).toHaveLength(0);
+    gh!.control.respond = undefined;
+    expect(await direct()).toMatchObject({ status: "created" });
+    expect(posts()).toHaveLength(1);
+  });
+
+  it("never issues a second write for concurrent callers when the POST outcome is unknown", async () => {
+    await ready({ mode: "store-then-drop" });
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    gh!.control.respond = (path, res) => {
+      if (path !== recentPath) return false;
+      entered.resolve();
+      void release.promise.then(() => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end("[]");
+      });
+      return true;
+    };
+    const first = direct().catch((error: unknown) => error);
+    await entered.promise;
+    const second = direct().catch((error: unknown) => error);
+    release.resolve();
+    const [one, two] = await Promise.all([first, second]);
+    expect(one).toBeInstanceOf(Error);
+    expect(two).toBe(one);
+    if (!(one instanceof Error)) throw new Error("Expected the shared POST to fail");
+    expect(one.message).toMatch(/may or may not have been created/);
+    expect(posts()).toHaveLength(1);
+    expect(gh!.issues).toHaveLength(1);
+    gh!.control.respond = undefined;
+    gh!.writeMode.current = "ok";
+    expect(await direct()).toMatchObject({ status: "existing", number: 1 });
+    expect(posts()).toHaveLength(1);
   });
 
   it("a pull request that carries the marker is not mistaken for the issue", async () => {

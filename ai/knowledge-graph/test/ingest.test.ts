@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createEvent } from "@phoenix/protocol";
 import { FAKE_AWS_KEY } from "../../../protocol/testing/fake-secrets";
 import { GRAPH_EVENT_PATTERNS, nodeId } from "../src";
-import { OWNER, SHA_A, SHA_B, T0, event, rig, type Rig } from "./helpers";
+import { OWNER, SHA_A, SHA_B, T0, event, prov, rig, viewerOf, type Rig } from "./helpers";
 
 const R = { repositoryAliases: { phoenix: "o/phoenix" }, trackerPrefixes: ["PROJ"] };
 
@@ -27,7 +27,7 @@ describe("git events and commits", () => {
     ).not.toBeNull();
   });
 
-  it("an event with no message still gives the commit; later backfill adds its author, files and mentions", () => {
+  it("an event without a message still gives the commit; backfill adds author and files but not unknown targets", () => {
     const r = rig({ ...R, featureRules: [{ prefix: "ai/memory/", feature: "memory" }] });
     r.ingest.handle(event("git.commit.created", { repository: "phoenix", sha: SHA_A }));
     r.ingest.ingestCommit({
@@ -43,13 +43,69 @@ describe("git events and commits", () => {
     expect(rel(`Person:ada lovelace|AUTHORED|${id}`)?.provenance[0]?.assertedBy).toBe("capability");
     expect(rel(`${id}|TOUCHES|Feature:memory`)).not.toBeNull();
     expect(rel(`${id}|TOUCHES|Document:o/phoenix:README.md`)).not.toBeNull();
-    expect(rel(`${id}|MENTIONS|Issue:o/phoenix#12`)?.provenance[0]).toMatchObject({
-      assertedBy: "rule",
-    });
-    expect(rel(`${id}|MENTIONS|Issue:PROJ-3`)).not.toBeNull();
-    expect(rel(`${id}|REFERENCES|Feature:phase-28`)).not.toBeNull();
+    expect(rel(`${id}|MENTIONS|Issue:o/phoenix#12`)).toBeNull();
+    expect(rel(`${id}|MENTIONS|Issue:PROJ-3`)).toBeNull();
+    expect(rel(`${id}|REFERENCES|Feature:phase-28`)).toBeNull();
     // Display name only in the person's provenance, not an email.
     expect(r.graph.node(OWNER, "Person:ada lovelace")?.label).toBe("Ada Lovelace");
+  });
+
+  it("links verified issue keys, ADRs and phases but not absent lookalikes", () => {
+    const r = rig(R);
+    r.ingest.handle(
+      event("issues.assigned", { tracker: "github", key: "o/phoenix#12", title: "Known issue" }),
+    );
+    r.ingest.handle(
+      event("issues.assigned", { tracker: "linear", key: "PROJ-3", title: "Known task" }),
+    );
+    r.graph.upsertNode({ type: "Decision", key: "ADR-0014" }, prov());
+    r.graph.upsertNode({ type: "Feature", key: "phase-28" }, prov());
+    r.ingest.ingestCommit({
+      repository: "phoenix",
+      sha: SHA_A,
+      at: T0,
+      message:
+        "Fix #12 and PROJ-3, see ADR-0014 and Phase 28; not ADR-0999 or Phase 99 or PROJ-4 or #13",
+    });
+    const from = `Commit:o/phoenix@${SHA_A}`;
+    for (const [rel, target] of [
+      ["FIXES", "Issue:o/phoenix#12"],
+      ["MENTIONS", "Issue:PROJ-3"],
+      ["MENTIONS", "Decision:ADR-0014"],
+      ["REFERENCES", "Feature:phase-28"],
+    ] as const) {
+      expect(r.graph.edge(OWNER, `${from}|${rel}|${target}`)?.status).toBe("fact");
+    }
+    for (const [rel, target] of [
+      ["MENTIONS", "Issue:o/phoenix#13"],
+      ["MENTIONS", "Issue:PROJ-4"],
+      ["MENTIONS", "Decision:ADR-0999"],
+      ["REFERENCES", "Feature:phase-99"],
+    ] as const) {
+      expect(r.graph.edge(OWNER, `${from}|${rel}|${target}`)).toBeNull();
+      expect(r.graph.node(OWNER, target)).toBeNull();
+    }
+  });
+
+  it("does not reveal a verified target across viewer scopes", () => {
+    const r = rig(R);
+    r.ingest.handle(
+      event("issues.assigned", { tracker: "github", key: "o/phoenix#12", title: "Private issue" }),
+    );
+    r.ingest.ingestCommit(
+      { repository: "phoenix", sha: SHA_A, at: T0, message: "see #12" },
+      { scope: "repo:secret" },
+    );
+    const edge = `Commit:o/phoenix@${SHA_A}|MENTIONS|Issue:o/phoenix#12`;
+    expect(r.graph.edge(OWNER, edge)?.status).toBe("fact");
+    expect(r.graph.edge(viewerOf("repo:o/phoenix"), edge)).toBeNull();
+    expect(
+      r.graph.adjacent(viewerOf("repo:o/phoenix"), `Issue:o/phoenix#12`, {
+        rel: "MENTIONS",
+        limit: 10,
+      }).edges,
+    ).toEqual([]);
+    expect(r.graph.edge(viewerOf("repo:secret"), edge)).toBeNull();
   });
 
   it("re-ingesting the same history changes nothing", () => {
@@ -127,7 +183,7 @@ describe("git events and commits", () => {
 });
 
 describe("github events", () => {
-  it("pull requests: node, repository, author, and a mention in the title", () => {
+  it("pull requests keep capability data but do not assert unknown title references", () => {
     const r = rig(R);
     r.ingest.handle(
       event("github.pr.merged", {
@@ -142,10 +198,8 @@ describe("github events", () => {
     const pr = r.graph.node(OWNER, "PullRequest:o/phoenix#1");
     expect(pr?.detail).toMatchObject({ state: "merged", branch: "b" });
     expect(r.graph.edge(OWNER, "Person:octo|AUTHORED|PullRequest:o/phoenix#1")).not.toBeNull();
-    expect(r.graph.edge(OWNER, "PullRequest:o/phoenix#1|FIXES|Issue:o/phoenix#5")).not.toBeNull();
-    expect(
-      r.graph.edge(OWNER, "PullRequest:o/phoenix#1|REFERENCES|Feature:phase-09"),
-    ).not.toBeNull();
+    expect(r.graph.edge(OWNER, "PullRequest:o/phoenix#1|FIXES|Issue:o/phoenix#5")).toBeNull();
+    expect(r.graph.edge(OWNER, "PullRequest:o/phoenix#1|REFERENCES|Feature:phase-09")).toBeNull();
   });
 
   it("a later PR event updates the state without duplicating anything", () => {
@@ -414,8 +468,8 @@ describe("meetings", () => {
     const mentions = decisions.flatMap((d) =>
       r.graph.adjacent(OWNER, d.id, { rel: "MENTIONS", limit: 5 }).edges.map((e) => e.dst),
     );
-    // "#12" has no repository in a meeting, so only the ADR reference is explicit enough.
-    expect(mentions).toEqual(["Decision:ADR-0014"]);
+    // Neither an unqualified #12 nor an unverified ADR is a proven target.
+    expect(mentions).toEqual([]);
     expect(r.graph.stats().provenance).toBeGreaterThan(5);
   });
 
@@ -428,22 +482,42 @@ describe("meetings", () => {
     expect(r.graph.stats()).toEqual({ nodes: 0, edges: 0, provenance: 0 });
   });
 
-  it("a decision also mentioned by a commit keeps the commit's edge after the meeting is deleted", () => {
+  it("removes a mention when its commit source is deleted, retaining the independently supported ADR", () => {
     const r = rig(R);
-    const m = makeMeeting(r);
-    r.ingest.ingestMeeting(m, r.meetings.summary(m.id));
+    const adr = { type: "Decision", key: "ADR-0014" } as const;
+    r.graph.upsertNode(adr, prov({ sourceKind: "memory", sourceId: "adr-doc" }));
     r.ingest.ingestCommit({
       repository: "phoenix",
       sha: SHA_A,
       at: T0,
       message: "implement ADR-0014",
     });
-    r.meetings.delete(m.id);
+    const edge = `Commit:o/phoenix@${SHA_A}|MENTIONS|Decision:ADR-0014`;
+    expect(r.graph.edge(OWNER, edge)?.status).toBe("fact");
+    r.graph.removeSource("capability", `git:o/phoenix:${SHA_A}`);
+    expect(r.graph.edge(OWNER, edge)).toBeNull();
+    expect(r.graph.node(OWNER, "Decision:ADR-0014")).not.toBeNull();
+  });
+
+  it("drops a target and its reference when the target's last independent source is deleted", () => {
+    const r = rig(R);
+    const target = { type: "Decision", key: "ADR-0014" } as const;
+    r.graph.upsertNode(target, prov({ sourceKind: "memory", sourceId: "adr-doc" }));
+    r.ingest.ingestCommit({ repository: "phoenix", sha: SHA_A, at: T0, message: "see ADR-0014" });
+    r.ingest.ingestCommit({ repository: "phoenix", sha: SHA_B, at: T0, message: "also ADR-0014" });
+    for (const sha of [SHA_A, SHA_B]) {
+      expect(
+        r.graph.edge(OWNER, `Commit:o/phoenix@${sha}|MENTIONS|Decision:ADR-0014`),
+      ).not.toBeNull();
+    }
+    r.graph.removeSource("capability", `git:o/phoenix:${SHA_A}`);
+    expect(r.graph.node(OWNER, "Decision:ADR-0014")).not.toBeNull();
     expect(
-      r.graph.edge(OWNER, `Commit:o/phoenix@${SHA_A}|MENTIONS|Decision:ADR-0014`),
+      r.graph.edge(OWNER, `Commit:o/phoenix@${SHA_B}|MENTIONS|Decision:ADR-0014`),
     ).not.toBeNull();
-    expect(r.graph.listByType(OWNER, "Meeting", 5)).toEqual([]);
-    expect(r.graph.node(OWNER, "Person:ada")).toBeNull();
+    r.graph.removeSource("memory", "adr-doc");
+    expect(r.graph.node(OWNER, "Decision:ADR-0014")).toBeNull();
+    expect(r.graph.edge(OWNER, `Commit:o/phoenix@${SHA_B}|MENTIONS|Decision:ADR-0014`)).toBeNull();
   });
 
   it("meeting items: rejected are ignored, ai items are proposals, accepted ones are the user's word; rejecting later removes", () => {
@@ -635,9 +709,7 @@ describe("memory", () => {
     expect(r.ingest.ingestMemory(r.memory).written).toBeGreaterThan(0);
     const c = r.graph.node(OWNER, `Commit:o/phoenix@${SHA_A}`);
     expect(c?.provenance[0]).toMatchObject({ sourceKind: "memory", sourceId: out.item.id });
-    expect(
-      r.graph.edge(OWNER, `Commit:o/phoenix@${SHA_A}|MENTIONS|Issue:o/phoenix#4`),
-    ).not.toBeNull();
+    expect(r.graph.edge(OWNER, `Commit:o/phoenix@${SHA_A}|MENTIONS|Issue:o/phoenix#4`)).toBeNull();
     r.memory.forget(out.item.id);
     expect(r.graph.stats()).toEqual({ nodes: 0, edges: 0, provenance: 0 });
     // The tombstoned memory is not ingested again.
@@ -670,6 +742,30 @@ describe("memory", () => {
     expect(r.graph.stats().nodes).toBe(0);
   });
 
+  it("resolves earlier document references after a later ADR document establishes the target", () => {
+    const r = rig({ ...R, documentRoots: [{ root: "/work/phoenix", repository: "o/phoenix" }] });
+    for (const [path, text] of [
+      ["docs/a-overview.md", "Read ADR-0014; ADR-0999 and Phase 99 have no documents"],
+      ["docs/adr/ADR-0014-persistence.md", "Choose SQLite"],
+    ] as const) {
+      r.pipeline.capture({
+        source: "project-docs",
+        sourceRef: `/work/phoenix/${path}`,
+        scope: `path:/work/phoenix/${path}`,
+        contentType: "doc",
+        text,
+        observedAt: T0,
+        dedupeKey: `doc:${path}`,
+        provenance: { path: `/work/phoenix/${path}` },
+      });
+    }
+    r.ingest.ingestMemory(r.memory);
+    const source = "Document:o/phoenix:docs/a-overview.md";
+    expect(r.graph.edge(OWNER, `${source}|MENTIONS|Decision:ADR-0014`)?.status).toBe("fact");
+    expect(r.graph.edge(OWNER, `${source}|MENTIONS|Decision:ADR-0999`)).toBeNull();
+    expect(r.graph.edge(OWNER, `${source}|REFERENCES|Feature:phase-99`)).toBeNull();
+  });
+
   it("project docs under a configured root become Documents; ADR files make their Decision", () => {
     const r = rig({ ...R, documentRoots: [{ root: "/work/phoenix", repository: "o/phoenix" }] });
     r.pipeline.capture({
@@ -698,7 +794,7 @@ describe("memory", () => {
     expect(
       r.graph.edge(OWNER, `Decision:ADR-0014|DECIDED_IN|${doc}`)?.provenance[0]?.assertedBy,
     ).toBe("rule");
-    expect(r.graph.edge(OWNER, `${doc}|REFERENCES|Feature:phase-03`)).not.toBeNull();
+    expect(r.graph.edge(OWNER, `${doc}|REFERENCES|Feature:phase-03`)).toBeNull();
   });
 });
 

@@ -20,7 +20,7 @@ import { EventStore, MemorySecretStore, openDatabase, type Database } from "@pho
 import { PolicyAdmin, PolicyEngine, PolicyStore, type Actor } from "@phoenix/policy";
 import { createEvent, type CapabilityManifest, type PhoenixEvent } from "@phoenix/protocol";
 import { expect, vi } from "vitest";
-import { StateEngine } from "../../state-engine/src";
+import { StateEngine } from "@phoenix/state-engine";
 import {
   approvalsFromPermissions,
   catalogFromGateway,

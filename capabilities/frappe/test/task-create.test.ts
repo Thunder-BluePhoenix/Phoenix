@@ -179,7 +179,9 @@ describe("frappe task.create: creating", () => {
     expect(lookup?.method).toBe("GET");
     const query = new URL(lookup?.path ?? "", "http://x").searchParams;
     expect(JSON.parse(query.get("filters") ?? "")).toEqual([["description", "like", `%${KEY}%`]]);
-    expect(JSON.parse(query.get("fields") ?? "")).toEqual(["name"]);
+    expect(JSON.parse(query.get("fields") ?? "")).toEqual(["name", "description"]);
+    expect(query.get("limit_start")).toBe("0");
+    expect(query.get("order_by")).toBe("name asc");
     expect(query.get("limit_page_length")).toBe("5");
     expect(lookup?.authorization).toBe(`token ${CREDENTIAL}`);
     expect(r.mock.tasks[0]?.doc.description).toBe(`Phoenix ref: ${KEY}`);
@@ -196,6 +198,62 @@ describe("frappe task.create: creating", () => {
     // A different key is a different task.
     const third = await r.h.run("frappe", "task.create", input({ idempotency_key: `${KEY}-b` }));
     expect(third.result).toMatchObject({ status: "created", name: "TASK-00002" });
+  });
+
+  it("distinguishes an exact marker from prefix and LIKE wildcard collisions", async () => {
+    const r = await rig();
+    const key = "phoenix_test-key-0001";
+    r.mock.tasks.push(
+      { name: "TASK-00001", doc: { description: `Phoenix ref: ${key}-suffix` } },
+      { name: "TASK-00002", doc: { description: "Phoenix ref: phoenixXtest-key-0001" } },
+    );
+    const op = await r.h.run("frappe", "task.create", input({ idempotency_key: key }));
+    expect(op.result).toMatchObject({ status: "created", name: "TASK-00003" });
+    expect(posts(r)).toHaveLength(1);
+  });
+
+  it("pages past five collisions to find an exact marker, without POSTing", async () => {
+    const r = await rig();
+    for (let n = 1; n <= 6; n++) {
+      r.mock.tasks.push({
+        name: `TASK-${String(n).padStart(5, "0")}`,
+        doc: { description: `Phoenix ref: ${KEY}-collision-${n}` },
+      });
+    }
+    r.mock.tasks.push({ name: "TASK-00007", doc: { description: `Phoenix ref: ${KEY}` } });
+    const op = await r.h.run("frappe", "task.create", input());
+    expect(op.result).toMatchObject({ status: "existing", name: "TASK-00007" });
+    expect(r.mock.writes.filter((w) => w.method === "GET")).toHaveLength(2);
+    expect(posts(r)).toHaveLength(0);
+  });
+
+  it("refuses ambiguous matches and a lookup beyond its page bound", async () => {
+    const r = await rig();
+    r.mock.tasks.push(
+      { name: "TASK-00001", doc: { description: `Phoenix ref: ${KEY}` } },
+      { name: "TASK-00002", doc: { description: `Phoenix ref: ${KEY}` } },
+    );
+    const ambiguous = await r.h.run("frappe", "task.create", input());
+    expect(ambiguous.error?.message).toMatch(/More than one task/);
+    expect(posts(r)).toHaveLength(0);
+    r.mock.tasks.splice(0);
+    for (let n = 1; n <= 100; n++) {
+      r.mock.tasks.push({
+        name: `TASK-${String(n).padStart(5, "0")}`,
+        doc: { description: `Phoenix ref: ${KEY}-collision-${n}` },
+      });
+    }
+    const bounded = await r.h.run("frappe", "task.create", input());
+    expect(bounded.error?.message).toMatch(/lookup limit reached/);
+    expect(posts(r)).toHaveLength(0);
+  });
+
+  it("refuses truncated lookup rows rather than risking a duplicate POST", async () => {
+    const r = await rig();
+    r.mock.setWriteMode("truncated", "GET");
+    const op = await r.h.run("frappe", "task.create", input());
+    expect(op.error?.message).toMatch(/not creating a possible duplicate/);
+    expect(posts(r)).toHaveLength(0);
   });
 
   it("percent-encodes the name in the returned URL and keeps its case", async () => {
@@ -239,6 +297,24 @@ describe("frappe task.create: unknown outcome", () => {
     const retry = await r.h.run("frappe", "task.create", input());
     expect(retry.result).toMatchObject({ status: "existing", name: "TASK-00001" });
     expect(r.mock.tasks).toHaveLength(1);
+    expect(posts(r)).toHaveLength(1);
+  });
+
+  it("finds an unknown-outcome create beyond the first page on retry", async () => {
+    const r = await rig();
+    for (let n = 1; n <= 6; n++) {
+      r.mock.tasks.push({
+        name: `TASK-${String(n).padStart(5, "0")}`,
+        doc: { description: `Phoenix ref: ${KEY}-collision-${n}` },
+      });
+    }
+    r.mock.setWriteMode("drop-after-create", "POST");
+    const first = await r.h.run("frappe", "task.create", input());
+    expect(first.error?.message).toMatch(/outcome is unknown/);
+    expect(posts(r)).toHaveLength(1);
+    r.mock.setWriteMode("ok");
+    const retry = await r.h.run("frappe", "task.create", input());
+    expect(retry.result).toMatchObject({ status: "existing", name: "TASK-00007" });
     expect(posts(r)).toHaveLength(1);
   });
 

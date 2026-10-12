@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { readGitHistory } from "../src";
-import { OWNER, rig } from "./helpers";
+import { OWNER, prov, rig } from "./helpers";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -50,6 +50,10 @@ describe("readGitHistory", () => {
   it("ingests into the graph with the mention and the author, and refuses option-shaped revisions", async () => {
     const dir = repoWithTwoCommits();
     const r = rig();
+    r.graph.upsertNode(
+      { type: "Issue", key: "o/r#4" },
+      prov({ sourceKind: "event", sourceId: "existing-issue" }),
+    );
     for (const c of await readGitHistory(dir, "o/r")) r.ingest.ingestCommit(c);
     const first = (await readGitHistory(dir, "o/r")).at(-1)!;
     expect(

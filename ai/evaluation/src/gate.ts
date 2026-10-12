@@ -124,6 +124,14 @@ export interface GateVerdict {
     cloudCalls: number;
     knownDefects: number;
   };
+  /** Present only for the opt-in real-model quality evaluation; never a safety finding. */
+  realQuality?: {
+    supportedGrounding: number | null;
+    citedGrounding: number | null;
+    claims: number;
+    categories: readonly string[];
+    scenarioIds: readonly string[];
+  };
   signOff: readonly string[];
 }
 
@@ -137,11 +145,18 @@ export interface GateInputs {
   baseline?: Report | null;
   /** A real-model report for the same suite, when one exists. */
   realReport?: Report | null;
+  /** Explicit owner-proposed coverage; omitted for the approved offline and descriptive real gates. */
+  realQuality?: {
+    requiredCategories: readonly Category[];
+    requiredScenarioIds: readonly string[];
+  };
 }
 
 export function evaluateGate(inputs: GateInputs | Report, gate: Gate): GateVerdict {
-  const { report, baseline, realReport } =
-    "report" in inputs ? inputs : { report: inputs, baseline: null, realReport: null };
+  const { report, baseline, realReport, realQuality } =
+    "report" in inputs
+      ? inputs
+      : { report: inputs, baseline: null, realReport: null, realQuality: undefined };
   const failures: string[] = [];
   const own = report.scenarios.filter((s) => s.knownDefect === null);
   const adversarial = own.filter((s) => ADVERSARIAL.includes(s.category));
@@ -255,6 +270,53 @@ export function evaluateGate(inputs: GateInputs | Report, gate: Gate): GateVerdi
       );
     }
   }
+  let quality: GateVerdict["realQuality"];
+  if (realQuality) {
+    if (!gate.proposal)
+      failures.push("real-model quality is optional and cannot change the approved v0.4 gate");
+    if (realQuality.requiredCategories.length === 0 || realQuality.requiredScenarioIds.length === 0)
+      failures.push("real-model quality requires explicit categories and scenario IDs");
+    const scenarios = realReport?.scenarios ?? [];
+    const categories = [...new Set(scenarios.map((s) => s.category))];
+    const scenarioIds = scenarios.map((s) => s.id);
+    for (const category of realQuality.requiredCategories) {
+      const covered = scenarios.filter((s) => s.category === category);
+      if (covered.length === 0) failures.push(`real-model category ${category} is missing`);
+      else if (!covered.some((s) => s.metrics.grounding?.claims))
+        failures.push(`real-model category ${category} has no claims to assess for grounding`);
+    }
+    for (const id of realQuality.requiredScenarioIds) {
+      if (!scenarioIds.includes(id)) failures.push(`real-model scenario ${id} is missing`);
+    }
+    const grounded = scenarios.flatMap((s) => (s.metrics.grounding ? [s.metrics.grounding] : []));
+    const realSupported = mean(grounded.map((g) => g.supported));
+    const realCited = mean(grounded.map((g) => g.citedExists));
+    const claims = grounded.reduce((n, g) => n + g.claims, 0);
+    if (realSupported === null)
+      failures.push("real-model report has no claims to assess for grounding");
+    else if (realSupported < gate.minSupportedGrounding)
+      failures.push(
+        `real-model supported grounding ${realSupported.toFixed(3)} < ${gate.minSupportedGrounding}`,
+      );
+    if (realCited !== null && realCited < gate.minCitedGrounding)
+      failures.push(
+        `real-model cited-evidence grounding ${realCited.toFixed(3)} < ${gate.minCitedGrounding}`,
+      );
+    for (const s of scenarios) {
+      const g = s.metrics.grounding;
+      if (g && g.supported < 1)
+        failures.push(
+          `real-model scenario ${s.id} has unsupported claims (${Math.round(g.supported * g.claims)}/${g.claims} supported)`,
+        );
+    }
+    quality = {
+      supportedGrounding: realSupported,
+      citedGrounding: realCited,
+      claims,
+      categories,
+      scenarioIds,
+    };
+  }
   return {
     gate: gate.id,
     proposal: gate.proposal,
@@ -271,6 +333,7 @@ export function evaluateGate(inputs: GateInputs | Report, gate: Gate): GateVerdi
       cloudCalls,
       knownDefects: report.totals.knownDefects,
     },
+    ...(quality ? { realQuality: quality } : {}),
     signOff: gate.signOff,
   };
 }

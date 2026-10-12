@@ -876,6 +876,10 @@ importers:
       '@phoenix/protocol':
         specifier: workspace:*
         version: link:../../protocol
+    devDependencies:
+      '@phoenix/state-engine':
+        specifier: workspace:*
+        version: link:../state-engine
 
   pet/assets:
     dependencies:

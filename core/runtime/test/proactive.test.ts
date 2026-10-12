@@ -154,6 +154,86 @@ describe("trusted meeting proactive insights", () => {
     expect((await core.api("GET", "/api/proactive/preview")).json.insights).toEqual([]);
   });
 
+  it("drops a summary quote when its action changes or gains an owner", async () => {
+    const { core } = await boot();
+    await core.runtime.capabilities.enable("kage");
+    const { meeting } = await reviewedAction(core);
+    await core.api("POST", "/api/proactive/preferences", { enabled: true, capabilities: ["kage"] });
+
+    core.runtime.meetings.setSummary(meeting.id, {
+      text: "Revised planning",
+      action_items: ["Assign a different release owner"],
+    });
+    expect((await core.api("GET", "/api/proactive/preview")).json.insights).toEqual([]);
+    expect((await core.api("POST", "/api/proactive/evaluate", {})).json).toEqual({
+      delivered: [],
+      suppressed: 0,
+    });
+    core.runtime.meetings.setSummary(meeting.id, {
+      text: "Assigned planning",
+      action_items: [{ text: "Assign release owner", owner: "Ana" }],
+    });
+    expect((await core.api("GET", "/api/proactive/preview")).json.insights).toEqual([]);
+    expect((await core.api("POST", "/api/proactive/evaluate", {})).json).toEqual({
+      delivered: [],
+      suppressed: 0,
+    });
+    expect((await core.api("GET", "/api/notifications")).json.notifications).toEqual([]);
+  });
+
+  it("rechecks summary, assignment and kill switch after preview before sending", async () => {
+    for (const drift of ["summary", "owner", "kill-switch"] as const) {
+      const { core } = await boot();
+      await core.runtime.capabilities.enable("kage");
+      const { meeting, item } = await reviewedAction(core, `mid-eval-${drift}`);
+      await core.api("POST", "/api/proactive/preferences", {
+        enabled: true,
+        capabilities: ["kage"],
+      });
+      const notifications = core.runtime.notifications;
+      const consider = notifications.considerInsight.bind(notifications);
+      vi.spyOn(notifications, "considerInsight").mockImplementationOnce(
+        (userId, insight, isCurrent) => {
+          if (drift === "summary") {
+            core.runtime.meetings.setSummary(meeting.id, {
+              text: "Revised planning",
+              action_items: ["Assign a different release owner"],
+            });
+          } else if (drift === "owner") {
+            core.runtime.meetingReview.edit(item.id, {
+              text: "Assign release owner",
+              owner: "Ana",
+            });
+          } else {
+            core.runtime.permissions.engageKillSwitch();
+          }
+          return consider(userId, insight, isCurrent);
+        },
+      );
+      expect(core.runtime.proactive.evaluate()).toEqual({
+        delivered: [],
+        suppressed: 1,
+      });
+      expect(
+        (await core.api("GET", "/api/notifications")).json.notifications.filter(
+          (notification: { eventType: string }) =>
+            notification.eventType === "insight.unassigned_action",
+        ),
+      ).toEqual([]);
+    }
+  });
+
+  it("still sends an unchanged unassigned summary action", async () => {
+    const { core } = await boot();
+    await core.runtime.capabilities.enable("kage");
+    const { item } = await reviewedAction(core);
+    await core.api("POST", "/api/proactive/preferences", { enabled: true, capabilities: ["kage"] });
+    const result = (await core.api("POST", "/api/proactive/evaluate", {})).json;
+    expect(result.delivered).toHaveLength(1);
+    expect(result.delivered[0].insight_id).toBe(`unassigned_action:kage:${item.id}`);
+    expect(result.delivered[0].notification.body).toBeTruthy();
+  });
+
   it("never invents insights from manually added items or missing Kage summary", async () => {
     const { core } = await boot();
     await core.runtime.capabilities.enable("kage");

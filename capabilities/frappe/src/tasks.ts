@@ -15,12 +15,12 @@
 // Idempotency
 //   The marker is a visible last line of the description, `Phoenix ref: <idempotency_key>`. A
 //   Text Editor field is HTML-sanitised and may drop comments, so an HTML comment would not
-//   survive. Before every POST we ask Frappe for a Task whose description contains the key. Frappe
-//   answers from its database, so the lookup is strongly consistent: once a create has committed,
-//   the next lookup sees it (there is no search-index lag to race). The POST is never retried
-//   automatically; if the connection fails after the request was sent the outcome is unknown and
-//   the caller re-runs the command with the same key, which finds the task if it was created.
-//   (`_` in a key is a LIKE wildcard; at worst a key differing only at a `_` position matches.)
+//   survive. Before every POST we page through the database lookup and inspect the fetched
+//   descriptions for the exact marker. Frappe answers from its database, so the lookup is
+//   strongly consistent: once a create has committed, the next lookup sees it. An incomplete
+//   or ambiguous lookup never permits a POST. The POST is never retried automatically; if the
+//   connection fails after it was sent the outcome is unknown, and the caller retries with the
+//   same key.
 import { redact } from "@phoenix/logging";
 import type { CapabilityContext, CommandSpec } from "@phoenix/sdk";
 import { isRecord } from "./guards";
@@ -29,6 +29,7 @@ import { errorCode, normalizeOrigin, readCapped, SITE_NAME } from "./http";
 const WRITE_TIMEOUT_MS = 25_000;
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const LOOKUP_LIMIT = 5;
+const MAX_LOOKUP_PAGES = 20;
 const LOOPBACK_HOSTS = ["127.0.0.1", "localhost", "[::1]"];
 
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9_-]{16,80}$/;
@@ -293,34 +294,68 @@ export async function createTask(input: unknown, ctx: CapabilityContext): Promis
     idempotency_key: task.idempotency_key,
   });
 
-  // 1. Is there already a Task carrying this key? (No write has happened yet.)
-  const query = new URLSearchParams({
-    filters: JSON.stringify([["description", "like", `%${task.idempotency_key}%`]]),
-    fields: JSON.stringify(["name"]),
-    limit_page_length: String(LOOKUP_LIMIT),
-  });
-  const lookup = await send(ctx, async (signal) =>
-    answer(
-      await fetch(`${origin}/api/resource/Task?${query}`, { headers, redirect: "error", signal }),
-    ),
-  );
-  if (!lookup.ok) throw new Error(`Looking for an existing task failed: ${lookup.reason}`);
-  if ("failure" in lookup.value.body) {
-    throw new Error(`Looking for an existing task failed: ${lookup.value.body.failure}`);
-  }
-  const reply = lookup.value.body.value;
-  const rows = isRecord(reply) ? reply.data : undefined;
-  if (!Array.isArray(rows)) {
-    throw new Error("Looking for an existing task failed: unexpected response");
-  }
-  if (rows.length > 0) {
-    const found = rows.map((row) => (isRecord(row) ? docName(row.name) : undefined));
-    const name = found.find((n) => n !== undefined);
-    if (name === undefined) {
-      throw new Error("Frappe returned an unexpected task name; not creating a possible duplicate");
+  // 1. Look up every substring candidate and check the actual marker. A full last page is
+  // inconclusive: it might hide another exact match or a duplicate beyond the safety bound.
+  let existing: string | undefined;
+  let complete = false;
+  const marker = `Phoenix ref: ${task.idempotency_key}`;
+  for (let page = 0; page < MAX_LOOKUP_PAGES; page++) {
+    const query = new URLSearchParams({
+      filters: JSON.stringify([["description", "like", `%${task.idempotency_key}%`]]),
+      fields: JSON.stringify(["name", "description"]),
+      limit_page_length: String(LOOKUP_LIMIT),
+      limit_start: String(page * LOOKUP_LIMIT),
+      order_by: "name asc",
+    });
+    const lookup = await send(ctx, async (signal) =>
+      answer(
+        await fetch(`${origin}/api/resource/Task?${query}`, { headers, redirect: "error", signal }),
+      ),
+    );
+    if (!lookup.ok) throw new Error(`Looking for an existing task failed: ${lookup.reason}`);
+    if ("failure" in lookup.value.body) {
+      throw new Error(`Looking for an existing task failed: ${lookup.value.body.failure}`);
     }
-    return result("existing", name);
+    const reply = lookup.value.body.value;
+    const rows = isRecord(reply) ? reply.data : undefined;
+    if (!Array.isArray(rows) || rows.length > LOOKUP_LIMIT) {
+      throw new Error("Looking for an existing task failed: unexpected response");
+    }
+    for (const row of rows) {
+      if (
+        !isRecord(row) ||
+        docName(row.name) === undefined ||
+        typeof row.description !== "string"
+      ) {
+        throw new Error(
+          "Frappe returned an unexpected task name or description; not creating a possible duplicate",
+        );
+      }
+      const description = row.description;
+      if (
+        description.endsWith(marker) &&
+        (description.length === marker.length ||
+          description[description.length - marker.length - 1] === "\n")
+      ) {
+        if (existing !== undefined) {
+          throw new Error(
+            "More than one task has this idempotency key; not creating a possible duplicate",
+          );
+        }
+        existing = docName(row.name);
+      }
+    }
+    if (rows.length < LOOKUP_LIMIT) {
+      complete = true;
+      break;
+    }
   }
+  if (!complete) {
+    throw new Error(
+      "Looking for an existing task failed: lookup limit reached; not creating a possible duplicate",
+    );
+  }
+  if (existing !== undefined) return result("existing", existing);
 
   // 2. Create. Never retried here: after this point a failure means the outcome is unknown.
   const created = await send(ctx, async (signal) =>

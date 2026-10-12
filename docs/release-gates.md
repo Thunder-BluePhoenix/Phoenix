@@ -18,10 +18,12 @@ npx tsx ai/evaluation/src/cli.ts run --update-golden      # re-baseline (review 
 npx tsx ai/evaluation/src/cli.ts gate v0.4                # verdict on the latest report; exit 1 = failed
 npx tsx ai/evaluation/src/cli.ts gate v0.4 --golden       # verdict on the committed baseline
 PHOENIX_REAL_OLLAMA=1 npx tsx ai/evaluation/src/cli.ts real   # categories a, b, g on llama3.2 (opt-in)
+npx tsx ai/evaluation/src/cli.ts gate v0.5 --real-quality --real-category=prompt_injection --real-scenario=inj-memory-call-deploy # proposed quality check
 ```
 
 The real-Ollama run needs a local Ollama with `llama3.2`. It requests only that model and talks
-only to loopback. It is never part of CI.
+only to loopback. It is never part of CI. `real` writes `golden/latest-real-report.json`, not the
+committed descriptive sample `golden/real-ollama-report.json`.
 
 ## What a scenario is
 
@@ -84,8 +86,8 @@ or to be generic, so its grounding describes the script. Those scenarios have th
 
 ### Measured on this repository
 
-Offline suite: 66 scenarios (10 benchmark, 56 adversarial), 62 passing, 4 known defects, 0 unauthorised side effects,
-0 leaks, 0 policy bypasses, 0 cloud calls. The committed baseline is
+Offline suite: 66 scenarios (10 benchmark, 56 adversarial), all passing with 0 known defects, 0 unauthorised side effects,
+0 leaks, 0 policy bypasses and 0 cloud calls. The committed baseline is
 `ai/evaluation/golden/offline-report.json`; re-derive the table with `cli.ts run`.
 
 | Category                   | Scenarios | Pass | Known defect |
@@ -152,6 +154,23 @@ reviewed by anyone but the author, and the numbers are starting points for discu
 | Real-model report required | yes                                         | yes                             | yes                                         |
 | Also needed                | a category for coding-agent proposals       | a graph-question category       | a human-labelled set and an external review |
 | Sign-off                   | owner, security reviewer                    | owner, security reviewer        | owner, security reviewer, external reviewer |
+
+### Optional real-model quality check (proposal, not release approval)
+
+The approved v0.4 gate remains the offline gate. Without `--real-quality`, a real report contributes
+only model-independent checks (safety and honesty); the saved real sample is descriptive. An owner
+may opt into the proposed v0.5/v0.7/v1.0 quality check by naming each required real category and
+scenario id with repeatable `--real-category=<category>` and `--real-scenario=<id>` flags. The
+current real runner covers only `prompt_injection`, `malicious_tool_output`, and `hallucination`;
+the selected IDs must be present in the latest real run. No inferred coverage or fabricated real
+run is accepted. The check fails when a required category or ID is absent, a required category has
+no claims to measure, no claims exist at all, any scenario has unsupported claims, or mean real
+supported/cited grounding is below the selected proposal's existing thresholds in the table above.
+The verdict prints the observed categories, IDs, claim count, and grounding rates as evidence.
+These lexical measures cannot establish semantic truth; an unsupported claim is a **quality**
+failure, not a safety defect. Passing a proposal does not approve release: the project owner must
+accept the coverage set and thresholds, and the listed reviewers must sign off. The CLI uses the
+latest real run for opt-in quality and does not fall back to the committed sample; run `real` first.
 
 ## Real-model evidence
 

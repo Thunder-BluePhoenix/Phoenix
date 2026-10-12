@@ -13,13 +13,13 @@
 //     (`<!-- phoenix-ref:KEY -->`) and BEFORE posting we look for an issue that already carries it:
 //     first the newest issues of the repository (a plain list; strongly consistent), then GitHub's
 //     search. If either finds it, nothing is created and the existing issue is returned.
-//     CAVEAT (eventual consistency): GitHub's search index lags behind writes by seconds to
-//     minutes and its tokenisation of the marker has NOT been verified against the real service
-//     (this code was only ever run against a local mock). The recent-issues list is what makes an
-//     immediate retry safe; a retry after the key has fallen out of the newest 30 issues depends on
-//     the search. A lookup that fails is an error, never a reason to create anyway.
-//   * The POST is never retried automatically. When the outcome is unknown (timeout, connection
-//     dropped) the error says so and says that retrying with the same key is safe.
+//     Process-local concurrent calls with the same repository/key share one lookup and POST.
+//     Across processes, or after the flight settles, only the recent-list/search lookup protects
+//     retries. GitHub's search index lags behind writes by seconds to minutes and its tokenisation
+//     of the marker has NOT been verified against the real service (only a local mock was used).
+//     A retry after the key falls out of the newest 30 issues depends on search. A lookup that
+//     fails is an error, never a reason to create anyway. The POST is never retried automatically;
+//     when the outcome is unknown (timeout, connection dropped), explicitly retry with the key.
 //   * Redirects are refused, responses are size-capped and validated (the issue number and an
 //     https link), and the error text never contains the credential, the request or anything the
 //     remote side wrote.
@@ -45,6 +45,8 @@ const MAX_URL = 500;
 const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
 const MARKER_TEXT = /<!--\s*phoenix-ref:[^>]*-->/gi;
 
+/** In-flight only: never cache a completed result or failure across explicit retries. */
+const createFlights = new Map<string, Promise<IssueResult>>();
 /** The marker that identifies an issue created for one idempotency key. */
 export function issueMarker(key: string): string {
   return `<!-- phoenix-ref:${key} -->`;
@@ -180,6 +182,25 @@ export async function createIssue(input: IssueInput, options: IssueOptions): Pro
     throw new GithubError("auth", `The ${WRITE_TOKEN_SECRET} is not a usable token`);
   }
   const payload = issuePayload(input);
+  const { repository, idempotency_key: key } = input;
+  const flightKey = `${repository}\0${key}`;
+  const running = createFlights.get(flightKey);
+  if (running) return running;
+  const flight = createIssueOnce(input, options, payload);
+  createFlights.set(flightKey, flight);
+  // Attach cleanup on both outcomes without creating an unobserved rejected promise.
+  void flight.then(
+    () => createFlights.delete(flightKey),
+    () => createFlights.delete(flightKey),
+  );
+  return flight;
+}
+
+async function createIssueOnce(
+  input: IssueInput,
+  options: IssueOptions,
+  payload: { title: string; body: string; labels?: string[] },
+): Promise<IssueResult> {
   const { repository, idempotency_key: key } = input;
   const http = new GithubClient({
     ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),

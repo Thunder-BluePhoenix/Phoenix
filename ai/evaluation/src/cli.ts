@@ -25,6 +25,8 @@ export const REAL_CATEGORIES: readonly Category[] = [
 ];
 
 export const LATEST_PATH = join(import.meta.dirname, "../golden/latest-report.json");
+/** A real run is new evidence, not an automatic rewrite of the committed descriptive sample. */
+export const REAL_LATEST_PATH = join(import.meta.dirname, "../golden/latest-real-report.json");
 
 export function formatReport(report: Report): string {
   const lines = [`Suite ${report.suite}: ${report.scenarioCount} scenarios, seed ${report.seed}`];
@@ -48,6 +50,13 @@ export function formatVerdict(v: GateVerdict): string {
     `  adversarial pass rate ${v.measured.adversarialPassRate.toFixed(3)}, benchmark ${v.measured.benchmarkPassRate.toFixed(3)}`,
     `  supported grounding ${v.measured.supportedGrounding?.toFixed(3) ?? "n/a"}, cited grounding ${v.measured.citedGrounding?.toFixed(3) ?? "n/a"}`,
     `  side effects ${v.measured.sideEffects}, leaks ${v.measured.leaks}, bypasses ${v.measured.policyBypasses}, cloud calls ${v.measured.cloudCalls}, known defects ${v.measured.knownDefects}`,
+    ...(v.realQuality
+      ? [
+          `  real quality: ${v.realQuality.claims} claims, supported ${v.realQuality.supportedGrounding?.toFixed(3) ?? "n/a"}, cited ${v.realQuality.citedGrounding?.toFixed(3) ?? "n/a"}`,
+          `  real categories: ${v.realQuality.categories.join(", ") || "none"}`,
+          `  real scenarios: ${v.realQuality.scenarioIds.join(", ") || "none"}`,
+        ]
+      : []),
     ...v.failures.map((f) => `  FAIL: ${f}`),
     `  sign-off needed from: ${v.signOff.join(", ")}`,
   ];
@@ -80,7 +89,7 @@ async function main(argv: string[]): Promise<number> {
       (s) => REAL_CATEGORIES.includes(s.category) && s.subject !== "hostile",
     );
     const { report } = await runSuite("real-ollama", chosen, undefined, provider);
-    writeReport(REAL_REPORT_PATH, report);
+    writeReport(REAL_LATEST_PATH, report);
     process.stdout.write(`${formatReport(report)}\n`);
     for (const v of report.scenarios) {
       process.stdout.write(
@@ -108,15 +117,48 @@ async function main(argv: string[]): Promise<number> {
       process.stderr.write("No report yet: run `ai/evaluation/src/cli.ts run` first.\n");
       return 2;
     }
+    const quality = argv.includes("--real-quality");
+    const realCategories = argv
+      .filter((x) => x.startsWith("--real-category="))
+      .map((x) => x.slice("--real-category=".length));
+    const realScenarioIds = argv
+      .filter((x) => x.startsWith("--real-scenario="))
+      .map((x) => x.slice("--real-scenario=".length));
+    if (
+      quality &&
+      (!gate.proposal ||
+        realCategories.length === 0 ||
+        realScenarioIds.length === 0 ||
+        realCategories.some((c) => !REAL_CATEGORIES.includes(c as Category)))
+    ) {
+      process.stderr.write(
+        "Real quality needs a proposed gate, --real-category=<prompt_injection|malicious_tool_output|hallucination> and --real-scenario=<id>; owner acceptance is still required.\n",
+      );
+      return 2;
+    }
     const verdict = evaluateGate(
-      { report, baseline: readReport(GOLDEN_PATH), realReport: readReport(REAL_REPORT_PATH) },
+      {
+        report,
+        baseline: readReport(GOLDEN_PATH),
+        realReport: quality
+          ? readReport(REAL_LATEST_PATH)
+          : (readReport(REAL_LATEST_PATH) ?? readReport(REAL_REPORT_PATH)),
+        ...(quality
+          ? {
+              realQuality: {
+                requiredCategories: realCategories as Category[],
+                requiredScenarioIds: realScenarioIds,
+              },
+            }
+          : {}),
+      },
       gate,
     );
     process.stdout.write(`${formatVerdict(verdict)}\n`);
     return verdict.passed ? 0 : 1;
   }
   process.stderr.write(
-    "usage: cli.ts run [--update-golden] | real | gate <v0.4|v0.5|v0.7|v1.0> [--golden] | gates\n",
+    "usage: cli.ts run [--update-golden] | real | gate <v0.4|v0.5|v0.7|v1.0> [--golden] [--real-quality --real-category=<category> --real-scenario=<id>] | gates\n",
   );
   return 2;
 }

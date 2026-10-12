@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 //
-// Explicit mentions only. A mention is text that names an entity in a form that cannot be read two
-// ways: `#123`, `owner/repo#123`, `pull request #4`, `PROJ-45` (for a tracker prefix that is
-// configured or already in the graph), `ADR-0014`, `Phase 13`, a 40-digit commit hash, or a known
-// repository written as `owner/name`. There is no fuzzy matching, no stemming and no model here: what
-// the text does not spell out is not extracted.
+// Explicit text identifies a candidate, not proof of a target. Only existing graph targets (or
+// configured known repositories) can receive a mention edge; no token creates an entity.
 import type { NodeRef, Relation } from "./types";
 
 /** Longest text scanned. A longer text is read up to this point only. */
@@ -29,7 +26,7 @@ export interface MentionContext {
   knownRepositories: readonly string[];
   /** Tracker prefixes whose `PREFIX-123` is an issue (`ENG`, `PROJ`). */
   trackerPrefixes: readonly string[];
-  /** Whether a node exists. Used to read a bare `#N` as the pull request when there is one. */
+  /** Whether the exact target exists in the graph; a token alone never proves existence. */
   hasNode: (id: string) => boolean;
 }
 
@@ -49,7 +46,14 @@ export function phaseKey(n: string): string {
 export function extractMentions(rawText: string, ctx: MentionContext): Mention[] {
   const text = rawText.slice(0, MAX_SCAN_CHARS);
   const found: Found[] = [];
-  const add = (at: number, mention: Mention): void => void found.push({ at, mention });
+  const add = (at: number, candidate: Mention): void => {
+    if (
+      candidate.target.type !== "Repository" &&
+      !ctx.hasNode(`${candidate.target.type}:${candidate.target.key}`)
+    )
+      return;
+    found.push({ at, mention: candidate });
+  };
   const local = ctx.repository;
   const known = new Set(ctx.knownRepositories);
 
@@ -81,7 +85,7 @@ export function extractMentions(rawText: string, ctx: MentionContext): Mention[]
     consumed.push([m.index, m.index + m[0].length]);
   }
 
-  // bare #N: the pull request when one is already known, else the issue (and less certain).
+  // Bare #N is ambiguous: select a known PR, otherwise a known issue; neither means no edge.
   const bare = /(?<![\w&/#])#(\d{1,7})\b/g;
   for (const m of text.matchAll(bare)) {
     if (local === undefined || inConsumed(m.index)) continue;
@@ -104,8 +108,7 @@ export function extractMentions(rawText: string, ctx: MentionContext): Mention[]
   }
   if (local !== undefined) {
     for (const m of text.matchAll(/(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])/g)) {
-      const key = `${local}@${m[0]}`;
-      if (ctx.hasNode(`Commit:${key}`)) add(m.index, mention("MENTIONS", "Commit", key, m[0], 1));
+      add(m.index, mention("MENTIONS", "Commit", `${local}@${m[0]}`, m[0], 1));
     }
   }
   for (const m of text.matchAll(new RegExp(`(?<![\\w./-])(${REPO})(?![\\w#/-])`, "g"))) {
