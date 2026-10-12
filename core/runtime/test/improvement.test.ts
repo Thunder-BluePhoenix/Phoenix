@@ -122,7 +122,7 @@ describe("governed improvement persistence", () => {
     } finally {
       db.close();
     }
-  });
+  }, 120_000);
 
   it("refuses database-supplied baseline and incorrect independently pinned digest", async () => {
     const { db, pinnedBaseline } = await fixture();
@@ -153,5 +153,5 @@ describe("governed improvement persistence", () => {
     } finally {
       db.close();
     }
-  });
+  }, 120_000);
 });

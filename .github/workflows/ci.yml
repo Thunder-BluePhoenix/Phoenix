@@ -29,9 +29,8 @@ jobs:
 
   # AI evaluation (Phase 33, ADR-0010). Offline only: scripted models and fake capabilities, no
   # network, no Ollama. The test step fails on any regression against the committed baseline
-  # (ai/evaluation/golden/offline-report.json). The gate step prints the v0.4 release-gate verdict;
-  # it is informational (continue-on-error) while D1-D3 in docs/release-gates.md are open, because
-  # that gate FAILS on them by design. Remove continue-on-error once the owner has fixed or accepted them.
+  # (ai/evaluation/golden/offline-report.json). The gate step runs the approved v0.4 release gate
+  # and fails the job if it does not pass (D1-D3 are fixed; see docs/release-gates.md).
   ai-evaluation:
     runs-on: ubuntu-latest
     steps:
@@ -42,10 +41,11 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Build the SDK artifact (the evaluation tools import its public entry)
+        run: pnpm --filter @phoenix/sdk build
       - name: Offline evaluation and adversarial suite
         run: npx vitest run ai/evaluation
       - name: Release gate v0.4 (verdict)
-        continue-on-error: true
         run: |
           npx tsx ai/evaluation/src/cli.ts run
           npx tsx ai/evaluation/src/cli.ts gate v0.4

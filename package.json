@@ -32,6 +32,9 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "@rushstack/ts-command-line>argparse": "^2.0.1"
+    }
   }
 }
