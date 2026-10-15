@@ -8,7 +8,7 @@ Single source of truth for delivery progress. Derived from the five vision docum
 
 ## Current focus
 
-Next up: finish **Phase 14 — floating desktop Fawkes** and **Phase 20 — hardening & v0.1 release**. Phases 41–45 now have SDK docs, a fail-closed signed registry, preview/release procedures and optional encrypted staged-record sync; their external release gates remain open (see [gaps](../gaps.md)).
+Unreleased prerequisites still begin with **Phase 14 — floating desktop Fawkes** (needs a person at an unlocked screen) and **Phase 20 — hardening & v0.1 release**. Phases 21–55 contain substantial implemented work, but no release tag from v0.1 onward has been cut, and many release gates need real services, hardware, independent review or an owner decision (see [gaps](../gaps.md)).
 
 ## Summary
 
@@ -63,7 +63,7 @@ Next up: finish **Phase 14 — floating desktop Fawkes** and **Phase 20 — hard
 | 22 | [GitHub & CI/CD Capability](phase-22-github-and-cicd-capability.md) | v0.2 | High | 21 | ✅ | | Real failed CI run mapped to ERROR with its link; review and deployment events only against mocks. Gaps: [gaps.md](../gaps.md) |
 | 23 | [Frappe / ERPNext Capability](phase-23-frappe-erpnext-capability.md) | v0.2 | High | 21 | 🟨 | | Discovery, health and site ERROR done; build/migration/deploy/restart events not possible read-only; never run against a real site |
 | 24 | [Docker & Editor Capabilities](phase-24-docker-and-editor-capabilities.md) | v0.2 | Medium | 21 | 🟨 | | Docker run against a real daemon; VS Code extension never loaded in a real VS Code; build events not observable |
-| 25 | [Coding-Agent Lifecycle Events](phase-25-coding-agent-lifecycle-events.md) | v0.2 | High | 21 | 🟨 | | Observe-only; hook adapter built from the Claude Code binary's strings, never driven by a live session; Pet Panel list pending |
+| 25 | [Coding-Agent Lifecycle Events](phase-25-coding-agent-lifecycle-events.md) | v0.2 | High | 21 | 🟨 | | Observe-only; hook adapter built from the Claude Code binary's strings, never driven by a live session; Pet Panel Overview lists reported agents |
 | 26 | [Issue Tracker Capabilities & v0.2 Release](phase-26-issue-tracker-capabilities.md) | v0.2 | Medium | 22, 23, 24, 25 | 🟨 | | Issues capability (GitHub real, Linear/Jira docs-only); v0.2 gate test passes; release not cut |
 
 **Stage gate:** Multiple integrations operate through the capability model.
@@ -111,7 +111,7 @@ Next up: finish **Phase 14 — floating desktop Fawkes** and **Phase 20 — hard
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
 | 37 | [Hybrid Retrieval (Lexical + Vector + Rerank)](phase-37-hybrid-retrieval.md) | v0.7 | High | 36 | ✅ | | Local-only hybrid retrieval with explicit rebuild; recall@5 up, MRR gain within noise; real cold-rebuild verification pending |
-| 38 | [Knowledge Graph & Provenance](phase-38-knowledge-graph-and-provenance.md) | v0.7 | High | 37 | 🟨 | | Graph and provenance view built; pre-registered value gate NOT met by the graph alone; 3 criteria open |
+| 38 | [Knowledge Graph & Provenance](phase-38-knowledge-graph-and-provenance.md) | v0.7 | High | 37 | 🟨 | | Graph, provenance view and verified-target mentions built; pre-registered value gate NOT met by the graph alone; 2 criteria open: the gate and the release |
 
 **Stage gate:** Graph/hybrid retrieval proves measurable value.
 

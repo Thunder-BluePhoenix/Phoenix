@@ -5,7 +5,7 @@
 | Stage | Stage 2 — Useful Fawkes (v0.2) |
 | Release target | v0.2 |
 | Priority | High |
-| Status | 🟨 Built, registered in Core and tested with recorded hook payloads; never driven by a live Claude Code session; Pet Panel agent list not built (see [gaps register](../gaps.md)) |
+| Status | 🟨 Built, registered in Core and tested with recorded hook payloads; the Pet Panel Overview lists reported agents; never driven by a live Claude Code session (see [gaps register](../gaps.md)) |
 | Depends on | [Phase 21 — Post-MVP Stabilisation](phase-21-post-mvp-stabilization.md) |
 | Unblocks | [Phase 26 — Issue Tracker Capabilities & v0.2 Release](phase-26-issue-tracker-capabilities.md), [Phase 34 — Coding-Agent Orchestration](phase-34-coding-agent-orchestration.md) |
 
@@ -29,7 +29,7 @@ Show whether AI coding agents (Codex, Claude Code, …) are working, waiting, do
 - [x] Define agent.* payload (agent id, workspace, task title) — [docs/capabilities/agents.md](../capabilities/agents.md), `capabilities/agents/src/report.ts`
 - [x] Adapters/hooks for at least one coding agent — Claude Code hooks (`claude-hook.ts`) and a generic `phoenix-agent report` CLI; not yet exercised by a live Claude Code session
 - [x] Map agent.waiting → WAITING with 'input required' notification — `requires_action: true`; verified through a real `NotificationService`
-- [ ] Show active agents in Pet Panel — the `list` command exists; the panel view is not built
+- [x] Show active agents in Pet Panel — the Overview tab's `AgentsGlance` (`apps/web/src/components/Integrations.tsx`) lists agents from `agents.list`, says in words when one needs input, and refreshes on agent events (`apps/web/test/integrations.test.tsx`); it is absent, and calls nothing, while the capability is off. It shows only agents that actually report; no live Claude Code session has been observed
 
 ## Deliverables
 

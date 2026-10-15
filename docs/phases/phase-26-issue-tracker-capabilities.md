@@ -28,7 +28,7 @@ Add Jira / Linear / GitHub Issues awareness and close out v0.2.
 
 - [x] Issue assigned / status changed events for one or more trackers (GitHub Issues verified on live responses; Linear and Jira only against mocks)
 - [x] Verify ≥3 integrations share the same event protocol (`core/runtime/test/v02-gate.test.ts`: agents, frappe and docker through a real runtime; `github`, `issues` and `git` follow the same manifest and event rules by construction, not by this test)
-- [ ] Per-capability enable/disable verified for all (verified for agents, frappe, docker, git in the gate test; each capability's own suite covers its enable/disable; no single test enables and disables all nine)
+- [x] Per-capability enable/disable verified for all — `core/runtime/test/v02-gate.test.ts` takes its ids from `builtinCapabilities("prod")` (plus the development mock), asserts the installed set equals that inventory, and cycles each through enable, health, disable and re-enable using loopback/file fixtures. This is a local lifecycle test: real GitHub, Frappe, Kage, Docker daemon and tracker services are not exercised.
 - [ ] Release v0.2
 
 ## Deliverables

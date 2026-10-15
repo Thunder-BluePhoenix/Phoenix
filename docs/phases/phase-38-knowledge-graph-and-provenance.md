@@ -28,7 +28,7 @@ Model relationships between people, meetings, decisions, features, commits, issu
 - [x] Entities/relations: Person, Project, Repository, Commit, Service, Deployment, Meeting, Decision, Feature, Issue (+ PullRequest, CIRun, Document) — closed sets, enforced by `CHECK` constraints and a relation schema
 - [x] Ingest from existing capabilities — git, github (PR, CI, deploy), docker, issues, meetings, memory, explicit mentions; run for real on this repository's history and the committed GitHub fixtures
 - [x] Answer 'why/which/who' graph questions — the answer is the explanation path with provenance for every hop
-- [ ] UI to inspect origin of important context — **built** at `#/provenance` using the graph inspection API; the release/value gate remains open
+- [x] UI to inspect origin of important context — built at `#/provenance` using the graph inspection API (source quote shown as inert text to the owner only; depth-two and `asOf` trails). The release and the value gate below remain open
 - [ ] Release v0.7 — **not cut**: the graph-alone value gate is not met (see benchmark); Core wiring and the provenance view are built
 
 ## Deliverables

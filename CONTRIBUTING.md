@@ -17,10 +17,10 @@ Thanks for helping build Phoenix and Fawkes.
 
 ## Workflow
 
-1. Pick a phase from the [tracker](docs/phases/TRACKER.md) and read its phase file.
+1. Pick a phase from the [tracker](docs/phases/TRACKER.md) and read its phase file. Check the [gap register](docs/gaps.md) for what is unverified, and keep it honest: record new gaps there and mark one resolved only with evidence.
 2. Make changes with tests.
 3. Run `pnpm check` (typecheck, licence headers, formatting, tests), then `scripts/secret-scan.sh` (needs Docker). It runs the same pinned gitleaks scan CI runs, over history and over your uncommitted files. Build fake credentials in tests at runtime (`protocol/testing/fake-secrets.ts`); a token-shaped literal fails CI even when it is obviously fake.
-4. Open a pull request that references the phase and lists which exit criteria it covers.
+4. Open a pull request that references the phase and lists which exit criteria it covers. The [preview programme](docs/preview/programme.md) and the [v1.0](docs/release/v1-verification.md) and [v2.0](docs/release/v2-verification.md) verification documents are plans and decision records, not evidence that any release or preview stage has happened. Capability authors start at [`docs/capabilities/`](docs/capabilities/).
 
 ## Architecture changes
 

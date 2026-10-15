@@ -5,7 +5,7 @@
 | Stage | Stage 8 — Automation & Workflows (v0.8) |
 | Release target | v0.8 |
 | Priority | High |
-| Status | 🟨 Engine built and tested in-process (real SQLite, PermissionGateway, CapabilityManager, ToolGateway, EventBus; one real run with Ollama `llama3.2`); wired into Core with user routes; web list, run history, status and authorisation UI built (no workflow authoring UI) (see [gaps register](../gaps.md)) |
+| Status | 🟨 Engine built and tested (real SQLite, PermissionGateway, CapabilityManager, ToolGateway, EventBus; one real run with Ollama `llama3.2`); wired into Core with user routes; web list, run history, authorisation UI and validated JSON definition authoring with create-only/expected-hash saves built (see [gaps register](../gaps.md)) |
 | Depends on | [Phase 38 — Knowledge Graph & Provenance](phase-38-knowledge-graph-and-provenance.md) |
 | Unblocks | [Phase 40 — Workflow Safety & v0.8 Release](phase-40-workflow-safety.md) |
 

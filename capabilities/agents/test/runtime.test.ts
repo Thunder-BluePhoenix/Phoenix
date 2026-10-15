@@ -259,12 +259,6 @@ describe("a coding agent orchestrated through a real Core", () => {
     expect(ciLink!.why).toMatchObject({ rule: "sha-match", commit: sha });
 
     // Everything the user needs is in the timeline, in order, with counts and refs but no output.
-    console.log(
-      "SESSION TIMELINE\n" +
-        final.timeline
-          .map((t) => `${t.at}  ${t.kind}  ${JSON.stringify(t.detail ?? {})}`)
-          .join("\n"),
-    );
     const kinds = final.timeline.map((t) => t.kind);
     expect(kinds).toEqual([
       "session.started",

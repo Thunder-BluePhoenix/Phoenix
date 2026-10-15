@@ -37,8 +37,8 @@ Make AI quality and safety measurable before any increase in autonomy, then rele
 
 ## Exit criteria
 
-- [ ] Agent actions controlled and auditable (gate v0.4 → v0.5)
-- [ ] Adversarial suite green
+- [ ] Agent actions controlled and auditable (gate v0.4 → v0.5) — unchecked pending owner sign-off; the offline v0.4 gate passes, observation history is persisted and redacted, and the real-model quality check is a failing proposal (see the gap register)
+- [ ] Adversarial suite green — the offline suite is green (66 of 66) and in CI; unchecked because release-level adversarial evidence and owner sign-off are still pending
 
 ## Source documents
 

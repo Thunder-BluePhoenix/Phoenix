@@ -328,10 +328,7 @@ describe("reliability stress (seeded)", () => {
         "SELECT status, COUNT(*) AS n FROM workflow_runs GROUP BY status",
       ).map((r) => [r.status, r.n]),
     );
-    console.log(
-      `stress: seed=${SEED} events=${totalEvents} runs=${runs} started=${started} crashes=${crashes} killToggles=${killToggles}`,
-      JSON.stringify(byStatus),
-    );
+    // Seed, event, run, crash and kill-toggle counts are asserted below, not printed.
     for (const status of [
       "succeeded",
       "failed",

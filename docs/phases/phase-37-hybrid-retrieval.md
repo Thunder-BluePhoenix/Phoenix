@@ -5,7 +5,7 @@
 | Stage | Stage 7 — Knowledge Graph (v0.7) |
 | Release target | v0.7 |
 | Priority | High |
-| Status | 🟨 Built, measured and wired into Core (off by default); the Settings section is built (web UI); there is no rebuild route and no eval-harness hook |
+| Status | ✅ Built, measured and wired into Core (off by default), with an explicit confirmed rebuild route and a lexical evaluation-harness hook; the Settings section is built. Hybrid retrieval stays opt-in and relevance on representative real data is unverified |
 | Depends on | [Phase 36 — Action Items → Engineering Tasks](phase-36-action-items-to-engineering-tasks.md) |
 | Unblocks | [Phase 38 — Knowledge Graph & Provenance](phase-38-knowledge-graph-and-provenance.md) |
 
@@ -113,6 +113,7 @@ The benchmark scripts require local Ollama with `nomic-embed-text` and `llama3.2
 | `GET /api/retrieval/settings` | `{ enabled, provider, model, k, vector_weight, reranker }` |
 | `POST /api/retrieval/settings` | any subset of those keys; exact keys; `provider` must be a provider that can embed (`ollama`), `model` 1-100 plain characters, `k` integer 1-200, `vector_weight` 0-5, `reranker` `feature`\|`none`; audit entry `retrieval.settings.changed` |
 | `GET /api/retrieval/status` | `{ enabled, active, inactive_reason: null\|"retrieval_disabled"\|"ai_disabled", provider, model, vector_space, embedded, total, unembedded, failures, other_models: [{model, vectors}], payload_bytes, last_run: null\|{at, embedded, failed, remaining, capped, degraded: string[]} }` |
+| `POST /api/retrieval/rebuild` | body exactly `{ "confirm": true }` (anything else is 400). Needs authentication. Replaces the vectors of the selected model's space by re-embedding existing memories in bounded batches; concurrent calls share one in-flight run. Answers 409 while retrieval or AI is off, or while the emergency stop is engaged, and no vector is deleted in that case. Returns the same shape as `status`, whose `last_run` reports `embedded`, `failed`, `remaining`, `capped` and `degraded` |
 
 ### Real run (this Mac, real Ollama `nomic-embed-text` and `llama3.2`)
 
@@ -128,9 +129,9 @@ Only the third is a clear find that keyword search missed; the first two reorder
 
 "Smart search" on the Settings page (`RetrievalSettings.tsx`): the switch (`POST /api/retrieval/settings {enabled}`), a status list (state in words, index size embedded/total/waiting/failed and bytes, model, last build with age, the last run's `degraded` reasons as the fallback reason, old vectors from other models), and the consent text: embeddings are made on this computer, search questions are embedded as sensitive, stay local and go to the cloud only if the user chose that for sensitive data in the AI settings, and it needs AI on. Search and ask results show the `retrieval` note.
 
-**Gap:** Core has no rebuild route. "Update the index now" switches `enabled` off and on, which starts an incremental run (it embeds memories that have no vector yet; it cannot re-embed everything). It is disabled unless the status says `active`.
+**Rebuild:** Settings offers **Rebuild entire index**, which asks for a visible confirmation and then calls the rebuild route. It is disabled unless the status says `active`, and it reports partial failures and a stopped-at-limit run honestly. It replaces the earlier off-then-on workaround, which could only embed memories without a vector.
 
-**Checked:** `apps/web/test/retrieval-settings.test.tsx` (default off with the consent copy, on sends only `{enabled: true}`, status lines, AI-off state, Update disabled/enabled and off-then-on once, error and double click). Browser smoke against a real Core and local Ollama (`nomic-embed-text` only): the page showed "Smart search is on, but AI is off" and 0 of 5 indexed; after AI was turned on, Update indexed 5 of 5 memories (0 failed).
+**Checked:** `apps/web/test/retrieval-settings.test.tsx` (default off with the consent copy; on sends only `{enabled: true}`; status lines; AI-off state; rebuild needs a visible confirmation, cancel sends nothing, a double click on Confirm sends one request, partial results are shown; rebuild is disabled when search is off or the emergency stop is engaged; an error is shown without claiming success; 320 px). `core/runtime/test/retrieval.test.ts` (authentication, `{}` is 400, 409 when AI/retrieval is off or the stop is engaged, overlapping calls share one run, only the current model's vectors are replaced, and an emergency stop during an embedding call prevents persisting vectors). An earlier browser smoke against a real Core and local Ollama (`nomic-embed-text` only) predates the rebuild route: with AI off the page showed "Smart search is on, but AI is off" and 0 of 5 indexed; after AI was turned on, the old incremental update indexed 5 of 5 memories (0 failed). The rebuild route itself has not been run in a browser against a real model.
 
 ## Source documents
 

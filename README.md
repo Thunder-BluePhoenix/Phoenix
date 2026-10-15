@@ -8,7 +8,7 @@ Phoenix is an open-source developer companion. It connects your developer tools,
 
 The first capability is **Kage**, which handles meeting capture, transcription, summaries and archiving.
 
-> Status: early development (Stage 1 — MVP Foundation). See the [phase tracker](docs/phases/TRACKER.md).
+> Status: unreleased and in active development. Implementation spans well beyond Stage 1 (see the [phase tracker](docs/phases/TRACKER.md)); no release has been tagged, and many release gates are still open (see the [gap register](docs/gaps.md)).
 
 ## Repository layout
 
@@ -19,7 +19,7 @@ The first capability is **Kage**, which handles meeting capture, transcription, 
 | `pet/`          | Fawkes runtime, states, animations and assets                                |
 | `apps/`         | `web` (navbar + Pet Panel) and `desktop` (floating Fawkes)                   |
 | `sdk/`          | Capability SDK                                                               |
-| `capabilities/` | First-party capabilities (Kage, Git, terminal)                               |
+| `capabilities/` | First-party capabilities, e.g. Kage, Git, GitHub, terminal, Docker, Frappe   |
 | `docs/`         | Vision, phases, ADRs, contracts                                              |
 
 ## Getting started
@@ -51,7 +51,7 @@ curl -H "Authorization: Bearer $(cat .phoenix/dev/session.token)" http://127.0.0
 
 ## Privacy
 
-Phoenix is local-first. Everything it stores lives in its data directory on your computer (`.phoenix/<env>/`); credentials such as API keys live in your OS keychain. **Phoenix sends no telemetry**, and it has no AI features yet, so nothing goes to AI providers. **Settings → Privacy and data** shows what is stored, sets how long each kind is kept, and deletes it. The audit log of permissions, approvals and deletions is kept for accountability.
+Phoenix is local-first. Everything it stores lives in its data directory on your computer (`.phoenix/<env>/`); credentials such as API keys live in your OS keychain. **Phoenix sends no telemetry.** AI features are optional and off by default. When you turn them on, a local Ollama model processes data on this device; a cloud provider is used only if you have configured it and granted the matching opt-ins, and sensitive data classes (for example meeting content) are never sent to the cloud by default. **Settings → Privacy and data** shows what is stored, sets how long each kind is kept, and deletes it. The audit log of permissions, approvals and deletions is kept for accountability.
 
 ## Documentation
 
@@ -61,6 +61,11 @@ Phoenix is local-first. Everything it stores lives in its data directory on your
 - [Event protocol v1](docs/protocol/events-v1.md)
 - [Architecture](docs/architecture.md)
 - [Security review](docs/security-review.md)
+- [Known gaps and unverified claims](docs/gaps.md)
+- [Release gates for AI features](docs/release-gates.md)
+- [Developer preview programme](docs/preview/programme.md) (a plan, not a record of completed stages)
+- [v1.0 verification plan](docs/release/v1-verification.md) and [v2.0 verification plan](docs/release/v2-verification.md) (plans and decisions, not releases)
+- [Capability SDK docs](docs/capabilities/) and the local [0.1.0 static docs snapshot](docs/capabilities/site/0.1.0/index.html) (not hosted or published)
 
 ## License
 
