@@ -10,6 +10,8 @@ Single source of truth for delivery progress. Derived from the five vision docum
 
 Unreleased prerequisites still begin with **Phase 14 — floating desktop Fawkes** (needs a person at an unlocked screen) and **Phase 20 — hardening & v0.1 release**. Phases 21–55 contain substantial implemented work, but no release tag from v0.1 onward has been cut, and many release gates need real services, hardware, independent review or an owner decision (see [gaps](../gaps.md)).
 
+New parity track (2026-10-15): the [Coucou & Insomnia audit](../audits/coucou-insomnia-audit.md) maps every feature of both projects to Phoenix and adds **Stage 12 (phases 56–71)** and **Stage 13 (phases 72–75)**. Build order starts with **Phase 56 — agent approvals from Fawkes** and **Phase 72 — keep-awake sessions**, which need nothing from the open v0.1 items. Stages 14–15 (2026-10-15) add [Phoenix originals and the Phoenix browser](../audits/phoenix-originals-and-browser.md): phases 76–96.
+
 ## Summary
 
 | Stage | Release | Phases | Done |
@@ -25,7 +27,11 @@ Unreleased prerequisites still begin with **Phase 14 — floating desktop Fawkes
 | Stage 9 — Capability Ecosystem (v0.9) | v0.9 | 41–42 (2) | 0/2 |
 | Stage 10 — Developer Operating Layer (v1.0) | v1.0 | 43–44 (2) | 0/2 |
 | Stage 11 — AI Evolution (v1.1 → v2.0) | v1.1 → v2.0 | 45–55 (11) | 0/11 |
-| **Total** | | **56** | **21/56** |
+| Stage 12 — Coucou parity and beyond | post-v2.0 | 56–71 (16) | 0/16 |
+| Stage 13 — Insomnia parity and beyond | post-v2.0 | 72–75 (4) | 0/4 |
+| Stage 14 — Phoenix originals | post-v2.0 | 76–92 (17) | 0/17 |
+| Stage 15 — Phoenix browser | post-v2.0 | 93–96 (4) | 0/4 |
+| **Total** | | **97** | **21/97** |
 
 ## Stage 1 — MVP Foundation
 
@@ -159,6 +165,84 @@ Unreleased prerequisites still begin with **Phase 14 — floating desktop Fawkes
 | 55 | [v2.0 — Ambient AI Operating Layer](phase-55-v2-0-ambient-ai-layer.md) | v2.0 | High | 54 | 🟨 | | 14 DoD + 8 anti-goal evidence plan, NO-GO; critical sandbox/preview/review/multimodal gates open |
 
 **Stage gate:** v2.0 Definition of Done (AI Evolution §26) met.
+
+
+## Stage 12 — Coucou parity and beyond
+
+Every feature of [Coucou](https://github.com/Louis-CFM/coucou) (agents in the notch, approvals, dictation, notetaker, voice, services, phones) with Phoenix's own assets, plus Phoenix improvements. Scope, licensing rules and owner decisions: [Coucou & Insomnia audit](../audits/coucou-insomnia-audit.md).
+
+| # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|---|
+| 56 | [Agent Approvals & Questions from Fawkes](phase-56-agent-approvals-from-fawkes.md) | post-v2.0 | Critical | 25, 32, 34 | ⬜ | | |
+| 57 | [Universal Agent Relay & Hook Installers](phase-57-agent-relay-and-installers.md) | post-v2.0 | High | 56 | ⬜ | | |
+| 58 | [Live Agent Sessions, Diffs & Plan Usage](phase-58-live-sessions-diffs-plan-usage.md) | post-v2.0 | High | 57 | ⬜ | | |
+| 59 | [Fawkes Interactions, Emotes & Sounds](phase-59-fawkes-interactions-and-sounds.md) | post-v2.0 | Medium | 10 | ⬜ | | |
+| 60 | [Fawkes Island (Notch / Top Edge) & Desktop Platforms](phase-60-fawkes-island.md) | post-v2.0 | Medium | 14 | ⬜ | | |
+| 61 | [Wardrobe, Per-Source Fawkes & Visible Capabilities](phase-61-wardrobe-and-per-source-fawkes.md) | post-v2.0 | Low | 59 | ⬜ | | |
+| 62 | [Drop Files & Attach Windows as Context](phase-62-file-drop-and-window-context.md) | post-v2.0 | Medium | 32, 63 | ⬜ | | |
+| 63 | [More AI Providers & Model Switcher](phase-63-more-ai-providers.md) | post-v2.0 | Medium | 27 | ⬜ | | |
+| 64 | [Dictation Anywhere](phase-64-dictation-anywhere.md) | post-v2.0 | High | 54, 60 | ⬜ | | |
+| 65 | [Botless Notetaker](phase-65-botless-notetaker.md) | post-v2.0 | High | 15, 35, 64 | ⬜ | | |
+| 66 | [« OK Fawkes » Voice Assistant](phase-66-ok-fawkes-voice-assistant.md) | post-v2.0 | Medium | 54, 64 | ⬜ | | |
+| 67 | [Service Integrations (Vercel, Stripe, n8n, Resend, Notion, Cal.com)](phase-67-service-integrations.md) | post-v2.0 | Medium | 13 | ⬜ | | |
+| 68 | [Media & Portfolio Capabilities](phase-68-media-and-portfolio.md) | post-v2.0 | Low | 13 | ⬜ | | |
+| 69 | [Weekly Recap & Statistics](phase-69-weekly-recap.md) | post-v2.0 | Low | 38 | ⬜ | | |
+| 70 | [Shortcuts, Languages & Demo Mode](phase-70-shortcuts-i18n-demo.md) | post-v2.0 | Low | 19 | ⬜ | | |
+| 71 | [Phone Link & Mobile Companions](phase-71-phone-link-and-mobile.md) | post-v2.0 | Medium | 45, 56 | ⬜ | | |
+
+**Stage gate:** an agent's permission request is approved from Fawkes for real (56) and every shipped feature uses only Phoenix assets.
+
+## Stage 13 — Insomnia parity and beyond (keep awake)
+
+Every feature of [Insomnia](https://github.com/krishhgg/Insomnia) (timed keep-awake, lid-closed mode, recovery, lid actions, power floors, network failover), across macOS, Linux and Windows where the OS allows.
+
+| # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|---|
+| 72 | [Keep-Awake Sessions (No Root)](phase-72-keep-awake-sessions.md) | post-v2.0 | High | 13 | ⬜ | | |
+| 73 | [Lid-Closed Mode, Recovery & Power Floors](phase-73-lid-closed-mode-and-recovery.md) | post-v2.0 | High | 72 | ⬜ | | |
+| 74 | [Lid-Close Actions](phase-74-lid-close-actions.md) | post-v2.0 | Medium | 73 | ⬜ | | |
+| 75 | [Agent Continuity: Network Failover, tmux Nudge, Browser Throttling](phase-75-agent-continuity-extras.md) | post-v2.0 | Low | 72, 34 | ⬜ | | |
+
+**Stage gate:** every change a session makes is undone on every exit path, including a crash (recovery journal + backstop).
+
+## Stage 14 — Phoenix originals
+
+Features neither Coucou nor Insomnia has, built on Phoenix's own platform. Rationale: [Phoenix originals & browser proposal](../audits/phoenix-originals-and-browser.md).
+
+| # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|---|
+| 76 | [Phoenix MCP Server & Universal Approval Channel](phase-76-mcp-server-and-approval-channel.md) | post-v2.0 | High | 56, 30 | ⬜ | | |
+| 77 | [Agent Safety Net: Checkpoints, Rollback, Loop & Stall Detection](phase-77-agent-safety-net.md) | post-v2.0 | High | 57 | ⬜ | | |
+| 78 | [Agent Cost Meter & Mission Control](phase-78-agent-cost-and-mission-control.md) | post-v2.0 | Medium | 58 | ⬜ | | |
+| 79 | [Session Handoff Notes & Secret Guard](phase-79-handoff-notes-and-secret-guard.md) | post-v2.0 | Medium | 58 | ⬜ | | |
+| 80 | [Port & Process Radar](phase-80-port-and-process-radar.md) | post-v2.0 | Medium | 18 | ⬜ | | |
+| 81 | [Machine Health & Local Model Manager](phase-81-machine-health-and-local-models.md) | post-v2.0 | Medium | 27 | ⬜ | | |
+| 82 | [Dependency Advisories, Flaky Tests, Build Trends & Config Drift](phase-82-engineering-signals.md) | post-v2.0 | Medium | 52 | ⬜ | | |
+| 83 | [Calendar Awareness & Meeting Prep](phase-83-calendar-and-meeting-prep.md) | post-v2.0 | High | 65, 35 | ⬜ | | |
+| 84 | [Standup & End-of-Day Digest](phase-84-standup-and-daily-digest.md) | post-v2.0 | Medium | 69 | ⬜ | | |
+| 85 | [Focus Mode & Screenshot-to-Issue](phase-85-focus-mode-and-screenshot-to-issue.md) | post-v2.0 | Medium | 26 | ⬜ | | |
+| 86 | [Approvals in Slack, Discord & Teams](phase-86-chat-app-approvals.md) | post-v2.0 | High | 56, 87 | ⬜ | | |
+| 87 | [Remote Access Relay](phase-87-remote-access-relay.md) | post-v2.0 | Medium | 71 | ⬜ | | |
+| 88 | [Physical Status Lights & Stream Deck](phase-88-status-lights-and-stream-deck.md) | post-v2.0 | Low | 13 | ⬜ | | |
+| 89 | [Apple Watch, Browser Extension & phoenix CLI](phase-89-watch-extension-cli.md) | post-v2.0 | Low | 71 | ⬜ | | |
+| 90 | [Scheduled Awake Windows & Power-Aware Scheduling](phase-90-scheduled-awake-and-power-aware.md) | post-v2.0 | Medium | 73 | ⬜ | | |
+| 91 | [Fawkes Rebirth, Milestones, Skin Packs & Accessibility](phase-91-fawkes-rebirth-and-skins.md) | post-v2.0 | Low | 59, 42 | ⬜ | | |
+| 92 | [Team Status & Incoming Webhooks](phase-92-team-status-and-webhooks.md) | post-v2.0 | Low | 87 | ⬜ | | |
+
+**Stage gate:** any MCP-capable agent can request an approval through Phoenix (76), and any agent session can be rolled back (77).
+
+## Stage 15 — Phoenix browser
+
+A small private browser that belongs to Fawkes: Brave-like blocking on the system webview, music from YouTube in a visible mini player, and a browsing assistant that acts only with approval.
+
+| # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|---|
+| 93 | [Phoenix Mini Browser](phase-93-phoenix-mini-browser.md) | post-v2.0 | High | 14 | ⬜ | | |
+| 94 | [YouTube Music & Site Connectors](phase-94-youtube-music-and-site-connectors.md) | post-v2.0 | High | 93, 68 | ⬜ | | |
+| 95 | [Fawkes Browsing Assistant](phase-95-fawkes-browsing-assistant.md) | post-v2.0 | Medium | 93, 30 | ⬜ | | |
+| 96 | [Browser Profiles, Sync & Extensions](phase-96-browser-profiles-sync-extensions.md) | post-v2.0 | Low | 93, 45 | ⬜ | | |
+
+**Stage gate:** browser data is isolated from the user's main browser, YouTube playback follows YouTube's terms, and the prompt-injection suite passes (95).
 
 ## MVP dependency graph (v0.1)
 
