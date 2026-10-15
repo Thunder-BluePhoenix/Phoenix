@@ -743,7 +743,9 @@ describe("Make a plan, from an accepted meeting item", () => {
       reasons: ["AI is off.", "No destination is set up."],
     });
     fireEvent.click(await screen.findByRole("button", { name: /^Make a plan from/ }));
-    expect(screen.getByText("Planning is off.")).toBeTruthy();
+    // The reasons come from a separate status request, so wait for them rather than assuming the
+    // item and the status resolve in the same tick.
+    expect(await screen.findByText("Planning is off.")).toBeTruthy();
     expect(screen.getByText("AI is off.")).toBeTruthy();
     expect(screen.getByText("No destination is set up.")).toBeTruthy();
     expect(
