@@ -65,7 +65,7 @@ Prove the MVP is safe and reliable, then package and release Phoenix v0.1.
 | Transcript and summary are retrievable | ✅ | `e2e-meeting.test.ts`, `meetings.test.ts` |
 | Core survives Kage outage | ✅ | `e2e-meeting.test.ts`, `kage.test.ts` |
 | Security/privacy controls cover sensitive capabilities | ✅ | [docs/security-review.md](../security-review.md) (with 9 known gaps) |
-| CI runs build/lint/test | ✅ | `.github/workflows/ci.yml` (the new macOS desktop job has not yet run on GitHub) |
+| CI runs build/lint/test | ✅ | `.github/workflows/ci.yml` (all jobs, including the macOS desktop job, green on GitHub at 9b5edb4; see [gaps](../gaps.md)) |
 | Capability development guide exists | ✅ | `docs/capabilities/getting-started.md` |
 
 ## Notes & risks

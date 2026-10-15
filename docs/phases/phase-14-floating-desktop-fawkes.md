@@ -35,11 +35,11 @@ Ship an independent, transparent, draggable desktop Fawkes that mirrors core sta
 - [x] Transparent borderless window rendering pet runtime (macOS: transparent corners, no Dock icon, 200×220)
 - [ ] Drag + persist position; multi-monitor sanity (drag and restart persistence verified on one display; multi-monitor placement is unit-tested only)
 - [x] Opt-in always-on-top; hide without disabling Phoenix (macOS: off by default, layer change verified, hiding leaves Core and the connection alone)
-- [ ] Tray menu: show/hide, open panel, quit (show/hide and quit verified; "Open Phoenix" not exercised)
+- [x] Tray menu: show/hide, open panel, quit (all three checked by hand on macOS, see notes; show/hide and "Open Phoenix" also automated in `tests/lifecycle.rs`)
 - [x] Short contextual speech bubbles; click opens relevant page (bubble verified in the real window; routing tested in `apps/web/test/floating.test.tsx`; the shell only opens validated in-app routes)
 - [x] Configurable start-on-login (macOS: LaunchAgent created and removed from the menu)
 - [x] Visibility must never imply recording: show explicit indicator only when RECORDING (tested, and seen in the real window)
-- [ ] Desktop tests: window lifecycle, tray, position (23 Rust tests cover position, settings, Core discovery and route validation; window lifecycle and tray were checked by hand, not automated)
+- [x] Desktop tests: window lifecycle, tray, position. 23 unit tests (position, settings, Core discovery, route validation) plus 7 lifecycle tests on Tauri's mock runtime (`tests/lifecycle.rs`): startup creates the window, tray and full menu; hide/show and keep-on-top update the menu and persist; "Open Phoenix" opens the local Core; settings survive a restart; a corrupt settings file still starts; unknown menu ids do nothing. The mock does not model real window visibility, stacking or Quit, so those stay hand-checked
 
 ## Deliverables
 
@@ -74,6 +74,14 @@ Ship an independent, transparent, draggable desktop Fawkes that mirrors core sta
 - Second attempt at the flicker, inconclusive. I rebuilt a 20 ms sampler and launched the debug shell. Two runs were unusable: in the first, Fawkes was reported off-screen and on Space 257 (the active Space was 4) from the start, through four app activations, and returned to Space 4 only when I relaunched the shell; I did not check whether the session was locked at that moment, so I do not know why. In the last run the session had locked (`CGSSessionScreenIsLocked` true, display asleep, 239 s idle; the front app stayed `loginwindow`), so my app activations did not take effect and it measured nothing about switching. Notably Fawkes was reported on-screen during that locked run, so a locked session does not by itself explain "not on screen". What worked: after a fresh launch with the session active, activating Finder, Terminal and Safari six times at 1.5 s intervals left Fawkes on-screen on the active Space every time, and a 45 s idle sample at 20 ms saw no change. The six-switch readings are 1.5 s apart, so they cannot see a 0.5 to 1.5 s gap the way the first attempt's 0.25 s sampling could; they do not contradict it. The Space 257 state is new and unexplained. To settle it: sample at ≤50 ms with the screen unlocked and someone present, logging the session lock state and Fawkes' Space alongside.
 - Verified against a live Core on macOS: the desktop webview finds the session token and opens a WebSocket (Core reported one live connection while the app ran). The first run found no token because the dev Core keeps its data in `<repo>/.phoenix/dev`, not `~/.phoenix/dev`; a debug build of the shell now looks in both and uses the newest token.
 - Found by measuring a real drag: the shell wrote `desktop.json` on every `Moved` event, 13 writes for one 200-pixel drag (about one per mouse step, so dozens per second on a long drag), each a temp file plus rename. Fixed: position is now kept in memory while the window moves and written when the drag ends, when any setting changes, and when the app exits. After the fix, polling the file at ~100 Hz during a drag saw no writes while it moved; the drag-end write put the final position on disk; and a window moved by something other than a drag (macOS accessibility, so no drag-end event) was still saved when quitting from the tray. A crash or force-quit between a non-drag move and the next write would lose that move; a drag survives because it writes at its end.
+
+## Automated lifecycle tests (2026-10-15)
+
+- The shell is now generic over the Tauri runtime: `builder::<R>(ShellOptions)` is used by `run()` with the real runtime and by `tests/lifecycle.rs` with `tauri::test::MockRuntime`. `ShellOptions` injects the settings directory, URL opener and environment, so the tests never touch the user's settings, browser, login items or Core.
+- macOS only creates menus and tray icons on the main thread, which Rust's default test harness never uses (first attempt panicked: "`muda::Menu` can only be created on the main thread"). The lifecycle test is a `harness = false` target with its own `main()`, which runs on the main thread. Tauri's mock `request_exit` is `unimplemented!()`, so Quit cannot be driven there.
+- Checked the tests are not vacuous: making hide/show skip the disk write made "hide and show are remembered" fail.
+- The refactored real app was launched afterwards: one 200×220 window on the normal layer (keep-on-top off) at the saved position.
+- A missing tray icon no longer panics (`expect("bundled app icon")` removed); the real bundle always has one, tests have none.
 
 ## Source documents
 

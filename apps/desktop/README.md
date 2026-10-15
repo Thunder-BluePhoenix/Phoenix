@@ -18,9 +18,11 @@ Needs Rust ≥ 1.90 and a running core (`pnpm dev:core` in another terminal):
 ```sh
 pnpm --filter @phoenix/desktop dev      # hot reload against the Vite dev server
 pnpm --filter @phoenix/desktop build    # bundle
-pnpm --filter @phoenix/desktop test:rust
+pnpm --filter @phoenix/desktop test:rust   # unit tests + window/tray lifecycle (mock runtime)
 ```
+
+The lifecycle tests (`src-tauri/tests/lifecycle.rs`) run on Tauri's mock runtime on the main thread (`harness = false`, because macOS only builds menus and tray icons there). They never open a browser, write login items or touch your settings.
 
 ## Status
 
-Checked on macOS (Apple silicon) on a real desktop: transparent window, drag, position saved across restarts, tray (show/hide, menu, quit), keep-on-top, start on login, and reconnecting after Core restarts. Not yet verified: a person looking at it, more than one monitor, the "Open Phoenix" menu item, and any other OS (Linux and Windows have not been built). See the phase file for the checklist.
+Checked on macOS (Apple silicon) on a real desktop: transparent window, drag, position saved across restarts, tray (show/hide, menu, quit), keep-on-top, start on login, and reconnecting after Core restarts. The tray's "Open Phoenix" opened Core in the browser. Not yet verified: a person looking at it, more than one monitor, and any other OS (Linux and Windows have not been built). See the phase file for the checklist.

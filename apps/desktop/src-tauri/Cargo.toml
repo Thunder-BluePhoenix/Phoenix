@@ -21,9 +21,17 @@ parking_lot = "0.12"
 
 [dev-dependencies]
 tempfile = "3"
+# Mock runtime for the window/tray lifecycle tests (tests/lifecycle.rs).
+tauri = { version = "2", features = ["tray-icon", "macos-private-api", "test"] }
 
 [profile.release]
 opt-level = "s"
 lto = true
 codegen-units = 1
 strip = true
+
+# macOS only allows menus and tray icons on the main thread, which the default test
+# harness never uses; this test runs its own main().
+[[test]]
+name = "lifecycle"
+harness = false

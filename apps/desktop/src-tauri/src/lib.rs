@@ -16,35 +16,55 @@ use parking_lot::Mutex;
 use position::{place, Point, Rect};
 use settings::Settings;
 use std::path::PathBuf;
-use tauri::menu::{CheckMenuItem, ContextMenu, Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItem, ContextMenu, Menu, MenuItem, MenuItemKind, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{
-    AppHandle, Manager, PhysicalPosition, PhysicalSize, RunEvent, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder, WindowEvent,
+    AppHandle, Manager, PhysicalPosition, PhysicalSize, RunEvent, Runtime, WebviewUrl,
+    WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_opener::OpenerExt as _;
 
-const WINDOW_LABEL: &str = "fawkes";
+pub const WINDOW_LABEL: &str = "fawkes";
 /// Logical size of the transparent window: Fawkes plus room for a speech bubble.
 const WINDOW_SIZE: (f64, f64) = (200.0, 220.0);
-const TRAY_ID: &str = "phoenix-tray";
+pub const TRAY_ID: &str = "phoenix-tray";
+/// Settings file name inside the settings directory.
+pub const SETTINGS_FILE: &str = "desktop.json";
 
-struct Shell {
+/// Opens a URL in the user's browser.
+pub type UrlOpener = Box<dyn Fn(&str) + Send + Sync>;
+/// Looks up an environment variable.
+pub type EnvLookup = Box<dyn Fn(&str) -> Option<String> + Send + Sync>;
+
+/// What differs between the real app and the automated lifecycle tests, which must not
+/// touch the user's settings, browser or environment. `Default` is the real app.
+#[derive(Default)]
+pub struct ShellOptions {
+    /// Directory for `desktop.json`. Default: the OS app-data directory.
+    pub settings_dir: Option<PathBuf>,
+    /// Default: the system browser (opener plugin).
+    pub open_url: Option<UrlOpener>,
+    /// Default: the process environment.
+    pub env: Option<EnvLookup>,
+}
+
+struct Shell<R: Runtime> {
     locator: Locator,
     settings_path: PathBuf,
     settings: Mutex<Settings>,
-    menu: Mutex<Option<MenuItems>>,
+    menu: Mutex<Option<MenuItems<R>>>,
+    open_url: UrlOpener,
 }
 
-struct MenuItems {
-    menu: Menu<tauri::Wry>,
-    toggle: MenuItem<tauri::Wry>,
-    on_top: CheckMenuItem<tauri::Wry>,
-    login: CheckMenuItem<tauri::Wry>,
+struct MenuItems<R: Runtime> {
+    menu: Menu<R>,
+    toggle: MenuItem<R>,
+    on_top: CheckMenuItem<R>,
+    login: CheckMenuItem<R>,
 }
 
-impl Shell {
+impl<R: Runtime> Shell<R> {
     /// Changes a setting and writes it to disk.
     fn update(&self, change: impl FnOnce(&mut Settings)) {
         let mut settings = self.settings.lock();
@@ -65,7 +85,7 @@ impl Shell {
 
 /// Connected monitors. `available_monitors()` can be empty while the app is still
 /// starting (observed on macOS), so fall back to the primary and current monitors.
-fn monitor_rects(window: &WebviewWindow) -> Vec<Rect> {
+fn monitor_rects<R: Runtime>(window: &WebviewWindow<R>) -> Vec<Rect> {
     let mut monitors = window.available_monitors().unwrap_or_default();
     if monitors.is_empty() {
         monitors.extend(window.primary_monitor().ok().flatten());
@@ -86,7 +106,11 @@ fn monitor_rects(window: &WebviewWindow) -> Vec<Rect> {
 // ── Commands (the whole surface the page can use) ───────────────────────────
 
 #[tauri::command]
-fn core_connection(shell: tauri::State<Shell>) -> CoreConnection {
+// `_app` only pins the runtime type for the generic command.
+fn core_connection<R: Runtime>(
+    _app: AppHandle<R>,
+    shell: tauri::State<'_, Shell<R>>,
+) -> CoreConnection {
     connection(&shell.locator)
 }
 
@@ -103,7 +127,7 @@ fn repo_dev_data_dir() -> Option<PathBuf> {
 }
 
 #[tauri::command]
-fn move_window_by(window: WebviewWindow, dx: f64, dy: f64) {
+fn move_window_by<R: Runtime>(window: WebviewWindow<R>, dx: f64, dy: f64) {
     if !dx.is_finite() || !dy.is_finite() {
         return;
     }
@@ -117,25 +141,29 @@ fn move_window_by(window: WebviewWindow, dx: f64, dy: f64) {
 }
 
 #[tauri::command]
-fn drag_finished(window: WebviewWindow, shell: tauri::State<Shell>) {
+fn drag_finished<R: Runtime>(window: WebviewWindow<R>, shell: tauri::State<'_, Shell<R>>) {
     save_position(&window, &shell);
 }
 
 #[tauri::command]
-fn open_in_phoenix(app: AppHandle, shell: tauri::State<Shell>, route: String) {
+fn open_in_phoenix<R: Runtime>(
+    _app: AppHandle<R>,
+    shell: tauri::State<'_, Shell<R>>,
+    route: String,
+) {
     if let Some(url) = phoenix_url(&shell.locator.base_url, &route) {
-        let _ = app.opener().open_url(url, None::<&str>);
+        (shell.open_url)(&url);
     }
 }
 
 #[tauri::command]
-fn show_menu(window: WebviewWindow, shell: tauri::State<Shell>) {
+fn show_menu<R: Runtime>(window: WebviewWindow<R>, shell: tauri::State<'_, Shell<R>>) {
     if let Some(items) = shell.menu.lock().as_ref() {
         let _ = items.menu.popup(window.as_ref().window().clone());
     }
 }
 
-fn save_position(window: &WebviewWindow, shell: &Shell) {
+fn save_position<R: Runtime>(window: &WebviewWindow<R>, shell: &Shell<R>) {
     if let Ok(p) = window.outer_position() {
         shell.update(|s| s.position = Some(Point { x: p.x, y: p.y }));
     }
@@ -143,7 +171,10 @@ fn save_position(window: &WebviewWindow, shell: &Shell) {
 
 // ── Window and tray ──────────────────────────────────────────────────────────
 
-fn create_window(app: &AppHandle, settings: &Settings) -> tauri::Result<WebviewWindow> {
+fn create_window<R: Runtime>(
+    app: &AppHandle<R>,
+    settings: &Settings,
+) -> tauri::Result<WebviewWindow<R>> {
     let window =
         WebviewWindowBuilder::new(app, WINDOW_LABEL, WebviewUrl::App("floating.html".into()))
             .title("Fawkes")
@@ -174,8 +205,8 @@ fn create_window(app: &AppHandle, settings: &Settings) -> tauri::Result<WebviewW
     Ok(window)
 }
 
-fn set_visible(app: &AppHandle, visible: bool) {
-    let shell = app.state::<Shell>();
+fn set_visible<R: Runtime>(app: &AppHandle<R>, visible: bool) {
+    let shell = app.state::<Shell<R>>();
     if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
         let _ = if visible {
             window.show()
@@ -194,19 +225,19 @@ fn set_visible(app: &AppHandle, visible: bool) {
     }
 }
 
-fn toggle_visible(app: &AppHandle) {
-    let visible = app.state::<Shell>().settings.lock().visible;
+fn toggle_visible<R: Runtime>(app: &AppHandle<R>) {
+    let visible = app.state::<Shell<R>>().settings.lock().visible;
     set_visible(app, !visible);
 }
 
-fn set_always_on_top(app: &AppHandle, on: bool) {
+fn set_always_on_top<R: Runtime>(app: &AppHandle<R>, on: bool) {
     if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
         let _ = window.set_always_on_top(on);
     }
-    app.state::<Shell>().update(|s| s.always_on_top = on);
+    app.state::<Shell<R>>().update(|s| s.always_on_top = on);
 }
 
-fn set_start_on_login(app: &AppHandle, on: bool) {
+fn set_start_on_login<R: Runtime>(app: &AppHandle<R>, on: bool) {
     let manager = app.autolaunch();
     let _ = if on {
         manager.enable()
@@ -215,7 +246,7 @@ fn set_start_on_login(app: &AppHandle, on: bool) {
     };
 }
 
-fn build_menu(app: &AppHandle, settings: &Settings) -> tauri::Result<MenuItems> {
+fn build_menu<R: Runtime>(app: &AppHandle<R>, settings: &Settings) -> tauri::Result<MenuItems<R>> {
     let toggle = MenuItem::with_id(
         app,
         "toggle",
@@ -266,24 +297,25 @@ fn build_menu(app: &AppHandle, settings: &Settings) -> tauri::Result<MenuItems> 
     })
 }
 
-fn handle_menu(app: &AppHandle, id: &str) {
+/// Runs a tray / window menu item. Public for the lifecycle tests.
+pub fn handle_menu<R: Runtime>(app: &AppHandle<R>, id: &str) {
     match id {
         "toggle" => toggle_visible(app),
         "open" => {
-            let base = app.state::<Shell>().locator.base_url.clone();
-            let _ = app.opener().open_url(base, None::<&str>);
+            let shell = app.state::<Shell<R>>();
+            (shell.open_url)(&shell.locator.base_url);
         }
         "on_top" => {
-            let on = !app.state::<Shell>().settings.lock().always_on_top;
+            let on = !app.state::<Shell<R>>().settings.lock().always_on_top;
             set_always_on_top(app, on);
-            if let Some(items) = app.state::<Shell>().menu.lock().as_ref() {
+            if let Some(items) = app.state::<Shell<R>>().menu.lock().as_ref() {
                 let _ = items.on_top.set_checked(on);
             }
         }
         "login" => {
             let on = !app.autolaunch().is_enabled().unwrap_or(false);
             set_start_on_login(app, on);
-            if let Some(items) = app.state::<Shell>().menu.lock().as_ref() {
+            if let Some(items) = app.state::<Shell<R>>().menu.lock().as_ref() {
                 let _ = items.login.set_checked(on);
             }
         }
@@ -293,14 +325,13 @@ fn handle_menu(app: &AppHandle, id: &str) {
     }
 }
 
-fn build_tray(app: &AppHandle, menu: &Menu<tauri::Wry>) -> tauri::Result<()> {
-    let icon = app
-        .default_window_icon()
-        .cloned()
-        .expect("bundled app icon");
-    TrayIconBuilder::with_id(TRAY_ID)
-        .icon(icon)
-        .tooltip("Fawkes")
+fn build_tray<R: Runtime>(app: &AppHandle<R>, menu: &Menu<R>) -> tauri::Result<()> {
+    let mut tray = TrayIconBuilder::with_id(TRAY_ID);
+    // Always present in the real app (bundled icon); absent only in tests.
+    if let Some(icon) = app.default_window_icon().cloned() {
+        tray = tray.icon(icon);
+    }
+    tray.tooltip("Fawkes")
         .menu(menu)
         // Left click toggles Fawkes; the menu opens on right click (or left click on Linux).
         .show_menu_on_left_click(false)
@@ -319,8 +350,37 @@ fn build_tray(app: &AppHandle, menu: &Menu<tauri::Wry>) -> tauri::Result<()> {
     Ok(())
 }
 
-pub fn run() {
-    tauri::Builder::default()
+/// Menu items as (id, text, checked), in order. Public for the lifecycle tests.
+#[doc(hidden)]
+pub fn menu_snapshot<R: Runtime>(app: &AppHandle<R>) -> Vec<(String, String, Option<bool>)> {
+    let shell = app.state::<Shell<R>>();
+    let menu = shell.menu.lock();
+    let Some(items) = menu.as_ref() else {
+        return Vec::new();
+    };
+    items
+        .menu
+        .items()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|item| match item {
+            MenuItemKind::MenuItem(i) => {
+                Some((i.id().0.clone(), i.text().unwrap_or_default(), None))
+            }
+            MenuItemKind::Check(i) => Some((
+                i.id().0.clone(),
+                i.text().unwrap_or_default(),
+                i.is_checked().ok(),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The app without its context: `run` uses it with the real runtime, the lifecycle tests
+/// with Tauri's mock runtime.
+pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
+    tauri::Builder::<R>::new()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -333,19 +393,30 @@ pub fn run() {
             open_in_phoenix,
             show_menu
         ])
-        .setup(|app| {
+        .setup(move |app| {
             let handle = app.handle();
             #[cfg(target_os = "macos")]
             handle.set_activation_policy(tauri::ActivationPolicy::Accessory)?;
 
-            let data_dir = handle.path().app_data_dir()?;
-            let settings_path = data_dir.join("desktop.json");
+            let ShellOptions {
+                settings_dir,
+                open_url,
+                env,
+            } = options;
+            let settings_dir = match settings_dir {
+                Some(dir) => dir,
+                None => handle.path().app_data_dir()?,
+            };
+            let settings_path = settings_dir.join(SETTINGS_FILE);
             let settings = settings::load(&settings_path);
-            let locator = locate(
-                |k| std::env::var(k).ok(),
-                handle.path().home_dir().ok(),
-                repo_dev_data_dir(),
-            );
+            let env = env.unwrap_or_else(|| Box::new(|k| std::env::var(k).ok()));
+            let locator = locate(env, handle.path().home_dir().ok(), repo_dev_data_dir());
+            let open_url = open_url.unwrap_or_else(|| {
+                let opener = handle.clone();
+                Box::new(move |url| {
+                    let _ = opener.opener().open_url(url, None::<&str>);
+                })
+            });
 
             let items = build_menu(handle, &settings)?;
             build_tray(handle, &items.menu)?;
@@ -354,6 +425,7 @@ pub fn run() {
                 settings_path,
                 settings: Mutex::new(settings.clone()),
                 menu: Mutex::new(Some(items)),
+                open_url,
             });
             create_window(handle, &settings)?;
             Ok(())
@@ -365,19 +437,22 @@ pub fn run() {
             // (`drag_finished`), when any setting changes, and on exit.
             if let WindowEvent::Moved(p) = event {
                 if window.label() == WINDOW_LABEL {
-                    window
-                        .app_handle()
-                        .state::<Shell>()
-                        .remember(|s| s.position = Some(Point { x: p.x, y: p.y }));
+                    if let Some(shell) = window.app_handle().try_state::<Shell<R>>() {
+                        shell.remember(|s| s.position = Some(Point { x: p.x, y: p.y }));
+                    }
                 }
             }
         })
+}
+
+pub fn run() {
+    builder::<tauri::Wry>(ShellOptions::default())
         .build(tauri::generate_context!())
         .expect("error while building Phoenix desktop")
         .run(|app, event| {
             // Quit from the tray, the OS, or the last window closing: keep the latest position.
             if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
-                if let Some(shell) = app.try_state::<Shell>() {
+                if let Some(shell) = app.try_state::<Shell<tauri::Wry>>() {
                     shell.flush();
                 }
             }
