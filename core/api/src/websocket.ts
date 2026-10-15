@@ -49,6 +49,9 @@ export interface WebSocketMetrics {
   droppedSlowClients: number;
 }
 
+/** Ephemeral events that are still pushed to clients as `event.created` (seq is null). */
+const LIVE_EPHEMERAL = /^agent\.(session\.step|usage\.updated)$/;
+
 /** Fans core activity out to WebSocket clients on named channels. */
 export class WebSocketHub {
   private readonly wss = new WebSocketServer({
@@ -66,7 +69,9 @@ export class WebSocketHub {
       s.state.onChange((snapshot) => this.broadcast("state.changed", snapshot)),
       s.state.onTasksChange((tasks) => this.broadcast("task.updated", { tasks })),
       s.bus.subscribe("api.websocket", "*", (event, info) => {
-        if (!info.ephemeral) {
+        // Ephemeral events are not history, so most are not sent. The live agent-session signals
+        // (Phase 58) are exactly that: sub-second updates for a view that is open right now.
+        if (!info.ephemeral || LIVE_EPHEMERAL.test(event.event_type)) {
           this.broadcast("event.created", {
             seq: info.seq,
             event,

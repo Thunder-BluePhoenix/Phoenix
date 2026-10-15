@@ -30,10 +30,28 @@ import {
   type SecretStore,
 } from "@phoenix/persistence";
 import { createEvent, ErrorCode, PhoenixError, PROTOCOL_VERSION } from "@phoenix/protocol";
-import { AutonomyController, PolicyAdmin, PolicyEngine, PolicyStore } from "@phoenix/policy";
+import {
+  AgentRuleBook,
+  AutonomyController,
+  PolicyAdmin,
+  PolicyEngine,
+  PolicyStore,
+} from "@phoenix/policy";
 import { StateEngine } from "@phoenix/state-engine";
-import type { AgentsServices } from "@phoenix/capability-agents";
+import {
+  execFocus,
+  focuserFor,
+  type AgentsServices,
+  type GitExec,
+  type HookInstaller,
+  type SessionDetail,
+  type SessionView,
+  type TerminalFocuser,
+} from "@phoenix/capability-agents";
 import { AgentRuntime } from "./agents";
+import { AgentApprovals } from "./agent-approvals";
+import { AgentLive } from "./agent-live";
+import { AgentRelay } from "./agent-relay";
 import { AiRuntime } from "./ai";
 import { AutonomyRuntime } from "./autonomy";
 import { collectDiagnostics, type Diagnostics } from "./diagnostics";
@@ -93,6 +111,15 @@ export interface RuntimeOptions {
   agents?: readonly AgentDefinition[];
   /** Local catalogue files selected by the Core host; no configured trust by default. */
   registry?: LocalRegistryConfig;
+  /**
+   * Hook installer behind the agent-relay routes. Tests inject one over a temp home; by default
+   * the real one (the user's home directory) is built on first use, never at construction.
+   */
+  installer?: HookInstaller;
+  /** Runs the terminal-window focus for "jump to terminal" (tests inject a fake; default: this OS). */
+  terminalFocuser?: TerminalFocuser;
+  /** Runs `git` for on-demand diffs (tests inject a fake). */
+  gitExec?: GitExec;
 }
 
 /**
@@ -153,6 +180,12 @@ export class PhoenixRuntime implements CoreServices {
   readonly autonomy: AutonomyController;
   /** Authenticated HTTP view: settings and stop only, never run creation. */
   readonly autonomyApi: AutonomyRuntime;
+  /** Coding-agent permission requests and questions (Phase 56); session-token routes only. */
+  readonly agentApprovals: AgentApprovals;
+  /** The owner-only relay socket for coding-agent hooks and their hook installers (Phase 57). */
+  readonly agentRelay: AgentRelay;
+  /** Live agent sessions: steps, changed files, diffs, plan usage (Phase 58); session-token routes only. */
+  readonly agentLive: AgentLive;
   /**
    * Changes policy. Deliberately private and unused by any route: only code that holds the
    * runtime (never an agent, never a tool result) could reach it, and every method also refuses
@@ -342,6 +375,67 @@ export class PhoenixRuntime implements CoreServices {
       autonomy: this.autonomy,
     });
     this.policyAdmin = new PolicyAdmin({ store: policyStore, audit: this.permissions.audit });
+    this.agentApprovals = new AgentApprovals({
+      db: this.db,
+      bus: this.bus,
+      audit: this.permissions.audit,
+      policy,
+      rules: new AgentRuleBook({ db: this.db, audit: this.permissions.audit }),
+      isKillSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
+      logger: this.logger.child("agent-approvals"),
+    });
+    this.agentRelay = new AgentRelay({
+      dataDir: this.config.dataDir,
+      bus: this.bus,
+      audit: this.permissions.audit,
+      logger: this.logger.child("agent-relay"),
+      version: PHOENIX_VERSION,
+      approvals: this.agentApprovals,
+      invokeReport: (input) => this.capabilities.invoke("agents", "report", input, "relay"),
+      ...(options.installer ? { installer: options.installer } : {}),
+      live: () => this.agentLive,
+    });
+    let focuser = options.terminalFocuser;
+    if (!focuser) {
+      try {
+        focuser = focuserFor(process.platform, execFocus);
+      } catch {
+        focuser = undefined; // an unsupported system: the route says so when asked
+      }
+    }
+    this.agentLive = new AgentLive({
+      bus: this.bus,
+      permissions: this.permissions,
+      settings: this.settings,
+      logger: this.logger.child("agent-live"),
+      orchestrated: {
+        list: async () => {
+          const op = await this.capabilities.invokeAndWait(
+            "agents",
+            "session.list",
+            {},
+            "agent-live",
+          );
+          return op.status === "succeeded"
+            ? ((op.result as { sessions?: SessionView[] } | undefined)?.sessions ?? [])
+            : [];
+        },
+        get: async (id) => {
+          const op = await this.capabilities.invokeAndWait(
+            "agents",
+            "session.get",
+            { session_id: id },
+            "agent-live",
+          );
+          if (op.status !== "succeeded") {
+            throw new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, "Session not found");
+          }
+          return op.result as SessionDetail;
+        },
+      },
+      ...(focuser ? { focuser } : {}),
+      ...(options.gitExec ? { git: options.gitExec } : {}),
+    });
     this.toolGateway = new ToolGateway({
       host: this.capabilities,
       registry,
@@ -478,6 +572,7 @@ export class PhoenixRuntime implements CoreServices {
       ...(this.config.webRoot ? { webRoot: this.config.webRoot } : {}),
     });
     const address = await this.api.listen(this.config.port, this.config.host);
+    await this.agentRelay.start();
     if (this.options.writeTokenFile ?? true) this.writeTokenFile();
 
     this.ticker = setInterval(() => this.state.tick(), this.options.tickMs ?? 1_000);
@@ -671,9 +766,11 @@ export class PhoenixRuntime implements CoreServices {
   stop(): Promise<void> {
     this.stopping ??= (async () => {
       this.proactive.stopScheduler();
+      this.agentApprovals.close();
       clearInterval(this.syncTimer ?? undefined);
       if (this.ticker) clearInterval(this.ticker);
       if (this.pruner) clearInterval(this.pruner);
+      await this.agentRelay.stop();
       await this.api?.close();
       await this.agents.close();
       await this.workflows.close();

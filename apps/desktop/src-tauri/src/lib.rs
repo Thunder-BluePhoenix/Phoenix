@@ -8,15 +8,29 @@
 //! page only talks to it through the commands below (ADR-0013).
 
 mod connection;
+mod island;
+mod island_controller;
+mod island_geometry;
+#[cfg(target_os = "linux")]
+mod island_linux;
+#[cfg(target_os = "macos")]
+mod island_macos;
+mod island_platform;
+mod island_state;
+#[cfg(windows)]
+mod island_windows;
 mod position;
 mod settings;
 
 use connection::{connection, locate, phoenix_url, CoreConnection, Locator};
+use island_controller::{Frame, PageEvent};
 use parking_lot::Mutex;
 use position::{place, Point, Rect};
-use settings::Settings;
+use settings::{Mode, Settings};
 use std::path::PathBuf;
-use tauri::menu::{CheckMenuItem, ContextMenu, Menu, MenuItem, MenuItemKind, PredefinedMenuItem};
+use tauri::menu::{
+    CheckMenuItem, ContextMenu, IsMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem,
+};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{
     AppHandle, Manager, PhysicalPosition, PhysicalSize, RunEvent, Runtime, WebviewUrl,
@@ -25,6 +39,7 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_opener::OpenerExt as _;
 
+pub use island::ISLAND_LABEL;
 pub const WINDOW_LABEL: &str = "fawkes";
 /// Logical size of the transparent window: Fawkes plus room for a speech bubble.
 const WINDOW_SIZE: (f64, f64) = (200.0, 220.0);
@@ -47,6 +62,9 @@ pub struct ShellOptions {
     pub open_url: Option<UrlOpener>,
     /// Default: the process environment.
     pub env: Option<EnvLookup>,
+    /// Tests only: the mock runtime has no real native window, so styling it (macOS window
+    /// level, Windows extended style, GTK hints) would dereference a fake handle.
+    pub skip_native_window_styling: bool,
 }
 
 struct Shell<R: Runtime> {
@@ -55,6 +73,7 @@ struct Shell<R: Runtime> {
     settings: Mutex<Settings>,
     menu: Mutex<Option<MenuItems<R>>>,
     open_url: UrlOpener,
+    island: island::Host,
 }
 
 struct MenuItems<R: Runtime> {
@@ -62,6 +81,8 @@ struct MenuItems<R: Runtime> {
     toggle: MenuItem<R>,
     on_top: CheckMenuItem<R>,
     login: CheckMenuItem<R>,
+    modes: Vec<(Mode, CheckMenuItem<R>)>,
+    display: MenuItem<R>,
 }
 
 impl<R: Runtime> Shell<R> {
@@ -128,7 +149,8 @@ fn repo_dev_data_dir() -> Option<PathBuf> {
 
 #[tauri::command]
 fn move_window_by<R: Runtime>(window: WebviewWindow<R>, dx: f64, dy: f64) {
-    if !dx.is_finite() || !dy.is_finite() {
+    // The island is placed by the shell, never dragged by its page.
+    if window.label() != WINDOW_LABEL || !dx.is_finite() || !dy.is_finite() {
         return;
     }
     let scale = window.scale_factor().unwrap_or(1.0);
@@ -142,6 +164,9 @@ fn move_window_by<R: Runtime>(window: WebviewWindow<R>, dx: f64, dy: f64) {
 
 #[tauri::command]
 fn drag_finished<R: Runtime>(window: WebviewWindow<R>, shell: tauri::State<'_, Shell<R>>) {
+    if window.label() != WINDOW_LABEL {
+        return;
+    }
     save_position(&window, &shell);
 }
 
@@ -161,6 +186,35 @@ fn show_menu<R: Runtime>(window: WebviewWindow<R>, shell: tauri::State<'_, Shell
     if let Some(items) = shell.menu.lock().as_ref() {
         let _ = items.menu.popup(window.as_ref().window().clone());
     }
+}
+
+/// What the island page may report (hover where the shell cannot see the pointer, click,
+/// Escape, what Fawkes is doing). Only the island window may call it.
+#[tauri::command]
+fn island_event<R: Runtime>(
+    window: WebviewWindow<R>,
+    shell: tauri::State<'_, Shell<R>>,
+    event: PageEvent,
+) {
+    if window.label() != island::ISLAND_LABEL {
+        return;
+    }
+    let now = shell.island.now_ms();
+    let frame = shell.island.controller().handle(event.into(), now);
+    if let Some(frame) = frame {
+        island::apply_frame(window.app_handle(), shell.island.platform, frame);
+    }
+}
+
+/// The island's current frame, for a page that loaded after the last one was emitted.
+#[tauri::command]
+fn island_frame<R: Runtime>(
+    window: WebviewWindow<R>,
+    shell: tauri::State<'_, Shell<R>>,
+) -> Option<Frame> {
+    (window.label() == island::ISLAND_LABEL)
+        .then(|| shell.island.controller().frame())
+        .flatten()
 }
 
 fn save_position<R: Runtime>(window: &WebviewWindow<R>, shell: &Shell<R>) {
@@ -199,22 +253,35 @@ fn create_window<R: Runtime>(
     let target = place(settings.position, size, &monitor_rects(&window));
     window.set_position(PhysicalPosition::new(target.x, target.y))?;
     window.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32))?;
-    if settings.visible {
-        window.show()?;
-    }
     Ok(window)
 }
 
-fn set_visible<R: Runtime>(app: &AppHandle<R>, visible: bool) {
+/// Shows the window of the current mode (when Fawkes is not hidden) and hides the others.
+/// Navbar mode has no desktop window at all.
+fn apply_mode<R: Runtime>(app: &AppHandle<R>) {
     let shell = app.state::<Shell<R>>();
+    let (mode, visible) = {
+        let settings = shell.settings.lock();
+        (settings.mode, settings.visible)
+    };
     if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
-        let _ = if visible {
+        let _ = if mode == Mode::Floating && visible {
             window.show()
         } else {
             window.hide()
         };
     }
+    if mode == Mode::Island && visible {
+        island::show(app);
+    } else {
+        island::hide(app);
+    }
+}
+
+fn set_visible<R: Runtime>(app: &AppHandle<R>, visible: bool) {
+    let shell = app.state::<Shell<R>>();
     shell.update(|s| s.visible = visible);
+    apply_mode(app);
     let menu = shell.menu.lock();
     if let Some(items) = menu.as_ref() {
         let _ = items.toggle.set_text(if visible {
@@ -223,6 +290,40 @@ fn set_visible<R: Runtime>(app: &AppHandle<R>, visible: bool) {
             "Show Fawkes"
         });
     }
+}
+
+/// Switches between the floating window, the island and the navbar, live. Fawkes' state comes
+/// from Core in every mode, so nothing about the pet changes; only where it is drawn.
+fn set_mode<R: Runtime>(app: &AppHandle<R>, mode: Mode) {
+    let shell = app.state::<Shell<R>>();
+    shell.update(|s| s.mode = mode);
+    apply_mode(app);
+    let menu = shell.menu.lock();
+    if let Some(items) = menu.as_ref() {
+        for (m, item) in &items.modes {
+            let _ = item.set_checked(*m == mode);
+        }
+    }
+}
+
+/// Island display: main screen -> follows the mouse -> each other screen -> main screen.
+fn cycle_island_display<R: Runtime>(app: &AppHandle<R>) {
+    let shell = app.state::<Shell<R>>();
+    let next = {
+        let mut controller = shell.island.controller();
+        let next = island_geometry::next_display(controller.display(), controller.monitors());
+        controller.set_display(next.clone(), None);
+        controller.republish().inspect(|frame| {
+            island::apply_frame(app, shell.island.platform, *frame);
+        });
+        next
+    };
+    if let Some(items) = shell.menu.lock().as_ref() {
+        let _ = items
+            .display
+            .set_text(island_geometry::display_label(&next));
+    }
+    shell.update(|s| s.island_display = next);
 }
 
 fn toggle_visible<R: Runtime>(app: &AppHandle<R>) {
@@ -246,7 +347,11 @@ fn set_start_on_login<R: Runtime>(app: &AppHandle<R>, on: bool) {
     };
 }
 
-fn build_menu<R: Runtime>(app: &AppHandle<R>, settings: &Settings) -> tauri::Result<MenuItems<R>> {
+fn build_menu<R: Runtime>(
+    app: &AppHandle<R>,
+    settings: &Settings,
+    display_choice: bool,
+) -> tauri::Result<MenuItems<R>> {
     let toggle = MenuItem::with_id(
         app,
         "toggle",
@@ -277,23 +382,50 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, settings: &Settings) -> tauri::Res
         None::<&str>,
     )?;
     let quit = MenuItem::with_id(app, "quit", "Quit Fawkes", true, None::<&str>)?;
-    let menu = Menu::with_items(
+    let modes = [
+        (Mode::Floating, "Floating Fawkes"),
+        (Mode::Island, "Island (top of the screen)"),
+        (Mode::Navbar, "Navbar only (no desktop window)"),
+    ]
+    .into_iter()
+    .map(|(mode, text)| {
+        CheckMenuItem::with_id(
+            app,
+            format!("mode_{}", mode.as_str()),
+            text,
+            true,
+            settings.mode == mode,
+            None::<&str>,
+        )
+        .map(|item| (mode, item))
+    })
+    .collect::<tauri::Result<Vec<_>>>()?;
+    let display = MenuItem::with_id(
         app,
-        &[
-            &toggle,
-            &open,
-            &PredefinedMenuItem::separator(app)?,
-            &on_top,
-            &login,
-            &PredefinedMenuItem::separator(app)?,
-            &quit,
-        ],
+        "island_display",
+        island_geometry::display_label(&settings.island_display),
+        display_choice,
+        None::<&str>,
     )?;
+    let mut entries: Vec<&dyn IsMenuItem<R>> = vec![&toggle, &open];
+    let separators = [
+        PredefinedMenuItem::separator(app)?,
+        PredefinedMenuItem::separator(app)?,
+        PredefinedMenuItem::separator(app)?,
+    ];
+    entries.push(&separators[0]);
+    entries.extend(modes.iter().map(|(_, item)| item as &dyn IsMenuItem<R>));
+    entries.push(&display);
+    entries.push(&separators[1]);
+    entries.extend([&on_top as &dyn IsMenuItem<R>, &login, &separators[2], &quit]);
+    let menu = Menu::with_items(app, &entries)?;
     Ok(MenuItems {
         menu,
         toggle,
         on_top,
         login,
+        modes,
+        display,
     })
 }
 
@@ -319,6 +451,12 @@ pub fn handle_menu<R: Runtime>(app: &AppHandle<R>, id: &str) {
                 let _ = items.login.set_checked(on);
             }
         }
+        id if id.starts_with("mode_") => {
+            if let Some(mode) = Mode::parse(&id["mode_".len()..]) {
+                set_mode(app, mode);
+            }
+        }
+        "island_display" => cycle_island_display(app),
         // Quit is always available from the tray and the window's menu.
         "quit" => app.exit(0),
         _ => {}
@@ -391,7 +529,9 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
             move_window_by,
             drag_finished,
             open_in_phoenix,
-            show_menu
+            show_menu,
+            island_event,
+            island_frame
         ])
         .setup(move |app| {
             let handle = app.handle();
@@ -402,6 +542,7 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
                 settings_dir,
                 open_url,
                 env,
+                skip_native_window_styling,
             } = options;
             let settings_dir = match settings_dir {
                 Some(dir) => dir,
@@ -418,7 +559,8 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
                 })
             });
 
-            let items = build_menu(handle, &settings)?;
+            let platform = island::Platform::detect();
+            let items = build_menu(handle, &settings, platform.display_choice())?;
             build_tray(handle, &items.menu)?;
             app.manage(Shell {
                 locator,
@@ -426,8 +568,17 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
                 settings: Mutex::new(settings.clone()),
                 menu: Mutex::new(Some(items)),
                 open_url,
+                island: island::Host::new(
+                    settings.island_display.clone(),
+                    platform,
+                    !skip_native_window_styling,
+                ),
             });
             create_window(handle, &settings)?;
+            // Only the window of the saved mode is shown; the island window is created on
+            // first use, so a user who never picks the island never gets one.
+            apply_mode(handle);
+            island::spawn_loop(handle.clone());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -445,7 +596,26 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
         })
 }
 
+/// GNOME on Wayland has no layer-shell: the island needs GTK on X11 (XWayland), and the backend
+/// can only be chosen before GTK starts, so it is decided here from the saved mode.
+#[cfg(target_os = "linux")]
+fn choose_gtk_backend() {
+    let env = island_platform::SessionEnv::from_lookup(|k| std::env::var(k).ok());
+    let identifier = "dev.phoenix.desktop";
+    let Some(dir) = island_platform::linux_settings_dir(|k| std::env::var(k).ok(), identifier)
+    else {
+        return;
+    };
+    let island_mode = settings::load(&dir.join(SETTINGS_FILE)).mode == Mode::Island;
+    if let Some(backend) = island_platform::startup_gdk_backend(&env, island_mode) {
+        // Single-threaded here: nothing has started yet.
+        std::env::set_var("GDK_BACKEND", backend);
+    }
+}
+
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    choose_gtk_backend();
     builder::<tauri::Wry>(ShellOptions::default())
         .build(tauri::generate_context!())
         .expect("error while building Phoenix desktop")

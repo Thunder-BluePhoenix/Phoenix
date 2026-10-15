@@ -1,0 +1,147 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* The island window is transparent: only the pill itself paints. */
+:root {
+  --island-bg: #101114;
+  --island-text: #f1f3f5;
+  --island-muted: #adb5bd;
+  --danger: #ff6b6b;
+  --warning: #f08c00;
+  --success: #51cf66;
+  --info: #74c0fc;
+  --focus: #91a7ff;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+}
+html,
+body {
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.island-root {
+  box-sizing: border-box;
+  width: 100vw;
+  height: 100vh;
+  color: var(--island-text);
+  display: flex;
+  flex-direction: column;
+}
+/* Hidden: nothing is drawn; the window is a few transparent pixels along the top edge. */
+.island-root[data-state="hidden"] {
+  background: transparent;
+}
+.island-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  min-height: 34px;
+  padding: 0 10px;
+  background: var(--island-bg);
+  border-radius: 0 0 18px 18px;
+}
+.island-root[data-state="expanded"] .island-bar {
+  min-height: 56px;
+  border-radius: 0;
+}
+.island-root[data-state="expanded"] {
+  background: var(--island-bg);
+  border-radius: 0 0 22px 22px;
+}
+.island-ear {
+  display: flex;
+  align-items: center;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.island-ear-right {
+  justify-content: flex-end;
+}
+/* On a Mac with a notch the camera housing sits between the two ears. */
+.island-notch {
+  flex: none;
+  width: var(--notch-width);
+}
+.island-label {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.island-label[data-tone="danger"],
+.island-label[data-tone="recording"] {
+  color: var(--danger);
+}
+.island-label[data-tone="warning"] {
+  color: var(--warning);
+}
+.island-label[data-tone="success"] {
+  color: var(--success);
+}
+.island-label[data-tone="info"] {
+  color: var(--info);
+}
+.island-label[data-tone="neutral"],
+.island-label[data-tone="muted"] {
+  color: var(--island-muted);
+}
+.island-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 16px 14px;
+}
+.island-text {
+  margin: 0;
+  max-width: 100%;
+  font-size: 13px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.island-open {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--island-text);
+  background: transparent;
+  border: 1px solid var(--island-muted);
+  border-radius: 999px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.island-open:hover {
+  border-color: var(--island-text);
+}
+.island-open:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.rec-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 999px;
+}
+.rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+}

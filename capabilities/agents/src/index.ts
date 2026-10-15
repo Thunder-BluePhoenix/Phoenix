@@ -29,13 +29,20 @@ import { Orchestrator, type AgentsServices } from "./orchestration";
 import { MAX_LAUNCHERS } from "./launchers";
 import { MAX_MESSAGE_CHARS, MAX_PROMPT_CHARS } from "./sessions";
 
+export * from "./diffs";
+export * from "./live-send";
 export * from "./report";
+export * from "./steps";
+export * from "./terminal-focus";
+export * from "./timeline-export";
+export * from "./usage";
 export * from "./handoff";
 export * from "./launchers";
 export * from "./links";
 export * from "./orchestration";
 export * from "./output";
 export * from "./sessions";
+export * from "./relay";
 
 /** A session that went silent for this long is dropped (config `silent_after_min`). */
 export const DEFAULT_SILENT_AFTER_MIN = 120;

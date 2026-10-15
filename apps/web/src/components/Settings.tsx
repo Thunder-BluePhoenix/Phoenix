@@ -13,6 +13,8 @@ import {
   type PetSettings,
 } from "../core/hooks";
 import type { CapabilityView, JsonSchema, OrchestratedSessionList, PetState } from "../core/types";
+import { AgentInstallersSection } from "./AgentInstallers";
+import { ApprovalRulesSection } from "./ApprovalRules";
 import { AutomationSettings } from "./AutomationSettings";
 import { AiSettings, MemorySettingsSection } from "./MemorySettings";
 import { Feedback } from "./Feedback";
@@ -37,6 +39,8 @@ export function SettingsPage({ state }: { state: PetState }) {
       <Multimodal />
       <RetrievalSettingsSection />
       <AutomationSettings />
+      <ApprovalRulesSection />
+      <AgentInstallersSection />
       <ProactiveSettingsSection />
       <RegistrySettingsSection />
       <SyncSettingsSection />

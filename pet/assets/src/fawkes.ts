@@ -6,6 +6,7 @@
 // @phoenix/pet-assets FawkesAsset contract.
 
 import { ANIMATIONS } from "@phoenix/pet-states";
+import { EMOTE_CSS } from "./emotes";
 import type { FawkesAsset } from "./types";
 
 /**
@@ -553,5 +554,6 @@ export const fawkes: FawkesAsset = {
   author: "Phoenix contributors",
   svg,
   css,
+  emoteCss: EMOTE_CSS,
   animations: ANIMATIONS,
 };

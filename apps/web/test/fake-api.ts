@@ -15,6 +15,14 @@ const DEFAULTS: Record<string, Handler> = {
   "GET /api/security/kill-switch": () => ({ engaged: false }),
   "GET /api/events": () => ({ events: [] }),
   "GET /api/notifications": () => ({ notifications: [], unread: 0 }),
+  "GET /api/agent-approvals": () => ({ approvals: [] }),
+  "GET /api/agent-approvals/rules": () => ({ rules: [] }),
+  "GET /api/agent-relay/agents": () => ({
+    relay: { running: false, version: 1, platform: "test" },
+    agents: [],
+  }),
+  "GET /api/agent/usage": () => ({ usage: [], thresholds: [80, 95], unsupported: [] }),
+  "GET /api/agent/sessions": () => ({ sessions: [] }),
 };
 
 /** A fetch stand-in routed by "METHOD /path" (query ignored). Records every call. */

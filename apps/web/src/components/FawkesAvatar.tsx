@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { mountFawkes, type DragEvent, type FawkesController } from "@phoenix/pet-runtime";
+import {
+  mountFawkes,
+  type DragEvent,
+  type FawkesController,
+  type InteractionOptions,
+  type SoundPlayer,
+} from "@phoenix/pet-runtime";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { PetState } from "../core/types";
 
@@ -17,6 +23,15 @@ export interface FawkesAvatarProps {
   onDrag?: (e: DragEvent) => void;
   /** "auto" follows the OS reduced-motion setting. */
   reducedMotion?: "auto" | "on" | "off";
+  /**
+   * Phase 59 interactions: greeting, eyes following the cursor, hover, poke, dizzy and the happy
+   * jump on a real completion event (default on). All of it is cosmetic and never changes `state`.
+   */
+  interactive?: boolean;
+  /** Sound player (policy and backend injected by the host). Omit for a silent Fawkes. */
+  sounds?: SoundPlayer;
+  /** Test seam: injected clock/RNG/timers for the interactions. */
+  interactionOptions?: Pick<InteractionOptions, "timers" | "config" | "cursorTarget">;
 }
 
 export interface FawkesAvatarHandle {
@@ -35,6 +50,9 @@ export const FawkesAvatar = forwardRef<FawkesAvatarHandle, FawkesAvatarProps>(fu
     onDrag,
     actionHint,
     reducedMotion = "auto",
+    interactive = true,
+    sounds,
+    interactionOptions,
   },
   ref,
 ) {
@@ -44,6 +62,14 @@ export const FawkesAvatar = forwardRef<FawkesAvatarHandle, FawkesAvatarProps>(fu
   activate.current = onActivate;
   const drag = useRef(onDrag);
   drag.current = onDrag;
+  const soundPlayer = useRef(sounds);
+  soundPlayer.current = sounds;
+  const injected = useRef(interactionOptions);
+  injected.current = interactionOptions;
+  const initial = useRef(state);
+  initial.current = state;
+  const reducedMotionRef = useRef(reducedMotion);
+  reducedMotionRef.current = reducedMotion;
 
   useImperativeHandle(ref, () => ({ focus: () => pet.current?.element.focus() }), []);
 
@@ -52,7 +78,23 @@ export const FawkesAvatar = forwardRef<FawkesAvatarHandle, FawkesAvatarProps>(fu
       size,
       actionHint: actionHint ?? "Open Pet Panel",
       ...(draggable ? { draggable } : {}),
+      reducedMotion:
+        reducedMotionRef.current === "auto" ? "auto" : reducedMotionRef.current === "on",
+      ...(interactive
+        ? {
+            interactions: {
+              ...injected.current,
+              // Resolved at trigger time so a settings change applies without remounting.
+              sounds: {
+                trigger: (event) =>
+                  soundPlayer.current?.trigger(event) ?? Promise.resolve("disabled"),
+              },
+              greetOnMount: true,
+            },
+          }
+        : {}),
     });
+    controller.update(initial.current);
     const off = controller.on("activate", () => activate.current?.());
     const offDrag = controller.on("drag", (e) => drag.current?.(e));
     pet.current = controller;
@@ -62,7 +104,7 @@ export const FawkesAvatar = forwardRef<FawkesAvatarHandle, FawkesAvatarProps>(fu
       controller.destroy();
       pet.current = null;
     };
-  }, [size, draggable, actionHint]);
+  }, [size, draggable, actionHint, interactive]);
 
   useEffect(() => {
     pet.current?.update(state);

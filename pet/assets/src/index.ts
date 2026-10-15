@@ -2,3 +2,5 @@
 // Copyright (C) 2026 Phoenix contributors
 export * from "./fawkes";
 export * from "./types";
+export * from "./emotes";
+export * from "./sounds";

@@ -4,6 +4,7 @@
 // Delivers an AgentReport to Phoenix Core's `agents` capability, the same way
 // `phoenix run` reports to the terminal capability (session token, loopback API).
 import { DEFAULT_CORE_URL, resolveSessionToken } from "@phoenix/sdk";
+import { relayCall, relayPreference } from "./relay/client";
 import type { AgentReport } from "./report";
 
 export type SendResult = { ok: true } | { ok: false; message: string };
@@ -15,6 +16,12 @@ export interface SendOptions {
   token?: string;
   /** Per-request budget; hooks must never hold an agent up. */
   timeoutMs?: number;
+  /**
+   * The local relay is tried first (Phase 57) unless `false`, or an explicit HTTP target
+   * (`coreUrl` / $PHOENIX_CORE_URL) was chosen without an explicit relay. If the relay is not
+   * there, delivery falls back to HTTP; if it answered and refused, that is the result.
+   */
+  relay?: false | { socketPath?: string };
 }
 
 /** Never throws: Core being down, slow, or refusing is reported in the result. */
@@ -22,6 +29,15 @@ export async function sendReport(
   report: AgentReport,
   options: SendOptions = {},
 ): Promise<SendResult> {
+  const viaRelay = relayPreference(options.relay, options.coreUrl);
+  if (viaRelay) {
+    const reply = await relayCall("report", report, {
+      socketPath: viaRelay.socketPath,
+      timeoutMs: options.timeoutMs ?? 1_500,
+    });
+    if (reply.ok) return { ok: true };
+    if (reply.kind !== "unavailable") return { ok: false, message: reply.message.slice(0, 300) };
+  }
   let token: string;
   try {
     token = resolveSessionToken(options.token);

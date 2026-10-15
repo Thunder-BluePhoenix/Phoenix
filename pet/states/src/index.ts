@@ -68,3 +68,15 @@ export const ALL_DISPLAY_STATES: readonly DisplayState[] = [...FAWKES_STATES, ..
 export function visualFor(state: string): StateVisual {
   return (STATE_VISUALS as Record<string, StateVisual>)[state] ?? STATE_VISUALS.IDLE;
 }
+
+const NEVER_PLAYFUL: Readonly<Record<string, true>> = { OFFLINE: true, SLEEPING: true };
+
+/**
+ * Cosmetic interaction emotes play only while the real state is calm. An urgent state (error,
+ * needs you, recording) or a mode (sleeping, offline) is never disguised or interrupted by one.
+ */
+export function emotesAllowedIn(state: string): boolean {
+  return !NEVER_PLAYFUL[state] && !visualFor(state).urgent;
+}
+
+export * from "./emotes";

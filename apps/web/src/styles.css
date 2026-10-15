@@ -1368,3 +1368,88 @@ code.break {
 .metric-row dd {
   margin: 0;
 }
+
+/* ── Phase 56: coding-agent approvals (static; nothing animates, so reduced motion needs no override) ── */
+.agent-question {
+  border: 0;
+  padding: 0;
+  margin: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.agent-countdown {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* ── Phase 58: live agent sessions (nothing animates, so reduced motion needs no override) ── */
+.live-steps {
+  max-height: 260px;
+  overflow: auto;
+  margin: 4px 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.live-step-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.live-step {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+.live-step time {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.live-step-kind {
+  font-weight: 600;
+  min-width: 3.2em;
+}
+.live-file {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+}
+.live-counts {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.usage {
+  list-style: none;
+  padding: 6px 0;
+}
+.usage-meter {
+  height: 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.usage-fill {
+  height: 100%;
+  background: var(--success);
+}
+.usage-warn .usage-fill {
+  background: var(--warning);
+}
+.usage-critical .usage-fill {
+  background: var(--danger);
+}
+.usage-note {
+  font-weight: 600;
+  color: var(--warning-text);
+}
+.usage-critical .usage-note {
+  color: var(--danger-text);
+}

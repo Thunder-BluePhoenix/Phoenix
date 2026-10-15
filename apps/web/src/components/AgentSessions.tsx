@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import {
   CONFIDENCE_TEXT,
   launchersOf,
@@ -13,17 +13,42 @@ import {
   validateStart,
   type StartProblems,
 } from "../core/agent-sessions";
-import { formatAgo, formatDate } from "../core/format";
-import { useAction, useCapabilities, useCommandAction, useCommandResult } from "../core/hooks";
+import { ApiError } from "../core/client";
+import { useClient } from "../core/context";
+import { formatAgo, formatDate, formatTime } from "../core/format";
+import {
+  useAction,
+  useAgentLive,
+  useAgentLiveSessions,
+  useAgentUsage,
+  useCapabilities,
+  useCommandAction,
+  useCommandResult,
+} from "../core/hooks";
 import type {
   AgentLauncher,
   AgentLink,
+  DiffLink,
+  LiveDiff,
+  LiveFileOf,
+  LiveSessionDetail,
   OrchestratedSession,
   OrchestratedSessionDetail,
   OrchestratedSessionList,
+  UsageView,
 } from "../core/types";
 import { Approvals } from "./Approvals";
 import { Feedback } from "./Feedback";
+
+const STEP_KIND_TEXT: Record<string, string> = {
+  read: "Read",
+  edit: "Edit",
+  run: "Run",
+  other: "Other",
+};
+/** Steps shown in the ticker, and in the orchestrated page's merged timeline. */
+const SHOWN_STEPS = 100;
+const TIMELINE_STEPS = 50;
 
 const sessionHref = (id: string) => `#/agents/${encodeURIComponent(id)}`;
 
@@ -556,6 +581,35 @@ function AmbiguousLink({ link, onResolved }: { link: AgentLink; onResolved: () =
   );
 }
 
+/** Coding agents Phoenix did not start, seen through their hooks. Hidden when there are none. */
+function LiveSessionsList() {
+  const { sessions, error } = useAgentLiveSessions();
+  if (error || sessions.length === 0) return null;
+  return (
+    <section aria-labelledby="live-sessions-h">
+      <h2 id="live-sessions-h" className="h3">
+        Live sessions
+      </h2>
+      <p className="muted small">
+        Coding agents running on this computer that report to Phoenix, however they were started.
+      </p>
+      <ul className="card-list" aria-label="Live sessions">
+        {sessions.map((s) => (
+          <li key={s.id} className="card meeting-row">
+            <a href={sessionHref(s.id)}>
+              <strong>{agentName(s.agent)}</strong> in {s.repository}
+            </a>
+            <span className="small">{s.active ? "Active" : "Ended"}</span>
+            <span className="muted small memory-text">
+              {s.step_count} step(s) · last seen {formatAgo(s.last_seen)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function AgentSessionsPage() {
   const { agents, enabled, launchers, reload: reloadCapabilities } = useAgentsAvailability();
   const { data, error, reload } = useCommandResult<OrchestratedSessionList>(
@@ -596,6 +650,7 @@ export function AgentSessionsPage() {
           onSaved={() => void reloadCapabilities()}
         />
       )}
+      <LiveSessionsList />
       {enabled && (
         <>
           {error && (
@@ -812,8 +867,37 @@ function Output({ lines, label }: { lines: string[]; label: string }) {
   );
 }
 
-export function AgentSessionDetail({ sessionId }: { sessionId: string }) {
+interface TimelineRow {
+  key: string;
+  at: string;
+  kind: string;
+  detail?: Record<string, unknown>;
+}
+
+/** The recorded entries in their own order, with the latest live steps slotted in by time. */
+function mergeTimeline(
+  entries: OrchestratedSessionDetail["timeline"],
+  steps: LiveSessionDetail["steps"],
+): TimelineRow[] {
+  const pending: TimelineRow[] = steps.slice(-TIMELINE_STEPS).map((s) => ({
+    key: `step:${s.session_id}:${s.n}`,
+    at: s.at,
+    kind: `step.${s.kind}`,
+    detail: { tool: s.tool, target: s.target },
+  }));
+  const rows: TimelineRow[] = [];
+  entries.forEach((e, i) => {
+    const at = Date.parse(e.at);
+    while (pending.length > 0 && Date.parse(pending[0]!.at) < at) rows.push(pending.shift()!);
+    rows.push({ key: `${e.at}:${i}`, at: e.at, kind: e.kind, detail: e.detail });
+  });
+  return [...rows, ...pending];
+}
+
+function OrchestratedSessionPage({ sessionId }: { sessionId: string }) {
   const { enabled } = useAgentsAvailability();
+  // Live steps of the agents that ran in this session's workspace while it was active.
+  const live = useAgentLive(sessionId).data;
   const { data, error, reload } = useCommandResult<OrchestratedSessionDetail>(
     "agents",
     "session.get",
@@ -846,6 +930,7 @@ export function AgentSessionDetail({ sessionId }: { sessionId: string }) {
 
   const { session } = data;
   const running = session?.state === "running" || session?.state === "waiting";
+  const timeline = mergeTimeline(data.timeline, live?.steps ?? []);
 
   return (
     <div className="meetings agent-sessions">
@@ -907,12 +992,12 @@ export function AgentSessionDetail({ sessionId }: { sessionId: string }) {
         <h2 id="timeline-h" className="h3">
           Timeline
         </h2>
-        {data.timeline.length === 0 ? (
+        {timeline.length === 0 ? (
           <p className="muted small">Nothing recorded.</p>
         ) : (
           <ol className="timeline" aria-label="Timeline">
-            {data.timeline.map((t, i) => (
-              <li key={`${t.at}:${i}`} className="small memory-text">
+            {timeline.map((t) => (
+              <li key={t.key} className="small memory-text">
                 <time dateTime={t.at}>{new Date(t.at).toLocaleTimeString()}</time> · {t.kind}
                 {t.detail &&
                   ` · ${Object.entries(t.detail)
@@ -923,6 +1008,7 @@ export function AgentSessionDetail({ sessionId }: { sessionId: string }) {
           </ol>
         )}
       </section>
+      <LiveActivity sessionId={sessionId} data={live} />
 
       <Links links={data.links} />
       {data.ambiguous.length > 0 && (
@@ -954,5 +1040,446 @@ export function AgentSessionDetail({ sessionId }: { sessionId: string }) {
         </section>
       )}
     </div>
+  );
+}
+
+const AGENT_NAMES: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex" };
+const agentName = (agent: string) => AGENT_NAMES[agent] ?? agent;
+const WINDOW_TEXT: Record<UsageView["window"], string> = { "5h": "5-hour", weekly: "weekly" };
+
+/** "2h 10m", "45m", "3d 4h": coarse on purpose, the reset time is not exact to the second. */
+function formatResetIn(iso: string, now: number): string {
+  const ms = Date.parse(iso) - now;
+  if (!Number.isFinite(ms)) return "";
+  if (ms <= 0) return "resets now";
+  const min = Math.max(1, Math.round(ms / 60_000));
+  if (min < 60) return `resets in ${min}m`;
+  const h = Math.floor(min / 60);
+  if (h < 48) return `resets in ${h}h ${min % 60}m`;
+  return `resets in ${Math.floor(h / 24)}d ${h % 24}h`;
+}
+
+/** Plan usage per agent window, with a text for every state (colour is never the only signal). */
+function UsageMeters() {
+  const { usage, unsupported } = useAgentUsage();
+  const id = useId();
+  if (usage.length === 0 && unsupported.length === 0) return null;
+  const now = Date.now();
+  return (
+    <section aria-labelledby={`${id}-h`} className="card">
+      <h2 id={`${id}-h`} className="h3">
+        Plan usage
+      </h2>
+      <ul className="task-list" aria-label="Plan usage">
+        {usage.map((u) => {
+          const pct = Math.min(100, Math.max(0, Math.round(u.used_pct)));
+          const window = WINDOW_TEXT[u.window] ?? u.window;
+          const reset = formatResetIn(u.resets_at, now);
+          return (
+            <li key={`${u.agent}:${u.window}`} className={`usage usage-${u.level}`}>
+              <div
+                className="usage-meter"
+                role="meter"
+                aria-label={`${agentName(u.agent)} ${window} plan usage`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={pct}
+                aria-valuetext={`${pct}% used`}
+              >
+                <div className="usage-fill" style={{ width: `${pct}%` }} />
+              </div>
+              <p className="small memory-text">
+                <strong>{agentName(u.agent)}</strong>: {pct}% of the {window} window used
+                {reset && ` · ${reset}`}
+              </p>
+              {u.level !== "ok" && (
+                <p className="small usage-note">
+                  {u.level === "critical" ? "Almost at the limit" : "Approaching the limit"}
+                </p>
+              )}
+              {u.stale && (
+                <p className="muted small">
+                  This reading may be out of date (last seen{" "}
+                  <time dateTime={u.observed_at}>{formatAgo(u.observed_at)}</time>).
+                </p>
+              )}
+              {typeof u.reset_credits === "number" && (
+                <p className="muted small">{u.reset_credits} free resets left</p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {unsupported.map((u) => (
+        <p key={u.agent} className="muted small memory-text">
+          {u.agent}: {u.reason}
+        </p>
+      ))}
+    </section>
+  );
+}
+
+function StepsLog({ detail }: { detail: LiveSessionDetail }) {
+  const id = useId();
+  const shown = detail.steps.slice(-SHOWN_STEPS);
+  const last = shown.at(-1);
+  const lastKey = last ? `${last.session_id}:${last.n}` : "";
+  const log = useRef<HTMLDivElement>(null);
+  // Follow new steps only while the reader is at the bottom; scrolling up pauses it.
+  const following = useRef(true);
+  const agentOf = new Map(detail.sessions.map((s) => [s.id, s.agent]));
+
+  useEffect(() => {
+    const el = log.current;
+    if (el && following.current) el.scrollTop = el.scrollHeight;
+  }, [lastKey]);
+
+  return (
+    <section aria-labelledby={`${id}-h`} className="card">
+      <h2 id={`${id}-h`} className="h3">
+        Steps
+      </h2>
+      {detail.sessions.length === 0 && shown.length === 0 && (
+        <p className="muted small">
+          No live agent session has been seen for this page yet. Steps appear here while a coding
+          agent works in this folder.
+        </p>
+      )}
+      {detail.sessions.length > 0 && shown.length === 0 && (
+        <p className="muted small">No steps have been seen yet.</p>
+      )}
+      {detail.dropped_steps > 0 && (
+        <p className="muted small">
+          {detail.dropped_steps} earlier step(s) are not kept, so the list starts later than the
+          session did.
+        </p>
+      )}
+      {detail.steps.length > shown.length && (
+        <p className="muted small">
+          Showing the last {shown.length} of {detail.steps.length} steps.
+        </p>
+      )}
+      {shown.length > 0 && (
+        <div
+          ref={log}
+          className="live-steps"
+          role="log"
+          aria-label="Steps"
+          aria-live="off"
+          tabIndex={0}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+          }}
+        >
+          <ol className="live-step-list">
+            {shown.map((s) => (
+              <li key={`${s.session_id}:${s.n}`} className="live-step small">
+                <time dateTime={s.at}>{formatTime(s.at)}</time>
+                <span className="live-step-kind">{STEP_KIND_TEXT[s.kind] ?? "Other"}</span>
+                {detail.sessions.length > 1 && agentOf.has(s.session_id) && (
+                  <span className="muted">{agentOf.get(s.session_id)}</span>
+                )}
+                <span className="memory-text">{s.tool}</span>
+                <code className="break">{s.target}</code>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DiffLinks({ title, links }: { title: string; links: DiffLink[] }) {
+  return (
+    <>
+      {links.map((l) => (
+        <li key={`${title}:${l.repo}:${l.ref}`} className="small memory-text">
+          Appeared in {title} <code className="break">{l.ref}</code> in {l.repo}
+          {l.conclusion && ` (${l.conclusion})`}
+          <span className="muted"> · {CONFIDENCE_TEXT[l.confidence] ?? l.confidence}</span>
+        </li>
+      ))}
+    </>
+  );
+}
+
+function DiffView({ path, diff, onClose }: { path: string; diff: LiveDiff; onClose: () => void }) {
+  const hasLinks = diff.commits.length + diff.ci_runs.length > 0;
+  return (
+    <div className="live-diff">
+      <h3 className="h4 memory-text">Diff of {path}</h3>
+      <p className="muted small">Source: {diff.source}. Plain text; nothing in it is run.</p>
+      {diff.diff === "" ? (
+        <p className="muted small">There is nothing to show for this file.</p>
+      ) : (
+        <pre
+          className="agent-output"
+          tabIndex={0}
+          aria-label={`Diff of ${path} (plain text, scrolls)`}
+        >
+          {diff.diff}
+        </pre>
+      )}
+      {diff.truncated && (
+        <p className="small" role="status">
+          This diff was truncated: only the first part is shown.
+        </p>
+      )}
+      {hasLinks && (
+        <>
+          <p className="muted small">
+            These links come from what Phoenix saved for this session (time and folder). They do not
+            prove the agent made them.
+          </p>
+          <ul className="task-list" aria-label="Where this file appeared">
+            <DiffLinks title="commit" links={diff.commits} />
+            <DiffLinks title="CI run" links={diff.ci_runs} />
+          </ul>
+        </>
+      )}
+      <div className="button-row wrap">
+        <button type="button" className="btn" onClick={onClose}>
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FilesChanged({ files }: { files: LiveFileOf[] }) {
+  const id = useId();
+  const { run, busy, error } = useAction();
+  const [open, setOpen] = useState<{ path: string; diff: LiveDiff } | null>(null);
+  const openers = useRef(new Map<string, HTMLButtonElement>());
+
+  const show = async (file: LiveFileOf) => {
+    setOpen(null);
+    const diff = await run<LiveDiff>(
+      "GET",
+      `/api/agent/sessions/${encodeURIComponent(file.session_id)}/diff/${encodeURIComponent(file.path)}`,
+    );
+    if (diff) setOpen({ path: file.path, diff });
+  };
+  const close = () => {
+    const path = open?.path;
+    setOpen(null);
+    if (path !== undefined) openers.current.get(path)?.focus();
+  };
+
+  return (
+    <section aria-labelledby={`${id}-h`} className="card">
+      <h2 id={`${id}-h`} className="h3">
+        Files changed
+      </h2>
+      {files.length === 0 ? (
+        <p className="muted small">No file change has been seen yet.</p>
+      ) : (
+        <ul className="task-list" aria-label="Files changed">
+          {files.map((f) => (
+            <li key={`${f.session_id}:${f.path}`} className="live-file small">
+              <code className="break">{f.path}</code>
+              <span
+                className="live-counts"
+                role="img"
+                aria-label={`${f.added} ${f.added === 1 ? "line" : "lines"} added, ${f.removed} removed`}
+              >
+                +{f.added} −{f.removed}
+              </span>
+              <button
+                type="button"
+                className="btn"
+                disabled={busy}
+                aria-label={`Open diff of ${f.path}`}
+                ref={(el) => {
+                  if (el) openers.current.set(f.path, el);
+                  else openers.current.delete(f.path);
+                }}
+                onClick={() => void show(f)}
+              >
+                Open diff
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {busy && (
+        <p className="muted small" role="status">
+          Loading the diff…
+        </p>
+      )}
+      <Feedback error={error} />
+      {open && <DiffView path={open.path} diff={open.diff} onClose={close} />}
+    </section>
+  );
+}
+
+function LiveActions({ sessionId, showApprovals }: { sessionId: string; showApprovals: boolean }) {
+  const id = useId();
+  const client = useClient();
+  const focus = useAction();
+  const [focused, setFocused] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exported, setExported] = useState(false);
+  const exporting = useRef(false);
+
+  const jump = async () => {
+    setFocused(false);
+    const res = await focus.run<{ focused?: boolean }>(
+      "POST",
+      `/api/agent/sessions/${encodeURIComponent(sessionId)}/focus-terminal`,
+      {},
+    );
+    setFocused(res !== undefined);
+  };
+
+  const exportMarkdown = async () => {
+    if (exporting.current) return;
+    exporting.current = true;
+    setExportBusy(true);
+    setExportError(null);
+    setExported(false);
+    try {
+      const text = await client.requestText(
+        "GET",
+        `/api/agent/sessions/${encodeURIComponent(sessionId)}/export.md`,
+      );
+      const url = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));
+      try {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `session-${sessionId.replace(/[^A-Za-z0-9._-]/g, "_")}.md`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+      setExported(true);
+    } catch (err) {
+      setExportError(err instanceof ApiError ? err.message : "The export failed");
+    } finally {
+      exporting.current = false;
+      setExportBusy(false);
+    }
+  };
+
+  return (
+    <section aria-labelledby={`${id}-h`} className="card">
+      <h2 id={`${id}-h`} className="h3">
+        Actions
+      </h2>
+      <div className="button-row wrap">
+        <button type="button" className="btn" disabled={focus.busy} onClick={() => void jump()}>
+          Jump to terminal
+        </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={exportBusy}
+          onClick={() => void exportMarkdown()}
+        >
+          Export Markdown
+        </button>
+      </div>
+      {focus.busy && (
+        <>
+          <p className="small" role="status">
+            Waiting for your approval below.
+          </p>
+          {!showApprovals && <Approvals />}
+        </>
+      )}
+      {focused && (
+        <p className="small" role="status">
+          Terminal window brought to the front.
+        </p>
+      )}
+      <Feedback error={focus.error} />
+      {exported && (
+        <p className="small" role="status">
+          The Markdown file was saved to your downloads.
+        </p>
+      )}
+      <Feedback error={exportError} />
+    </section>
+  );
+}
+
+/** The live sections of one page: steps, files, usage and the two actions. Nothing before Core answers. */
+function LiveActivity({
+  sessionId,
+  data,
+  showApprovals = false,
+}: {
+  sessionId: string;
+  data: LiveSessionDetail | null;
+  showApprovals?: boolean;
+}) {
+  if (!data) return null;
+  return (
+    <>
+      <StepsLog detail={data} />
+      <FilesChanged files={data.files} />
+      <LiveActions sessionId={sessionId} showApprovals={showApprovals} />
+      <UsageMeters />
+    </>
+  );
+}
+
+/** A coding agent Phoenix did not start: seen only through its own hooks. Works without the `agents` capability. */
+function LiveSessionPage({ sessionId }: { sessionId: string }) {
+  const { data, error } = useAgentLive(sessionId);
+  return (
+    <div className="meetings agent-sessions">
+      <p>
+        <a href="#/agents">← All sessions</a>
+      </p>
+      <h1 className="memory-text">Live session {sessionId}</h1>
+      {!data && error && (
+        <p role="alert">
+          {error} <a href="#/agents">All sessions</a>
+        </p>
+      )}
+      {!data && !error && <p className="muted">Loading…</p>}
+      {data && (
+        <>
+          {data.sessions.length === 0 ? (
+            <p className="muted small">No live session matches this id.</p>
+          ) : (
+            <ul className="card-list" aria-label="Sessions on this page">
+              {data.sessions.map((s) => (
+                <li key={s.id} className="card">
+                  <p>
+                    <strong className="memory-text">{agentName(s.agent)}</strong> in{" "}
+                    <span className="memory-text">{s.repository}</span> ·{" "}
+                    {s.active ? "Active" : "Ended"}
+                  </p>
+                  <p className="muted small memory-text">
+                    <code className="break">{s.project}</code> · first seen{" "}
+                    <time dateTime={s.first_seen}>{formatDate(s.first_seen)}</time>, last seen{" "}
+                    {formatAgo(s.last_seen)} · {s.step_count} step(s)
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+          <LiveActivity sessionId={sessionId} data={data} showApprovals />
+        </>
+      )}
+      <Approvals />
+    </div>
+  );
+}
+
+const ORCHESTRATED_ID = /^ph-[0-9a-f]{16}$/;
+
+export function AgentSessionDetail({ sessionId }: { sessionId: string }) {
+  return ORCHESTRATED_ID.test(sessionId) ? (
+    <OrchestratedSessionPage sessionId={sessionId} />
+  ) : (
+    <LiveSessionPage sessionId={sessionId} />
   );
 }

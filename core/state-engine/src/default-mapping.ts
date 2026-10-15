@@ -19,6 +19,8 @@ export const EVENT_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "security.permission.denied": "{payload.capability} was not allowed to run {payload.command}",
   "security.kill_switch.disengaged": "Emergency stop released",
   "agent_run.cancelled": "{payload.title} was cancelled",
+  "agent.usage.warning":
+    "{payload.agent} {payload.window} plan usage is at {payload.used_pct}% (limit warning at {payload.threshold}%)",
   "git.commit.created": "New commit in {subject}",
   "git.merge_conflict_resolved": "Merge conflict resolved in {subject}",
   "git.branch.changed": "{subject} switched to {payload.to}",

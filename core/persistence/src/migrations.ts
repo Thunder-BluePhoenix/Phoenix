@@ -1121,4 +1121,22 @@ export const MIGRATIONS: readonly Migration[] = [
       END;
     `,
   },
+  {
+    version: 25,
+    name: "agent_approval_rules",
+    sql: `
+      CREATE TABLE agent_approval_rules (
+        id TEXT PRIMARY KEY,
+        project TEXT NOT NULL,
+        tool TEXT NOT NULL,
+        pattern TEXT NOT NULL,
+        created_at INTEGER NOT NULL,   -- epoch ms
+        expires_at INTEGER NOT NULL,   -- epoch ms; at most 24 h after creation; enforced at match time
+        created_by TEXT NOT NULL,
+        uses INTEGER NOT NULL DEFAULT 0,
+        UNIQUE (project, tool, pattern)
+      );
+      CREATE INDEX agent_approval_rules_scope ON agent_approval_rules (project, tool, expires_at);
+    `,
+  },
 ];

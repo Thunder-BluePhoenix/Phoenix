@@ -2563,6 +2563,11 @@ dependencies = [
 name = "phoenix-desktop"
 version = "0.1.0"
 dependencies = [
+ "gtk",
+ "libloading",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "parking_lot",
  "serde",
  "serde_json",
@@ -2571,6 +2576,7 @@ dependencies = [
  "tauri-plugin-autostart",
  "tauri-plugin-opener",
  "tempfile",
+ "windows",
 ]
 
 [[package]]

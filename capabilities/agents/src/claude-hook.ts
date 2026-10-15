@@ -12,7 +12,9 @@
 // down or slow, and writes nothing to stdout (Claude Code reads stdout of some
 // hooks as context or as a decision). Problems go to stderr.
 import { mapClaudeHook } from "./claude";
+import { sendLive } from "./live-send";
 import { sendReport } from "./send";
+import { mapClaudeStep } from "./steps";
 
 /** Whole-process deadline, covering reading stdin and talking to Core. */
 export const HOOK_DEADLINE_MS = 2_000;
@@ -41,9 +43,20 @@ async function main(argv: string[]): Promise<void> {
     return; // not JSON: nothing to report
   }
   const report = mapClaudeHook(payload, { withTitle });
-  if (!report) return;
-  const sent = await sendReport(report, { timeoutMs: HOOK_DEADLINE_MS - 500 });
-  if (!sent.ok) process.stderr.write(`phoenix: agent state not reported (${sent.message})\n`);
+  // Phase 58: PostToolUse also describes one step (a path or a short redacted command; never
+  // tool output or file contents). It is sent next to the state report, never instead of it.
+  // `pid` is the process that ran the hook (the agent, or the shell it used): "jump to terminal"
+  // later asks the OS which terminal that process belongs to. Nothing is read from the process.
+  const step = mapClaudeStep(payload, { pid: process.ppid });
+  const options = { timeoutMs: HOOK_DEADLINE_MS - 500 };
+  const [sent, stepSent] = await Promise.all([
+    report ? sendReport(report, options) : undefined,
+    step ? sendLive("step", step, options) : undefined,
+  ]);
+  if (sent && !sent.ok)
+    process.stderr.write(`phoenix: agent state not reported (${sent.message})\n`);
+  if (stepSent && !stepSent.ok)
+    process.stderr.write(`phoenix: step not reported (${stepSent.message})\n`);
 }
 
 if (

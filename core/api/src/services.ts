@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import type { AgentApprovalsApi } from "./agent-approval-routes";
+import type { AgentLiveApi } from "./agent-live-routes";
+import type { AgentRelayApi } from "./agent-relay-routes";
 import type { ImprovementApi } from "./improvement-routes";
 import type { PhoenixConfig } from "@phoenix/config";
 import type { EventBus } from "@phoenix/event-bus";
@@ -1194,6 +1197,9 @@ export interface CoreServices {
   sync?: SyncApi;
   registry?: RegistryApi;
   multimodal?: MultimodalApi;
+  agentApprovals?: AgentApprovalsApi;
+  agentRelay?: AgentRelayApi;
+  agentLive?: AgentLiveApi;
   improvement?: ImprovementApi;
   petSettings?(): unknown;
   setPetSettings?(input: unknown): unknown;

@@ -1086,3 +1086,169 @@ export interface ProactiveInsight {
     quote: string;
   };
 }
+
+export interface AgentApprovalQuestion {
+  question: string;
+  header: string;
+  options: { label: string; description?: string }[];
+  multiSelect?: boolean;
+}
+
+/** One pending coding-agent request (Phase 56). Never carries the waiter's nonce. */
+export interface AgentApproval {
+  id: string;
+  kind: "permission" | "question";
+  agent: string;
+  project: string;
+  tool: string;
+  input_summary: { command?: string; path?: string; description?: string };
+  questions?: AgentApprovalQuestion[];
+  expires_at: string;
+  /** Whether Core allows an "Always allow here" rule for this request. */
+  always_ok?: boolean;
+}
+
+export interface AgentApprovalRule {
+  id: string;
+  project: string;
+  tool: string;
+  pattern: string;
+  created_at: string;
+  expires_at: string;
+  created_by: string;
+  uses: number;
+}
+
+export interface AgentRelayStatus {
+  running: boolean;
+  version: number;
+  platform: string;
+  path?: string;
+  error?: string;
+}
+
+export interface AgentInstallView {
+  id: string;
+  label: string;
+  support: "supported" | "unsupported";
+  /** Why the agent is unsupported, or a caveat for a supported one. */
+  reason?: string;
+  doc_url: string;
+  detected: boolean;
+  detected_via?: string;
+  config_path?: string;
+  state: "installed" | "not_installed" | "needs_repair" | "unsupported";
+  /** Hook events that vanished from the agent's config. */
+  missing: string[];
+  note?: string;
+}
+
+export interface AgentInstallList {
+  relay: AgentRelayStatus | null;
+  agents: AgentInstallView[];
+}
+
+export type AgentInstallAction = "install" | "uninstall" | "repair";
+
+/** A dry run: what the change would do, and the hash to confirm it with. */
+export interface InstallPreview {
+  mode: "preview";
+  action: AgentInstallAction;
+  agent: string;
+  path: string;
+  changed: boolean;
+  diff: string;
+  hash: string;
+  notes: string[];
+}
+
+export interface InstallApplied {
+  mode: "applied";
+  action: AgentInstallAction;
+  agent: string;
+  path: string;
+  changed: boolean;
+  summary: string;
+  kept_user_edits: boolean;
+}
+
+/** Phase 58: live coding-agent sessions (read from the agents' own hooks, not started by Phoenix). */
+export interface LiveStep {
+  n: number;
+  at: string;
+  kind: "read" | "edit" | "run" | "other";
+  tool: string;
+  target: string;
+}
+
+export interface LiveFileChange {
+  path: string;
+  added: number;
+  removed: number;
+  edits: number;
+  last_at: string;
+}
+
+export interface LiveSessionView {
+  id: string;
+  agent: string;
+  project: string;
+  repository: string;
+  first_seen: string;
+  last_seen: string;
+  active: boolean;
+  step_count: number;
+  dropped_steps: number;
+  has_terminal: boolean;
+}
+
+export interface LiveSessionList {
+  sessions: LiveSessionView[];
+}
+
+export type LiveStepOf = LiveStep & { session_id: string };
+export type LiveFileOf = LiveFileChange & { session_id: string };
+
+export interface LiveSessionDetail {
+  id: string;
+  matched_by: "id" | "folder+time";
+  sessions: LiveSessionView[];
+  steps: LiveStepOf[];
+  files: LiveFileOf[];
+  dropped_steps: number;
+}
+
+export interface DiffLink {
+  ref: string;
+  repo: string;
+  confidence: string;
+  created_at: string;
+  conclusion?: string;
+}
+
+export interface LiveDiff {
+  session_id: string;
+  path: string;
+  diff: string;
+  truncated: boolean;
+  source: "git diff HEAD" | "untracked file";
+  commits: DiffLink[];
+  ci_runs: DiffLink[];
+}
+
+export interface UsageView {
+  agent: string;
+  window: "5h" | "weekly";
+  used_pct: number;
+  resets_at: string;
+  observed_at: string;
+  level: "ok" | "warn" | "critical";
+  stale: boolean;
+  reset_credits?: number;
+}
+
+export interface UsageSummary {
+  usage: UsageView[];
+  thresholds: number[];
+  unsupported: { agent: string; reason: string }[];
+}

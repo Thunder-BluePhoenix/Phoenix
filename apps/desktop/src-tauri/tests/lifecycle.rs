@@ -9,7 +9,8 @@
 //! stacking, pixels and Quit; those were checked by hand on macOS.
 
 use phoenix_desktop::{
-    builder, handle_menu, menu_snapshot, ShellOptions, SETTINGS_FILE, TRAY_ID, WINDOW_LABEL,
+    builder, handle_menu, menu_snapshot, ShellOptions, ISLAND_LABEL, SETTINGS_FILE, TRAY_ID,
+    WINDOW_LABEL,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -34,6 +35,7 @@ fn start(settings_dir: &Path) -> Started {
         env: Some(Box::new(|k| {
             (k == "PHOENIX_PORT").then(|| "4999".to_string())
         })),
+        skip_native_window_styling: true,
     };
     let mut app = builder::<MockRuntime>(options)
         .build(mock_context(noop_assets()))
@@ -69,7 +71,23 @@ fn starts_with_window_tray_and_full_menu() {
         .into_iter()
         .map(|(i, _, _)| i)
         .collect();
-    assert_eq!(ids, ["toggle", "open", "on_top", "login", "quit"]);
+    assert_eq!(
+        ids,
+        [
+            "toggle",
+            "open",
+            "mode_floating",
+            "mode_island",
+            "mode_navbar",
+            "island_display",
+            "on_top",
+            "login",
+            "quit"
+        ]
+    );
+    // A fresh install keeps the floating Fawkes; the island is opt-in.
+    assert_eq!(item(&s.app, "mode_floating").1, Some(true));
+    assert_eq!(item(&s.app, "mode_island").1, Some(false));
     assert_eq!(item(&s.app, "toggle").0, "Hide Fawkes");
     assert_eq!(item(&s.app, "open").0, "Open Phoenix");
     assert_eq!(item(&s.app, "quit").0, "Quit Fawkes");
@@ -147,8 +165,60 @@ fn unknown_menu_ids_are_ignored() {
     assert!(!dir.path().join(SETTINGS_FILE).exists());
 }
 
+fn modes_switch_live_and_are_remembered() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = start(dir.path());
+    let checked = |app: &App<MockRuntime>| {
+        ["mode_floating", "mode_island", "mode_navbar"].map(|id| item(app, id).1 == Some(true))
+    };
+    handle_menu(s.app.handle(), "mode_island");
+    assert_eq!(saved(dir.path())["mode"], "island");
+    assert_eq!(checked(&s.app), [false, true, false]);
+    assert!(
+        s.app.get_webview_window(ISLAND_LABEL).is_some(),
+        "island window is created on first use"
+    );
+    handle_menu(s.app.handle(), "mode_navbar");
+    assert_eq!(saved(dir.path())["mode"], "navbar");
+    assert_eq!(checked(&s.app), [false, false, true]);
+    handle_menu(s.app.handle(), "mode_floating");
+    assert_eq!(saved(dir.path())["mode"], "floating");
+    assert_eq!(checked(&s.app), [true, false, false]);
+    // One pet: the floating window was never torn down by switching modes.
+    assert!(s.app.get_webview_window(WINDOW_LABEL).is_some());
+}
+
+fn island_mode_survives_a_restart_without_creating_the_floating_pet_twice() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let s = start(dir.path());
+        handle_menu(s.app.handle(), "mode_island");
+    }
+    let s = start(dir.path());
+    assert_eq!(item(&s.app, "mode_island").1, Some(true));
+    assert!(s.app.get_webview_window(ISLAND_LABEL).is_some());
+}
+
+fn hide_applies_to_whichever_mode_is_active() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = start(dir.path());
+    handle_menu(s.app.handle(), "mode_island");
+    handle_menu(s.app.handle(), "toggle");
+    assert_eq!(saved(dir.path())["visible"], false);
+    assert_eq!(saved(dir.path())["mode"], "island");
+    handle_menu(s.app.handle(), "toggle");
+    assert_eq!(saved(dir.path())["visible"], true);
+}
+
+fn unknown_mode_ids_are_ignored() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = start(dir.path());
+    handle_menu(s.app.handle(), "mode_hologram");
+    assert!(!dir.path().join(SETTINGS_FILE).exists());
+}
+
 fn main() {
-    let tests: [(&str, fn()); 7] = [
+    let tests: [(&str, fn()); 11] = [
         (
             "starts with window, tray and full menu",
             starts_with_window_tray_and_full_menu,
@@ -165,6 +235,19 @@ fn main() {
         ("settings survive a restart", settings_survive_a_restart),
         ("corrupt settings still start", corrupt_settings_still_start),
         ("unknown menu ids are ignored", unknown_menu_ids_are_ignored),
+        (
+            "modes switch live and are remembered",
+            modes_switch_live_and_are_remembered,
+        ),
+        (
+            "island mode survives a restart",
+            island_mode_survives_a_restart_without_creating_the_floating_pet_twice,
+        ),
+        (
+            "hide applies to the active mode",
+            hide_applies_to_whichever_mode_is_active,
+        ),
+        ("unknown mode ids are ignored", unknown_mode_ids_are_ignored),
     ];
     for (name, test) in tests {
         test();

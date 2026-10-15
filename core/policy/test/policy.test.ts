@@ -620,8 +620,10 @@ describe("untrusted content cannot change policy", () => {
       "approvals",
       "constructor",
       "decide",
+      "denyByRule",
       "evaluate",
       "malformed",
+      "record",
       "rules",
     ]);
   });

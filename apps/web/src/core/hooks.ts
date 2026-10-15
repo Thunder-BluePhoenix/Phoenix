@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "./client";
 import { useClient } from "./context";
 import type {
+  AgentApproval,
+  AgentApprovalRule,
+  AgentInstallList,
   AgentSettings,
   AgentTaskDetail,
   AgentTaskSummary,
@@ -13,6 +16,11 @@ import type {
   GraphInspection,
   GraphNeighborhood,
   GraphStatus,
+  LiveFileOf,
+  LiveSessionDetail,
+  LiveSessionList,
+  LiveSessionView,
+  LiveStepOf,
   Meeting,
   MeetingItemList,
   MemoryItem,
@@ -30,6 +38,7 @@ import type {
   StoredEvent,
   Summary,
   Transcript,
+  UsageSummary,
   Workflow,
   WorkflowDetail,
   WorkflowMetrics,
@@ -919,4 +928,251 @@ export function useAgentTask(id: string) {
     null,
     isAgentTaskEvent,
   );
+}
+
+/** Pending coding-agent requests, re-read whenever one is raised or resolved (in any view). */
+export function useAgentApprovals() {
+  return useLiveResource<AgentApproval[]>(
+    "/api/agent-approvals",
+    (j) => j.approvals,
+    [],
+    (t) => t === "agent.approval.requested" || t === "agent.approval.resolved",
+  );
+}
+
+/** The active "Always allow here" rules, re-read when one is created, used up or revoked. */
+export function useAgentApprovalRules() {
+  return useLiveResource<AgentApprovalRule[]>(
+    "/api/agent-approvals/rules",
+    (j) => j.rules,
+    [],
+    (t) => t === "agent.approval.rule.changed",
+  );
+}
+
+/** Which coding agents Phoenix can install hooks into, plus the relay's status; re-read after an install. */
+export function useAgentInstallers() {
+  return useLiveResource<AgentInstallList>(
+    "/api/agent-relay/agents",
+    (j) => ({ relay: j.relay ?? null, agents: j.agents ?? [] }),
+    { relay: null, agents: [] },
+    (t) => t === "agent.relay.changed",
+  );
+}
+
+/** The steps kept per page; Core keeps the same many. */
+export const LIVE_STEP_CAP = 500;
+
+const STEP_KINDS: readonly string[] = ["read", "edit", "run", "other"];
+
+interface StepEvent {
+  step: LiveStepOf;
+  project: string;
+  file: { path: string; added: number; removed: number; edits: number } | null;
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
+
+/** An `agent.session.step` payload, checked: ephemeral events cross a trust boundary like any other. */
+function readStepEvent(payload: Record<string, unknown>): StepEvent | null {
+  const { session_id, n, kind, tool, target, at, project, file } = payload;
+  if (
+    typeof session_id !== "string" ||
+    typeof n !== "number" ||
+    typeof tool !== "string" ||
+    typeof target !== "string" ||
+    typeof at !== "string"
+  )
+    return null;
+  const step: LiveStepOf = {
+    session_id,
+    n,
+    at,
+    kind:
+      typeof kind === "string" && STEP_KINDS.includes(kind)
+        ? (kind as LiveStepOf["kind"])
+        : "other",
+    tool,
+    target,
+  };
+  const f =
+    isRecord(file) &&
+    typeof file.path === "string" &&
+    typeof file.added === "number" &&
+    typeof file.removed === "number" &&
+    typeof file.edits === "number"
+      ? { path: file.path, added: file.added, removed: file.removed, edits: file.edits }
+      : null;
+  return { step, project: typeof project === "string" ? project : "", file: f };
+}
+
+/** Appends one step: deduplicated, capped (oldest dropped), with the file totals it carries. */
+function withStep(detail: LiveSessionDetail, ev: StepEvent): LiveSessionDetail {
+  const { step, file } = ev;
+  if (detail.steps.some((s) => s.session_id === step.session_id && s.n === step.n)) return detail;
+  let steps = [...detail.steps, step];
+  let dropped = detail.dropped_steps;
+  if (steps.length > LIVE_STEP_CAP) {
+    dropped += steps.length - LIVE_STEP_CAP;
+    steps = steps.slice(steps.length - LIVE_STEP_CAP);
+  }
+  const files: LiveFileOf[] = file
+    ? [
+        { ...file, session_id: step.session_id, last_at: step.at },
+        ...detail.files.filter((f) => !(f.session_id === step.session_id && f.path === file.path)),
+      ]
+    : detail.files;
+  const sessions = detail.sessions.map((s) =>
+    s.id === step.session_id
+      ? { ...s, step_count: s.step_count + 1, last_seen: step.at, active: true }
+      : s,
+  );
+  return { ...detail, steps, files, sessions, dropped_steps: dropped };
+}
+
+/**
+ * One live session page: `id` is an agent's own session id or one of Phoenix's `ph-` ids. Loads
+ * once, then follows `agent.session.step` events in place (no refetch per step). It refetches,
+ * coalesced, for a session it has not seen yet and when the socket comes back. `data` is null with
+ * an `error` when Core does not know the id.
+ */
+export function useAgentLive(id: string) {
+  const client = useClient();
+  const [data, setData] = useState<LiveSessionDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const current = useRef<LiveSessionDetail | null>(null);
+  const inFlight = useRef<Promise<void> | null>(null);
+  const stale = useRef(false);
+  const loadedOnce = useRef(false);
+  const asked = useRef(new Set<string>());
+
+  const publish = useCallback((next: LiveSessionDetail | null) => {
+    current.current = next;
+    setData(next);
+  }, []);
+
+  const load = useCallback((): Promise<void> => {
+    if (inFlight.current) {
+      stale.current = true;
+      return inFlight.current;
+    }
+    const run = (async () => {
+      try {
+        do {
+          stale.current = false;
+          try {
+            publish(
+              await client.request<LiveSessionDetail>(
+                "GET",
+                `/api/agent/sessions/${encodeURIComponent(id)}`,
+              ),
+            );
+            setError(null);
+          } catch (err) {
+            setError(err instanceof ApiError ? err.message : "Phoenix Core is unreachable");
+            if (err instanceof ApiError && err.status === 404) publish(null);
+          }
+        } while (stale.current);
+      } finally {
+        loadedOnce.current = true;
+        inFlight.current = null;
+      }
+    })();
+    inFlight.current = run;
+    return run;
+  }, [client, id, publish]);
+
+  useEffect(() => {
+    publish(null);
+    setError(null);
+    loadedOnce.current = false;
+    asked.current = new Set();
+    void load();
+    const offEvent = client.eventCreated.on(({ event }) => {
+      if (event.event_type !== "agent.session.step") return;
+      const ev = readStepEvent(event.payload);
+      if (!ev) return;
+      const detail = current.current;
+      if (!detail || inFlight.current) {
+        // A load is under way: what it returns may predate this step.
+        if (inFlight.current) stale.current = true;
+        return;
+      }
+      const known = detail.sessions.some((s) => s.id === ev.step.session_id);
+      if (known) return publish(withStep(detail, ev));
+      const related = detail.matched_by === "folder+time" || ev.step.session_id === id;
+      if (!related || asked.current.has(ev.step.session_id)) return;
+      asked.current.add(ev.step.session_id);
+      void load();
+    });
+    const offStatus = client.statusChanged.on((s) => {
+      if (s !== "online") return;
+      // The first load is already under way; only a later (re)connection can have missed steps.
+      if (inFlight.current && !loadedOnce.current) return;
+      asked.current = new Set();
+      void load();
+    });
+    return () => {
+      offEvent();
+      offStatus();
+    };
+  }, [client, id, load, publish]);
+
+  return { data, error, reload: load };
+}
+
+/** Live sessions on this machine, newest first. Refetches only for a session it has not listed. */
+export function useAgentLiveSessions() {
+  const client = useClient();
+  const [sessions, setSessions] = useState<LiveSessionView[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const known = useRef(new Set<string>());
+
+  const load = useCallback(async () => {
+    try {
+      const list = await client.request<LiveSessionList>("GET", "/api/agent/sessions");
+      known.current = new Set(list.sessions.map((s) => s.id));
+      setSessions(list.sessions);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Phoenix Core is unreachable");
+    }
+  }, [client]);
+
+  useEffect(() => {
+    void load();
+    const offEvent = client.eventCreated.on(({ event }) => {
+      if (event.event_type !== "agent.session.step") return;
+      const sessionId = event.payload.session_id;
+      if (typeof sessionId !== "string" || known.current.has(sessionId)) return;
+      known.current.add(sessionId);
+      void load();
+    });
+    const offStatus = client.statusChanged.on((s) => s === "online" && void load());
+    return () => {
+      offEvent();
+      offStatus();
+    };
+  }, [client, load]);
+
+  return { sessions, error };
+}
+
+const NO_USAGE: UsageSummary = { usage: [], thresholds: [], unsupported: [] };
+
+/**
+ * Plan usage of the coding agents Phoenix can read it from. A Core without the route, or any
+ * failure, means "no usage": the error is not shown anywhere.
+ */
+export function useAgentUsage(): UsageSummary {
+  return useLiveResource<UsageSummary>(
+    "/api/agent/usage",
+    (j) => ({
+      usage: j.usage ?? [],
+      thresholds: j.thresholds ?? [],
+      unsupported: j.unsupported ?? [],
+    }),
+    NO_USAGE,
+    (t) => t === "agent.usage.updated" || t === "agent.usage.warning",
+  ).data;
 }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+export * from "./agent-rules";
 export * from "./admin";
 export * from "./autonomy";
 export * from "./engine";

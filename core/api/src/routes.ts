@@ -2,6 +2,9 @@
 // Copyright (C) 2026 Phoenix contributors
 import { ErrorCode, isPermission, PhoenixError } from "@phoenix/protocol";
 import { expectBoolean, expectObject, intParam, route, type Route } from "./http";
+import { agentApprovalRoutes } from "./agent-approval-routes";
+import { agentLiveRoutes } from "./agent-live-routes";
+import { agentRelayRoutes } from "./agent-relay-routes";
 import { agentRoutes } from "./agent-routes";
 import { autonomyRoutes } from "./autonomy-routes";
 import { graphRoutes } from "./graph-routes";
@@ -303,5 +306,8 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...syncRoutes(s),
     ...multimodalRoutes(s),
     ...improvementRoutes(s),
+    ...agentApprovalRoutes(s),
+    ...agentRelayRoutes(s),
+    ...agentLiveRoutes(s),
   ];
 }

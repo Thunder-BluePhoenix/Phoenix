@@ -16,6 +16,11 @@ export interface FawkesAsset {
    * `.fawkes[data-animation="<name>"]`. The runtime disables all of it under reduced motion.
    */
   css: string;
+  /**
+   * CSS for the transient interaction emotes (`.fawkes[data-emote="<name>"]`) and the cursor gaze.
+   * Injected after `css`, so an emote may override a state animation for its short duration.
+   */
+  emoteCss: string;
   /** Animations this asset implements; the runtime warns about missing ones in tests. */
   animations: readonly AnimationName[];
 }

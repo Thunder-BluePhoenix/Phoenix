@@ -212,6 +212,56 @@ export class PolicyEngine {
           matched: ["builtin:autonomy"],
         }
       : evaluated;
+    return this.record(request, decision, context);
+  }
+
+  /**
+   * For a request a human will see anyway (a coding agent's own permission prompt): an audited
+   * deny when a user-created deny rule matches, otherwise undefined. Allow rules, approvals and
+   * the risk baseline are not consulted, and kill switch / tool registry checks belong to the
+   * caller. Like `evaluate`, an unreadable rule store fails closed (deny).
+   */
+  denyByRule(
+    request: ToolRequest,
+    context: Record<string, unknown> = {},
+  ): AuditedDecision | undefined {
+    const { risk, reasons: riskReasons } = assessRisk(request);
+    let rules: PolicyRule[];
+    try {
+      rules = this.store.rules();
+    } catch (err) {
+      return this.record(
+        request,
+        {
+          effect: "deny",
+          risk,
+          reasons: [`Stored policy is invalid: ${String(err)}`, ...riskReasons],
+          matched: ["builtin:invalid-rules"],
+        },
+        context,
+      );
+    }
+    const denied = rules.filter((r) => r.effect === "deny" && ruleMatches(r.match, request));
+    if (denied.length === 0) return undefined;
+    return this.record(
+      request,
+      {
+        effect: "deny",
+        risk,
+        reasons: denied.map(
+          (r) => `Denied by rule "${r.id}"${r.description ? `: ${r.description}` : ""}`,
+        ),
+        matched: denied.map((r) => r.id),
+      },
+      context,
+    );
+  }
+
+  private record(
+    request: ToolRequest,
+    decision: PolicyDecision,
+    context: Record<string, unknown>,
+  ): AuditedDecision {
     let auditId: number;
     try {
       auditId = this.o.audit.record({

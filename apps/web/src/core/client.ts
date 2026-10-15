@@ -137,6 +137,30 @@ export class PhoenixClient {
     return json as T;
   }
 
+  /** Like `request` for a GET whose answer is plain text (an export), not JSON. */
+  async requestText(method: string, path: string): Promise<string> {
+    const res = await this.fetchImpl(this.base + path, {
+      method,
+      headers: { authorization: `Bearer ${this.token ?? ""}` },
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      let json: { code?: string; message?: string; details?: string[] } | undefined;
+      try {
+        json = text ? JSON.parse(text) : undefined;
+      } catch {
+        json = undefined;
+      }
+      throw new ApiError(
+        res.status,
+        json?.code ?? "UNKNOWN",
+        json?.message ?? res.statusText,
+        json?.details ?? [],
+      );
+    }
+    return text;
+  }
+
   private open(): void {
     this.setStatus("connecting");
     const refresh = this.o.refreshToken;

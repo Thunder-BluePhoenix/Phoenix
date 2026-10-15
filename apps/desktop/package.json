@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "GPL-3.0-or-later",
-  "description": "Floating desktop Fawkes (Tauri v2). The page is the web app's floating.html.",
+  "description": "Floating desktop Fawkes and the optional island (Tauri v2). The pages are the web app's floating.html and island.html.",
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",

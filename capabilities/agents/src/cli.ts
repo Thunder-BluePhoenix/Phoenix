@@ -4,41 +4,95 @@
 //
 //   phoenix-agent report --agent <name> --state <state> [--id <session>] [--workspace <dir>]
 //                        [--task <title>] [--reason permission|input|idle]
-//   phoenix-agent claude-hooks [--task-from-prompt]
+//   phoenix-agent claude-hooks [--task-from-prompt] [--no-approvals] [--approval-timeout-ms <ms>]
+//   phoenix-agent codex-hooks [--approval-timeout-ms <ms>]
+//   phoenix-agent status | install|repair|uninstall <agent> [--yes] | self-test   (Phase 57, relay-cli.ts)
 //
 // `report` tells Phoenix what a coding agent is doing, for tools without a
 // dedicated adapter (wire it into the tool's own hook or a wrapper script).
-// `claude-hooks` PRINTS the hooks block for ~/.claude/settings.json; it never
-// writes anything. Observe-only: nothing here can steer an agent.
+// `claude-hooks` / `codex-hooks` PRINT the hooks block for the agent's settings; they never
+// write anything. The state hooks are observe-only; the approval hooks (Phase 56, approval-hook.ts)
+// wait for a decision from Phoenix and fail open.
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { claudeHooksConfig } from "./claude";
+import { CODEX_AGENT, codexHooksConfig } from "./approval-codex";
+import { APPROVAL_TIMEOUT, isApprovalTimeout } from "./approval-map";
+import { CLAUDE_AGENT, claudeHooksConfig } from "./claude";
 import { AGENT_STATES, WAIT_REASONS, validateReport } from "./report";
+import { RELAY_COMMANDS, RELAY_USAGE, runRelayCommand } from "./relay-cli";
 import { sendReport } from "./send";
 
 const USAGE = `Usage:
   phoenix-agent report --agent <name> --state ${AGENT_STATES.join("|")} [--id <session>]
                        [--workspace <dir>] [--task <title>] [--reason ${WAIT_REASONS.join("|")}]
-  phoenix-agent claude-hooks [--task-from-prompt]    print the hooks for ~/.claude/settings.json`;
+  phoenix-agent claude-hooks [--task-from-prompt] [--no-approvals] [--approval-timeout-ms <ms>]
+                       print the hooks for ~/.claude/settings.json (observe-only + approvals)
+  phoenix-agent codex-hooks [--approval-timeout-ms <ms>]
+                       print the PermissionRequest hook for ~/.codex/hooks.json
+${RELAY_USAGE}`;
 
 const ROOT = resolve(import.meta.dirname, "../../..");
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 
 export async function run(argv: string[]): Promise<number> {
   const [sub, ...rest] = argv;
-  if (sub === "claude-hooks") {
-    const { values } = parseArgs({
-      args: rest,
-      options: { "task-from-prompt": { type: "boolean" } },
+  if (sub !== undefined && (RELAY_COMMANDS as readonly string[]).includes(sub)) {
+    return runRelayCommand(sub, rest, {
+      out: (text) => void process.stdout.write(text),
+      err: (text) => void process.stderr.write(text),
     });
-    const hook = join(import.meta.dirname, "claude-hook.ts");
+  }
+  if (sub === "claude-hooks" || sub === "codex-hooks") {
+    let values;
+    try {
+      ({ values } = parseArgs({
+        args: rest,
+        options: {
+          "task-from-prompt": { type: "boolean" },
+          "no-approvals": { type: "boolean" },
+          "approval-timeout-ms": { type: "string" },
+        },
+      }));
+    } catch (err) {
+      process.stderr.write(`${(err as Error).message}\n${USAGE}\n`);
+      return 2;
+    }
+    const timeoutMs =
+      values["approval-timeout-ms"] === undefined
+        ? APPROVAL_TIMEOUT.default
+        : Number(values["approval-timeout-ms"]);
+    if (!isApprovalTimeout(timeoutMs)) {
+      process.stderr.write(
+        `phoenix-agent: --approval-timeout-ms must be an integer from ${APPROVAL_TIMEOUT.min} to ${APPROVAL_TIMEOUT.max}\n${USAGE}\n`,
+      );
+      return 2;
+    }
+    const tsx = quote(join(ROOT, "node_modules/.bin/tsx"));
+    const approvalCommand = (agent: string) =>
+      [
+        tsx,
+        quote(join(import.meta.dirname, "approval-hook.ts")),
+        "--agent",
+        agent,
+        "--timeout-ms",
+        String(timeoutMs),
+      ].join(" ");
+    if (sub === "codex-hooks") {
+      process.stdout.write(
+        JSON.stringify(codexHooksConfig(approvalCommand(CODEX_AGENT), timeoutMs), null, 2) + "\n",
+      );
+      return 0;
+    }
     const command = [
-      quote(join(ROOT, "node_modules/.bin/tsx")),
-      quote(hook),
+      tsx,
+      quote(join(import.meta.dirname, "claude-hook.ts")),
       ...(values["task-from-prompt"] ? ["--task-from-prompt"] : []),
     ].join(" ");
-    process.stdout.write(JSON.stringify(claudeHooksConfig(command), null, 2) + "\n");
+    const approvals = values["no-approvals"]
+      ? undefined
+      : { command: approvalCommand(CLAUDE_AGENT), timeoutMs };
+    process.stdout.write(JSON.stringify(claudeHooksConfig(command, approvals), null, 2) + "\n");
     return 0;
   }
   if (sub !== "report") {

@@ -50,12 +50,25 @@ jobs:
           npx tsx ai/evaluation/src/cli.ts run
           npx tsx ai/evaluation/src/cli.ts gate v0.4
 
-  # The desktop shell (Phase 14). macOS only: it is the one platform verified so far, and the
-  # Linux build needs webkit2gtk system packages that are not set up yet.
+  # The desktop shell (Phase 14, Phase 60). Built and tested on all three OSes. macOS is the only
+  # one a person has run the app on; the Linux and Windows jobs prove it compiles, lints and
+  # passes the unit/lifecycle tests there, not that the island looks right on those desktops.
   desktop:
-    runs-on: macos-latest
+    name: desktop (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      # Tauri v2 Linux prerequisites (https://v2.tauri.app/start/prerequisites/#linux).
+      - name: Install Tauri system packages (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:

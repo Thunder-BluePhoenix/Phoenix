@@ -4,11 +4,42 @@
 //! Desktop-only preferences, stored next to the app (never in Phoenix Core's
 //! database: the desktop pet must work, and remember its place, when Core is down).
 
+use crate::island_geometry::IslandDisplay;
 use crate::position::Point;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io;
 use std::path::Path;
+
+/// Where Fawkes lives on the desktop. One pet, one state (Core's); only the place differs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Mode {
+    /// The draggable transparent window (Phase 14).
+    #[default]
+    Floating,
+    /// The notch / top-edge island (Phase 60).
+    Island,
+    /// No desktop window: Fawkes stays in the Phoenix web app's navbar.
+    Navbar,
+}
+
+impl Mode {
+    pub const ALL: [Mode; 3] = [Mode::Floating, Mode::Island, Mode::Navbar];
+
+    /// Menu id suffix and the value the page sends.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Mode::Floating => "floating",
+            Mode::Island => "island",
+            Mode::Navbar => "navbar",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Mode> {
+        Mode::ALL.into_iter().find(|m| m.as_str() == text)
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -19,6 +50,10 @@ pub struct Settings {
     pub always_on_top: bool,
     /// Hiding Fawkes never disables Phoenix; this only remembers the window.
     pub visible: bool,
+    /// Floating window, island or navbar only. Switchable while running.
+    pub mode: Mode,
+    /// Which monitor the island uses.
+    pub island_display: IslandDisplay,
 }
 
 impl Default for Settings {
@@ -27,6 +62,8 @@ impl Default for Settings {
             position: None,
             always_on_top: false,
             visible: true,
+            mode: Mode::Floating,
+            island_display: IslandDisplay::Primary,
         }
     }
 }
@@ -60,6 +97,41 @@ mod tests {
         assert!(!s.always_on_top);
         assert!(s.visible);
         assert_eq!(s.position, None);
+        // The island is opt-in: a fresh install keeps the floating Fawkes.
+        assert_eq!(s.mode, Mode::Floating);
+        assert_eq!(s.island_display, IslandDisplay::Primary);
+    }
+
+    #[test]
+    fn a_phase_14_settings_file_still_loads_as_floating() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("desktop.json");
+        fs::write(
+            &path,
+            r#"{"position":{"x":3,"y":4},"always_on_top":false,"visible":true}"#,
+        )
+        .unwrap();
+        let s = load(&path);
+        assert_eq!(s.mode, Mode::Floating);
+        assert_eq!(s.position, Some(Point { x: 3, y: 4 }));
+    }
+
+    #[test]
+    fn an_unknown_mode_falls_back_to_defaults_rather_than_hiding_fawkes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("desktop.json");
+        fs::write(&path, r#"{"mode":"hologram","always_on_top":true}"#).unwrap();
+        assert_eq!(load(&path), Settings::default());
+    }
+
+    #[test]
+    fn modes_round_trip_through_their_names() {
+        for mode in Mode::ALL {
+            assert_eq!(Mode::parse(mode.as_str()), Some(mode));
+        }
+        assert_eq!(Mode::parse("Island"), None);
+        assert_eq!(Mode::parse(""), None);
+        assert_eq!(serde_json::to_string(&Mode::Island).unwrap(), "\"island\"");
     }
 
     #[test]
@@ -70,6 +142,8 @@ mod tests {
             position: Some(Point { x: -40, y: 900 }),
             always_on_top: true,
             visible: false,
+            mode: Mode::Island,
+            island_display: IslandDisplay::Named("Studio".into()),
         };
         save(&path, &s).unwrap();
         assert_eq!(load(&path), s);

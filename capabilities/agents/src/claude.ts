@@ -13,6 +13,7 @@ import {
   type AgentState,
   type WaitReason,
 } from "./report";
+import { APPROVAL_TIMEOUT, approvalHookTimeoutSeconds } from "./approval-map";
 
 export const CLAUDE_AGENT = "claude-code";
 
@@ -90,10 +91,38 @@ export function mapClaudeHook(
   };
 }
 
-/** The `hooks` object for ~/.claude/settings.json; `command` is run for every followed hook. */
-export function claudeHooksConfig(command: string): Record<string, unknown> {
+export interface ClaudeApprovalHooks {
+  /** Command that runs approval-hook.ts (with its `--agent`/`--timeout-ms` flags, if any). */
+  command: string;
+  /** The decision timeout the command was built with; the hook timeout is this + 10 s. */
+  timeoutMs?: number;
+}
+
+/**
+ * The `hooks` object for ~/.claude/settings.json; `command` is run for every followed hook
+ * (observe-only, 5 s). With `approvals`, two more entries wait for a decision from Phoenix:
+ * `PermissionRequest`, and `PreToolUse` limited to `AskUserQuestion`. Their `timeout` (seconds)
+ * is the decision timeout plus 10 s, so the hook gives up (fail open) before Claude Code does.
+ */
+export function claudeHooksConfig(
+  command: string,
+  approvals?: ClaudeApprovalHooks,
+): Record<string, unknown> {
   const entry = [{ hooks: [{ type: "command", command, timeout: 5 }] }];
+  const observed = Object.fromEntries(Object.keys(CLAUDE_HOOK_STATES).map((name) => [name, entry]));
+  // PostToolUse emits the step for each completed tool; PreToolUse remains reserved for
+  // AskUserQuestion approvals so a tool is not counted twice.
+  if (!approvals) return { hooks: observed };
+  const handler = {
+    type: "command",
+    command: approvals.command,
+    timeout: approvalHookTimeoutSeconds(approvals.timeoutMs ?? APPROVAL_TIMEOUT.default),
+  };
   return {
-    hooks: Object.fromEntries(Object.keys(CLAUDE_HOOK_STATES).map((name) => [name, entry])),
+    hooks: {
+      ...observed,
+      PermissionRequest: [{ hooks: [handler] }],
+      PreToolUse: [{ matcher: "AskUserQuestion", hooks: [handler] }],
+    },
   };
 }
