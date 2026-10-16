@@ -4,9 +4,15 @@
   "description": "The floating Fawkes window and the island may use the app's own commands and events; the commands that move or save a position refuse any window but the floating one.",
   "windows": ["fawkes", "fawkes-island"],
   "permissions": [
-    "core:default", "core:window:allow-start-dragging",
-    "allow-core-connection", "allow-move-window-by", "allow-drag-finished",
-    "allow-open-in-phoenix", "allow-open-mailto", "allow-show-menu",
-    "allow-island-event", "allow-island-frame"
+    "core:default",
+    "core:window:allow-start-dragging",
+    "allow-core-connection",
+    "allow-move-window-by",
+    "allow-drag-finished",
+    "allow-open-in-phoenix",
+    "allow-open-mailto",
+    "allow-show-menu",
+    "allow-island-event",
+    "allow-island-frame"
   ]
 }

@@ -8,7 +8,10 @@
   },
   "windows": ["phoenix-pill"],
   "permissions": [
-    "core:default", "allow-open-in-phoenix", "allow-pill-ready",
-    "allow-dictation-ended", "allow-dictation-paste"
+    "core:default",
+    "allow-open-in-phoenix",
+    "allow-pill-ready",
+    "allow-dictation-ended",
+    "allow-dictation-paste"
   ]
 }
