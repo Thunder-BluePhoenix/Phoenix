@@ -42,10 +42,13 @@ export interface GateDecision {
 const ALLOWED: GateDecision = { allowed: true };
 
 /**
- * Decides whether a provider may receive a request of the given data class. Local providers are
- * always allowed (data stays on the device). A cloud provider needs the AI_external_processing
+ * Decides whether a provider may receive a request of the given data class. A local provider is
+ * allowed for public and internal data. Sensitive data needs a provider Phoenix vets as on-device
+ * (`trustedLocal`, today only the built-in Ollama adapter): a user-configured loopback server
+ * (LM Studio, any compatible endpoint) may itself forward text to a remote host, so a loopback
+ * address is not treated as proof of locality. A cloud provider needs the AI_external_processing
  * grant AND the opt-in for this class, and for sensitive data additionally a purpose from
- * SENSITIVE_CLOUD_PURPOSES. The caller records the reason, so a skipped cloud provider is visible
+ * SENSITIVE_CLOUD_PURPOSES. The caller records the reason, so a skipped provider is visible
  * and never silently replaced by "send it anyway".
  */
 export function checkGate(
@@ -54,8 +57,18 @@ export function checkGate(
   policy: ExternalAiPolicy,
   optIn: CloudOptIn,
   purpose: string,
+  trustedLocal = false,
 ): GateDecision {
-  if (locality === "local") return ALLOWED;
+  if (locality === "local") {
+    if (privacy === "sensitive" && !trustedLocal) {
+      return {
+        allowed: false,
+        reason:
+          "sensitive data is only processed by Ollama on this device, not by other local servers",
+      };
+    }
+    return ALLOWED;
+  }
   if (privacy === "sensitive" && !optIn.sensitive) {
     return {
       allowed: false,

@@ -9,6 +9,11 @@ export interface NotetakerStatus {
   audio_on_disk: false;
   summary: { available: boolean; locality: "local"; detail: string };
   capture: { microphone: true; system_audio: false; detail: string };
+  /**
+   * Whether Core has a way to ask a PERSON before recording. The session token alone cannot
+   * prove that, so without a trusted channel (the desktop shell) every start is refused.
+   */
+  consent_channel: { available: boolean; code?: string; detail: string };
   active?: { id: string; started_at: string; elapsed_s: number };
   limits: { max_seconds: number; max_frame_bytes: number; window_seconds: number };
 }

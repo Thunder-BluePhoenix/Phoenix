@@ -107,6 +107,9 @@ export function fakeProvider(id: string, locality: Locality): FakeEmbedProvider 
     id,
     label: id,
     locality,
+    // Only a vetted on-device provider may embed or see sensitive text (the built-in Ollama
+    // adapter); this stands in for it. A cloud fake is never trusted.
+    trustedLocal: locality === "local",
     capabilities: { generate: true, stream: false, embed: true },
     costTier: locality === "local" ? 0 : 2,
     typicalLatencyMs: 10,

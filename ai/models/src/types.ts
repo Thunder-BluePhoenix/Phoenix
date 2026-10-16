@@ -129,6 +129,12 @@ export interface ModelProvider {
   /** Shown to users. */
   readonly label: string;
   readonly locality: Locality;
+  /**
+   * True only for an adapter Phoenix itself vets as processing on this device (the built-in
+   * Ollama adapter, which also refuses models that forward to a remote host). A loopback address
+   * proves nothing about where a server sends the text, so it never sets this.
+   */
+  readonly trustedLocal?: boolean;
   readonly capabilities: ProviderCapabilities;
   readonly costTier: CostTier;
   /** Typical end-to-end latency, used only to order candidates. */

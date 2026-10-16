@@ -11,7 +11,7 @@
 //!
 //! The decision table, in order:
 //! 1. text must be 1..=20 000 characters with no control character except `\n` and `\t`;
-//! 2. secure input active (macOS password fields): refuse, touch nothing;
+//! 2. secure input active or focused target cannot be proven nonsecure: refuse, touch nothing;
 //! 3. key events cannot be synthesised (no permission, Wayland): refuse, touch nothing;
 //! 4. clipboard of unknown state: refuse, touch nothing;
 //! 5. clipboard holds non-text (image, files, concealed secret): do NOT overwrite it, type the
@@ -53,6 +53,10 @@ pub enum PasteErrorCode {
     ControlCharacters,
     /// Secure input is on (a password field has focus); nothing was pasted.
     SecureInput,
+    /// The focused target could not be proven nonsecure; nothing was pasted or typed.
+    /// Only the Linux, Windows and unsupported-OS probes produce it (macOS has a real signal).
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    SecureInputUnknown,
     /// The clipboard could not be inspected, so it was not touched.
     ClipboardUnavailable,
     ClipboardWriteFailed,
@@ -81,6 +85,9 @@ impl PasteError {
             }
             PasteErrorCode::SecureInput => {
                 "A protected field has focus (secure input is on), so nothing was pasted."
+            }
+            PasteErrorCode::SecureInputUnknown => {
+                "The focused field could not be confirmed safe for dictation, so nothing was pasted."
             }
             PasteErrorCode::ClipboardUnavailable => {
                 "The clipboard could not be read safely, so nothing was pasted."
@@ -127,8 +134,8 @@ pub trait ClipboardPlatform {
     /// later [`ClipboardPlatform::unchanged`] can tell it from a copy the user made meanwhile.
     type Receipt;
 
-    /// Is a password field focused (macOS secure event input, a Windows password edit
-    /// control)? Platforms with no such signal answer `false`.
+    /// Is a password field focused? Return `Ok(false)` only when the focused target is
+    /// positively known to be nonsecure; an unknown status must return `SecureInputUnknown`.
     fn secure_input(&mut self) -> Result<bool, PasteError>;
     /// Can this process synthesise key events at all (permission granted, X11 session, not
     /// Wayland)? Checked before the clipboard is touched so a doomed paste changes nothing.
@@ -729,10 +736,9 @@ mod system {
         type Receipt = Receipt;
 
         fn secure_input(&mut self) -> Result<bool, PasteError> {
-            // X11/GTK has no reliable global secure-event-input status; keyboard injection
-            // on X11 may target password controls. This platform limitation is surfaced in
-            // the UI; macOS has a secure-input status and refuses when it is active.
-            Ok(false)
+            // X11/GTK cannot determine whether another application's focused field is secure.
+            // Refuse before either clipboard access or synthetic key events.
+            Err(PasteError::new(PasteErrorCode::SecureInputUnknown))
         }
 
         fn can_send_keys(&mut self) -> Result<(), PasteError> {
@@ -892,7 +898,9 @@ mod system {
     use super::*;
     use std::mem;
     use windows::core::w;
-    use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL};
+    use windows::Win32::Foundation::{
+        GetLastError, GlobalFree, SetLastError, HANDLE, HGLOBAL, WIN32_ERROR,
+    };
     use windows::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData,
         GetClipboardFormatNameW, GetClipboardSequenceNumber, OpenClipboard, SetClipboardData,
@@ -1133,36 +1141,40 @@ mod system {
         type Receipt = u32;
 
         fn secure_input(&mut self) -> Result<bool, PasteError> {
-            // Windows has no equivalent to macOS secure event input. Protect the standard EDIT
-            // password field. Custom and browser password controls may not expose this flag;
-            // they are expected to refuse synthetic paste/typing themselves.
+            // Only a standard EDIT control exposes a password style we can inspect. Browser,
+            // custom, and otherwise unidentifiable controls cannot be assumed nonsecure.
+            let unknown = || PasteError::new(PasteErrorCode::SecureInputUnknown);
             let foreground = unsafe { GetForegroundWindow() };
             if foreground.is_invalid() {
-                return Err(PasteError::new(PasteErrorCode::PasteUnavailable));
+                return Err(unknown());
             }
             let thread = unsafe { GetWindowThreadProcessId(foreground, None) };
             if thread == 0 {
-                return Err(PasteError::new(PasteErrorCode::PasteUnavailable));
+                return Err(unknown());
             }
             let mut info = GUITHREADINFO {
                 cbSize: mem::size_of::<GUITHREADINFO>() as u32,
                 ..Default::default()
             };
-            unsafe { GetGUIThreadInfo(thread, &mut info) }
-                .map_err(|_| PasteError::new(PasteErrorCode::PasteUnavailable))?;
+            unsafe { GetGUIThreadInfo(thread, &mut info) }.map_err(|_| unknown())?;
             let focus = info.hwndFocus;
             if focus.is_invalid() {
-                return Err(PasteError::new(PasteErrorCode::PasteUnavailable));
+                return Err(unknown());
             }
             let mut name = [0u16; 32];
             let length = unsafe { GetClassNameW(focus, &mut name) };
-            if length == 0 {
-                return Err(PasteError::new(PasteErrorCode::PasteUnavailable));
+            if length <= 0
+                || !String::from_utf16_lossy(&name[..length as usize]).eq_ignore_ascii_case("Edit")
+            {
+                return Err(unknown());
             }
-            let is_edit =
-                String::from_utf16_lossy(&name[..length as usize]).eq_ignore_ascii_case("Edit");
-            Ok(is_edit
-                && (unsafe { GetWindowLongPtrW(focus, GWL_STYLE) } & ES_PASSWORD as isize) != 0)
+            // A zero style can be valid, so clear last error before the ambiguous Win32 call.
+            unsafe { SetLastError(WIN32_ERROR(0)) };
+            let style = unsafe { GetWindowLongPtrW(focus, GWL_STYLE) };
+            if style == 0 && unsafe { GetLastError() }.0 != 0 {
+                return Err(unknown());
+            }
+            Ok((style & ES_PASSWORD as isize) != 0)
         }
 
         fn can_send_keys(&mut self) -> Result<(), PasteError> {
@@ -1282,7 +1294,7 @@ mod system {
     impl ClipboardPlatform for SystemPlatform {
         type Receipt = ();
         fn secure_input(&mut self) -> Result<bool, PasteError> {
-            Err(PasteError::new(PasteErrorCode::PasteUnavailable))
+            Err(PasteError::new(PasteErrorCode::SecureInputUnknown))
         }
         fn can_send_keys(&mut self) -> Result<(), PasteError> {
             Err(PasteError::new(PasteErrorCode::PasteUnavailable))
@@ -1490,14 +1502,19 @@ mod tests {
     }
 
     #[test]
-    fn a_failing_secure_input_probe_refuses_instead_of_pasting() {
-        let mut fake = Fake::text("keep");
-        fake.secure = Err(PasteError::new(PasteErrorCode::ClipboardUnavailable));
-        assert_eq!(
-            code(paste_with(&mut fake, "hello")),
-            PasteErrorCode::ClipboardUnavailable
-        );
-        assert_eq!(fake.calls, vec![Call::SecureInput]);
+    fn unknown_secure_status_refuses_before_clipboard_or_typing() {
+        for clipboard in [
+            ClipboardContent::Text("keep".into()),
+            ClipboardContent::NonText,
+        ] {
+            let mut fake = Fake::with_clipboard(clipboard);
+            fake.secure = Err(PasteError::new(PasteErrorCode::SecureInputUnknown));
+            assert_eq!(
+                code(paste_with(&mut fake, "hello")),
+                PasteErrorCode::SecureInputUnknown
+            );
+            assert_eq!(fake.calls, vec![Call::SecureInput]);
+        }
     }
 
     #[test]
@@ -1692,6 +1709,7 @@ mod tests {
             PasteErrorCode::TooLong,
             PasteErrorCode::ControlCharacters,
             PasteErrorCode::SecureInput,
+            PasteErrorCode::SecureInputUnknown,
             PasteErrorCode::ClipboardUnavailable,
             PasteErrorCode::ClipboardWriteFailed,
             PasteErrorCode::PasteUnavailable,

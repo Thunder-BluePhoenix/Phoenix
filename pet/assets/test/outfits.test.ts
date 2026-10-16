@@ -52,6 +52,43 @@ describe("outfit pack: what is accepted", () => {
       expect(validateOutfitPack(outfit)).toEqual(outfit);
     },
   );
+
+  it.each([
+    [
+      "nested translates keeping curves, smooth curves and closes inside the bound",
+      '<g transform="translate(4 4)"><g transform="translate(4 4)"><path d="M10 10 C20 5 30 5 40 10 S50 20 55 30 Q60 40 40 40 T20 50 Z"/></g></g>',
+    ],
+    [
+      "a rotation about the canvas centre",
+      '<g transform="rotate(90 32 32)"><rect x="10" y="20" width="40" height="20"/></g>',
+    ],
+    [
+      "a rotated circle and ellipse about the centre",
+      '<g transform="rotate(45 32 32)"><circle cx="32" cy="32" r="20"/><ellipse cx="32" cy="32" rx="25" ry="10"/></g>',
+    ],
+    [
+      "a translate cancelling an earlier translate",
+      '<g transform="translate(16 16)"><g transform="translate(-16 -16)"><polygon points="2 2 60 2 30 60"/></g></g>',
+    ],
+    [
+      "a group transform that does not leak to its sibling",
+      '<g transform="translate(-4 -4)"><path d="M1 1 L2 2"/></g><path d="M60 60 L65 65"/>',
+    ],
+    [
+      "a stroke that just fits the bound",
+      '<polyline points="10 10 60 10" fill="none" stroke="#000" stroke-width="6"/>',
+    ],
+    [
+      "an unstroked shape beside a stroke-width that has no paint",
+      '<polygon points="0 0 68 0 34 60" stroke="none" stroke-width="6"/>',
+    ],
+    [
+      "an inherited stroke inside the bound",
+      '<g stroke="#000" stroke-width="2" transform="translate(4 4)"><line x1="10" y1="10" x2="60" y2="10"/></g>',
+    ],
+  ])("accepts %s", (_name, svg) => {
+    expect(() => parseOutfitSvg(svg)).not.toThrow();
+  });
 });
 
 /** Each hostile case must be rejected; the message is not the point, the rejection is. */
@@ -135,6 +172,62 @@ const HOSTILE_SVG: [string, string][] = [
   ["too many elements", `<g>${'<circle cx="5" cy="5" r="1"/>'.repeat(81)}</g>`],
   ["too deeply nested", `${"<g>".repeat(8)}<path d="M1 1 L2 2"/>${"</g>".repeat(8)}`],
   ["oversize fragment", `<path d="M1 1 ${"L2 2 ".repeat(MAX_LAYER_CHARS / 5 + 10)}"/>`],
+  [
+    "nested translates pushing a path off the canvas",
+    '<g transform="translate(16 16)"><g transform="translate(16 16)"><g transform="translate(16 16)"><path d="M10 10 L20 20 L30 30"/></g></g></g>',
+  ],
+  [
+    "rotate throwing a path off the canvas",
+    '<g transform="rotate(90)"><path d="M10 60 L20 60"/></g>',
+  ],
+  [
+    "rotate about a centre then nested translates, polygon child",
+    '<g transform="rotate(180 32 32) translate(16 16)"><g transform="translate(16 0)"><polygon points="40 40 50 40 45 50"/></g></g>',
+  ],
+  [
+    "composed transform on a circle",
+    '<g transform="translate(16 0)"><g transform="translate(16 0)"><circle cx="40" cy="32" r="6"/></g></g>',
+  ],
+  [
+    "composed transform on a rect",
+    '<g transform="translate(16 16)"><g transform="translate(0 16)"><rect x="40" y="30" width="20" height="10"/></g></g>',
+  ],
+  [
+    "nested translates and rotate on an ellipse",
+    '<g transform="translate(16 16)"><g transform="translate(16 16)"><g transform="rotate(45)"><ellipse cx="60" cy="0" rx="5" ry="3"/></g></g></g>',
+  ],
+  [
+    "composed transform on a line",
+    '<g transform="translate(16 16)"><g transform="translate(16 16)"><line x1="30" y1="30" x2="50" y2="50"/></g></g>',
+  ],
+  [
+    "composed transform on a polyline",
+    '<g transform="translate(-16 0)"><g transform="translate(-16 0)"><polyline points="10 10 20 20 30 10"/></g></g>',
+  ],
+  [
+    "own transform after a parent transform",
+    '<g transform="translate(16 16)"><path transform="translate(16 16)" d="M40 40 L50 50"/></g>',
+  ],
+  [
+    "path control point beyond the bound under a transform",
+    '<g transform="translate(8 8)"><path d="M60 60 C68 68 68 68 60 60"/></g>',
+  ],
+  [
+    "path smooth curve beyond the bound under nested transforms",
+    '<g transform="translate(16 16)"><g transform="translate(8 8)"><path d="M10 10 S20 20 50 50"/></g></g>',
+  ],
+  [
+    "path H and V beyond the bound under nested transforms",
+    '<g transform="translate(16 16)"><g transform="translate(16 16)"><path d="M10 10 H50 V50"/></g></g>',
+  ],
+  [
+    "stroke reaching past the bound",
+    '<line x1="10" y1="10" x2="66" y2="10" stroke="#000" stroke-width="6"/>',
+  ],
+  [
+    "inherited stroke reaching past the bound under a transform",
+    '<g stroke="#000" stroke-width="6" transform="translate(4 0)"><polyline points="10 10 60 10"/></g>',
+  ],
 ];
 
 describe("outfit sanitiser: hostile fragments are rejected, not cleaned", () => {

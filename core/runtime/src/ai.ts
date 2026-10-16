@@ -143,6 +143,12 @@ export class AiRuntime implements AiApi {
   private readonly registry: ProviderRegistry;
   /** The endpoints currently registered, to tell what changed. */
   private registered: Endpoint[] = [];
+  /**
+   * Tail of the queue of changes to settings and keys. They run one at a time, so a key write can
+   * never interleave with an endpoint change (a key stored for the old destination would otherwise
+   * be read by the replacement).
+   */
+  private mutations: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly d: AiRuntimeDeps) {
     this.registry = createDefaultProviders({
@@ -167,16 +173,32 @@ export class AiRuntime implements AiApi {
     return this.d.secrets?.get(secretRef(providerId));
   }
 
-  /** Ids of the providers that can embed text. */
+  /** Ids of the providers that can embed text: only vetted on-device ones (memory text may be sensitive). */
   embeddingProviders(): string[] {
     return this.registry
       .list()
-      .filter((p) => p.capabilities.embed)
+      .filter((p) => p.capabilities.embed && p.trustedLocal === true)
       .map((p) => p.id);
   }
 
   hasProvider(id: string): boolean {
     return PROVIDER_ID.test(id) && this.registry.get(id) !== undefined;
+  }
+
+  /** Runs `task` after every earlier change to settings or keys has finished (a failure does not block later ones). */
+  private serialize<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.mutations.then(task, task);
+    this.mutations = run.catch(() => undefined);
+    return run;
+  }
+
+  /**
+   * The key of a user-added endpoint, only for the provider that talks to the destination the
+   * endpoint has right now. A provider left over from an earlier URL of the same id gets nothing.
+   */
+  private keyForEndpoint(providerId: string, baseUrl: string): Promise<string | undefined> {
+    const effective = this.registered.find((e) => e.id === providerId);
+    return effective?.base_url === baseUrl ? this.keyFor(providerId) : Promise.resolve(undefined);
   }
 
   /** Makes the registry hold exactly the user's endpoints (skipping any stored one that is now unsafe). */
@@ -187,7 +209,7 @@ export class AiRuntime implements AiApi {
       try {
         this.registry.register(
           createEndpointProvider(endpoint, {
-            keyFor: (id) => this.keyFor(id),
+            keyFor: (id) => this.keyForEndpoint(id, endpoint.base_url),
             fetch: this.d.fetch,
           }),
         );
@@ -481,7 +503,11 @@ export class AiRuntime implements AiApi {
     return out;
   }
 
-  async setSettings(input: unknown): Promise<AiStatusView> {
+  setSettings(input: unknown): Promise<AiStatusView> {
+    return this.serialize(() => this.applySettings(input));
+  }
+
+  private async applySettings(input: unknown): Promise<AiStatusView> {
     const body = asRecord(input, "AI settings");
     const before = this.stored();
     const next = this.stored();
@@ -528,16 +554,17 @@ export class AiRuntime implements AiApi {
       }
     }
     // A key belongs to a destination: an endpoint that is removed, or sent somewhere else, loses it.
+    // The key is gone BEFORE the new destination exists, so no request can carry it there.
     const changed = before.endpoints.filter((old) => {
       const now = next.endpoints.find((e) => e.id === old.id);
       return !now || now.base_url !== old.base_url;
     });
-    this.d.settings.set(SETTINGS_KEY, next);
-    this.syncEndpoints(next.endpoints);
     for (const old of changed) {
       await this.d.secrets?.delete(secretRef(old.id));
       this.service.forgetHealth(old.id);
     }
+    this.d.settings.set(SETTINGS_KEY, next);
+    this.syncEndpoints(next.endpoints);
     this.audit("ai.settings.changed", {
       enabled: next.enabled,
       preferred: next.preferred,
@@ -572,21 +599,25 @@ export class AiRuntime implements AiApi {
     return this.d.secrets;
   }
 
-  async setSecret(providerId: string, value: string): Promise<void> {
-    const secrets = this.requireSecrets(providerId);
-    if (value.length === 0 || value.length > MAX_SECRET_CHARS || /[\r\n\0]/.test(value)) {
-      throw invalid(`The key must be one line of 1-${MAX_SECRET_CHARS} characters`);
-    }
-    await secrets.set(secretRef(providerId), value);
-    this.service.forgetHealth(providerId);
-    this.audit("ai.secret.set", { provider: providerId });
+  setSecret(providerId: string, value: string): Promise<void> {
+    return this.serialize(async () => {
+      const secrets = this.requireSecrets(providerId);
+      if (value.length === 0 || value.length > MAX_SECRET_CHARS || /[\r\n\0]/.test(value)) {
+        throw invalid(`The key must be one line of 1-${MAX_SECRET_CHARS} characters`);
+      }
+      await secrets.set(secretRef(providerId), value);
+      this.service.forgetHealth(providerId);
+      this.audit("ai.secret.set", { provider: providerId });
+    });
   }
 
-  async deleteSecret(providerId: string): Promise<void> {
-    const secrets = this.requireSecrets(providerId);
-    await secrets.delete(secretRef(providerId));
-    this.service.forgetHealth(providerId);
-    this.audit("ai.secret.deleted", { provider: providerId });
+  deleteSecret(providerId: string): Promise<void> {
+    return this.serialize(async () => {
+      const secrets = this.requireSecrets(providerId);
+      await secrets.delete(secretRef(providerId));
+      this.service.forgetHealth(providerId);
+      this.audit("ai.secret.deleted", { provider: providerId });
+    });
   }
 
   /**
@@ -608,17 +639,22 @@ export class AiRuntime implements AiApi {
     const embedding = cloudEmbeds
       ? " Searching by meaning may send public or internal memory text to a cloud provider that can embed text, if you opted in for that kind of data."
       : " Searching by meaning (if you turn it on) embeds memory text on this device only.";
-    // Local servers the user chose (LM Studio, a loopback endpoint) also run on this device.
+    // A loopback server the user chose (LM Studio, a custom endpoint) is NOT vetted: Phoenix cannot
+    // know that it keeps text on this device, so it is named separately and never gets sensitive data.
     const chosen = [s.preferred, ...Object.values(s.routing).map((r) => r.provider)];
-    const otherLocal = [...new Set(chosen)]
+    const unvetted = [...new Set(chosen)]
       .map((id) => (id === null ? undefined : this.registry.get(id)))
       .filter(
-        (p): p is ModelProvider => p !== undefined && p.locality === "local" && p.id !== "ollama",
+        (p): p is ModelProvider =>
+          p !== undefined && p.locality === "local" && p.trustedLocal !== true,
       )
       .map((p) => p.label);
-    const onDevice = `Ollama${otherLocal.length > 0 ? ` or ${otherLocal.join(", ")}` : ""}`;
+    const unvettedNote =
+      unvetted.length > 0
+        ? ` Public and internal text may also go to ${unvetted.join(", ")}, a server you configured on this device; Phoenix cannot verify that it keeps text on this device, so sensitive data is never sent to it.`
+        : "";
     if (!this.externalProcessingGranted() || classes.length === 0) {
-      return `AI is on and is processed on this device by ${onDevice}; nothing is sent to external AI providers.${transcripts}${embedding}`;
+      return `AI is on and is processed on this device by Ollama; nothing is sent to external AI providers.${unvettedNote}${transcripts}${embedding}`;
     }
     const cloud = this.registry
       .list()
@@ -628,6 +664,6 @@ export class AiRuntime implements AiApi {
     const sensitive = classes.includes("sensitive")
       ? " Sensitive memories (including meeting summaries) are sent only when you ask Fawkes a question, and each such send is written to the audit log."
       : "";
-    return `AI is on. When Ollama is unavailable or you choose a cloud provider, ${classes.join(", ")} memories may be sent to ${cloud}.${sensitive}${transcripts}${embedding}`;
+    return `AI is on. When Ollama is unavailable or you choose a cloud provider, ${classes.join(", ")} memories may be sent to ${cloud}.${sensitive}${unvettedNote}${transcripts}${embedding}`;
   }
 }

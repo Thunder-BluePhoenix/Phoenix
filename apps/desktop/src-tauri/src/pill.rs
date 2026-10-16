@@ -307,6 +307,9 @@ fn dispatch<R: Runtime>(
 ) {
     match action {
         Action::Start { mode } => {
+            // Remember where the user is typing BEFORE the pill, Core check or any window work
+            // can change focus; the paste is refused if the target differs.
+            crate::capture_dictation_focus(app);
             let generation = {
                 let mut state = state.lock();
                 state.generation = state.generation.wrapping_add(1);
@@ -364,32 +367,56 @@ fn dispatch<R: Runtime>(
             }
         }
         Action::PasteAgain => {
-            if let Some(text) = state.lock().last_text.clone() {
-                // Use the same platform decision table as an ordinary dictation. Never log it.
-                // X11/GTK clipboard operations must run on the GTK main thread; on macOS/Windows
-                // the worker may sleep briefly while restoring the original clipboard.
-                #[cfg(target_os = "linux")]
-                {
-                    let app = app.clone();
-                    let _ = app.clone().run_on_main_thread(move || {
-                        if let Err(e) = crate::dictation_paste::paste(&text) {
-                            error(&app, e.message);
-                        }
-                    });
+            // Core is asked again on every paste-again: switching dictation off or engaging the
+            // emergency stop must also stop the retained text from being typed anywhere.
+            let (state, app, locator) = (Arc::clone(state), app.clone(), locator.clone());
+            std::thread::spawn(move || {
+                let connected = connection(&locator);
+                let gate =
+                    core_status::fetch_paste_gate(&connected.base_url, connected.token.as_deref());
+                match paste_again_text(&state, gate) {
+                    // Use the same platform decision table as an ordinary dictation. Never log
+                    // it. X11/GTK clipboard operations must run on the GTK main thread; on
+                    // macOS/Windows this worker may sleep briefly while restoring the clipboard.
+                    Ok(text) => paste_again(&app, text),
+                    Err(message) => {
+                        let next = app.clone();
+                        let _ = app.run_on_main_thread(move || error(&next, &message));
+                    }
                 }
-                #[cfg(not(target_os = "linux"))]
-                {
-                    let app = app.clone();
-                    std::thread::spawn(move || {
-                        if let Err(e) = crate::dictation_paste::paste(&text) {
-                            error(&app, e.message);
-                        }
-                    });
-                }
-            } else {
-                error(app, "There is no previous dictation to paste again.");
-            }
+            });
         }
+    }
+}
+
+/// The text paste-again may type, given Core's current answer. A closed gate (dictation off, or
+/// the emergency stop) forgets the retained text, so it cannot come back later.
+fn paste_again_text(state: &Mutex<State>, gate: Gate) -> Result<String, String> {
+    let mut state = state.lock();
+    if let Gate::Closed(reason) = gate {
+        state.last_text = None;
+        return Err(reason);
+    }
+    state
+        .last_text
+        .clone()
+        .ok_or_else(|| "There is no previous dictation to paste again.".into())
+}
+
+#[cfg(target_os = "linux")]
+fn paste_again<R: Runtime>(app: &AppHandle<R>, text: String) {
+    let next = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Err(e) = crate::dictation_paste::paste(&text) {
+            error(&next, e.message);
+        }
+    });
+}
+
+#[cfg(not(target_os = "linux"))]
+fn paste_again<R: Runtime>(app: &AppHandle<R>, text: String) {
+    if let Err(e) = crate::dictation_paste::paste(&text) {
+        error(app, e.message);
     }
 }
 
@@ -529,6 +556,42 @@ pub fn hide<R: Runtime>(app: &AppHandle<R>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn state_with(text: &str) -> Mutex<State> {
+        Mutex::new(State {
+            last_text: Some(text.into()),
+            ..State::default()
+        })
+    }
+
+    #[test]
+    fn paste_again_replays_the_text_only_while_core_still_allows_dictation() {
+        let state = state_with("hello");
+        assert_eq!(paste_again_text(&state, Gate::Open), Ok("hello".into()));
+        // Not consumed: it can be pasted again.
+        assert_eq!(paste_again_text(&state, Gate::Open), Ok("hello".into()));
+    }
+
+    #[test]
+    fn paste_again_refuses_and_forgets_the_text_when_dictation_is_off_or_killed() {
+        for reason in [
+            "Dictation is off. Turn it on in Phoenix Settings, under Dictation.",
+            "The emergency stop is engaged.",
+            "Phoenix Core did not answer.",
+        ] {
+            let state = state_with("secret words");
+            assert_eq!(
+                paste_again_text(&state, Gate::Closed(reason.into())),
+                Err(reason.into())
+            );
+            assert_eq!(state.lock().last_text, None);
+            // Re-enabling dictation later must not resurrect the old text.
+            assert_eq!(
+                paste_again_text(&state, Gate::Open),
+                Err("There is no previous dictation to paste again.".into())
+            );
+        }
+    }
 
     #[test]
     fn commands_serialize_exactly_as_the_page_expects() {

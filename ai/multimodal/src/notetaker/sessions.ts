@@ -93,6 +93,12 @@ export interface NotetakerStartInput {
 export interface NotetakerSessionDeps {
   recognizer: SpeechRecognizer;
   enabled: () => boolean;
+  /**
+   * A person confirmed THIS recording on a surface a session-token holder cannot drive. Asked after
+   * every other check passed and before any buffer or recogniser session exists. Must resolve `true`
+   * only for a real confirmation; a request flag is a claim, never the proof. Throws to refuse.
+   */
+  confirmConsent: (info: { title: string | null }) => Promise<boolean>;
   killSwitchEngaged: () => boolean;
   /** Brackets the whole capture. Must not throw (the manager contains it anyway). */
   onRecording: (recording: boolean, sessionId: string) => void;
@@ -228,6 +234,12 @@ export class NotetakerSessions {
     this.allowed();
     if (this.live) throw new DictationError("busy", "A recording is already in progress");
     if (!availability.available) throw new DictationError("unavailable", availability.detail);
+    const confirmed = await this.d.confirmConsent({ title: input.title?.trim() ?? null });
+    // The person may have taken a while: everything is checked again.
+    this.allowed();
+    if (this.live) throw new DictationError("busy", "A recording is already in progress");
+    if (confirmed !== true)
+      throw new DictationError("invalid", "The recording was not confirmed by a person");
     const id = this.d.newId?.() ?? `ntk_${crypto.randomUUID().replaceAll("-", "")}`;
     const live: Live = {
       id,

@@ -367,6 +367,25 @@ describe("AnswerView attribution", () => {
     ).toBe("Answered by gpt-x via OpenAI · in the cloud (leaves this device) · cost unknown");
   });
 
+  it.each([Infinity, NaN, -Infinity])(
+    "shows cost unknown, never %s, when the amount is not a finite number",
+    (amount) => {
+      const text = attribution(
+        answer({
+          model: "gpt-x",
+          provider: "openai",
+          provider_label: "OpenAI",
+          locality: "cloud",
+          cost: { amount, currency: "USD", basis: "user-configured prices" },
+        }),
+      );
+      expect(text).toBe(
+        "Answered by gpt-x via OpenAI · in the cloud (leaves this device) · cost unknown",
+      );
+      cleanup();
+    },
+  );
+
   it("shows only processed_by for an older answer", () => {
     expect(attribution(answer())).toBeNull();
     expect(

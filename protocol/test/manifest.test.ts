@@ -78,6 +78,13 @@ describe("validateManifest", () => {
     expect(errors({ ...base(), id: "core" })).toEqual(['/id "core" is reserved']);
   });
 
+  it.each(["notetaker", "dictation"])(
+    "reserves the local recording id %s so no capability can impersonate Phoenix's own recordings",
+    (id) => {
+      expect(errors({ ...base(), id })).toEqual([`/id "${id}" is reserved`]);
+    },
+  );
+
   it.each([
     ["security.*", 'security.*" is in the reserved "security" namespace'],
     ["security.confirmation.requested", 'security.confirmation.requested" is in the reserved'],
@@ -86,6 +93,9 @@ describe("validateManifest", () => {
     ["capability.*", 'capability.*" is in the reserved "capability" namespace'],
     ["notification.created", 'notification.created" is in the reserved'],
     ["core.thing", 'core.thing" is in the reserved "core" namespace'],
+    ["notetaker.recording", 'notetaker.recording" is in the reserved "notetaker" namespace'],
+    ["notetaker.*", 'notetaker.*" is in the reserved "notetaker" namespace'],
+    ["dictation.idle", 'dictation.idle" is in the reserved "dictation" namespace'],
   ])("rejects events in a namespace Phoenix reserves for itself (%s)", (pattern, message) => {
     const found = errors({ ...base(), events: ["git.*", pattern] });
     expect(found).toHaveLength(1);

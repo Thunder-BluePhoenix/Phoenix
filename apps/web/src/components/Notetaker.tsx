@@ -285,11 +285,13 @@ export function RecordCall({
         ? "The emergency stop is engaged."
         : !status.recognizer.available
           ? status.recognizer.detail
-          : connection !== "online"
-            ? "Phoenix Core is not connected."
-            : status.active || local.phase !== "idle"
-              ? "A recording is already in progress."
-              : null;
+          : !status.consent_channel.available
+            ? `Recording needs a trusted way to ask you first. ${status.consent_channel.detail}`
+            : connection !== "online"
+              ? "Phoenix Core is not connected."
+              : status.active || local.phase !== "idle"
+                ? "A recording is already in progress."
+                : null;
 
   return (
     <section className="card notetaker-record" aria-labelledby="record-call-h">

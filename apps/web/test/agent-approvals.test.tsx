@@ -383,11 +383,17 @@ describe("Agent approval keyboard and focus", () => {
     await screen.findByRole("listitem", { name: t("first") });
     press(`Deny: ${t("first")}`);
     await waitFor(() => expect(screen.queryByRole("listitem", { name: t("first") })).toBeNull());
-    expect(document.activeElement).toBe(screen.getByRole("listitem", { name: t("second") }));
+    // Focus moves in a passive effect, which can flush after the DOM change `waitFor` sees; the
+    // panel heading keeps focus until then (a click does not move it).
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("listitem", { name: t("second") })),
+    );
     press(`Deny: ${t("second")}`);
     await waitFor(() => expect(screen.queryByRole("listitem", { name: t("second") })).toBeNull());
-    expect(document.activeElement).toBe(
-      screen.getByRole("heading", { name: "Coding agent requests" }),
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("heading", { name: "Coding agent requests" }),
+      ),
     );
   });
 

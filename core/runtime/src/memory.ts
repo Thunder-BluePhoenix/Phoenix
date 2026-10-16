@@ -57,8 +57,13 @@ const SETTINGS_KEY = "memory.settings";
 export const MAX_VIEW_TEXT = 2000;
 const MAX_DOC_PATHS = 50;
 const MAX_DOC_PATH_CHARS = 1024;
-/** Capabilities whose meetings become memories. */
-const MEETING_CAPABILITIES = ["kage", NOTETAKER_CAPABILITY_ID];
+/**
+ * Capabilities whose meeting summaries become memories directly. NOT the notetaker: its summary is
+ * written by a local model from a transcript nobody has read, and the transcript is untrusted
+ * speech. Its decisions and action items reach memory only after the user accepts them in the
+ * meeting item review (source "meeting-review").
+ */
+const MEETING_CAPABILITIES = ["kage"];
 /** Facts and tokens one question may bring to a model. */
 const ASK_LIMIT = 10;
 const ASK_TOKEN_BUDGET = 3000;
@@ -364,8 +369,7 @@ export class MemoryRuntime implements MemoryApi {
     if (source === "project-docs") return true;
     // Facts made from items the user reviewed. Sensitive ones still need allow_sensitive_meetings.
     if (source === REVIEW_SOURCE) return true;
-    // A call recorded on this computer is Phoenix's own, not a capability that can be switched off.
-    if (source === NOTETAKER_CAPABILITY_ID) return true;
+    // A call recorded here yields no direct facts (see MEETING_CAPABILITIES); nothing to enable.
     try {
       return this.d.capabilities.get(source).status === "enabled";
     } catch {
@@ -437,6 +441,8 @@ export class MemoryRuntime implements MemoryApi {
 
   syncMeetings(): IngestReport | null {
     if (this.closed || !this.current().allow_sensitive_meetings) return null;
+    // Facts an earlier build made straight from a notetaker summary were never reviewed: remove them.
+    this.store.purge({ source: NOTETAKER_CAPABILITY_ID, domain: "meeting" });
     try {
       return ingestMeetings({
         pipeline: this.pipeline,

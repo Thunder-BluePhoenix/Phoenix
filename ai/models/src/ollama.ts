@@ -102,6 +102,7 @@ export class OllamaProvider implements ModelProvider {
   readonly id = OLLAMA_ID;
   readonly label = "Ollama (this device)";
   readonly locality = "local" as const;
+  readonly trustedLocal = true;
   readonly capabilities = { generate: true, stream: true, embed: true };
   readonly costTier = 0 as const;
   readonly typicalLatencyMs = 2_000;

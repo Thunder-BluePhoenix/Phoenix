@@ -240,6 +240,8 @@ describe("ask through AiService", () => {
       id,
       label: id,
       locality,
+      // Stands in for the vetted built-in Ollama adapter; a cloud fake is never trusted.
+      trustedLocal: locality === "local",
       capabilities: { generate: true, stream: false, embed: false },
       costTier: locality === "local" ? 0 : 2,
       typicalLatencyMs: 100,

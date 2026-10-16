@@ -114,6 +114,8 @@ export interface FakeProviderInit {
   id: string;
   locality: Locality;
   costTier?: CostTier;
+  /** Defaults to true for a local provider (a vetted adapter like Ollama). False = an unvetted loopback server. */
+  trustedLocal?: boolean;
   typicalLatencyMs?: number;
   capabilities?: ProviderCapabilities;
   health?: () => Promise<ProviderHealth>;
@@ -138,6 +140,7 @@ export function fakeProvider(init: FakeProviderInit): FakeProvider {
     id: init.id,
     label: init.id,
     locality: init.locality,
+    trustedLocal: init.locality === "local" && init.trustedLocal !== false,
     capabilities: init.capabilities ?? { generate: true, stream: true, embed: true },
     costTier: init.costTier ?? (init.locality === "local" ? 0 : 2),
     typicalLatencyMs: init.typicalLatencyMs ?? 1000,

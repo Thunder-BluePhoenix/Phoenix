@@ -196,29 +196,145 @@ function checkAttribute(tag: string, name: string, value: string): void {
   else fail(`Attribute ${name} on <${tag}> is not allowed`);
 }
 
-/** Shapes must stay on the canvas: a circle or rect cannot be sized to cover the page. */
-function checkExtent(tag: string, a: Record<string, number>): void {
-  const within = (lo: number, hi: number) => lo >= GEOMETRY_MIN * 2 && hi <= GEOMETRY_MAX + 4;
-  if (tag === "circle" && !within((a.cx ?? 0) - (a.r ?? 0), (a.cx ?? 0) + (a.r ?? 0))) {
-    fail("Circle leaves the canvas");
-  }
-  if (tag === "circle" && !within((a.cy ?? 0) - (a.r ?? 0), (a.cy ?? 0) + (a.r ?? 0))) {
-    fail("Circle leaves the canvas");
-  }
-  if (tag === "ellipse") {
-    if (
-      !within((a.cx ?? 0) - (a.rx ?? 0), (a.cx ?? 0) + (a.rx ?? 0)) ||
-      !within((a.cy ?? 0) - (a.ry ?? 0), (a.cy ?? 0) + (a.ry ?? 0))
-    ) {
-      fail("Ellipse leaves the canvas");
+/** SVG affine matrices compose in parent-to-child order (including transform-list order). */
+type Matrix = readonly [number, number, number, number, number, number];
+const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
+
+function multiply(p: Matrix, q: Matrix): Matrix {
+  return [
+    p[0] * q[0] + p[2] * q[1],
+    p[1] * q[0] + p[3] * q[1],
+    p[0] * q[2] + p[2] * q[3],
+    p[1] * q[2] + p[3] * q[3],
+    p[0] * q[4] + p[2] * q[5] + p[4],
+    p[1] * q[4] + p[3] * q[5] + p[5],
+  ];
+}
+
+function transformMatrix(value: string): Matrix {
+  let result = IDENTITY;
+  for (const item of value.match(/(?:translate|rotate)\([^()]*\)/g) ?? []) {
+    const m = /^(translate|rotate)\(([^()]*)\)$/.exec(item)!;
+    const args = m[2]!.trim().split(/[ ,]+/).map(Number);
+    if (m[1] === "translate") {
+      result = multiply(result, [1, 0, 0, 1, args[0]!, args[1] ?? 0]);
+    } else {
+      const angle = (args[0]! * Math.PI) / 180;
+      const c = Math.cos(angle);
+      const s = Math.sin(angle);
+      const x = args[1] ?? 0;
+      const y = args[2] ?? 0;
+      result = multiply(result, [c, s, -s, c, x - c * x + s * y, y - s * x - c * y]);
     }
   }
-  if (tag === "rect") {
-    if (
-      !within(a.x ?? 0, (a.x ?? 0) + (a.width ?? 0)) ||
-      !within(a.y ?? 0, (a.y ?? 0) + (a.height ?? 0))
-    ) {
-      fail("Rectangle leaves the canvas");
+  return result;
+}
+
+/**
+ * Shapes must stay on the canvas once every ancestor transform and the element's own are applied:
+ * a circle or rect cannot be sized to cover the page, and nested translate/rotate cannot shove a
+ * shape across it. A path curve never leaves the hull of its control points, so every control
+ * point (including the implicit reflected one of S and T) is held to the bound: conservative,
+ * never lenient. A stroked shape is padded by its worst-case reach, a miter at SVG's default
+ * limit of 4, which is twice the stroke width and also covers round and square caps.
+ */
+function checkGeometry(
+  tag: string,
+  attrs: Record<string, string>,
+  matrix: Matrix,
+  strokeWidth: number,
+): void {
+  const lo = GEOMETRY_MIN * 2 + strokeWidth * 2 - 1e-9;
+  const hi = GEOMETRY_MAX + 4 - strokeWidth * 2 + 1e-9;
+  const n = (name: string) => Number(attrs[name] ?? 0);
+  const inside = (x: number, y: number, dx: number, dy: number) => {
+    if (!(x - dx >= lo && x + dx <= hi && y - dy >= lo && y + dy <= hi)) {
+      fail(`<${tag}> leaves the canvas`);
+    }
+  };
+  const point = (x: number, y: number) =>
+    inside(
+      matrix[0] * x + matrix[2] * y + matrix[4],
+      matrix[1] * x + matrix[3] * y + matrix[5],
+      0,
+      0,
+    );
+  if (tag === "circle" || tag === "ellipse") {
+    const rx = tag === "circle" ? n("r") : n("rx");
+    const ry = tag === "circle" ? rx : n("ry");
+    inside(
+      matrix[0] * n("cx") + matrix[2] * n("cy") + matrix[4],
+      matrix[1] * n("cx") + matrix[3] * n("cy") + matrix[5],
+      Math.hypot(matrix[0] * rx, matrix[2] * ry),
+      Math.hypot(matrix[1] * rx, matrix[3] * ry),
+    );
+  } else if (tag === "rect") {
+    for (const x of [n("x"), n("x") + n("width")]) {
+      for (const y of [n("y"), n("y") + n("height")]) point(x, y);
+    }
+  } else if (tag === "line") {
+    point(n("x1"), n("y1"));
+    point(n("x2"), n("y2"));
+  } else if (tag === "polyline" || tag === "polygon") {
+    const values = attrs.points!.trim().split(/[ ,]+/).map(Number);
+    for (let i = 0; i < values.length; i += 2) point(values[i]!, values[i + 1]!);
+  } else if (tag === "path") {
+    // checkPath guarantees the grammar: every command is followed by whole argument groups.
+    const tokens = attrs.d!.match(/[A-Za-z]|-?(?:\d+(?:\.\d+)?|\.\d+)/g)!;
+    let x = 0;
+    let y = 0;
+    let startX = 0;
+    let startY = 0;
+    let controlX = 0;
+    let controlY = 0;
+    let previous = "";
+    for (let i = 0; i < tokens.length;) {
+      const command = tokens[i++]!;
+      const arity = PATH_ARITY[command]!;
+      if (command === "Z") {
+        x = startX;
+        y = startY;
+        previous = command;
+        continue;
+      }
+      for (let first = true; i < tokens.length && !/^[A-Za-z]$/.test(tokens[i]!); first = false) {
+        const args = tokens.slice(i, i + arity).map(Number);
+        i += arity;
+        // Extra coordinate pairs after M are implicit L commands.
+        const op = command === "M" && !first ? "L" : command;
+        const fromX = x;
+        const fromY = y;
+        if (op === "H") x = args[0]!;
+        else if (op === "V") y = args[0]!;
+        else {
+          x = args[args.length - 2]!;
+          y = args[args.length - 1]!;
+        }
+        if (op === "M") {
+          startX = x;
+          startY = y;
+        }
+        if (op === "H" || op === "V") {
+          point(x, y);
+        } else {
+          for (let k = 0; k < args.length; k += 2) point(args[k]!, args[k + 1]!);
+        }
+        if (op === "S" || op === "T") {
+          const reflects = op === "S" ? "CS".includes(previous) : "QT".includes(previous);
+          const reflectedX = reflects ? 2 * fromX - controlX : fromX;
+          const reflectedY = reflects ? 2 * fromY - controlY : fromY;
+          point(reflectedX, reflectedY);
+          controlX = op === "T" ? reflectedX : args[0]!;
+          controlY = op === "T" ? reflectedY : args[1]!;
+        } else if (op === "C") {
+          controlX = args[2]!;
+          controlY = args[3]!;
+        } else if (op === "Q") {
+          controlX = args[0]!;
+          controlY = args[1]!;
+        }
+        previous = op;
+      }
     }
   }
 }
@@ -234,6 +350,8 @@ export function parseOutfitSvg(svg: unknown): OutfitSvgNode[] {
   if (!FRAGMENT_CHARS.test(svg)) fail("An SVG fragment may contain printable ASCII only");
   const roots: OutfitSvgNode[] = [];
   const stack: OutfitSvgNode[] = [];
+  // Presentation state each open group passes down: composed transform and inherited stroke.
+  const inherited: { matrix: Matrix; stroke: string | undefined; width: string | undefined }[] = [];
   let count = 0;
   let i = 0;
   while (i < svg.length) {
@@ -247,6 +365,7 @@ export function parseOutfitSvg(svg: unknown): OutfitSvgNode[] {
     const close = /^<\/([a-z]+)>/.exec(rest);
     if (close) {
       if (stack.pop()?.tag !== close[1]) fail("Tags are not balanced");
+      inherited.pop();
       i += close[0].length;
       continue;
     }
@@ -259,7 +378,7 @@ export function parseOutfitSvg(svg: unknown): OutfitSvgNode[] {
     if (++count > MAX_FRAGMENT_ELEMENTS)
       fail(`At most ${MAX_FRAGMENT_ELEMENTS} elements per fragment`);
     const node: OutfitSvgNode = { tag, attrs: [], children: [] };
-    const numeric: Record<string, number> = {};
+    const values: Record<string, string> = {};
     const seen: Record<string, true> = {};
     for (const m of open[2]!.matchAll(ATTRIBUTE)) {
       const [, name, value] = m as unknown as [string, string, string];
@@ -267,14 +386,26 @@ export function parseOutfitSvg(svg: unknown): OutfitSvgNode[] {
       if (Object.hasOwn(seen, name)) fail(`Attribute ${name} is repeated`);
       seen[name] = true;
       checkAttribute(tag, name, value);
-      if (NUMBER.test(value)) numeric[name] = Number(value);
+      values[name] = value;
       node.attrs.push([name, value]);
     }
     if (tag === "path" && !Object.hasOwn(seen, "d")) fail("<path> needs d");
     if ((tag === "polyline" || tag === "polygon") && !Object.hasOwn(seen, "points")) {
       fail(`<${tag}> needs points`);
     }
-    checkExtent(tag, numeric);
+    const parent = inherited.at(-1);
+    const context = {
+      matrix: multiply(
+        parent?.matrix ?? IDENTITY,
+        values.transform === undefined ? IDENTITY : transformMatrix(values.transform),
+      ),
+      stroke: values.stroke ?? parent?.stroke,
+      width: values["stroke-width"] ?? parent?.width,
+    };
+    if (tag !== "g") {
+      const stroked = context.stroke !== undefined && context.stroke !== "none";
+      checkGeometry(tag, values, context.matrix, stroked ? Number(context.width ?? 1) : 0);
+    }
     (stack.at(-1)?.children ?? roots).push(node);
     i += open[0].length;
     if (!open[3]) {
@@ -282,6 +413,7 @@ export function parseOutfitSvg(svg: unknown): OutfitSvgNode[] {
       if (tag !== "g" && !svg.slice(i).startsWith(`</${tag}>`))
         fail(`<${tag}> cannot contain elements`);
       stack.push(node);
+      inherited.push(context);
       if (stack.length > MAX_FRAGMENT_DEPTH) fail("Groups are nested too deeply");
     }
   }

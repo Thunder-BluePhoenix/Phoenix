@@ -168,6 +168,8 @@ describe("the summary is local only by construction (real AiService and gate)", 
       id,
       label: id,
       locality,
+      // Stands in for the vetted built-in Ollama adapter; a cloud fake is never trusted.
+      trustedLocal: locality === "local",
       explicitOnly: locality === "cloud",
       keyPolicy: locality === "cloud" ? "required" : "none",
       capabilities: { generate: true, stream: false, embed: false },

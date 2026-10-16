@@ -54,6 +54,17 @@ const RECORDING_PLACE = {
   retention: "audio is discarded as it is transcribed",
 };
 
+/** A confirmation surface bound to a person (never to the session token). */
+export interface NotetakerConsentChannel {
+  /** Short label of the surface, for the audit log (e.g. "desktop-dialog"). */
+  readonly kind: string;
+  /** Asks the person about THIS recording. Resolves true only when they said yes now. */
+  confirm(info: { title: string | null }): Promise<boolean>;
+}
+
+const CONSENT_UNAVAILABLE_DETAIL =
+  "Recording needs a confirmation from a person on a screen only they can use. This build has none (the browser and the session token cannot give it), so recording is off";
+
 export interface NotetakerRuntimeDeps {
   settings: SettingsStore;
   bus: EventBus;
@@ -70,6 +81,13 @@ export interface NotetakerRuntimeDeps {
   timers?: Timers;
   /** Samples per transcription window (tests make it small). Default: 30 s. */
   windowSamples?: number;
+  /**
+   * The ONLY thing that can authorise a recording: a surface a person answers and a session-token
+   * holder cannot drive. Null (the default) means Core has none, and every start is refused with
+   * CONSENT_CHANNEL_UNAVAILABLE before any recogniser or buffer exists. Embedders (the desktop shell,
+   * tests) pass it in code; no HTTP request, setting or event can supply or fake one.
+   */
+  consent: NotetakerConsentChannel | null;
 }
 
 const UNAVAILABLE: SpeechRecognizer = {
@@ -126,10 +144,20 @@ export class NotetakerRuntime implements NotetakerApi {
       killSwitchEngaged: () => d.permissions.isKillSwitchEngaged(),
       onRecording: (on, id) => this.publishRecording(on, id),
       onStarted: (info) => this.openMeeting(info),
+      confirmConsent: (info) => this.confirmWithPerson(info),
       onSegment: (id, segment) => this.writeSegment(id, segment),
       onEnded: (info) => this.closeMeeting(info),
       audit: (action, details) =>
-        void d.permissions.audit.record({ actor: "user", action, decision: "info", details }),
+        void d.permissions.audit.record({
+          actor: "user",
+          action,
+          decision: "info",
+          // The surface that confirmed, never the request flags (those are only claims).
+          details:
+            action === "notetaker.start"
+              ? { ...details, consent_channel: d.consent?.kind }
+              : details,
+        }),
       ...(d.timers ? { timers: d.timers } : {}),
       ...(d.windowSamples ? { windowSamples: d.windowSamples } : {}),
       now: this.now,
@@ -280,6 +308,16 @@ export class NotetakerRuntime implements NotetakerApi {
       enabled: this.enabled(),
       kill_switch_engaged: killSwitchEngaged,
       recognizer,
+      consent_channel: this.d.consent
+        ? {
+            available: true,
+            detail: "A person confirms each recording on their own screen",
+          }
+        : {
+            available: false,
+            code: ErrorCode.CONSENT_CHANNEL_UNAVAILABLE,
+            detail: CONSENT_UNAVAILABLE_DETAIL,
+          },
       audio_on_disk: false,
       summary: {
         available: ai && !killSwitchEngaged,
@@ -323,11 +361,30 @@ export class NotetakerRuntime implements NotetakerApi {
     return { enabled };
   }
 
+  /** Asks the person (never the caller) about this recording. */
+  private async confirmWithPerson(info: { title: string | null }): Promise<boolean> {
+    const channel = this.d.consent;
+    if (!channel) {
+      throw new PhoenixError(ErrorCode.CONSENT_CHANNEL_UNAVAILABLE, CONSENT_UNAVAILABLE_DETAIL);
+    }
+    try {
+      return (await channel.confirm(info)) === true;
+    } catch {
+      // A broken surface is not a yes.
+      return false;
+    }
+  }
+
   async start(input: {
     title?: string | undefined;
     consent: boolean;
     notice_acknowledged: boolean;
   }): Promise<NotetakerStartedView> {
+    // Fail closed first: without a person-bound channel nothing below may run (no recogniser
+    // probe, no buffer, no meeting record, no RECORDING event). The request flags are claims.
+    if (!this.d.consent) {
+      throw new PhoenixError(ErrorCode.CONSENT_CHANNEL_UNAVAILABLE, CONSENT_UNAVAILABLE_DETAIL);
+    }
     try {
       const started = await this.sessions.start(input);
       return { ...started, stream_path: `/api/notetaker/stream?session=${started.id}` };

@@ -7,6 +7,7 @@ const local = (over: Partial<RouterProvider> = {}): RouterProvider => ({
   id: "ollama",
   label: "Ollama",
   locality: "local",
+  trustedLocal: true,
   capabilities: { generate: true, stream: true, embed: true },
   costTier: 0,
   typicalLatencyMs: 2000,

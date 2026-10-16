@@ -79,7 +79,8 @@ function Attribution({ answer }: { answer: MemoryAnswer }) {
   const where = locality === "local" ? "on this device" : "in the cloud (leaves this device)";
   let cost = "cost unknown";
   if (locality === "local") cost = "free, on this device";
-  else if (answer.cost) cost = `about $${formatCost(answer.cost.amount)} (from your prices)`;
+  else if (answer.cost && Number.isFinite(answer.cost.amount))
+    cost = `about $${formatCost(answer.cost.amount)} (from your prices)`;
   return (
     <p className="small memory-attribution">
       Answered by {answer.model ?? "its default model"} via {answer.provider_label ?? provider} ·{" "}

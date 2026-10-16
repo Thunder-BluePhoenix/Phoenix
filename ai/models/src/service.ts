@@ -98,6 +98,7 @@ export function costOf(
   const amount =
     (usage.inputTokens / 1_000_000) * price.input_per_mtok +
     (usage.outputTokens / 1_000_000) * price.output_per_mtok;
+  if (!Number.isFinite(amount) || amount < 0) return null;
   return { amount, currency: "USD", basis: "user-configured prices" };
 }
 
@@ -289,6 +290,7 @@ export class AiService {
       this.deps.policy,
       settings.cloudOptIn,
       purpose,
+      provider.trustedLocal === true,
     );
     if (gate.allowed && provider.locality === "cloud" && privacy === "sensitive") {
       // Fail closed: a sensitive cloud send that cannot be recorded does not happen.
@@ -313,7 +315,7 @@ export class AiService {
       .list()
       .filter(
         (p) =>
-          (!localOnly || p.locality === "local") &&
+          (!localOnly || (p.locality === "local" && p.trustedLocal === true)) &&
           (localProvider === undefined || p.id === localProvider) &&
           // A provider that is only used on request is not contacted for a call that did not ask for it.
           (requested === undefined || p.explicitOnly !== true || requested.includes(p.id)),

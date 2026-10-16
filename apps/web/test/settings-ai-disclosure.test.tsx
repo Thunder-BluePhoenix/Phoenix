@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+  type BoundFunctions,
+  type queries,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CapabilityView } from "../src/core/types";
 import { FakeWebSocket } from "./fake-ws";
@@ -54,6 +62,21 @@ async function panel() {
   return within(summary.closest("details")!);
 }
 
+/**
+ * Opens the activation disclosure. The capability list renders first and an effect that resets
+ * any open review flushes after it, so a click that lands in between is wiped; click again until
+ * the disclosure is on screen. Opening it twice is harmless.
+ */
+async function openDisclosure(
+  p: BoundFunctions<typeof queries>,
+  action = "Enable Research",
+): Promise<HTMLElement> {
+  return await waitFor(() => {
+    fireEvent.click(p.getByRole("button", { name: action }));
+    return p.getByRole("region", { name: "AI activation disclosure for Research" });
+  });
+}
+
 describe("AI capability activation disclosure", () => {
   it("shows the complete manifest disclosure before allowing explicit version acknowledgment and enable", async () => {
     const { api } = openAt("#/settings", {
@@ -61,11 +84,8 @@ describe("AI capability activation disclosure", () => {
     });
     const p = await panel();
     expect(p.queryByText("Cloud model")).toBeNull();
-    fireEvent.click(p.getByRole("button", { name: "Enable Research" }));
+    const disclosure = within(await openDisclosure(p));
     expect(api.posts(enablePath)).toHaveLength(0);
-    const disclosure = within(
-      await p.findByRole("region", { name: "AI activation disclosure for Research" }),
-    );
     expect(disclosure.getByRole("heading", { name: /Review AI access/ })).toBeTruthy();
     // Query the labelled section itself: every declared field must be visible prior to activation.
     const content = p.getByRole("region", {
@@ -104,7 +124,7 @@ describe("AI capability activation disclosure", () => {
       "GET /api/capabilities": () => ({ capabilities: [current] }),
     });
     const p = await panel();
-    fireEvent.click(p.getByRole("button", { name: "Enable Research" }));
+    await openDisclosure(p);
     fireEvent.click(p.getByRole("checkbox", { name: /manifest version 1\.2\.3/ }));
     expect(
       (p.getByRole("button", { name: "Confirm enable for version 1.2.3" }) as HTMLButtonElement)
@@ -116,11 +136,13 @@ describe("AI capability activation disclosure", () => {
       expect(p.queryByRole("button", { name: "Confirm enable for version 1.2.3" })).toBeNull(),
     );
     expect(api.posts(enablePath)).toHaveLength(0);
-    fireEvent.click(p.getByRole("button", { name: "Enable Research" }));
-    expect(
-      (p.getByRole("button", { name: "Confirm enable for version 2.0.0" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+    // Core's new version replaces the capability in one render, but the effect that clears the
+    // old review flushes after it, wiping a click in that gap: open it until it stays on screen.
+    await openDisclosure(p);
+    const confirmV2 = p.getByRole("button", {
+      name: "Confirm enable for version 2.0.0",
+    }) as HTMLButtonElement;
+    expect(confirmV2.disabled).toBe(true);
     expect(api.posts(enablePath)).toHaveLength(0);
     fireEvent.click(p.getByRole("checkbox", { name: /manifest version 2\.0\.0/ }));
     fireEvent.click(p.getByRole("button", { name: "Confirm enable for version 2.0.0" }));
@@ -171,7 +193,7 @@ describe("AI capability activation disclosure", () => {
       }),
     });
     const p = await panel();
-    fireEvent.click(p.getByRole("button", { name: "Enable Research" }));
+    await openDisclosure(p);
     expectInert(container);
     expect(api.posts(enablePath)).toHaveLength(0);
   });

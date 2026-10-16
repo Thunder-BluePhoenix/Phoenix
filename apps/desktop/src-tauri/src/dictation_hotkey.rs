@@ -1161,7 +1161,8 @@ mod platform {
             );
             // XRecord can pack multiple 32-byte core events in one data block. Decode all of
             // them rather than silently dropping key-up events behind the first key-down.
-            for bytes in bytes.chunks_exact(32) {
+            // `as_chunks` drops a trailing partial event, as `chunks_exact` did.
+            for bytes in bytes.as_chunks::<32>().0 {
                 if let Some(event) = x_keys::parse_event(bytes) {
                     let keysym = state.keysym(event.keycode);
                     let classified = x_keys::classify(keysym);

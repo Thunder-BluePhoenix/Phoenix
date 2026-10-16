@@ -11,10 +11,12 @@ import { WS_PROTOCOL, WS_TOKEN_PREFIX } from "@phoenix/api";
 import { FakeRecognizer } from "@phoenix/ai-multimodal";
 import { createLogger, type LogRecord } from "@phoenix/logging";
 import { MemorySecretStore } from "@phoenix/persistence";
+import { createEvent } from "@phoenix/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 import { fakeNetwork, type FakeNetwork } from "./ai-network";
 import { TOKEN, connect, startCore, type TestCore } from "./helpers";
+import type { NotetakerConsentChannel } from "../src/notetaker";
 
 const WINDOW = 1600; // samples per transcription window in these tests (0.1 s)
 const SECRET_WORDS = "zebra quantum marmalade";
@@ -30,6 +32,7 @@ interface Boot extends TestCore {
   recognizer: FakeRecognizer;
   network: FakeNetwork;
   logs: LogRecord[];
+  consent: FakeConsent | null;
 }
 
 let core: Boot | undefined;
@@ -41,17 +44,38 @@ afterEach(async () => {
   core = undefined;
 });
 
+/** The embedding process's confirmation dialog, played by a test. No HTTP request can reach it. */
+interface FakeConsent extends NotetakerConsentChannel {
+  asked: { title: string | null }[];
+  answer: boolean;
+}
+function fakeConsent(answer = true): FakeConsent {
+  const channel: FakeConsent = {
+    kind: "test-dialog",
+    asked: [],
+    answer,
+    confirm(info) {
+      channel.asked.push(info);
+      return Promise.resolve(channel.answer);
+    },
+  };
+  return channel;
+}
+
 async function boot(
   options: {
     transcript?: string;
     chat?: (body: string) => string;
     recognizer?: FakeRecognizer | null;
     secrets?: MemorySecretStore;
+    /** Default: a dialog that says yes. `null` is the production default: no person-bound channel. */
+    consent?: FakeConsent | null;
   } = {},
 ): Promise<Boot> {
   const recognizer = new FakeRecognizer({ transcript: options.transcript ?? SECRET_WORDS });
   const network = fakeNetwork({ chat: options.chat ?? (() => SUMMARY_JSON) });
   const logs: LogRecord[] = [];
+  const consent = options.consent === undefined ? fakeConsent() : options.consent;
   const started = await startCore(
     {},
     {
@@ -60,13 +84,14 @@ async function boot(
       runtime: {
         fetch: network.fetch,
         notetakerWindowSamples: WINDOW,
+        ...(consent ? { notetakerConsent: consent } : {}),
         ...(options.recognizer === null
           ? {}
           : { notetakerRecognizer: options.recognizer ?? recognizer }),
       },
     },
   );
-  core = { ...started, recognizer, network, logs };
+  core = { ...started, recognizer, network, logs, consent };
   return core;
 }
 
@@ -257,8 +282,49 @@ describe("settings and start rules", () => {
       details: Record<string, unknown>;
     }[];
     const row = audit.find((e) => e.action === "notetaker.start")!;
-    expect(row.details).toEqual({ session: s.id, consent: true, notice_acknowledged: true });
+    expect(row.details).toEqual({
+      session: s.id,
+      consent: true,
+      notice_acknowledged: true,
+      consent_channel: "test-dialog",
+    });
+    expect(core!.consent!.asked).toEqual([{ title: SECRET_TITLE }]);
     expect(JSON.stringify(audit)).not.toContain(SECRET_TITLE);
+  });
+
+  it("a person-bound consent channel is asked for EVERY recording, and its no (or failure) is final", async () => {
+    await boot();
+    await enable();
+    const first = await startSession();
+    await core!.api("DELETE", `/api/notetaker/sessions/${first.id}`);
+    await startSession();
+    expect(core!.consent!.asked).toHaveLength(2);
+    await core!.api(
+      "DELETE",
+      `/api/notetaker/sessions/${(await core!.api("GET", "/api/notetaker/status")).json.active.id}`,
+    );
+
+    // The person says no: the flags in the request change nothing and nothing records.
+    core!.consent!.answer = false;
+    const sessionsBefore = core!.recognizer.sessions.length;
+    const no = await core!.api("POST", "/api/notetaker/sessions", OK);
+    expect(no.status).toBe(400);
+    expect(no.json.message).toMatch(/not confirmed by a person/);
+    expect((await core!.api("GET", "/api/notetaker/status")).json.active).toBeUndefined();
+    expect(core!.recognizer.sessions.length).toBe(sessionsBefore);
+    expect((await core!.api("GET", "/api/meetings")).json.meetings).toHaveLength(2);
+  });
+
+  it("a consent surface that throws is not a yes", async () => {
+    const broken: FakeConsent = {
+      ...fakeConsent(),
+      confirm: () => Promise.reject(new Error("dialog crashed")),
+    };
+    await boot({ consent: broken });
+    await enable();
+    expect((await core!.api("POST", "/api/notetaker/sessions", OK)).status).toBe(400);
+    expect((await core!.api("GET", "/api/notetaker/status")).json.active).toBeUndefined();
+    expect(core!.recognizer.sessions).toHaveLength(0);
   });
 
   it("refuses to start when no recogniser is configured, and says why", async () => {
@@ -295,6 +361,73 @@ describe("settings and start rules", () => {
     await core!.api("POST", "/api/security/kill-switch", { engaged: true });
     expect((await core!.api("POST", "/api/notetaker/sessions", OK)).status).toBe(409);
     expect((await core!.api("GET", "/api/notetaker/status")).json.kill_switch_engaged).toBe(true);
+  });
+});
+
+describe("a session-token holder alone cannot start a recording (no person-bound channel)", () => {
+  it("status says so; start is 403 CONSENT_CHANNEL_UNAVAILABLE with every flag set, and nothing records", async () => {
+    await boot({ consent: null });
+    // The token holder does everything a script can do: turn it on, claim consent, claim notice.
+    expect((await enable()).json).toEqual({ enabled: true });
+    const status = (await core!.api("GET", "/api/notetaker/status")).json;
+    expect(status.consent_channel).toMatchObject({
+      available: false,
+      code: "CONSENT_CHANNEL_UNAVAILABLE",
+    });
+    expect(status.recognizer.available).toBe(true);
+
+    const hub = connect(core!.port);
+    await hub.opened;
+    hub.send({ type: "subscribe", channels: ["state.changed", "event.created"] });
+    await hub.next((m) => m.type === "subscribed");
+
+    for (const body of [OK, { ...OK, title: "Board call" }, {}, { consent: true }]) {
+      const res = await core!.api("POST", "/api/notetaker/sessions", body);
+      expect(res.status, JSON.stringify(body)).toBe(403);
+      expect(res.json.code).toBe("CONSENT_CHANNEL_UNAVAILABLE");
+    }
+    // A consent-looking header or an approval of an unrelated confirmation does not help either.
+    const headers = { "x-phoenix-consent": "true", "x-user-confirmed": "1" };
+    const viaHeader = await core!.api("POST", "/api/notetaker/sessions", OK, headers);
+    expect(viaHeader.status).toBe(403);
+    expect((await core!.api("GET", "/api/confirmations")).json.confirmations).toEqual([]);
+
+    await core!.runtime.bus.drain();
+    expect(core!.recognizer.sessions).toHaveLength(0);
+    expect((await core!.api("GET", "/api/notetaker/status")).json.active).toBeUndefined();
+    expect((await core!.api("GET", "/api/meetings")).json.meetings).toEqual([]);
+    expect((await core!.api("GET", "/api/pet/state")).json.state).not.toBe("RECORDING");
+    const types = (
+      (await core!.api("GET", "/api/events?limit=200")).json.events as {
+        event: { event_type: string };
+      }[]
+    ).map((e) => e.event.event_type);
+    expect(types.filter((t) => t.startsWith("notetaker."))).toEqual([]);
+    const audit = (await core!.api("GET", "/api/audit?limit=100")).json.entries as {
+      action: string;
+    }[];
+    expect(audit.some((e) => e.action === "notetaker.start")).toBe(false);
+    hub.ws.close();
+  });
+
+  it("an audio socket cannot be opened for a session that was never confirmed", async () => {
+    await boot({ consent: null });
+    await enable();
+    const s = stream("/api/notetaker/stream?session=ntk_" + "0".repeat(32));
+    expect(await s.opened).not.toBe(101);
+    expect(core!.recognizer.sessions).toHaveLength(0);
+  });
+
+  it("the runtime has no consent channel unless the embedder passes one in code", async () => {
+    const plain = await startCore();
+    try {
+      await plain.api("POST", "/api/notetaker/settings", { enabled: true });
+      const res = await plain.api("POST", "/api/notetaker/sessions", OK);
+      expect(res.status).toBe(403);
+      expect(res.json.code).toBe("CONSENT_CHANNEL_UNAVAILABLE");
+    } finally {
+      await plain.runtime.stop();
+    }
   });
 });
 
@@ -350,7 +483,8 @@ describe("a recording from start to meeting", () => {
     const stopped = await core!.api("POST", `/api/notetaker/sessions/${session.id}/stop`, {});
     expect(stopped.status).toBe(200);
     expect(stopped.json).toEqual({ meeting_id: id });
-    await hub.next((m) => m.channel === "state.changed" && m.data.state === "IDLE");
+    // The stop includes the local summary and item extraction, so allow the slow-runner budget.
+    await hub.next((m) => m.channel === "state.changed" && m.data.state === "IDLE", 15_000);
 
     const transcript = await transcriptOf(id);
     expect(transcript.segments.map((x) => x.speaker).sort()).toEqual(["Others", "You", "You"]);
@@ -422,7 +556,7 @@ describe("a recording from start to meeting", () => {
     hub.ws.close();
   });
 
-  it("a recorded call is found by search and labelled with its own origin, never as Kage", async () => {
+  it("a recorded call is NOT searchable until an item is accepted; the hit is then labelled reviewed, never Kage", async () => {
     await boot();
     await enable();
     await core!.api("POST", "/api/ai/settings", { enabled: true });
@@ -433,15 +567,25 @@ describe("a recording from start to meeting", () => {
     s.ws.send(JSON.stringify({ type: "end" }));
     await s.next("audio_ended");
     await core!.api("POST", `/api/notetaker/sessions/${session.id}/stop`, {});
-    await vi.waitFor(async () => {
-      const found = (await core!.api("GET", "/api/meetings/search?q=Friday&limit=10")).json;
-      expect(found.hits.length).toBeGreaterThan(0);
+    const id = meetingIdOf(session.id);
+    const decision = await vi.waitFor(async () => {
+      const items = (await core!.api("GET", `/api/meetings/${id}/items?kind=decision`)).json
+        .items as { id: string }[];
+      if (items.length === 0) throw new Error("no decision item yet");
+      return items[0]!;
     });
-    const found = (await core!.api("GET", "/api/meetings/search?q=Friday&limit=10")).json;
-    expect(
-      found.hits.every((h: { meeting_id: string }) => h.meeting_id === meetingIdOf(session.id)),
-    ).toBe(true);
-    expect(found.hits.every((h: { origin: string }) => h.origin === "notetaker")).toBe(true);
+    const search = async () =>
+      (await core!.api("GET", "/api/meetings/search?q=Friday&limit=10")).json.hits as {
+        meeting_id: string;
+        origin: string;
+      }[];
+    expect(await search()).toEqual([]);
+
+    await core!.api("POST", `/api/meeting-items/${decision.id}/accept`, {});
+    await vi.waitFor(async () => expect((await search()).length).toBeGreaterThan(0));
+    const hits = await search();
+    expect(hits.every((h) => h.meeting_id === id)).toBe(true);
+    expect(hits.every((h) => h.origin === "reviewed")).toBe(true);
   });
 
   it("a call with no recognised speech completes with an empty transcript and no summary request", async () => {
@@ -718,5 +862,173 @@ describe("events", () => {
       });
       expect(res.status, type).toBe(403);
     }
+  });
+});
+
+describe("a recorded call reaches memory only through the item review", () => {
+  type Fact = { source: string; text: string };
+  const facts = async () =>
+    (await core!.api("GET", "/api/memory?domain=meeting&limit=100")).json.items as Fact[];
+
+  async function recordedCall() {
+    await boot();
+    await enable();
+    await core!.api("POST", "/api/ai/settings", { enabled: true });
+    await core!.api("POST", "/api/memory/settings", { allow_sensitive_meetings: true });
+    const session = await startSession();
+    const s = await openStream(session);
+    s.ws.send(frame(1));
+    s.ws.send(JSON.stringify({ type: "end" }));
+    await s.next("audio_ended");
+    await core!.api("POST", `/api/notetaker/sessions/${session.id}/stop`, {});
+    const id = meetingIdOf(session.id);
+    expect((await core!.api("GET", `/api/meetings/${id}`)).json.has_summary).toBe(true);
+    const decision = await vi.waitFor(async () => {
+      const items = (await core!.api("GET", `/api/meetings/${id}/items?kind=decision`)).json
+        .items as { id: string }[];
+      if (items.length === 0) throw new Error("no decision item yet");
+      return items[0]!;
+    });
+    // Let any memory sync that the summary triggered run.
+    await core!.runtime.bus.drain();
+    core!.runtime.memory.syncMeetings();
+    return decision;
+  }
+
+  it("a proposed item and a fresh summary are NOT memory; accepting one makes exactly its fact; rejecting removes it", async () => {
+    const decision = await recordedCall();
+    // The model wrote a summary from speech nobody has read: nothing of it is memory yet.
+    expect(await facts()).toEqual([]);
+    expect(JSON.stringify(await facts())).not.toContain("Friday");
+
+    const accepted = await core!.api("POST", `/api/meeting-items/${decision.id}/accept`, {});
+    expect(accepted.status).toBe(200);
+    expect((await facts()).map((f) => f.source)).toEqual(["meeting-review"]);
+    expect((await facts())[0]!.text).toContain("Ship the review panel on Friday");
+    // The summary paragraph and the action item the user did not accept are still absent.
+    expect(JSON.stringify(await facts())).not.toContain("release notes");
+
+    await core!.api("POST", `/api/meeting-items/${decision.id}/reject`, {});
+    expect(await facts()).toEqual([]);
+  });
+
+  it("a fact an earlier build made straight from a notetaker summary is removed on the next sync", async () => {
+    await recordedCall();
+    const store = core!.runtime.memory.store;
+    // The pipeline now refuses this source; write the row as the old build would have left it.
+    const seeded = store.insert({
+      dedupeKey: "meeting:notetaker:old:summary:x",
+      source: "notetaker",
+      sourceRef: "notetaker:old",
+      owner: "owner",
+      scope: "meeting:notetaker:old",
+      layer: "episodic",
+      domain: "meeting",
+      kind: "fact",
+      text: 'Summary of "Old call": unreviewed model text',
+      observedAt: new Date().toISOString(),
+      freshnessTtlDays: null,
+      sensitivity: "sensitive",
+      provenance: { meeting_id: "notetaker:old", capability: "notetaker" },
+      confidence: 1,
+      retentionDays: null,
+    });
+    expect(seeded.status).toBe("stored");
+    const sources = () => store.list({ domain: "meeting", limit: 50 }).map((f) => f.source);
+    expect(sources()).toContain("notetaker");
+    core!.runtime.memory.syncMeetings();
+    expect(sources()).not.toContain("notetaker");
+  });
+});
+
+describe("the microphone indicators cannot be forged or cleared over the API", () => {
+  it.each(["dictation.listening", "dictation.idle", "notetaker.recording", "notetaker.idle"])(
+    "POST /api/events refuses %s from any source",
+    async (type) => {
+      await boot();
+      const post = (source: string) =>
+        core!.api("POST", "/api/events", {
+          event_id: `evt_${crypto.randomUUID().replaceAll("-", "")}`,
+          event_type: type,
+          version: "1.1",
+          source,
+          timestamp: new Date().toISOString(),
+          severity: "info",
+          payload: { session: "x" },
+        });
+      for (const source of ["terminal", "dictation", "notetaker", "core"]) {
+        const res = await post(source);
+        expect(res.status, `${type} from ${source}`).toBe(403);
+      }
+      expect((await core!.api("GET", `/api/events?type=${type}`)).json.events).toEqual([]);
+    },
+  );
+
+  it("an attacker's dictation.idle cannot clear a live LISTENING state", async () => {
+    await boot();
+    // What Core itself publishes while a dictation is live.
+    core!.runtime.bus.publish(
+      createEvent({
+        event_type: "dictation.listening",
+        source: "core",
+        severity: "info",
+        payload: { session: "dic_live" },
+      }),
+      { ephemeral: true },
+    );
+    await core!.runtime.bus.drain();
+    expect((await core!.api("GET", "/api/pet/state")).json.state).toBe("LISTENING");
+    const forged = await core!.api("POST", "/api/events", {
+      event_id: `evt_${crypto.randomUUID().replaceAll("-", "")}`,
+      event_type: "dictation.idle",
+      version: "1.1",
+      source: "terminal",
+      timestamp: new Date().toISOString(),
+      severity: "info",
+      payload: { session: "dic_live" },
+    });
+    expect(forged.status).toBe(403);
+    await core!.runtime.bus.drain();
+    expect((await core!.api("GET", "/api/pet/state")).json.state).toBe("LISTENING");
+  });
+});
+
+describe("an external capability cannot impersonate a local recording", () => {
+  const external = (id: string, events: string[]) => ({
+    manifest: {
+      id,
+      name: "Impostor",
+      version: "0.0.1",
+      description: "Claims to be a local recording",
+      license: "GPL-3.0-or-later",
+      events,
+      permissions: [],
+      commands: [],
+    },
+    endpoint: "http://127.0.0.1:9",
+  });
+
+  it.each([
+    ["the notetaker id", external("notetaker", ["thing.happened"]), '/id "notetaker" is reserved'],
+    ["the dictation id", external("dictation", ["thing.happened"]), '/id "dictation" is reserved'],
+    [
+      "the notetaker.* event namespace",
+      external("impostor", ["notetaker.*"]),
+      '/events "notetaker.*" is in the reserved "notetaker" namespace',
+    ],
+    [
+      "dictation.idle",
+      external("impostor", ["dictation.idle"]),
+      '/events "dictation.idle" is in the reserved "dictation" namespace',
+    ],
+  ])("registration is denied for %s", async (_name, body, detail) => {
+    await boot();
+    const reg = await core!.api("POST", "/api/capabilities/register", body);
+    expect(reg.status).toBe(400);
+    expect(reg.json.details).toEqual([detail]);
+    const caps = (await core!.api("GET", "/api/capabilities")).json.capabilities as {
+      id: string;
+    }[];
+    expect(caps.filter((c) => c.id === body.manifest.id)).toEqual([]);
   });
 });

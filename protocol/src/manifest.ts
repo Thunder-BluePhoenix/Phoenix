@@ -29,6 +29,8 @@ export const RESERVED_SOURCES: ReadonlySet<string> = new Set([
   "phoenix",
   "fawkes",
   "capability",
+  "notetaker",
+  "dictation",
   "notification",
 ]);
 

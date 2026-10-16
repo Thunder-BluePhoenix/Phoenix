@@ -9,7 +9,14 @@
 // Turning it on is NOT consent to record: EVERY start request must carry
 // `{consent: true, notice_acknowledged: true}` - the user confirmed, each time, that everyone on the
 // call was told it is being recorded ("Recording without consent can be illegal where you or they
-// live"). The audit log gets a row for every start (session id and the two flags; no names, no text).
+// live"). The audit log gets a row for every start (session id, the two flags and the consent
+// channel kind; no names, no text).
+//
+// SECURITY: the session token proves possession, not a person's agreement. So the two flags are
+// necessary but NEVER sufficient: Core also needs a consent channel injected by the embedding
+// process (desktop shell dialog) that a token client cannot drive. Without it (the default, and the
+// browser) POST /api/notetaker/sessions answers 403 CONSENT_CHANNEL_UNAVAILABLE and nothing records:
+// no recogniser is probed, no meeting record opens, no `notetaker.recording` is published.
 //
 // Privacy contract:
 //   * Audio is NEVER written to disk by Core. PCM is buffered per channel in memory, transcribed in
@@ -53,6 +60,13 @@ export interface NotetakerStatusView {
   enabled: boolean;
   kill_switch_engaged: boolean;
   recognizer: { available: boolean; detail: string; engine?: string };
+  /**
+   * Whether a person-bound confirmation surface exists. Without one every start is refused with
+   * 403 CONSENT_CHANNEL_UNAVAILABLE: the session token (all a browser or script has) proves no one
+   * agreed, and `consent` / `notice_acknowledged` in a request are claims, not proof.
+   */
+  consent_channel:
+    { available: true; detail: string } | { available: false; code: string; detail: string };
   /** Always false: audio is held in memory only. */
   audio_on_disk: false;
   /** Summaries use a model on this device only. */

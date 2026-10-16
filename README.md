@@ -8,7 +8,7 @@ Phoenix is an open-source developer companion. It connects your developer tools,
 
 The first capability is **Kage**, which handles meeting capture, transcription, summaries and archiving.
 
-> Status: unreleased and in active development. Implementation spans well beyond Stage 1 (see the [phase tracker](docs/phases/TRACKER.md)); no release has been tagged, and many release gates are still open (see the [gap register](docs/gaps.md)).
+> Status: unreleased and in active development. Implementation spans well beyond Stage 1 (see the [phase tracker](docs/phases/TRACKER.md)); no release has been tagged, and many release gates are still open (see the [gap register](docs/gaps.md)). Phases 56–65 (agent approvals, the Fawkes island, wardrobe, attachments, more AI providers, dictation, the notetaker) are built and tested with fakes, but none was run against a real coding agent, cloud AI provider key, microphone, call, global hotkey or paste into another application; "Record a call" is disabled in the desktop app because the trusted consent dialog it needs does not exist yet.
 
 ## Repository layout
 
@@ -51,7 +51,7 @@ curl -H "Authorization: Bearer $(cat .phoenix/dev/session.token)" http://127.0.0
 
 ## Privacy
 
-Phoenix is local-first. Everything it stores lives in its data directory on your computer (`.phoenix/<env>/`); credentials such as API keys live in your OS keychain. **Phoenix sends no telemetry.** AI features are optional and off by default. When you turn them on, a local Ollama model processes data on this device; a cloud provider is used only if you have configured it and granted the matching opt-ins, and sensitive data classes (for example meeting content) are never sent to the cloud by default. **Settings → Privacy and data** shows what is stored, sets how long each kind is kept, and deletes it. The audit log of permissions, approvals and deletions is kept for accountability.
+Phoenix is local-first. Everything it stores lives in its data directory on your computer (`.phoenix/<env>/`); credentials such as API keys live in your OS keychain. **Phoenix sends no telemetry.** AI features are optional and off by default. When you turn them on, a local Ollama model processes data on this device; a cloud provider is used only if you have configured it, added your own key, and granted the matching opt-ins, and sensitive data classes (for example meeting content) are never sent to the cloud by default. Only the built-in Ollama integration is treated as trusted local for sensitive data; other local servers such as LM Studio are not. Dictation clean-up, call summaries and questions about attached files are never sent to a cloud provider. Known limit: the external-AI permission and the opt-ins are protected by the local session token only, so another program running as your user that can read that token could switch them on (see the [gap register](docs/gaps.md)). Dictation and recording are off by default; dictation keeps audio in memory and recognises it on your computer. **Settings → Privacy and data** shows what is stored, sets how long each kind is kept, and deletes it. The audit log of permissions, approvals and deletions is kept for accountability.
 
 ## Documentation
 

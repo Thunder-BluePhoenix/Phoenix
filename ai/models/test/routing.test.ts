@@ -10,6 +10,7 @@ import {
   costOf,
   ModelError,
   createDefaultProviders,
+  createEndpointProvider,
   NoProviderError,
   ProviderRegistry,
   purposeCategory,
@@ -105,6 +106,14 @@ describe("costOf: only from the user's prices", () => {
     expect(
       costOf(cloud, undefined, usage, { "openai:m-1": { input_per_mtok: 0, output_per_mtok: 0 } }),
     ).toMatchObject({ amount: 0 });
+  });
+
+  it("a cost that is not a finite number is unknown (null), never Infinity or NaN", () => {
+    const huge = { "openai:m-1": { input_per_mtok: Number.MAX_VALUE, output_per_mtok: 1 } };
+    expect(costOf(cloud, undefined, { inputTokens: 5e12, outputTokens: 1 }, huge)).toBeNull();
+    expect(costOf(cloud, undefined, { inputTokens: Infinity, outputTokens: 1 }, prices)).toBeNull();
+    expect(costOf(cloud, undefined, { inputTokens: NaN, outputTokens: 1 }, prices)).toBeNull();
+    expect(costOf(cloud, undefined, { inputTokens: -1e7, outputTokens: 1 }, prices)).toBeNull();
   });
 });
 
@@ -449,7 +458,7 @@ describe("real adapters through the gate (fake network)", () => {
     expect(chat.headers.authorization).toBe(`Bearer ${KEY}`);
   });
 
-  it("LM Studio (loopback) is local: it runs with no grant, no opt-in and no key", async () => {
+  it("LM Studio (loopback) runs public/internal data with no grant, no opt-in and no key", async () => {
     const f = net();
     const registry = createDefaultProviders({
       fetch: f.fetch,
@@ -464,7 +473,7 @@ describe("real adapters through the gate (fake network)", () => {
         routing: { chat: { provider: "lmstudio", model: "m-1" } },
       }),
     });
-    const out = await service.run(task(PURPOSE_ANSWER_FROM_MEMORY, "sensitive"));
+    const out = await service.run(task(PURPOSE_ANSWER_FROM_MEMORY, "internal"));
     expect(out.provenance).toMatchObject({ provider: "lmstudio", locality: "local" });
     expect(out.provenance.cost).toBeNull();
     expect(f.requests.map((r) => new URL(r.url).origin)).toEqual([
@@ -472,6 +481,52 @@ describe("real adapters through the gate (fake network)", () => {
       "http://localhost:1234",
     ]);
     expect(f.requests.some((r) => "authorization" in r.headers)).toBe(false);
+  });
+
+  it("a loopback server is not vetted: LM Studio and custom endpoints are refused for sensitive data and never contacted, even with every opt-in", async () => {
+    const f = net();
+    const registry = createDefaultProviders({
+      fetch: f.fetch,
+      keyFor: () => Promise.resolve(undefined),
+    });
+    registry.register(
+      createEndpointProvider(
+        {
+          id: "homebox",
+          label: "Home box",
+          base_url: "http://127.0.0.1:8080/v1",
+        },
+        { fetch: f.fetch },
+      ),
+    );
+    for (const id of ["lmstudio", "homebox"]) {
+      const service = new AiService({
+        registry,
+        policy: { allowed: () => true },
+        settings: () => ({
+          enabled: true,
+          cloudOptIn: { public: true, internal: true, sensitive: true },
+          routing: { chat: { provider: id, model: "m-1" }, cleanup: { provider: id } },
+        }),
+        auditCloudSend: () => {},
+      });
+      for (const purpose of [PURPOSE_ANSWER_FROM_MEMORY, PURPOSE_CLEANUP]) {
+        const e = (await service
+          .run(task(purpose, "sensitive"))
+          .catch((x: unknown) => x)) as NoProviderError;
+        expect(e, id).toBeInstanceOf(NoProviderError);
+        expect(e.attempts[0]?.reason, id).toMatch(/only processed by Ollama/);
+      }
+      // Embeddings never go to an unvetted server either.
+      await expect(
+        service.run({
+          kind: "embed",
+          localProvider: id,
+          request: { privacy: "internal", purpose: "embed memory for retrieval", input: ["x"] },
+        }),
+      ).rejects.toBeInstanceOf(NoProviderError);
+    }
+    expect(f.requests).toEqual([]);
   });
 
   it("a routed cloud provider with no key fails with 'No API key is set for <label>' and sends no chat request", async () => {

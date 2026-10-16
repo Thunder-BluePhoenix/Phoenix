@@ -46,6 +46,8 @@ interface Rig {
   sessions: NotetakerSessions;
   recognizer: FakeRecognizer;
   enabled: { value: boolean };
+  /** The person-bound confirmation: what it answers, and the titles it was asked about. */
+  consent: { answer: boolean; asked: (string | null)[] };
   kill: { value: boolean };
   clock: { now: number };
   timers: ManualTimers;
@@ -64,6 +66,7 @@ function rig(
   const recognizer = new FakeRecognizer(fake);
   const enabled = { value: true };
   const kill = { value: false };
+  const consent: Rig["consent"] = { answer: true, asked: [] };
   const clock = { now: 1_000_000 };
   const timers = manualTimers();
   const recording: boolean[] = [];
@@ -74,6 +77,10 @@ function rig(
     recognizer,
     enabled: () => enabled.value,
     killSwitchEngaged: () => kill.value,
+    confirmConsent: (info) => {
+      consent.asked.push(info.title);
+      return Promise.resolve(consent.answer);
+    },
     onRecording: (on) => void recording.push(on),
     onStarted: () => {},
     onSegment: (_id, segment) => void segments.push(segment),
@@ -84,12 +91,60 @@ function rig(
     windowSamples: WINDOW,
     ...over,
   });
-  return { sessions, recognizer, enabled, kill, clock, timers, recording, segments, ended, audits };
+  return {
+    sessions,
+    recognizer,
+    enabled,
+    consent,
+    kill,
+    clock,
+    timers,
+    recording,
+    segments,
+    ended,
+    audits,
+  };
 }
 
 const OK = { consent: true, notice_acknowledged: true };
 const allZero = (r: Rig) =>
   r.recognizer.sessions.every((s) => s.chunks.every((c) => c.every((v) => v === 0)));
+
+describe("start: the person-bound confirmation is the proof, never the request flags", () => {
+  it("asks the confirmation for every start, after the other checks and before anything exists", async () => {
+    const r = rig();
+    const a = await r.sessions.start({ ...OK, title: "  Board  " });
+    expect(r.consent.asked).toEqual(["Board"]);
+    r.sessions.cancel(a.id);
+    await r.sessions.start(OK);
+    expect(r.consent.asked).toEqual(["Board", null]);
+    // Refused earlier (off, bad flags): the person is not even asked.
+    r.sessions.abortAll("shutdown");
+    r.enabled.value = false;
+    await expect(r.sessions.start(OK)).rejects.toMatchObject({ kind: "disabled" });
+    expect(r.consent.asked).toHaveLength(2);
+  });
+
+  it("a no records nothing: no recording event, no recogniser session, no audit, even with both flags true", async () => {
+    const r = rig();
+    r.consent.answer = false;
+    await expect(r.sessions.start(OK)).rejects.toMatchObject({ kind: "invalid" });
+    expect(r.recording).toEqual([]);
+    expect(r.recognizer.sessions).toHaveLength(0);
+    expect(r.audits).toEqual([]);
+    expect(r.sessions.active()).toBeNull();
+  });
+
+  it("the emergency stop that arrives while the person is answering wins", async () => {
+    const gate = Promise.withResolvers<boolean>();
+    const r = rig({ confirmConsent: () => gate.promise });
+    const pending = r.sessions.start(OK);
+    r.kill.value = true;
+    gate.resolve(true);
+    await expect(pending).rejects.toMatchObject({ kind: "disabled" });
+    expect(r.recording).toEqual([]);
+  });
+});
 
 describe("start: off by default, consent every time, recogniser, one session", () => {
   it("is refused while the notetaker is off, and nothing is recording", async () => {

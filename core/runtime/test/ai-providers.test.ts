@@ -89,14 +89,25 @@ function network(ollama: "up" | "down" = "up"): Network {
   return { fetch, sent, base };
 }
 
-async function boot(net = network()) {
-  const secrets = new MemorySecretStore();
+async function boot(net = network(), secrets = new MemorySecretStore()) {
+  const secretStore = secrets;
   const core = await startCore(
     {},
     { capabilities: [fakeKage], secrets, runtime: { fetch: net.fetch } },
   );
   cleanups.push(() => core.runtime.stop());
   return { ...core, secrets, net };
+}
+
+/** A secret store whose delete does not finish until the test lets it. */
+class DeferredDeleteStore extends MemorySecretStore {
+  readonly deleteStarted = Promise.withResolvers<void>();
+  readonly release = Promise.withResolvers<void>();
+  override async delete(ref: string): Promise<void> {
+    this.deleteStarted.resolve();
+    await this.release.promise;
+    await super.delete(ref);
+  }
 }
 type Core = TestCore & { secrets: MemorySecretStore; net: Network };
 
@@ -512,6 +523,56 @@ describe("routing, endpoints and prices settings", () => {
     );
   });
 
+  it("replacing an endpoint never lets the old key reach the new host, even while the old key's deletion is still pending", async () => {
+    const secrets = new DeferredDeleteStore();
+    const core = await boot(network(), secrets);
+    await withMemory(core);
+    await settings(core, {
+      enabled: true,
+      cloud_opt_in: { public: true, internal: true },
+      endpoints: [{ id: "mine", label: "Mine", base_url: "https://a.example.test/v1" }],
+      routing: { chat: { provider: "mine", model: "m-1" } },
+    });
+    await core.api("POST", "/api/ai/external-processing", { granted: true });
+    await core.api("POST", "/api/ai/providers/mine/secret", { value: KEY });
+    const hostOf = (s: Sent) => new URL(s.url).host;
+    // Same id, another host: Core starts deleting the key and the store has not finished yet.
+    const replacing = settings(core, {
+      endpoints: [{ id: "mine", label: "Mine", base_url: "https://b.example.test/v1" }],
+    });
+    await secrets.deleteStarted.promise;
+    // A question asked in that window must not carry the key to the NEW host.
+    await ask(core);
+    secrets.release.resolve();
+    expect((await replacing).status).toBe(200);
+    const afterwards = await ask(core);
+    expect(afterwards.ai_used).toBe(false);
+    expect(afterwards.note).toContain("No API key is set for Mine");
+    const toNewHost = core.net.sent.filter((s) => hostOf(s) === "b.example.test");
+    expect(toNewHost.filter((s) => s.authorization !== undefined)).toEqual([]);
+    expect(toNewHost.some((s) => s.url.endsWith("/chat/completions"))).toBe(false);
+    expect(await secrets.get("phoenix.ai.mine_api_key")).toBeUndefined();
+  });
+
+  it("a key written while an endpoint change is in flight is applied after it, never to the half-changed endpoint", async () => {
+    const secrets = new DeferredDeleteStore();
+    const core = await boot(network(), secrets);
+    await settings(core, {
+      endpoints: [{ id: "mine", label: "Mine", base_url: "https://a.example.test/v1" }],
+    });
+    await core.api("POST", "/api/ai/providers/mine/secret", { value: KEY });
+    const replacing = settings(core, {
+      endpoints: [{ id: "mine", label: "Mine", base_url: "https://b.example.test/v1" }],
+    });
+    await secrets.deleteStarted.promise;
+    // The user saves a key for the NEW destination at the same moment: it must queue behind the change.
+    const writing = core.api("POST", "/api/ai/providers/mine/secret", { value: OTHER_KEY });
+    secrets.release.resolve();
+    await replacing;
+    expect((await writing).status).toBe(200);
+    expect(await secrets.get("phoenix.ai.mine_api_key")).toBe(OTHER_KEY);
+  });
+
   it("settings survive a restart of the settings read (stored values are re-validated on read)", async () => {
     const core = await boot();
     await settings(core, { routing: { chat: { provider: "openai" } } });
@@ -696,7 +757,7 @@ describe("the privacy sentence names the new providers", () => {
     const sentence = async () => (await core.api("GET", "/api/privacy")).json.external_ai as string;
     await settings(core, { enabled: true, routing: { chat: { provider: "lmstudio" } } });
     expect(await sentence()).toMatch(
-      /processed on this device by Ollama or LM Studio \(this device\); nothing is sent to external AI providers/,
+      /processed on this device by Ollama; nothing is sent to external AI providers\. Public and internal text may also go to LM Studio \(this device\), a server you configured on this device; Phoenix cannot verify that it keeps text on this device, so sensitive data is never sent to it\./,
     );
     expect(await sentence()).not.toMatch(/OpenAI|Gemini|DeepSeek|Qwen|Moonshot/);
     await settings(core, { cloud_opt_in: { public: true, internal: true } });
@@ -713,7 +774,8 @@ describe("the privacy sentence names the new providers", () => {
     ]) {
       expect(granted, name).toContain(name);
     }
-    expect(granted).not.toContain("LM Studio");
+    expect(granted).toMatch(/also go to LM Studio \(this device\), a server you configured/);
+    expect(granted).not.toMatch(/Sensitive memories .*LM Studio/);
     expect(granted).toMatch(/Meeting transcripts are only read by a model on this device/);
     expect(granted).toMatch(/embeds memory text on this device only/);
     expect(granted).not.toMatch(/Sensitive memories/);
@@ -731,7 +793,8 @@ describe("the privacy sentence names the new providers", () => {
     await settings(core, {
       endpoints: [{ id: "mine", label: "My server", base_url: "https://llm.example.test/v1" }],
     });
-    expect(core.runtime.ai.embeddingProviders().sort()).toEqual(["lmstudio", "ollama"]);
+    // LM Studio is a user-run loopback server Phoenix cannot vet, so it is not an embedder either.
+    expect(core.runtime.ai.embeddingProviders()).toEqual(["ollama"]);
     const retrieval = await core.api("POST", "/api/retrieval/settings", { provider: "openai" });
     expect(retrieval.status).toBe(400);
   });

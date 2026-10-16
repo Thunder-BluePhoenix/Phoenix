@@ -37,7 +37,14 @@ export interface RouteTask {
 /** The facts about a provider the router needs. A ModelProvider satisfies this. */
 export type RouterProvider = Pick<
   ModelProvider,
-  "id" | "label" | "locality" | "capabilities" | "costTier" | "typicalLatencyMs" | "explicitOnly"
+  | "id"
+  | "label"
+  | "locality"
+  | "trustedLocal"
+  | "capabilities"
+  | "costTier"
+  | "typicalLatencyMs"
+  | "explicitOnly"
 >;
 
 export interface RouterState {
@@ -103,6 +110,7 @@ export function route(task: RouteTask, state: RouterState): RoutePlan {
       state.policy,
       state.cloudOptIn,
       task.purpose ?? "",
+      p.trustedLocal === true,
     );
     if (!gate.allowed) {
       refused.push({ ...base, reasons: [], refusedBecause: gate.reason });
@@ -118,6 +126,14 @@ export function route(task: RouteTask, state: RouterState): RoutePlan {
     }
     if (task.kind === "embed" && p.locality !== "local") {
       refused.push({ ...base, reasons: [], refusedBecause: "embeddings must stay local" });
+      continue;
+    }
+    if (task.kind === "embed" && p.trustedLocal !== true) {
+      refused.push({
+        ...base,
+        reasons: [],
+        refusedBecause: "embeddings are only made by Ollama on this device",
+      });
       continue;
     }
     if (task.localProvider !== undefined && p.id !== task.localProvider) {

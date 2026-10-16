@@ -12,6 +12,7 @@ mod core_status;
 mod dictation_hotkey;
 mod dictation_keys;
 mod dictation_paste;
+mod focus_target;
 mod island;
 mod island_controller;
 mod island_geometry;
@@ -83,6 +84,8 @@ struct Shell<R: Runtime> {
     open_url: UrlOpener,
     island: island::Host,
     dictation: pill::Host,
+    /// Where keyboard focus was when the current dictation started (set by the hotkey worker).
+    focus: focus_target::FocusGuard<focus_target::SystemFocus>,
 }
 
 struct MenuItems<R: Runtime> {
@@ -223,11 +226,21 @@ fn pill_ready<R: Runtime>(window: WebviewWindow<R>, shell: tauri::State<'_, Shel
     }
 }
 
+/// Called by the dictation hotkey worker when a dictation starts, before the pill is shown or
+/// any page code runs: records which field has keyboard focus so `dictation_paste` can refuse
+/// to type into any other. Blocks on the OS; never call it from an OS input callback.
+pub(crate) fn capture_dictation_focus<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(shell) = app.try_state::<Shell<R>>() {
+        shell.focus.capture();
+    }
+}
+
 /// The page tells the shell that it finished WITHOUT a paste (cancel, error, empty result).
 #[tauri::command]
 fn dictation_ended<R: Runtime>(window: WebviewWindow<R>, shell: tauri::State<'_, Shell<R>>) {
     if pill::is_pill_page(&window, &shell.locator) {
         shell.dictation.ended();
+        shell.focus.clear();
         if !shell.settings.lock().pill {
             pill::hide(window.app_handle());
         }
@@ -266,6 +279,21 @@ impl From<dictation_paste::PasteError> for PasteRefusal {
     }
 }
 
+impl From<focus_target::GuardRefusal> for PasteRefusal {
+    fn from(refusal: focus_target::GuardRefusal) -> Self {
+        let code = match refusal.code {
+            focus_target::GuardCode::LineBreaks => "multiline_text",
+            focus_target::GuardCode::NoTarget => "no_focus_target",
+            focus_target::GuardCode::FocusUnknown => "focus_unknown",
+            focus_target::GuardCode::FocusChanged => "focus_changed",
+        };
+        Self {
+            code,
+            message: refusal.message,
+        }
+    }
+}
+
 #[tauri::command]
 async fn dictation_paste<R: Runtime>(
     window: WebviewWindow<R>,
@@ -279,13 +307,17 @@ async fn dictation_paste<R: Runtime>(
         });
     }
     // Validate *before* any OS access and before queuing work. The decision table checks it
-    // again so no platform can accidentally paste an invalid string.
+    // again so no platform can accidentally paste an invalid string. A line break or tab is
+    // refused (never typed as Return/Tab), and the focus must still be on the target captured
+    // when the dictation started; both are rechecked by the guard right before the paste.
     dictation_paste::validate_text(&text).map_err(PasteRefusal::from)?;
+    focus_target::check_text(&text).map_err(PasteRefusal::from)?;
+    let guard = shell.focus.clone();
     #[cfg(target_os = "linux")]
-    let result = dictation_paste::paste(&text);
+    let result = guard.run(&text, || dictation_paste::paste(&text));
     #[cfg(not(target_os = "linux"))]
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let result = dictation_paste::paste(&text);
+        let result = guard.run(&text, || dictation_paste::paste(&text));
         (result, text)
     })
     .await
@@ -295,7 +327,9 @@ async fn dictation_paste<R: Runtime>(
     });
     #[cfg(not(target_os = "linux"))]
     let (result, text) = result?;
-    let outcome = result.map_err(PasteRefusal::from)?;
+    let outcome = result
+        .map_err(PasteRefusal::from)?
+        .map_err(PasteRefusal::from)?;
     shell.dictation.paste_finished(text);
     if !shell.settings.lock().pill {
         pill::hide(window.app_handle());
@@ -843,6 +877,7 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
                     !skip_native_window_styling,
                 ),
                 dictation: pill::Host::new(skip_native_window_styling),
+                focus: focus_target::FocusGuard::new(focus_target::SystemFocus),
             });
             create_window(handle, &settings)?;
             // Only the window of the saved mode is shown; the island window is created on

@@ -58,6 +58,8 @@ const STATUS: NotetakerStatus = {
     detail:
       "Only your microphone is recorded from the browser; other participants are not captured.",
   },
+  // The desktop shell supplies the dialog that asks a person; these tests exercise the page.
+  consent_channel: { available: true, detail: "The desktop app asks you before every recording." },
   limits: { max_seconds: 14_400, max_frame_bytes: 1_048_576, window_seconds: 30 },
 };
 const ACTIVE = { id: ID, started_at: "2026-10-16T10:00:00.000Z", elapsed_s: 65 };
@@ -191,6 +193,16 @@ describe("Record a call: the consent dialog", () => {
         /No on-device speech recogniser/,
       ],
       [{ kill_switch_engaged: true }, /emergency stop/],
+      [
+        {
+          consent_channel: {
+            available: false,
+            code: "CONSENT_CHANNEL_UNAVAILABLE",
+            detail: "No trusted way to ask you is connected.",
+          },
+        },
+        /trusted way to ask you first/,
+      ],
     ] as const) {
       const { mic, api } = mount((m) => <RecordCall createMicrophone={() => m.instance} />, {
         status: patch,

@@ -131,6 +131,10 @@ export function memoryRoutes(s: CoreServices): Route[] {
     route("POST", "/api/ai/settings", async ({ body }) =>
       ai().setSettings(expectObject(await body())),
     ),
+    // KNOWN LIMIT (not fixed): this grant is protected by the session token only. Core has no user
+    // identity, so any process of the same OS user that can read the token can call this route, as
+    // it can POST /api/confirmations/:id. A header such as x-phoenix-client is self-reported and
+    // would be forgeable, so none is used here. See docs/gaps.md (phase 56 session-token rows).
     route("POST", "/api/ai/external-processing", async ({ body }) =>
       ai().setExternalProcessing(expectBoolean(expectObject(await body()), "granted")),
     ),

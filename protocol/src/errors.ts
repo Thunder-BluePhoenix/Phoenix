@@ -16,6 +16,8 @@ export const ErrorCode = {
   INVALID_REQUEST: "INVALID_REQUEST",
   UNAUTHENTICATED: "UNAUTHENTICATED",
   INTERNAL_ERROR: "INTERNAL_ERROR",
+  // Recording needs a person-bound consent channel that this build does not have (Phase 65).
+  CONSENT_CHANNEL_UNAVAILABLE: "CONSENT_CHANNEL_UNAVAILABLE",
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
@@ -32,6 +34,7 @@ export const ERROR_DESCRIPTIONS: Record<ErrorCode, string> = {
   INVALID_REQUEST: "Request malformed",
   UNAUTHENTICATED: "Missing or invalid session token",
   INTERNAL_ERROR: "Unexpected internal error",
+  CONSENT_CHANNEL_UNAVAILABLE: "No trusted channel to confirm recording consent with a person",
 };
 
 /** HTTP status used by the core API for each error code. */
@@ -48,6 +51,7 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   INVALID_REQUEST: 400,
   UNAUTHENTICATED: 401,
   INTERNAL_ERROR: 500,
+  CONSENT_CHANNEL_UNAVAILABLE: 403,
 };
 
 export class PhoenixError extends Error {

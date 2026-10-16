@@ -26,9 +26,14 @@ import type { CoreServices } from "./services";
 const notFound = (what: string) =>
   new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, `${what} not found`);
 
-/** Event types only Core emits (Phase 58 live signals, Phase 65 recording signals); `POST /api/events` refuses them. */
+/**
+ * Event types only Core emits (Phase 58 live signals, Phase 64/65 microphone indicators); `POST
+ * /api/events` refuses them. `dictation.idle` / `notetaker.idle` CLEAR the LISTENING / RECORDING
+ * state, so a forged copy would hide a live microphone from the user; the `listening` / `recording`
+ * ones would fake it.
+ */
 const CORE_ONLY_EVENT =
-  /^(agent\.(session\.step|usage\.updated)|notetaker\.(recording|idle|meeting\.updated))$/;
+  /^(agent\.(session\.step|usage\.updated)|dictation\.(listening|idle)|notetaker\.(recording|idle|meeting\.updated))$/;
 const isCoreOnlyEvent = (type: unknown): boolean =>
   typeof type === "string" && CORE_ONLY_EVENT.test(type);
 

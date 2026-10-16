@@ -67,7 +67,7 @@ import { MeetingReviewRuntime } from "./meeting-review";
 import { PlanningRuntime } from "./planning";
 import { MultimodalRuntime } from "./multimodal";
 import { DictationRuntime } from "./dictation";
-import { NotetakerRuntime } from "./notetaker";
+import { NotetakerRuntime, type NotetakerConsentChannel } from "./notetaker";
 import { AttachmentRuntime } from "./attachments";
 import { syncMeetings } from "./meetings";
 import { PrivacyService, type DerivedInventory } from "./privacy";
@@ -136,6 +136,11 @@ export interface RuntimeOptions {
   notetakerRecognizer?: SpeechRecognizer;
   /** Samples per notetaker transcription window (tests make it small). Default: 30 s. */
   notetakerWindowSamples?: number;
+  /**
+   * A person-bound consent surface for recording (the desktop shell's dialog; tests inject a fake).
+   * Code-only: no HTTP route, setting or event can set it. Absent = recording is refused.
+   */
+  notetakerConsent?: NotetakerConsentChannel;
   /** Clock for attachment expiry (tests inject one). */
   attachmentClock?: () => number;
   /** Delimiter nonce for attachment questions (tests inject a known one to prove a forged delimiter fails). */
@@ -349,6 +354,7 @@ export class PhoenixRuntime implements CoreServices {
           ? new WhisperStdinRecognizer({ modelPath: options.whisperModelPath })
           : null),
       logger: this.logger.child("notetaker"),
+      consent: options.notetakerConsent ?? null,
       ...(options.notetakerWindowSamples ? { windowSamples: options.notetakerWindowSamples } : {}),
     });
     this.attachments = new AttachmentRuntime({

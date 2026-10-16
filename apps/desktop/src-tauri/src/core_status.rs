@@ -43,8 +43,14 @@ struct Status {
     recognizer: Recognizer,
 }
 
-/// Turns Core's status document into a yes/no with a reason.
+/// Turns Core's status document into a yes/no with a reason. Starting a capture also needs a
+/// working recogniser; pasting text already dictated does not (see [`fetch_paste_gate`]).
+#[cfg(test)]
 pub fn gate_from_status(body: &str) -> Gate {
+    gate_with(body, true)
+}
+
+fn gate_with(body: &str, needs_recogniser: bool) -> Gate {
     let Ok(status) = serde_json::from_str::<Status>(body) else {
         return Gate::Closed(
             "Phoenix Core sent a dictation status this app does not understand.".into(),
@@ -54,7 +60,7 @@ pub fn gate_from_status(body: &str) -> Gate {
         Gate::Closed("Dictation is off. Turn it on in Phoenix Settings, under Dictation.".into())
     } else if status.kill_switch_engaged {
         Gate::Closed("The emergency stop is engaged.".into())
-    } else if !status.recognizer.available {
+    } else if needs_recogniser && !status.recognizer.available {
         Gate::Closed(if status.recognizer.detail.is_empty() {
             "No speech recogniser is available.".into()
         } else {
@@ -132,6 +138,16 @@ fn dechunk(mut body: &[u8]) -> Option<Vec<u8>> {
 /// Asks Core. Any failure (Core not running, no token, a refusal, garbage) is a closed gate
 /// with a reason: dictation never starts on a guess.
 pub fn fetch(base_url: &str, token: Option<&str>) -> Gate {
+    fetch_with(base_url, token, true)
+}
+
+/// Asks Core whether an already dictated text may still be pasted (paste-again): dictation
+/// enabled and the emergency stop released. Any failure is a closed gate.
+pub fn fetch_paste_gate(base_url: &str, token: Option<&str>) -> Gate {
+    fetch_with(base_url, token, false)
+}
+
+fn fetch_with(base_url: &str, token: Option<&str>, needs_recogniser: bool) -> Gate {
     let Some(token) = token else {
         return Gate::Closed("Phoenix Core is not running (no session token).".into());
     };
@@ -161,7 +177,7 @@ pub fn fetch(base_url: &str, token: Option<&str>) -> Gate {
         return closed();
     }
     match parse_response(&raw) {
-        Some((200, body)) => gate_from_status(&body),
+        Some((200, body)) => gate_with(&body, needs_recogniser),
         Some((401, _)) => Gate::Closed("Phoenix Core refused the session token.".into()),
         Some(_) => Gate::Closed("Phoenix Core refused the dictation status request.".into()),
         None => closed(),
@@ -195,6 +211,20 @@ mod tests {
             assert!(
                 matches!(gate_from_status(&status(e, k, a, "none")), Gate::Closed(_)),
                 "{e} {k} {a}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_paste_gate_ignores_the_recogniser_but_not_the_switches() {
+        assert_eq!(
+            gate_with(&status(true, false, false, "none"), false),
+            Gate::Open
+        );
+        for (e, k) in [(false, false), (true, true), (false, true)] {
+            assert!(
+                matches!(gate_with(&status(e, k, true, "x"), false), Gate::Closed(_)),
+                "{e} {k}"
             );
         }
     }
