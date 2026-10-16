@@ -37,7 +37,7 @@ export type RelayErrorCode =
   | "op_not_allowed"
   | "too_large"
   | "idle_timeout"
-  | "not_available"
+  | "busy"
   | "internal_error";
 
 export interface RelayRequest {

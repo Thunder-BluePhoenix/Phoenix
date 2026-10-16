@@ -73,12 +73,14 @@ export async function decideApproval(
     } catch {
       return { line: null, note: "" };
     }
+    let rejected = "";
     const mapped = mapApprovalPayload(payload, {
       agent,
       timeoutMs,
+      onReject: (reason) => (rejected ||= reason),
       ...(SUMMARIZERS[agent] ? { summarize: SUMMARIZERS[agent] } : {}),
     });
-    if (!mapped) return { line: null, note: "" };
+    if (!mapped) return { line: null, note: rejected };
 
     const outcome = await requestApproval(mapped.request, client);
     if (!outcome.decision) return { line: null, note: outcome.reason };

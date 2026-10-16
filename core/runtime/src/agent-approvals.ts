@@ -6,10 +6,12 @@ import type {
   AgentApprovalCreateResult,
   AgentApprovalDecisionView,
   AgentApprovalHistoryRow,
+  AgentApprovalInputSummary,
   AgentApprovalPendingView,
   AgentApprovalQuestionView,
   AgentApprovalRuleView,
   AgentApprovalsApi,
+  AgentApprovalVia,
   AgentApprovalWaitResult,
 } from "@phoenix/api";
 import { redactText } from "@phoenix/capability-terminal";
@@ -22,6 +24,7 @@ import {
   agentPatternProblem,
   agentRuleSubjectEligible,
   assessRisk,
+  hasNonAscii,
   PolicyError,
   type Actor,
   type AgentRule,
@@ -47,6 +50,9 @@ export const EVENT_COMMAND_CHARS = 200;
 const AUDIT_COMMAND_CHARS = 500;
 const HISTORY_DEFAULT = 50;
 const HISTORY_MAX = 200;
+/** Permission/question creates per agent + session per minute; beyond it a create is `rate_limited`. */
+export const RATE_LIMIT_PER_MINUTE = 20;
+const RATE_WINDOW_MS = 60_000;
 
 const LIMITS = {
   sessionId: 200,
@@ -62,6 +68,7 @@ const LIMITS = {
   optionDescription: 500,
   answer: 2000,
   questions: 4,
+  detail: 2000,
   options: 10,
 } as const;
 
@@ -117,7 +124,8 @@ interface Entry {
   project: string;
   tool: string;
   /** Redacted copy of what the agent asked to do; this is all that is ever shown or stored. */
-  summary: { command?: string; path?: string; description?: string };
+  summary: AgentApprovalInputSummary;
+  via: AgentApprovalVia;
   questions?: AgentApprovalQuestionView[];
   /** The exact command or path, only for building an Always rule. Dropped once resolved. */
   subject: string | undefined;
@@ -136,7 +144,7 @@ interface ParsedCreate {
   session_id: string;
   project: string;
   tool: string;
-  input_summary: { command?: string; path?: string; description?: string };
+  input_summary: AgentApprovalInputSummary;
   questions?: AgentApprovalQuestionView[];
   timeout_ms: number;
   suggestions_ok: boolean;
@@ -171,6 +179,27 @@ function text(value: unknown, field: string, max: number, allowEmpty = false): s
       `"${field}" must be a${allowEmpty ? "" : " non-empty"} string of at most ${max} characters`,
     );
   return value;
+}
+
+/**
+ * Control characters (\p{Cc}), bidi controls and zero-width characters let one string read as
+ * another, so they are refused, never stripped. A command or description may still hold a newline
+ * or tab (a multi-line script is a real command, and the chaining checks already treat a newline
+ * as a separator); every other control character is refused there too.
+ */
+const HIDDEN_CHARS = /[\p{Cc}\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/u;
+
+function displayText(
+  value: unknown,
+  field: string,
+  max: number,
+  allowEmpty = false,
+  multiline = false,
+): string {
+  const checked = text(value, field, max, allowEmpty);
+  if (HIDDEN_CHARS.test(multiline ? checked.replace(/[\n\t]/g, " ") : checked))
+    throw invalid(`"${field}" must not contain control, bidirectional or zero-width characters`);
+  return checked;
 }
 
 function integer(value: unknown, field: string, min: number, max: number): number {
@@ -237,25 +266,34 @@ function parseCreate(input: unknown): ParsedCreate {
     throw invalid('"kind" must be "permission" or "question"');
   if (typeof body.agent !== "string" || !/^[a-z0-9-]{1,24}$/.test(body.agent))
     throw invalid('"agent" must match [a-z0-9-]{1,24}');
-  const sessionId = text(body.session_id, "session_id", LIMITS.sessionId);
-  const project = text(body.project, "project", LIMITS.project);
+  const sessionId = displayText(body.session_id, "session_id", LIMITS.sessionId);
+  const project = displayText(body.project, "project", LIMITS.project);
   if (!isPosixAbsolute(project) && !win32.isAbsolute(project))
     throw invalid('"project" must be an absolute path');
-  const tool = text(body.tool, "tool", LIMITS.tool);
+  const tool = displayText(body.tool, "tool", LIMITS.tool);
   const rawSummary = plainObject(body.input_summary, "input_summary");
-  exactKeys(rawSummary, ["command", "path", "description"]);
+  exactKeys(rawSummary, ["command", "path", "description", "detail"]);
   const summary: ParsedCreate["input_summary"] = {};
   if (rawSummary.command !== undefined)
-    summary.command = text(rawSummary.command, "input_summary.command", LIMITS.command, true);
+    summary.command = displayText(
+      rawSummary.command,
+      "input_summary.command",
+      LIMITS.command,
+      true,
+      true,
+    );
   if (rawSummary.path !== undefined)
-    summary.path = text(rawSummary.path, "input_summary.path", LIMITS.path, true);
+    summary.path = displayText(rawSummary.path, "input_summary.path", LIMITS.path, true);
   if (rawSummary.description !== undefined)
-    summary.description = text(
+    summary.description = displayText(
       rawSummary.description,
       "input_summary.description",
       LIMITS.description,
       true,
+      true,
     );
+  if (rawSummary.detail !== undefined)
+    summary.detail = displayText(rawSummary.detail, "input_summary.detail", LIMITS.detail, true);
   if (body.kind === "question" && body.questions === undefined)
     throw invalid('"questions" is required for a question');
   if (body.kind === "permission" && body.questions !== undefined)
@@ -316,7 +354,16 @@ function parseDecision(input: unknown): ParsedDecision {
   return parsed;
 }
 
-const PRODUCTION_SIGNAL = /\bprod(?:uction)?\b/i;
+/**
+ * HEURISTIC, not a classifier: text that looks like it names production. A match makes the request
+ * assessed as a production action (critical when it changes state), which refuses an Always rule
+ * and any rule match. It covers `prod`/`production`/`prd` as a token (so `-prod`, `prod-`,
+ * `prod.`, `_prod`, `prod_` count too) and the value of `--context`, `--namespace` or `-n`
+ * containing `prod`. It will miss a production target that is named otherwise; the human prompt,
+ * not this check, is the safety net.
+ */
+const PRODUCTION_SIGNAL =
+  /(?:^|[^a-z0-9])(?:prod|production|prd)(?:$|[^a-z0-9])|(?:^|\s)(?:--context|--namespace|-n)(?:=|\s*)\S*prod/i;
 
 /** Maps an agent tool name onto the policy's side effects; unknown tools are treated as `execute`. */
 function sideEffectOf(tool: string): SideEffect {
@@ -360,6 +407,7 @@ const clientLabel = (client: string | undefined): string =>
 function ruleView(rule: AgentRule): AgentApprovalRuleView {
   return {
     id: rule.id,
+    agent: rule.agent,
     project: rule.project,
     tool: rule.tool,
     pattern: rule.pattern,
@@ -383,6 +431,8 @@ export class AgentApprovals implements AgentApprovalsApi {
   private pendingCount = 0;
   private readonly clock: ApprovalClock;
   private readonly unsubscribe: () => void;
+  /** Create times (epoch ms) in the last minute, per agent + session. */
+  private readonly creates = new Map<string, number[]>();
   private closed = false;
 
   constructor(private readonly d: AgentApprovalsDeps) {
@@ -392,7 +442,7 @@ export class AgentApprovals implements AgentApprovalsApi {
     });
   }
 
-  create(input: unknown): AgentApprovalCreateResult {
+  create(input: unknown, via: AgentApprovalVia = "http"): AgentApprovalCreateResult {
     const req = parseCreate(input);
     this.sweep();
     const digest = createHash("sha256")
@@ -407,7 +457,7 @@ export class AgentApprovals implements AgentApprovalsApi {
       )
       .digest("hex");
     const id = `apr_${randomBytes(12).toString("hex")}`;
-    const summary = {
+    const summary: AgentApprovalInputSummary = {
       ...(req.input_summary.command === undefined
         ? {}
         : { command: redactText(req.input_summary.command) }),
@@ -415,6 +465,9 @@ export class AgentApprovals implements AgentApprovalsApi {
       ...(req.input_summary.description === undefined
         ? {}
         : { description: redactText(req.input_summary.description) }),
+      ...(req.input_summary.detail === undefined
+        ? {}
+        : { detail: redactText(req.input_summary.detail) }),
     };
     const subject = req.input_summary.command ?? req.input_summary.path;
     const meta: AuditMeta = {
@@ -424,6 +477,7 @@ export class AgentApprovals implements AgentApprovalsApi {
       project: req.project,
       tool: req.tool,
       summary,
+      via,
     };
 
     if (this.closed || this.d.isKillSwitchEngaged()) {
@@ -431,11 +485,21 @@ export class AgentApprovals implements AgentApprovalsApi {
       return { id, digest, status: "terminal", reason: "kill_switch" };
     }
 
+    if (!this.withinRate(req.agent, req.session_id)) {
+      this.audit(meta, "terminal", "system", { reason: "rate_limited" }, false);
+      return { id, digest, status: "terminal", reason: "rate_limited" };
+    }
+
     const { risk, environment } = riskOf(req.tool, subject);
     if (req.kind === "permission") {
-      const denied = this.d.policy.denyByRule(this.toolRequest(req, subject, environment), {
-        agentApproval: id,
-      });
+      // The policy sees the RAW command so a deny rule matches what would actually run; the audit
+      // row it writes gets the redacted, 200-character text instead (a credential in the command
+      // must reach no audit row).
+      const denied = this.d.policy.denyByRule(
+        this.toolRequest(req, subject, environment),
+        { agentApproval: id, via },
+        subject === undefined ? undefined : truncate(redactText(subject), EVENT_COMMAND_CHARS),
+      );
       if (denied) {
         const message = truncate(
           `Denied by Phoenix policy: ${denied.decision.reasons[0] ?? "rule"}`,
@@ -447,8 +511,11 @@ export class AgentApprovals implements AgentApprovalsApi {
         return { id, digest, status: "decided", decision, decided_by: "policy" };
       }
       const rule =
-        subject !== undefined && risk !== "critical" && redactText(subject) === subject
-          ? this.d.rules.match(req.project, req.tool, subject)
+        subject !== undefined &&
+        risk !== "critical" &&
+        !hasNonAscii(subject) &&
+        redactText(subject) === subject
+          ? this.d.rules.match(req.agent, req.project, req.tool, subject)
           : undefined;
       if (rule && this.d.rules.recordUse(rule)) {
         this.audit(meta, "allow", "rule", { ruleId: rule.id, pattern: rule.pattern }, true);
@@ -479,6 +546,7 @@ export class AgentApprovals implements AgentApprovalsApi {
       agent: req.agent,
       project: req.project,
       tool: req.tool,
+      via,
       summary,
       ...(req.questions ? { questions: req.questions } : {}),
       subject,
@@ -564,6 +632,7 @@ export class AgentApprovals implements AgentApprovalsApi {
         tool: e.tool,
         input_summary: e.summary,
         ...(e.questions ? { questions: e.questions } : {}),
+        via: e.via,
         created_at: new Date(e.createdAt).toISOString(),
         expires_at: new Date(e.expiresAt).toISOString(),
         always_ok: e.alwaysOk,
@@ -602,6 +671,7 @@ export class AgentApprovals implements AgentApprovalsApi {
     }
 
     let rule: AgentRule | undefined;
+    let previousExpiry: number | undefined;
     if (parsed.always) {
       if (!entry.alwaysOk || entry.subject === undefined)
         throw invalid("An Always rule is not allowed for this request");
@@ -610,8 +680,18 @@ export class AgentApprovals implements AgentApprovalsApi {
       if (problem) throw invalid(problem);
       if (!agentPatternMatches(pattern, entry.subject))
         throw invalid("The pattern does not cover this request");
+      previousExpiry = this.d.rules
+        .list()
+        .find(
+          (r) =>
+            r.agent === entry.agent &&
+            r.project === entry.project &&
+            r.tool === entry.tool &&
+            r.pattern === pattern,
+        )?.expiresAt;
       try {
         rule = this.d.rules.create({
+          agent: entry.agent,
           project: entry.project,
           tool: entry.tool,
           pattern,
@@ -637,14 +717,21 @@ export class AgentApprovals implements AgentApprovalsApi {
             ...(parsed.answers === undefined ? {} : { answers: parsed.answers }),
           },
         };
-    this.settle(
-      entry,
-      settled,
-      outcome,
-      "user",
-      { client: label, always: rule !== undefined, ...(rule ? { ruleId: rule.id } : {}) },
-      true,
-    );
+    try {
+      // `settle` writes the required audit row before it changes anything, so when it throws the
+      // request is still pending and the rule just created must not outlive the failed decision.
+      this.settle(
+        entry,
+        settled,
+        outcome,
+        "user",
+        { client: label, always: rule !== undefined, ...(rule ? { ruleId: rule.id } : {}) },
+        true,
+      );
+    } catch (err) {
+      if (rule) this.d.rules.undo(rule, previousExpiry);
+      throw err;
+    }
     if (rule) this.emit("agent.approval.rule.changed", {});
     return { id, outcome, ...(rule ? { rule: ruleView(rule) } : {}) };
   }
@@ -705,6 +792,11 @@ export class AgentApprovals implements AgentApprovalsApi {
     this.closed = true;
   }
 
+  /**
+   * The policy request for a deny-rule check. `resource` is the RAW command so a deny rule can
+   * match what will actually run; the audit row never stores it (see `create`, which passes the
+   * redacted copy as the recorded resource).
+   */
   private toolRequest(
     req: ParsedCreate,
     subject: string | undefined,
@@ -724,9 +816,26 @@ export class AgentApprovals implements AgentApprovalsApi {
     };
   }
 
+  /** Counts a create against the agent session's budget; false when the session is over it. */
+  private withinRate(agent: string, sessionId: string): boolean {
+    const key = `${agent}\u0000${sessionId}`;
+    const now = this.clock.now();
+    const recent = (this.creates.get(key) ?? []).filter((at) => at > now - RATE_WINDOW_MS);
+    if (recent.length >= RATE_LIMIT_PER_MINUTE) {
+      this.creates.set(key, recent);
+      return false;
+    }
+    recent.push(now);
+    this.creates.set(key, recent);
+    return true;
+  }
+
   /** Expires what is due and, with the emergency stop engaged, cancels what is pending. */
   private sweep(): void {
     const now = this.clock.now();
+    for (const [key, times] of this.creates) {
+      if (times.every((at) => at <= now - RATE_WINDOW_MS)) this.creates.delete(key);
+    }
     const stopped = this.d.isKillSwitchEngaged();
     for (const entry of [...this.entries.values()]) {
       if (entry.settled) {
@@ -808,12 +917,16 @@ export class AgentApprovals implements AgentApprovalsApi {
           agent: meta.agent,
           project: meta.project,
           tool: meta.tool,
+          via: meta.via,
           ...(meta.summary.command === undefined
             ? {}
             : { command: truncate(meta.summary.command, AUDIT_COMMAND_CHARS) }),
           ...(meta.summary.path === undefined
             ? {}
             : { path: truncate(meta.summary.path, AUDIT_COMMAND_CHARS) }),
+          ...(meta.summary.detail === undefined
+            ? {}
+            : { detail: truncate(meta.summary.detail, AUDIT_COMMAND_CHARS) }),
           outcome,
           decided_by: decidedBy,
           ...extra,
@@ -840,7 +953,8 @@ interface AuditMeta {
   agent: string;
   project: string;
   tool: string;
-  summary: { command?: string; path?: string; description?: string };
+  summary: AgentApprovalInputSummary;
+  via: AgentApprovalVia;
 }
 
 function entryMeta(entry: Entry): AuditMeta {
@@ -851,5 +965,6 @@ function entryMeta(entry: Entry): AuditMeta {
     project: entry.project,
     tool: entry.tool,
     summary: entry.summary,
+    via: entry.via,
   };
 }

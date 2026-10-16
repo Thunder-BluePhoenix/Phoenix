@@ -48,6 +48,20 @@ Hooks talk to Core over an owner-only local socket, falling back to loopback HTT
 
 If Core is not running, hooks fail open: the agent carries on and asks you in its own terminal.
 
+### Trust boundary
+
+The relay is **not a sandbox boundary**. Any process running as the same OS user can connect to the socket, exactly as it can already read the session token from the data directory and call Core over loopback HTTP. The relay therefore authenticates nothing beyond "same user"; it only keeps other users out.
+
+What a same-user process can do through it, and nothing more:
+
+- send agent status reports, steps and usage numbers (shown in Phoenix, never trusted as instructions);
+- create an approval request for any agent name, project, tool and command. It appears as a card (marked as sent through the local relay) and is only ever decided by **you** in the web UI; a relay client cannot decide, install, uninstall or read anything;
+- wait for the approval it created (it needs the one-time nonce Core returned), at most 16 waits at a time; further waits get `busy`.
+
+Because the request text is chosen by the sender, the card shows the full command, path, description and other arguments with whitespace and every non-ASCII character made visible. Read the card as "a program running as me asked this", not as proof that a particular coding agent did.
+
+Hardening that does exist: the hook checks the socket before connecting (a real socket owned by you, in a directory you own that is not group/world accessible, no symlink in the path other than one made by root or you, also for `PHOENIX_RELAY_SOCKET` and `PHOENIX_DATA_DIR`) and otherwise falls back to loopback HTTP; the server bounds a request line at 1 MiB without re-copying buffered fragments. Installers write through a random exclusive temp file and refuse to commit when the settings file or its location changed since the preview.
+
 ## Any other agent
 
 Anything that can run a command can report to Phoenix.

@@ -58,6 +58,8 @@ export interface LiveDiffView {
   path: string;
   diff: string;
   truncated: boolean;
+  /** Some text was masked as a probable secret. A heuristic: not a promise that none is left. */
+  redacted: boolean;
   source: "git diff HEAD" | "untracked file";
   commits: LiveDiffLinkView[];
   ci_runs: LiveDiffLinkView[];

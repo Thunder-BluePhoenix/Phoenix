@@ -57,8 +57,7 @@ export function hookCommands(options: HookCommandOptions = {}): HookCommands {
     claudeState: () => script("claude-hook.ts"),
     approval: (agent, timeoutMs) =>
       script("approval-hook.ts", ["--agent", agent, "--timeout-ms", String(timeoutMs)]),
-    statusline: (previous) =>
-      script("statusline.ts", previous ? ["--then", quote(previous)] : []),
+    statusline: (previous) => script("statusline.ts", previous ? ["--then", quote(previous)] : []),
     generic: (agent, event) =>
       script("agent-hook.ts", ["--agent", agent, ...(event ? ["--event", event] : [])]),
   };

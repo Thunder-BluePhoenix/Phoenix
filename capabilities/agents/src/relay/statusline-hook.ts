@@ -40,7 +40,9 @@ export function posixUnquote(text: string): string | null {
 }
 
 const isPhoenixLine = (command: unknown): command is string =>
-  typeof command === "string" && STATUSLINE_PATTERN.test(command) && HOOK_SCRIPT_PATTERN.test(command);
+  typeof command === "string" &&
+  STATUSLINE_PATTERN.test(command) &&
+  HOOK_SCRIPT_PATTERN.test(command);
 
 /** The user's command inside Phoenix's wrapper: "" for none, null when it cannot be read back. */
 function wrapped(command: string): string | null {

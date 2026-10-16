@@ -337,3 +337,58 @@ describe("requestApproval: deadlines (fake timers)", () => {
     expect(outcome).toMatchObject({ decision: { behavior: "deny", message: "later" } });
   });
 });
+
+describe("requestApproval: the token only goes to this machine", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("a user:password URL pointing at the recording server receives nothing", async () => {
+    core = await startFakeCore(pendingThen(decided({ behavior: "allow" })));
+    const withCredentials = core.url.replace("http://", "http://user:pw@");
+    vi.stubEnv("PHOENIX_CORE_URL", withCredentials);
+    const outcome = await requestApproval(request(), { token: TOKEN_FOR_TESTS });
+    expect(outcome.decision).toBeNull();
+    expect(core.hits).toHaveLength(0);
+  });
+
+  it.each([
+    "https://evil.example",
+    "http://127.0.0.1.evil.example",
+    "http://127.0.0.1@evil.example",
+    "http://user:pw@127.0.0.1:4870",
+    "ftp://127.0.0.1",
+    "not a url",
+  ])("PHOENIX_CORE_URL=%s: no request leaves the process", async (url) => {
+    core = await startFakeCore(pendingThen(decided({ behavior: "allow" })));
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    vi.stubEnv("PHOENIX_CORE_URL", url);
+    const outcome = await requestApproval(request(), { token: TOKEN_FOR_TESTS });
+    expect(outcome).toEqual({
+      decision: null,
+      reason: "PHOENIX_CORE_URL is not a loopback address; nothing was sent",
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(core.hits).toHaveLength(0);
+  });
+
+  it("an explicit non-loopback coreUrl is refused the same way", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const outcome = await requestApproval(request(), {
+      coreUrl: "https://evil.example",
+      token: TOKEN_FOR_TESTS,
+      relay: false,
+    });
+    expect(outcome.decision).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("a loopback PHOENIX_CORE_URL still works", async () => {
+    core = await startFakeCore(pendingThen(decided({ behavior: "allow" })));
+    vi.stubEnv("PHOENIX_CORE_URL", core.url);
+    const outcome = await requestApproval(request(), { token: TOKEN_FOR_TESTS });
+    expect(outcome.decision).toEqual({ behavior: "allow" });
+    expect(core.hits[0]?.authorization).toBe(`Bearer ${TOKEN_FOR_TESTS}`);
+  });
+});

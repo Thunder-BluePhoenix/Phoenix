@@ -66,6 +66,8 @@ export interface InputSummary {
   command?: string;
   path?: string;
   description?: string;
+  /** Compact JSON (sorted keys) of every other tool-input field; absent when there are none. */
+  detail?: string;
 }
 
 /** The body of `POST /api/agent-approvals`. */
@@ -95,13 +97,18 @@ export interface MappedApproval {
   originalInput?: Record<string, unknown>;
 }
 
-/** Agent-specific summary of a tool input; the default covers the Claude Code tools. */
-export type InputSummarizer = (tool: string, toolInput: unknown) => InputSummary;
+/**
+ * Agent-specific summary of a tool input; the default covers the Claude Code tools. Null: the
+ * input cannot be summarised safely, so there is no decision.
+ */
+export type InputSummarizer = (tool: string, toolInput: unknown) => InputSummary | null;
 
 export interface MapOptions {
   agent: string;
   timeoutMs?: number;
   summarize?: InputSummarizer;
+  /** Told why a payload was refused (stderr text); the result itself is null either way. */
+  onReject?: (reason: string) => void;
 }
 
 const nonEmpty = (v: unknown, max: number): v is string =>
@@ -124,56 +131,139 @@ export function approvalDigest(request: ApprovalRequest): string {
     .digest("hex");
 }
 
-const optionalString = (v: unknown, max: number): string | undefined =>
-  typeof v === "string" && v.length > 0 ? v.slice(0, max) : undefined;
+export const MAX_DETAIL = 2_000;
+export const MAX_OPTION_DESCRIPTION = 500;
 
-/** command / path / description of a tool input; nothing else (file contents, args) is copied. */
-export function defaultSummary(_tool: string, toolInput: unknown): InputSummary {
-  if (!isRecord(toolInput)) return {};
-  const command = Array.isArray(toolInput.command)
-    ? toolInput.command.every((p) => typeof p === "string")
-      ? optionalString((toolInput.command as string[]).join(" "), MAX_COMMAND)
-      : undefined
-    : optionalString(toolInput.command, MAX_COMMAND);
-  const path = optionalString(
-    toolInput.file_path ?? toolInput.path ?? toolInput.notebook_path,
-    MAX_PATH,
-  );
-  const description = optionalString(toolInput.description, MAX_DESCRIPTION);
-  return {
-    ...(command ? { command } : {}),
-    ...(path ? { path } : {}),
-    ...(description ? { description } : {}),
-  };
+/** Tool-input keys that name the file a tool works on, in order of preference. */
+const PATH_KEYS = ["file_path", "path", "notebook_path"] as const;
+
+/** Characters that are invisible or reorder text: a reviewer cannot see what they hide. */
+const HIDDEN_CHARS = /[\p{Cc}\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/u;
+
+function reject(options: MapOptions, reason: string): null {
+  options.onReject?.(reason);
+  return null;
 }
 
-function parseQuestions(raw: unknown): ApprovalQuestion[] | null {
+/** Why a summary may not be sent (a field over its limit or with hidden characters), or null. */
+function summaryProblem(summary: InputSummary): string | null {
+  const limits: readonly [keyof InputSummary, number][] = [
+    ["command", MAX_COMMAND],
+    ["path", MAX_PATH],
+    ["description", MAX_DESCRIPTION],
+    ["detail", MAX_DETAIL],
+  ];
+  for (const [field, max] of limits) {
+    const value = summary[field];
+    if (value === undefined) continue;
+    // Never truncate: a decision for a shortened summary would be a decision for another call.
+    if (value.length > max) return `${field} exceeds ${max} characters`;
+    if (HIDDEN_CHARS.test(value)) return `${field} contains hidden characters`;
+  }
+  return null;
+}
+
+/** POSIX-shell quoting of one argument, so an argv joins into text that reads back the same. */
+export function shellQuote(arg: string): string {
+  if (/^[A-Za-z0-9_@%+=:,./-]+$/.test(arg)) return arg;
+  return `'${arg.replaceAll("'", `'\\''`)}'`;
+}
+
+/**
+ * `detail` for the tool-input fields not summarised otherwise: compact JSON with sorted keys. JSON
+ * escapes control characters, so they stay visible; the mapper still refuses bidi and zero-width
+ * characters in it. `{}` when there are no fields; null when the value is nested too deeply.
+ */
+export function summarizeExtra(
+  extra: Record<string, unknown>,
+): Pick<InputSummary, "detail"> | null {
+  if (Object.keys(extra).length === 0) return {};
+  try {
+    return { detail: canonicalJson(extra) };
+  } catch {
+    return null;
+  }
+}
+
+const nonEmptyString = (v: unknown): v is string => typeof v === "string" && v.length > 0;
+
+/**
+ * command / path / description of a tool input, plus `detail`: every other field, escalation flags
+ * such as `dangerouslyDisableSandbox` included. Nothing is shortened: the mapper refuses a summary
+ * that is over its limits. Null: the input cannot be summarised safely.
+ */
+export function defaultSummary(_tool: string, toolInput: unknown): InputSummary | null {
+  if (!isRecord(toolInput)) return {};
+  const used = new Set<string>();
+  const summary: InputSummary = {};
+  const { command, description } = toolInput;
+  if (nonEmptyString(command)) {
+    summary.command = command;
+    used.add("command");
+  } else if (
+    Array.isArray(command) &&
+    command.length > 0 &&
+    command.every((p) => typeof p === "string")
+  ) {
+    summary.command = (command as string[]).map(shellQuote).join(" ");
+    used.add("command");
+  }
+  const pathKey = PATH_KEYS.find((k) => nonEmptyString(toolInput[k]));
+  if (pathKey) {
+    summary.path = toolInput[pathKey] as string;
+    used.add(pathKey);
+  }
+  if (nonEmptyString(description)) {
+    summary.description = description;
+    used.add("description");
+  }
+  const extra = summarizeExtra(
+    Object.fromEntries(Object.entries(toolInput).filter(([k]) => !used.has(k))),
+  );
+  return extra ? { ...summary, ...extra } : null;
+}
+
+function parseQuestions(raw: unknown, options: MapOptions): ApprovalQuestion[] | null {
   if (!Array.isArray(raw) || raw.length < 1 || raw.length > MAX_QUESTIONS) return null;
   const questions: ApprovalQuestion[] = [];
+  const clean = (field: string, value: string): boolean => {
+    if (!HIDDEN_CHARS.test(value)) return true;
+    reject(options, `${field} contains hidden characters`);
+    return false;
+  };
   for (const q of raw as unknown[]) {
     if (!isRecord(q) || !nonEmpty(q.question, MAX_QUESTION) || typeof q.header !== "string") {
       return null;
     }
     if (q.header.length > MAX_HEADER) return null;
+    if (!clean("question", q.question) || !clean("question header", q.header)) return null;
     if (!Array.isArray(q.options) || q.options.length < 1 || q.options.length > MAX_OPTIONS) {
       return null;
     }
-    const options: QuestionOption[] = [];
+    const choices: QuestionOption[] = [];
     for (const o of q.options as unknown[]) {
       if (!isRecord(o) || !nonEmpty(o.label, MAX_LABEL)) return null;
       if (o.description !== undefined && typeof o.description !== "string") return null;
-      options.push({
+      if (typeof o.description === "string" && o.description.length > MAX_OPTION_DESCRIPTION) {
+        reject(options, `option description exceeds ${MAX_OPTION_DESCRIPTION} characters`);
+        return null;
+      }
+      if (!clean("option label", o.label)) return null;
+      if (typeof o.description === "string" && !clean("option description", o.description)) {
+        return null;
+      }
+      choices.push({
         label: o.label,
-        ...(typeof o.description === "string" ? { description: o.description.slice(0, 500) } : {}),
+        ...(typeof o.description === "string" ? { description: o.description } : {}),
       });
     }
     // Answers are keyed by question text and made of labels: both must be unambiguous.
-    if (new Set(options.map((o) => o.label)).size !== options.length) return null;
+    if (new Set(choices.map((o) => o.label)).size !== choices.length) return null;
     if (q.multiSelect !== undefined && typeof q.multiSelect !== "boolean") return null;
     questions.push({
       question: q.question,
       header: q.header,
-      options,
+      options: choices,
       ...(q.multiSelect === true ? { multiSelect: true } : {}),
     });
   }
@@ -183,18 +273,19 @@ function parseQuestions(raw: unknown): ApprovalQuestion[] | null {
 
 function commonFields(
   payload: Record<string, unknown>,
+  options: MapOptions,
 ): { session_id: string; project: string; tool: string } | null {
   const { session_id, cwd, tool_name } = payload;
   if (!nonEmpty(session_id, MAX_SESSION_ID)) return null;
-  if (
-    typeof cwd !== "string" ||
-    cwd.length > MAX_PROJECT ||
-    !isAbsolute(cwd) ||
-    /\p{Cc}/u.test(cwd)
-  ) {
-    return null;
-  }
+  if (typeof cwd !== "string" || cwd.length > MAX_PROJECT || !isAbsolute(cwd)) return null;
   if (!nonEmpty(tool_name, MAX_TOOL)) return null;
+  for (const [field, value] of [
+    ["session id", session_id],
+    ["project directory", cwd],
+    ["tool name", tool_name],
+  ] as const) {
+    if (HIDDEN_CHARS.test(value)) return reject(options, `${field} contains hidden characters`);
+  }
   return { session_id, project: cwd, tool: tool_name };
 }
 
@@ -207,25 +298,24 @@ export function mapApprovalPayload(payload: unknown, options: MapOptions): Mappe
   if (!isRecord(payload) || !APPROVAL_AGENT_PATTERN.test(options.agent)) return null;
   const timeout_ms = options.timeoutMs ?? APPROVAL_TIMEOUT.default;
   if (!isApprovalTimeout(timeout_ms)) return null;
-  const common = commonFields(payload);
+  const common = commonFields(payload, options);
   if (!common) return null;
   const base = { agent: options.agent, ...common, timeout_ms };
 
   if (payload.hook_event_name === "PermissionRequest" && common.tool !== "AskUserQuestion") {
     const summarize = options.summarize ?? defaultSummary;
+    const input_summary = summarize(common.tool, payload.tool_input);
+    if (!input_summary) return reject(options, "tool input is nested too deeply");
+    const problem = summaryProblem(input_summary);
+    if (problem) return reject(options, problem);
     return {
-      request: {
-        kind: "permission",
-        ...base,
-        input_summary: summarize(common.tool, payload.tool_input),
-        suggestions_ok: true,
-      },
+      request: { kind: "permission", ...base, input_summary, suggestions_ok: true },
     };
   }
 
   if (payload.hook_event_name === "PreToolUse" && common.tool === "AskUserQuestion") {
     if (!isRecord(payload.tool_input)) return null;
-    const questions = parseQuestions(payload.tool_input.questions);
+    const questions = parseQuestions(payload.tool_input.questions, options);
     if (!questions) return null;
     return {
       request: { kind: "question", ...base, input_summary: {}, questions },

@@ -16,7 +16,7 @@ import { rig, type Rig } from "./relay-rig";
 const ID = "claude-code";
 const ODD = [
   "echo 'it'\\''s' \"$HOME/my dir\" | tr a-z A-Z",
-  "~/bin/status line --flag=\"a b\" ü€✓ \\ trailing  ",
+  '~/bin/status line --flag="a b" ü€✓ \\ trailing  ',
   "printf '%s' \"$(date)\" # comment ' \"",
   "'",
   "a'b'c",
@@ -24,8 +24,10 @@ const ODD = [
 
 const seed = (statusLine: unknown, extra: Record<string, unknown> = {}) =>
   JSON.stringify({ theme: "dark", ...extra, statusLine }, null, 2) + "\n";
-const installed = (r: Rig) => r.installer.apply("install", ID, r.installer.preview("install", ID).hash);
-const statusLine = (r: Rig) => (JSON.parse(readFileSync(r.path, "utf8")) as { statusLine?: Record<string, unknown> }).statusLine;
+const installed = (r: Rig) =>
+  r.installer.apply("install", ID, r.installer.preview("install", ID).hash);
+const statusLine = (r: Rig) =>
+  (JSON.parse(readFileSync(r.path, "utf8")) as { statusLine?: Record<string, unknown> }).statusLine;
 
 describe("statusLine wrapper", () => {
   it.each(ODD)("wraps %j with --then and uninstall restores the file byte for byte", (command) => {
@@ -72,7 +74,10 @@ describe("statusLine wrapper", () => {
     doc.theme = "light";
     writeFileSync(r.path, JSON.stringify(doc, null, 2) + "\n");
     r.installer.apply("uninstall", ID, r.installer.preview("uninstall", ID).hash);
-    expect(JSON.parse(readFileSync(r.path, "utf8"))).toMatchObject({ theme: "light", statusLine: { command: "mine" } });
+    expect(JSON.parse(readFileSync(r.path, "utf8"))).toMatchObject({
+      theme: "light",
+      statusLine: { command: "mine" },
+    });
   });
 
   it("health notices a removed or replaced statusLine and repair re-wraps the new one", () => {
@@ -83,13 +88,18 @@ describe("statusLine wrapper", () => {
     const doc = JSON.parse(readFileSync(r.path, "utf8")) as Record<string, unknown>;
     delete doc.statusLine;
     writeFileSync(r.path, JSON.stringify(doc, null, 2) + "\n");
-    expect(r.installer.list().find((a) => a.id === ID)).toMatchObject({ state: "needs_repair", missing: ["statusLine"] });
+    expect(r.installer.list().find((a) => a.id === ID)).toMatchObject({
+      state: "needs_repair",
+      missing: ["statusLine"],
+    });
 
     doc.statusLine = { type: "command", command: "their new one" };
     writeFileSync(r.path, JSON.stringify(doc, null, 2) + "\n");
     expect(r.installer.list().find((a) => a.id === ID)!.missing).toEqual(["statusLine"]);
     r.installer.apply("repair", ID, r.installer.preview("repair", ID).hash);
-    expect(posixUnquote(String(statusLine(r)!.command).split(" --then ")[1]!)).toBe("their new one");
+    expect(posixUnquote(String(statusLine(r)!.command).split(" --then ")[1]!)).toBe(
+      "their new one",
+    );
     expect(r.installer.list().find((a) => a.id === ID)!.state).toBe("installed");
   });
 
@@ -108,7 +118,11 @@ describe("statusLine wrapper", () => {
     const original = seed({ type: "command", command: "mine" });
     const r = rig(ID, original);
     const win = new HookInstaller({
-      home: r.home, env: { PATH: "" }, platform: "win32", backupDir: r.backupDir, commands: { root: "C:\\phoenix" },
+      home: r.home,
+      env: { PATH: "" },
+      platform: "win32",
+      backupDir: r.backupDir,
+      commands: { root: "C:\\phoenix" },
     });
     win.apply("install", ID, win.preview("install", ID).hash);
     expect(statusLine(r)).toEqual({ type: "command", command: "mine" });
@@ -123,19 +137,38 @@ describe("the written command really runs (real statusline.ts, real shell)", () 
       try {
         const home = join(dir, "home");
         mkdirSync(join(home, ".claude"), { recursive: true });
-        writeFileSync(join(home, ".claude", "settings.json"), seed({ type: "command", command: previous }));
+        writeFileSync(
+          join(home, ".claude", "settings.json"),
+          seed({ type: "command", command: previous }),
+        );
         // no `commands` option: the command points at this checkout's real statusline.ts
         const inst = new HookInstaller({ home, env: { PATH: "" }, backupDir: join(dir, "b") });
         inst.apply("install", ID, inst.preview("install", ID).hash);
-        const command = String((JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8")) as { statusLine: { command: string } }).statusLine.command);
+        const command = String(
+          (
+            JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8")) as {
+              statusLine: { command: string };
+            }
+          ).statusLine.command,
+        );
 
         const stdin = JSON.stringify({ model: { display_name: "x" } });
         const run = (cmd: string) => {
-          const child = spawn("/bin/sh", ["-c", cmd], { env: { ...process.env, PHOENIX_RELAY_SOCKET: join(dir, "none.sock"), PHOENIX_CORE_URL: "http://127.0.0.1:1", PHOENIX_SESSION_TOKEN: "x", HOME: home } });
+          const child = spawn("/bin/sh", ["-c", cmd], {
+            env: {
+              ...process.env,
+              PHOENIX_RELAY_SOCKET: join(dir, "none.sock"),
+              PHOENIX_CORE_URL: "http://127.0.0.1:1",
+              PHOENIX_SESSION_TOKEN: "x",
+              HOME: home,
+            },
+          });
           const out: Buffer[] = [];
           child.stdout.on("data", (c: Buffer) => out.push(c));
           child.stdin.end(stdin);
-          return new Promise<{ code: number | null; out: Buffer }>((resolve) => child.on("close", (code) => resolve({ code, out: Buffer.concat(out) })));
+          return new Promise<{ code: number | null; out: Buffer }>((resolve) =>
+            child.on("close", (code) => resolve({ code, out: Buffer.concat(out) })),
+          );
         };
         const direct = await run(previous);
         const wrapped = await run(command);

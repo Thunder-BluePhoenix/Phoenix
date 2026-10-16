@@ -3,18 +3,23 @@
 //
 // The hook installer against temp homes only (see relay-rig.ts). Real agents are never run and no
 // real agent directory is read or written.
+import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
+  lstatSync,
+  mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
-  chmodSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { HOOK_SCRIPT_PATTERN } from "../src/relay/commands";
+import { atomicWrite, removeChecked, snapshotTarget } from "../src/relay/atomic-file";
 import { InstallError, StaleFileError } from "../src/relay/installer";
 import { jsonAdapters, pluginAdapters, rig, tempDir } from "./relay-rig";
 import { HookInstaller } from "../src/relay/installer";
@@ -350,5 +355,101 @@ describe("engine details", () => {
     ).toBe(true);
     expect(HOOK_SCRIPT_PATTERN.test("echo capabilities/agents/src/claude-hook.tsx")).toBe(false);
     expect(HOOK_SCRIPT_PATTERN.test("my-linter --fix")).toBe(false);
+  });
+});
+
+describe("hardened writes (TOCTOU)", () => {
+  const sha = (value: Buffer | string) => createHash("sha256").update(value).digest("hex");
+  const installerWith = (r: ReturnType<typeof rig>, now: () => number) =>
+    new HookInstaller({
+      home: r.home,
+      env: { PATH: "" },
+      platform: "linux",
+      backupDir: r.backupDir,
+      commands: { root: "/opt/phoenix" },
+      now,
+    });
+
+  it("does not follow a symlink planted at the old predictable temp name", () => {
+    const seed = "{}\n";
+    // An identical rig tells what bytes the install writes, hence the old temp name.
+    const twin = rig("claude-code", seed);
+    twin.installer.apply(
+      "install",
+      "claude-code",
+      twin.installer.preview("install", "claude-code").hash,
+    );
+    const written = readFileSync(twin.path);
+
+    const r = rig("claude-code", seed);
+    const victim = join(tempDir(), "victim.txt");
+    writeFileSync(victim, "precious");
+    const oldName = `.phoenix-${process.pid}-${sha(written).slice(0, 8)}.tmp`;
+    symlinkSync(victim, join(dirname(r.path), oldName));
+
+    r.installer.apply("install", "claude-code", r.installer.preview("install", "claude-code").hash);
+    expect(readFileSync(victim, "utf8")).toBe("precious");
+    expect(readFileSync(r.path).equals(written)).toBe(true);
+  });
+
+  it("refuses when the file is replaced between planning and the commit", () => {
+    const r = rig("claude-code", "{}\n");
+    const hash = r.installer.preview("install", "claude-code").hash;
+    const swapped = installerWith(r, () => {
+      writeFileSync(r.path, '{"theme":"attacker"}\n');
+      return 0;
+    });
+    expect(() => swapped.apply("install", "claude-code", hash)).toThrow(StaleFileError);
+    expect(readFileSync(r.path, "utf8")).toBe('{"theme":"attacker"}\n');
+    expect(readdirSync(dirname(r.path)).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  });
+
+  it("refuses when the file becomes a symlink between planning and the commit", () => {
+    const r = rig("claude-code", "{}\n");
+    const elsewhere = join(tempDir(), "elsewhere.json");
+    writeFileSync(elsewhere, "{}\n");
+    const hash = r.installer.preview("install", "claude-code").hash;
+    const swapped = installerWith(r, () => {
+      rmSync(r.path);
+      symlinkSync(elsewhere, r.path);
+      return 0;
+    });
+    expect(() => swapped.apply("install", "claude-code", hash)).toThrow(StaleFileError);
+    expect(readFileSync(elsewhere, "utf8")).toBe("{}\n");
+    expect(lstatSync(r.path).isSymbolicLink()).toBe(true);
+  });
+
+  it("restore and delete re-check the bytes at commit time", () => {
+    const dir = tempDir();
+    const file = join(dir, "settings.json");
+    writeFileSync(file, "confirmed");
+    const snap = snapshotTarget(file);
+    writeFileSync(file, "edited after the plan");
+    expect(() =>
+      atomicWrite(snap, Buffer.from("restored"), { expectSha256: sha("confirmed") }),
+    ).toThrow(StaleFileError);
+    expect(() => removeChecked(snap, sha("confirmed"))).toThrow(StaleFileError);
+    expect(readFileSync(file, "utf8")).toBe("edited after the plan");
+    expect(readdirSync(dir)).toEqual(["settings.json"]);
+    removeChecked(snap, sha("edited after the plan"));
+    expect(existsSync(file)).toBe(false);
+  });
+
+  it("keeps backups private: backup folder 0700, backup file 0600, a planted link is not followed", () => {
+    const seed = "{}\n";
+    const r = rig("claude-code", seed);
+    const victim = join(tempDir(), "victim.txt");
+    writeFileSync(victim, "precious");
+    mkdirSync(join(r.backupDir, "claude-code"), { recursive: true, mode: 0o755 });
+    symlinkSync(victim, join(r.backupDir, "claude-code", `${sha(seed)}.bak`));
+
+    r.installer.apply("install", "claude-code", r.installer.preview("install", "claude-code").hash);
+    expect(readFileSync(victim, "utf8")).toBe("precious");
+    const dir = join(r.backupDir, "claude-code");
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
+    const backup = join(dir, `${sha(seed)}.bak`);
+    expect(lstatSync(backup).isSymbolicLink()).toBe(false);
+    expect(statSync(backup).mode & 0o777).toBe(0o600);
+    expect(readFileSync(backup, "utf8")).toBe(seed);
   });
 });

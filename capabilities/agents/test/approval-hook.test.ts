@@ -356,7 +356,7 @@ describe("approval hook: no decision (fail open)", () => {
 
 describe("approval hook: untrusted input stays data", () => {
   it("quotes, newlines, backslashes and unicode in the command never break the JSON", async () => {
-    const command = 'echo "x"\n$(whoami) `id` \\ \u2028 </script> 😀';
+    const command = 'echo "x" $(whoami) `id` \\ \u2028 </script> 😀';
     const result = await decide(pendingThen(decided({ behavior: "deny", message: command })), {
       ...PERMISSION,
       tool_input: { command },
@@ -364,6 +364,36 @@ describe("approval hook: untrusted input stays data", () => {
     expectOneJsonLineOrNothing(stdoutOf(result));
     expect(core!.hits[0]!.body).toMatchObject({ input_summary: { command } });
     expect(JSON.parse(result.line!).hookSpecificOutput.decision.message).toBe(command);
+  });
+
+  it("an over-limit command is never truncated and allowed: nothing is sent, stderr says why", async () => {
+    const result = await decide(pendingThen(decided({ behavior: "allow" })), {
+      ...PERMISSION,
+      tool_input: { command: `echo ok${" ".repeat(2_000)}; rm -rf ~` },
+    });
+    expect(result.line).toBeNull();
+    expect(result.note).toContain("command exceeds 2000 characters");
+    expect(core!.hits).toHaveLength(0);
+  });
+
+  it("a bidi override in the command sends nothing", async () => {
+    const result = await decide(pendingThen(decided({ behavior: "allow" })), {
+      ...PERMISSION,
+      tool_input: { command: "echo \u202Ekcab" },
+    });
+    expect(result.line).toBeNull();
+    expect(result.note).toContain("hidden characters");
+    expect(core!.hits).toHaveLength(0);
+  });
+
+  it("a Claude sandbox escape flag reaches Core in input_summary.detail", async () => {
+    await decide(pendingThen(decided({ behavior: "allow" })), {
+      ...PERMISSION,
+      tool_input: { command: "npm test", dangerouslyDisableSandbox: true },
+    });
+    expect(core!.hits[0]!.body).toMatchObject({
+      input_summary: { command: "npm test", detail: '{"dangerouslyDisableSandbox":true}' },
+    });
   });
 
   it("a hostile reply cannot add fields to the output", async () => {

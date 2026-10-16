@@ -5,6 +5,7 @@
 import { connect } from "node:net";
 import { isRecord } from "../guards";
 import { relaySocketPath, RELAY_VERSION, resolveRelaySocket, type RelayOp } from "./protocol";
+import { untrustedSocketReason } from "./socket-trust";
 
 /** A reply longer than this is not from a Phoenix Core. */
 const MAX_REPLY_BYTES = 2 * 1_048_576;
@@ -51,6 +52,11 @@ export async function relayCall(
   const path =
     options.socketPath ??
     (options.dataDir ? relaySocketPath(options.dataDir) : resolveRelaySocket());
+  // An untrusted path is "not there": the caller falls back to loopback HTTP.
+  const untrusted = untrustedSocketReason(path);
+  if (untrusted !== null) {
+    return { ok: false, kind: "unavailable", message: `refusing the relay socket: ${untrusted}` };
+  }
   const done = Promise.withResolvers<RelayReply>();
   const chunks: Buffer[] = [];
   let received = 0;

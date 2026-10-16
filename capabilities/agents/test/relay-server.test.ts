@@ -4,7 +4,7 @@
 // RelayServer on real Unix sockets in temp directories. Nothing waits in real time: the idle timer
 // is a manual one the test fires, and every wait resolves on an event.
 import { chmod, lstat, mkdir, readFile, rename, stat, symlink, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
+import { connect, createServer } from "node:net";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
@@ -312,6 +312,69 @@ describe("RelayServer: limits", () => {
     await armed;
     await server.stop();
     await expect(open).resolves.toEqual({ text: "" });
+  });
+
+  it("buffers fragments without re-joining them: joining work is bounded by the cap, not quadratic", async () => {
+    const cap = 64 * 1024;
+    const concat = vi.spyOn(Buffer, "concat");
+    try {
+      const { path } = await startRelay({ maxRequestBytes: cap });
+      const connected = Promise.withResolvers<void>();
+      const socket = connect(path);
+      const chunks: Buffer[] = [];
+      socket.on("error", () => {});
+      socket.on("data", (c: Buffer) => chunks.push(c));
+      const closed = Promise.withResolvers<void>();
+      socket.on("close", () => closed.resolve());
+      socket.on("connect", () => connected.resolve());
+      await connected.promise;
+      const piece = Buffer.alloc(512, 0x61);
+      // 4x the cap in 512-byte fragments, never a newline; the server must stop at the cap.
+      for (let i = 0; i < (cap * 4) / piece.length && socket.writable; i++) {
+        const flushed = Promise.withResolvers<void>();
+        socket.write(piece, () => flushed.resolve());
+        await flushed.promise;
+      }
+      await closed.promise;
+      expect(parse({ text: Buffer.concat(chunks).toString("utf8") })).toMatchObject({
+        error: { code: "too_large" },
+      });
+      const joined = concat.mock.calls
+        .flatMap(([list]) => list)
+        .reduce((sum, part) => sum + part.length, 0);
+      // Re-joining the accumulated buffer per fragment would copy ~ cap^2 / (2 * 512) bytes (~4 MiB).
+      expect(joined).toBeLessThan(cap);
+    } finally {
+      concat.mockRestore();
+    }
+  });
+
+  it("answers busy beyond 16 concurrent approval.wait long-polls, and frees the slot when one ends", async () => {
+    const release = Promise.withResolvers<string>();
+    let started = 0;
+    const all = Promise.withResolvers<void>();
+    const { path } = await startRelay({
+      handlers: {
+        "approval.wait": () => {
+          started += 1;
+          if (started === 16) all.resolve();
+          return release.promise;
+        },
+      },
+    });
+    const waits = Array.from({ length: 16 }, () =>
+      exchange(path, line({ v: 1, op: "approval.wait", body: {} })),
+    );
+    await all.promise;
+    expect(await call(path, "approval.wait", {})).toMatchObject({
+      ok: false,
+      error: { code: "busy" },
+    });
+    // Other operations are not affected by the cap.
+    expect(await call(path, "ping")).toMatchObject({ ok: true });
+    release.resolve("done");
+    for (const wait of waits) expect(parse(await wait)).toMatchObject({ ok: true, result: "done" });
+    expect(await call(path, "approval.wait", {})).toMatchObject({ ok: true, result: "done" });
   });
 });
 

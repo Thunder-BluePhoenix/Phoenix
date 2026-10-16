@@ -13,23 +13,13 @@
 //  3. Only entries whose command runs one of Phoenix's hook scripts are Phoenix's. Everything else,
 //     including the user's own hooks, is left where it is, in order. Claude Code's `statusLine` is wrapped
 //     (statusline-hook.ts), keeping the user's command, and unwrapped on uninstall.
-//  4. Writes are atomic (temp file in the same directory + rename), keep the file mode, and follow
-//     a symlinked settings file to its real target instead of replacing the link.
+//  4. Writes are atomic (random temp file in the same directory, O_EXCL|O_NOFOLLOW, fsync, rename),
+//     keep the file mode, and follow a symlinked settings file to its real target instead of
+//     replacing the link. Right before the rename the target is re-read and the path re-resolved
+//     (atomic-file.ts): a file or link swapped after the preview is refused, never overwritten.
 import { createHash } from "node:crypto";
-import {
-  chmodSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  statSync,
-  utimesSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync, rmSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { isRecord } from "../guards";
 import {
   adapterContext,
@@ -45,6 +35,14 @@ import {
 import type { HookCommandOptions } from "./commands";
 import { isSkeleton, parseConfig, serializeConfig, type JsonObject } from "./config-json";
 import { unifiedDiff } from "./diff";
+import {
+  atomicWrite,
+  ensurePrivateDir,
+  removeChecked,
+  snapshotTarget,
+  writeBackupFile,
+  type TargetSnapshot,
+} from "./atomic-file";
 import { InstallError, StaleFileError } from "./errors";
 
 export { InstallError, StaleFileError } from "./errors";
@@ -312,13 +310,13 @@ export class HookInstaller {
 
   private planJson(action: InstallAction, adapter: JsonAdapter, path: string): Plan {
     const before = readBytes(path);
-    const target = writeTarget(path);
+    const snap = snapshotTarget(path);
     const manifest = this.readManifest(adapter.id);
     const text = before === null ? null : decode(before);
     const notes: string[] = [];
 
     if (action === "uninstall") {
-      return this.planJsonUninstall(adapter, path, target, before, text, manifest);
+      return this.planJsonUninstall(adapter, path, snap, before, text, manifest);
     }
 
     const parsed = parseConfig(text);
@@ -336,7 +334,10 @@ export class HookInstaller {
     const after = changed && afterText !== null ? Buffer.from(afterText, "utf8") : before;
     if (!changed) notes.push("Phoenix's hooks are already in place; nothing will be written.");
     else if (before === null) notes.push("The file does not exist yet; Phoenix will create it.");
-    else notes.push("Your own hooks and other settings are kept as they are; an existing statusLine keeps running, wrapped by Phoenix's.");
+    else
+      notes.push(
+        "Your own hooks and other settings are kept as they are; an existing statusLine keeps running, wrapped by Phoenix's.",
+      );
     if (changed && before !== null)
       notes.push("A backup of the current file is saved before writing.");
     const diff = changed ? unifiedDiff(this.display(path), text, afterText) : "";
@@ -352,7 +353,7 @@ export class HookInstaller {
       commit: () => {
         if (!changed || after === null)
           return { summary: "Already installed; nothing changed.", kept_user_edits: false };
-        this.backupAndWrite(adapter.id, path, target, before, after, manifest, hasPhoenix, 0o600);
+        this.backupAndWrite(adapter.id, path, snap, before, after, manifest, hasPhoenix, 0o600);
         return {
           summary: `${action === "repair" ? "Repaired" : "Installed"} Phoenix hooks in ${this.display(path)}.`,
           kept_user_edits: false,
@@ -364,7 +365,7 @@ export class HookInstaller {
   private planJsonUninstall(
     adapter: JsonAdapter,
     path: string,
-    target: string,
+    snap: TargetSnapshot,
     before: Buffer | null,
     text: string | null,
     manifest: BackupManifest | null,
@@ -390,7 +391,7 @@ export class HookInstaller {
         ],
         hash: this.hashOf("uninstall", adapter.id, path, before, original),
         commit: () => {
-          this.restore(adapter.id, target, manifest, original);
+          this.restore(adapter.id, snap, manifest, original, before);
           return {
             summary: `Restored ${this.display(path)} from the backup.`,
             kept_user_edits: false,
@@ -440,8 +441,12 @@ export class HookInstaller {
       hash: this.hashOf("uninstall", adapter.id, path, before, after),
       commit: () => {
         if (removal.changed) {
-          if (deleteFile) rmSync(target, { force: true });
-          else if (after !== null) atomicWrite(target, after, before === null ? 0o600 : undefined);
+          if (deleteFile) removeChecked(snap, before === null ? null : sha256(before));
+          else if (after !== null)
+            atomicWrite(snap, after, {
+              newFileMode: 0o600,
+              expectSha256: before === null ? null : sha256(before),
+            });
         }
         this.dropManifest(adapter.id);
         return {
@@ -456,7 +461,7 @@ export class HookInstaller {
 
   private planPlugin(action: InstallAction, adapter: PluginAdapter, path: string): Plan {
     const before = readBytes(path);
-    const target = writeTarget(path);
+    const snap = snapshotTarget(path);
     const manifest = this.readManifest(adapter.id);
     const text = before === null ? null : decode(before);
     const ours = text !== null && text.includes(PLUGIN_MARKER);
@@ -509,7 +514,7 @@ export class HookInstaller {
         notes: ["Phoenix's plugin file is deleted."],
         hash: this.hashOf(action, adapter.id, path, before, null),
         commit: () => {
-          rmSync(target, { force: true });
+          removeChecked(snap, sha256(before));
           this.dropManifest(adapter.id);
           return { summary: `Deleted ${this.display(path)}.`, kept_user_edits: false };
         },
@@ -544,7 +549,7 @@ export class HookInstaller {
         this.backupAndWrite(
           adapter.id,
           path,
-          target,
+          snap,
           before,
           after,
           manifest,
@@ -608,7 +613,7 @@ export class HookInstaller {
   private backupAndWrite(
     agent: string,
     path: string,
-    target: string,
+    snap: TargetSnapshot,
     before: Buffer | null,
     after: Buffer,
     previous: BackupManifest | null,
@@ -616,8 +621,7 @@ export class HookInstaller {
     newFileMode: number,
   ): void {
     const dir = this.agentDir(agent);
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
-    chmodSync(dir, 0o700);
+    ensurePrivateDir(dir);
     const untouched =
       previous !== null && before !== null && sha256(before) === previous.sha256_after;
     let manifest: BackupManifest;
@@ -627,9 +631,9 @@ export class HookInstaller {
       let backupFile: string | null = null;
       if (before !== null) {
         backupFile = `${sha256(before)}.bak`;
-        writeFileSync(join(dir, backupFile), before, { mode: 0o600 });
+        writeBackupFile(join(dir, backupFile), before);
       }
-      const stat = before === null ? null : statSync(target);
+      const stat = before === null ? null : statSync(snap.target);
       manifest = {
         agent,
         path,
@@ -647,26 +651,31 @@ export class HookInstaller {
     // The manifest goes down before the file: a crash in between leaves a record of a write that
     // did not happen (harmless: sha256_after then simply never matches), never the reverse.
     atomicWrite(
-      this.manifestPath(agent),
+      snapshotTarget(this.manifestPath(agent)),
       Buffer.from(JSON.stringify(manifest, null, 2) + "\n"),
-      0o600,
+      { newFileMode: 0o600 },
     );
-    atomicWrite(target, after, before === null ? newFileMode : undefined);
+    atomicWrite(snap, after, {
+      newFileMode,
+      expectSha256: before === null ? null : sha256(before),
+    });
   }
 
   private restore(
     agent: string,
-    target: string,
+    snap: TargetSnapshot,
     manifest: BackupManifest,
     original: Buffer | null,
+    current: Buffer | null,
   ): void {
-    if (original === null) rmSync(target, { force: true });
+    const expectSha256 = current === null ? null : sha256(current);
+    if (original === null) removeChecked(snap, expectSha256);
     else {
-      atomicWrite(target, original, manifest.mode ?? undefined);
-      if (manifest.mtime !== null) {
-        const when = new Date(manifest.mtime);
-        utimesSync(target, when, when);
-      }
+      atomicWrite(snap, original, {
+        newFileMode: manifest.mode ?? undefined,
+        expectSha256,
+        ...(manifest.mtime === null ? {} : { mtime: new Date(manifest.mtime) }),
+      });
     }
     this.dropManifest(agent);
   }
@@ -692,33 +701,6 @@ function decode(bytes: Buffer): string {
     );
   }
   return text;
-}
-
-/** A symlinked settings file is written through the link; a missing file is written in place. */
-function writeTarget(path: string): string {
-  try {
-    return lstatSync(path).isSymbolicLink() ? realpathSync(path) : path;
-  } catch {
-    return path;
-  }
-}
-
-/** Temp file next to the target, then rename: readers see the old or the new file, never half. */
-function atomicWrite(target: string, bytes: Buffer, newFileMode?: number): void {
-  mkdirSync(dirname(target), { recursive: true });
-  const mode = existsSync(target) ? statSync(target).mode & 0o7777 : (newFileMode ?? 0o600);
-  const temp = join(dirname(target), `.phoenix-${process.pid}-${sha256(bytes).slice(0, 8)}.tmp`);
-  try {
-    writeFileSync(temp, bytes, { mode });
-    chmodSync(temp, mode);
-    renameSync(temp, target);
-  } catch (err) {
-    rmSync(temp, { force: true });
-    throw new InstallError(
-      "io",
-      `Could not write ${target}: ${(err as Error).message.slice(0, 120)}`,
-    );
-  }
 }
 
 /** `doc` with every key of `defaults` it lacks, those first (Cursor wants `version` on top). */

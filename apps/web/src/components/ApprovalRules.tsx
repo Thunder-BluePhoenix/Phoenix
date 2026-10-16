@@ -4,6 +4,7 @@ import { useState } from "react";
 import { formatDate, formatTime } from "../core/format";
 import { useAction, useAgentApprovalRules } from "../core/hooks";
 import { Feedback } from "./Feedback";
+import { RevealedBlock, revealNodes, revealPlain } from "./RevealedText";
 
 /** Settings section: the "Always allow here" rules Phoenix made for coding agents, each revocable. */
 export function ApprovalRulesSection() {
@@ -25,9 +26,9 @@ export function ApprovalRulesSection() {
         Agent approval rules
       </h2>
       <p className="muted small">
-        Rules you created with “Always allow here”. Each applies to one project and one tool,
-        expires on its own within 24 hours, and never matches a command that chains or redirects.
-        Revoke one to be asked again.
+        Rules you created with “Always allow here”. Each applies to one agent, one project and one
+        tool, expires on its own within 24 hours, and never matches a command that chains or
+        redirects. Revoke one to be asked again.
       </p>
       <Feedback error={loadError ?? error} saved={revoked} />
       {rules.length === 0 ? (
@@ -35,17 +36,19 @@ export function ApprovalRulesSection() {
       ) : (
         <ul className="card-list" aria-label="Agent approval rules">
           {rules.map((r) => {
-            const label = `${r.tool} ${r.pattern} in ${r.project}`;
+            const label = `${revealPlain(r.tool)} ${revealPlain(r.pattern)} in ${revealPlain(r.project)}`;
             return (
               <li key={r.id} className="card" aria-label={label}>
                 <dl className="approval-facts small">
+                  <dt>Agent</dt>
+                  <dd className="reveal-block">{revealNodes(r.agent)}</dd>
                   <dt>Project</dt>
-                  <dd className="memory-text">{r.project}</dd>
+                  <dd className="reveal-block">{revealNodes(r.project)}</dd>
                   <dt>Tool</dt>
-                  <dd>{r.tool}</dd>
+                  <dd className="reveal-block">{revealNodes(r.tool)}</dd>
                   <dt>Pattern</dt>
                   <dd>
-                    <code className="memory-text">{r.pattern}</code>
+                    <RevealedBlock text={r.pattern} />
                   </dd>
                   <dt>Expires</dt>
                   <dd>

@@ -3,7 +3,8 @@
 //
 // Delivers an AgentReport to Phoenix Core's `agents` capability, the same way
 // `phoenix run` reports to the terminal capability (session token, loopback API).
-import { DEFAULT_CORE_URL, resolveSessionToken } from "@phoenix/sdk";
+import { resolveSessionToken } from "@phoenix/sdk";
+import { trustedCoreUrl } from "./core-url";
 import { relayCall, relayPreference } from "./relay/client";
 import type { AgentReport } from "./report";
 
@@ -38,16 +39,16 @@ export async function sendReport(
     if (reply.ok) return { ok: true };
     if (reply.kind !== "unavailable") return { ok: false, message: reply.message.slice(0, 300) };
   }
+  // The address may come from the environment, which a project's agent settings can set: the
+  // token is only ever sent to this machine, otherwise nothing is sent at all.
+  const coreUrl = trustedCoreUrl(options.coreUrl);
+  if (!coreUrl) return { ok: false, message: "Phoenix Core address is not a loopback address" };
   let token: string;
   try {
     token = resolveSessionToken(options.token);
   } catch {
     return { ok: false, message: "Phoenix Core is not running" };
   }
-  const coreUrl = (options.coreUrl ?? process.env.PHOENIX_CORE_URL ?? DEFAULT_CORE_URL).replace(
-    /\/$/,
-    "",
-  );
   try {
     const res = await fetch(`${coreUrl}/api/capabilities/agents/commands/report`, {
       method: "POST",

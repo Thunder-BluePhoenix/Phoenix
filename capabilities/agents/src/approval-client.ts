@@ -6,13 +6,14 @@
 // 4xx/5xx, malformed JSON, an id or digest that is not the one created, the deadline) is a
 // `{ decision: null }` result, which the hook turns into "no output, the agent asks in its terminal".
 // Only a response that echoes the exact id and digest of THIS request can carry a decision.
-import { DEFAULT_CORE_URL, resolveSessionToken } from "@phoenix/sdk";
+import { resolveSessionToken } from "@phoenix/sdk";
 import {
   approvalDigest,
   parseDecision,
   type ApprovalDecision,
   type ApprovalRequest,
 } from "./approval-map";
+import { trustedCoreUrl } from "./core-url";
 import { isRecord } from "./guards";
 import { relayCall, relayPreference } from "./relay/client";
 
@@ -48,6 +49,8 @@ export interface ApprovalClientOptions {
 export type ApprovalOutcome =
   | { decision: ApprovalDecision; decidedBy: string | undefined }
   | { decision: null; reason: string };
+
+const UNTRUSTED_URL = "PHOENIX_CORE_URL is not a loopback address; nothing was sent";
 
 const none = (reason: string): ApprovalOutcome => ({ decision: null, reason });
 
@@ -128,19 +131,24 @@ export async function requestApproval(
     }
     return token;
   };
-  if (!relayUp && resolveToken() === undefined) return none("Phoenix Core is not running");
-  const base = `${(options.coreUrl ?? process.env.PHOENIX_CORE_URL ?? DEFAULT_CORE_URL).replace(/\/$/, "")}/api/agent-approvals`;
+  // The token only ever goes to this machine: a Core URL from the environment is not trusted.
+  const coreUrl = trustedCoreUrl(options.coreUrl);
+  const base = coreUrl === null ? null : `${coreUrl}/api/agent-approvals`;
+  if (!relayUp) {
+    if (base === null) return none(UNTRUSTED_URL);
+    if (resolveToken() === undefined) return none("Phoenix Core is not running");
+  }
 
   /**
    * One call over whichever transport is up. `null`: no answer. `"no-token"`: HTTP without a
-   * token. The relay carries the approval id in the body; HTTP carries it in the URL.
+   * token or to a Core URL that is not loopback. The relay carries the approval id in the body; HTTP carries it in the URL.
    */
   const call = async (
     step: "create" | "wait",
     id: string,
     body: Record<string, unknown>,
     timeoutMs: number,
-  ): Promise<Reply | null | "no-token"> => {
+  ): Promise<Reply | null | "no-token" | "untrusted-url"> => {
     if (relayUp) {
       const op = step === "create" ? "approval.create" : "approval.wait";
       const reply = await relayCall(op, step === "create" ? body : { id, ...body }, {
@@ -157,6 +165,7 @@ export async function requestApproval(
       if (reply.kind === "protocol") return { status: 502, body: null };
       relayUp = false;
     }
+    if (base === null) return "untrusted-url";
     const bearer = resolveToken();
     if (bearer === undefined) return "no-token";
     return post(step === "create" ? base : `${base}/${id}/wait`, bearer, body, timeoutMs);
@@ -168,6 +177,7 @@ export async function requestApproval(
     { ...request },
     Math.min(CREATE_TIMEOUT_MS, request.timeout_ms),
   );
+  if (created === "untrusted-url") return none(UNTRUSTED_URL);
   if (created === "no-token") return none("Phoenix Core is not running");
   if (!created) return none("Phoenix Core did not answer");
   if (created.status < 200 || created.status > 299 || !created.body) {
@@ -192,6 +202,7 @@ export async function requestApproval(
       { nonce, wait_ms: waitMs },
       Math.min(waitMs + WAIT_GRACE_MS, remaining),
     );
+    if (reply === "untrusted-url") return none(UNTRUSTED_URL);
     if (reply === "no-token") return none("Phoenix Core is not running");
     if (!reply) return none("Phoenix Core did not answer");
     if (reply.status < 200 || reply.status > 299 || !reply.body) {

@@ -1101,15 +1101,24 @@ export interface AgentApproval {
   agent: string;
   project: string;
   tool: string;
-  input_summary: { command?: string; path?: string; description?: string };
+  input_summary: {
+    command?: string;
+    path?: string;
+    description?: string;
+    /** Compact JSON of every other tool argument. */
+    detail?: string;
+  };
   questions?: AgentApprovalQuestion[];
   expires_at: string;
   /** Whether Core allows an "Always allow here" rule for this request. */
   always_ok?: boolean;
+  /** How the request reached Core. */
+  via?: "relay" | "http";
 }
 
 export interface AgentApprovalRule {
   id: string;
+  agent: string;
   project: string;
   tool: string;
   pattern: string;
@@ -1231,6 +1240,7 @@ export interface LiveDiff {
   path: string;
   diff: string;
   truncated: boolean;
+  redacted?: boolean;
   source: "git diff HEAD" | "untracked file";
   commits: DiffLink[];
   ci_runs: DiffLink[];

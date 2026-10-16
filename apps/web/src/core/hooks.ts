@@ -51,7 +51,7 @@ function useLiveResource<T>(
   path: string,
   pick: (json: any) => T,
   initial: T,
-  shouldReload: (type: string) => boolean,
+  shouldReload: (type: string, source: string) => boolean,
 ) {
   const client = useClient();
   const [data, setData] = useState<T>(initial);
@@ -73,10 +73,10 @@ function useLiveResource<T>(
   useEffect(() => {
     void reload();
     const offEvent = client.eventCreated.on(({ event }) => {
-      if (reloadRef.current(event.event_type)) void reload();
+      if (reloadRef.current(event.event_type, event.source)) void reload();
     });
     const offCap = client.capabilityChanged.on((event) => {
-      if (reloadRef.current(event.event_type)) void reload();
+      if (reloadRef.current(event.event_type, event.source)) void reload();
     });
     const offStatus = client.statusChanged.on((s) => s === "online" && void reload());
     return () => {
@@ -1089,7 +1089,7 @@ export function useAgentLive(id: string) {
     asked.current = new Set();
     void load();
     const offEvent = client.eventCreated.on(({ event }) => {
-      if (event.event_type !== "agent.session.step") return;
+      if (event.event_type !== "agent.session.step" || event.source !== "core") return;
       const ev = readStepEvent(event.payload);
       if (!ev) return;
       const detail = current.current;
@@ -1142,7 +1142,7 @@ export function useAgentLiveSessions() {
   useEffect(() => {
     void load();
     const offEvent = client.eventCreated.on(({ event }) => {
-      if (event.event_type !== "agent.session.step") return;
+      if (event.event_type !== "agent.session.step" || event.source !== "core") return;
       const sessionId = event.payload.session_id;
       if (typeof sessionId !== "string" || known.current.has(sessionId)) return;
       known.current.add(sessionId);
@@ -1173,6 +1173,7 @@ export function useAgentUsage(): UsageSummary {
       unsupported: j.unsupported ?? [],
     }),
     NO_USAGE,
-    (t) => t === "agent.usage.updated" || t === "agent.usage.warning",
+    (t, source) =>
+      (t === "agent.usage.updated" && source === "core") || t === "agent.usage.warning",
   ).data;
 }

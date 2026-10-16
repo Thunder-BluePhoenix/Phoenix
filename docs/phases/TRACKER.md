@@ -8,9 +8,9 @@ Single source of truth for delivery progress. Derived from the five vision docum
 
 ## Current focus
 
-Unreleased prerequisites still begin with **Phase 14 — floating desktop Fawkes** (needs a person at an unlocked screen) and **Phase 20 — hardening & v0.1 release**. Phases 21–55 contain substantial implemented work, but no release tag from v0.1 onward has been cut, and many release gates need real services, hardware, independent review or an owner decision (see [gaps](../gaps.md)).
+Unreleased prerequisites still begin with **Phase 14 — floating desktop Fawkes** (needs a person at an unlocked screen) and **Phase 20 — hardening & v0.1 release**. Phases 21–55 contain substantial implemented work, and Phases 56–60 are built and unit-tested but have not been run against a real coding agent, a notch Mac, a Linux compositor or Windows. No release tag from v0.1 onward has been cut, and many release gates need real services, hardware, independent review or an owner decision (see [gaps](../gaps.md)).
 
-New parity track (2026-10-15): the [Coucou & Insomnia audit](../audits/coucou-insomnia-audit.md) maps every feature of both projects to Phoenix and adds **Stage 12 (phases 56–71)** and **Stage 13 (phases 72–75)**. Build order starts with **Phase 56 — agent approvals from Fawkes** and **Phase 72 — keep-awake sessions**, which need nothing from the open v0.1 items. Stages 14–15 (2026-10-15) add [Phoenix originals and the Phoenix browser](../audits/phoenix-originals-and-browser.md): phases 76–96.
+New parity track (2026-10-15): the [Coucou & Insomnia audit](../audits/coucou-insomnia-audit.md) maps every feature of both projects to Phoenix and adds **Stage 12 (phases 56–71)** and **Stage 13 (phases 72–75)**. Build order started with **Phase 56 — agent approvals from Fawkes** (phases 56–60 are now built, none with its exit criteria met) and continues with **Phase 72 — keep-awake sessions**, which needs nothing from the open v0.1 items. Stages 14–15 (2026-10-15) add [Phoenix originals and the Phoenix browser](../audits/phoenix-originals-and-browser.md): phases 76–96.
 
 ## Summary
 
@@ -173,11 +173,11 @@ Every feature of [Coucou](https://github.com/Louis-CFM/coucou) (agents in the no
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 56 | [Agent Approvals & Questions from Fawkes](phase-56-agent-approvals-from-fawkes.md) | post-v2.0 | Critical | 25, 32, 34 | ⬜ | | |
-| 57 | [Universal Agent Relay & Hook Installers](phase-57-agent-relay-and-installers.md) | post-v2.0 | High | 56 | ⬜ | | |
-| 58 | [Live Agent Sessions, Diffs & Plan Usage](phase-58-live-sessions-diffs-plan-usage.md) | post-v2.0 | High | 57 | ⬜ | | |
-| 59 | [Fawkes Interactions, Emotes & Sounds](phase-59-fawkes-interactions-and-sounds.md) | post-v2.0 | Medium | 10 | ⬜ | | |
-| 60 | [Fawkes Island (Notch / Top Edge) & Desktop Platforms](phase-60-fawkes-island.md) | post-v2.0 | Medium | 14 | ⬜ | | |
+| 56 | [Agent Approvals & Questions from Fawkes](phase-56-agent-approvals-from-fawkes.md) | post-v2.0 | Critical | 25, 32, 34 | 🟨 | | Approval service, hook, Always/deny rules and cards built; tested against a scripted and an in-process Core; no real Claude Code or Codex session; Codex has no AskUserQuestion; card only in the web Pet Panel overview |
+| 57 | [Universal Agent Relay & Hook Installers](phase-57-agent-relay-and-installers.md) | post-v2.0 | High | 56 | 🟨 | | Relay, installers and eight adapters built from public docs and tested on temp dirs; Hermes, Antigravity, Claude Desktop unsupported; no real agent installed; Windows pipe unverified |
+| 58 | [Live Agent Sessions, Diffs & Plan Usage](phase-58-live-sessions-diffs-plan-usage.md) | post-v2.0 | High | 57 | 🟨 | | Steps, on-demand diffs, Claude plan usage with 80/95 % warnings, terminal jump and Markdown export built; Codex usage unsupported; no real agent, status JSON or terminal window verified |
+| 59 | [Fawkes Interactions, Emotes & Sounds](phase-59-fawkes-interactions-and-sounds.md) | post-v2.0 | Medium | 10 | 🟨 | | Greeting, gaze, hover, poke, dizzy, completion jump and a procedural sound library with policy built and unit-tested; no sound played; sounds and desktop follow not wired into any host |
+| 60 | [Fawkes Island (Notch / Top Edge) & Desktop Platforms](phase-60-fawkes-island.md) | post-v2.0 | Medium | 14 | 🟨 | | Island state machine, geometry, per-OS logic, mode switch and Windows credential backend built; run on a no-notch Mac only; no notch, Linux compositor or Windows run; CI matrix not yet run on GitHub |
 | 61 | [Wardrobe, Per-Source Fawkes & Visible Capabilities](phase-61-wardrobe-and-per-source-fawkes.md) | post-v2.0 | Low | 59 | ⬜ | | |
 | 62 | [Drop Files & Attach Windows as Context](phase-62-file-drop-and-window-context.md) | post-v2.0 | Medium | 32, 63 | ⬜ | | |
 | 63 | [More AI Providers & Model Switcher](phase-63-more-ai-providers.md) | post-v2.0 | Medium | 27 | ⬜ | | |

@@ -54,10 +54,75 @@ export interface StepEvent {
   tty?: string;
 }
 
+/** `[REDACTED]` in place of a secret. */
+const MASK = "[REDACTED]";
+/** A quoted value (an unterminated quote runs to the end) or one unquoted word. */
+const VALUE = String.raw`"[^"]*"?|'[^']*'?|\S+`;
+const SECRET_WORD = String.raw`(?:token|secret|passw(?:or)?d|pwd|key|auth|credential)`;
+/** An assignment-like name: `API_TOKEN`, `db_password`, `MYSQL_PWD`, `DB_PASS`, `--api-key`. */
+const SECRET_NAME = String.raw`[\w.-]*${SECRET_WORD}[\w.-]*|(?:[\w.-]*[_-])?pass`;
+
+const PEM_BLOCK =
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g;
+const SECRET_FLAG = new RegExp(
+  String.raw`(--?[\w-]*(?:passw(?:or)?d|pwd|token|secret|api[-_]?key|auth|credential)[\w-]*)(=|\s+)(?!\[REDACTED\])(?:${VALUE})`,
+  "gi",
+);
+const SECRET_ASSIGNMENT = new RegExp(
+  String.raw`((?:${SECRET_NAME})=)(?!\[REDACTED\])(?:${VALUE})`,
+  "gi",
+);
+const CURL_LONG_USER = new RegExp(String.raw`(\s--(?:proxy-)?user(?:=|\s+))(?:${VALUE})`, "g");
+const CURL_SHORT_USER = /(\bcurl\b[^|;&]*?\s-[uU]\s*)(?:"[^"]*"?|'[^']*'?|\S+)/g;
+const AUTH_HEADER =
+  /\b((?:proxy-)?authorization|x-api-key|x-auth-token|set-cookie|cookie)(\s*[:=]\s*)[^"'\n]*/gi;
+const QUERY_SECRET = new RegExp(
+  String.raw`([?&][\w.-]*(?:${SECRET_WORD}|signature|sig)[\w.-]*=)[^&\s"'#]*`,
+  "gi",
+);
+const MYSQL_P = /(\bmysql\w*\b[^|;&]*?\s-p)("[^"]*"?|'[^']*'?|\S+)/g;
+const URL_TOKEN = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/gi;
+
+/** The password inside `scheme://user:password@host/…`, even when it holds an encoded or raw `/` or `@`. */
+function maskUrlPassword(url: string): string {
+  const start = url.indexOf("://") + 3;
+  const rest = url.slice(start);
+  const stop = rest.search(/[/?#]/);
+  const authority = stop === -1 ? rest : rest.slice(0, stop);
+  let at = authority.lastIndexOf("@");
+  // A raw `/` in the password ends the authority early (`u:p/ss@host`); a `host:8080/@x` does not.
+  if (at === -1 && authority.includes(":") && !/:\d+$/.test(authority)) at = rest.lastIndexOf("@");
+  if (at === -1) return url;
+  const userinfo = rest.slice(0, at);
+  const colon = userinfo.indexOf(":");
+  if (colon === -1) return url;
+  return `${url.slice(0, start)}${userinfo.slice(0, colon + 1)}${MASK}${rest.slice(at)}`;
+}
+
+/**
+ * `redactText` (the terminal capability's) plus what a command line or a diff still leaks through
+ * it: private-key blocks, `-u user:pass`, auth headers of any scheme, lower-case and `export`ed
+ * assignments, query-string credentials, quoted values with spaces, `mysql -pSECRET`, and URL
+ * passwords holding `/` or `@`. A heuristic: it masks what it recognises and claims nothing more.
+ */
+export function redactSecrets(text: string): string {
+  const masked = text
+    .replace(PEM_BLOCK, MASK)
+    .replace(AUTH_HEADER, `$1$2${MASK}`)
+    .replace(CURL_LONG_USER, `$1${MASK}`)
+    .replace(CURL_SHORT_USER, `$1${MASK}`)
+    .replace(MYSQL_P, `$1${MASK}`)
+    .replace(URL_TOKEN, maskUrlPassword)
+    .replace(QUERY_SECRET, `$1${MASK}`)
+    .replace(SECRET_FLAG, `$1$2${MASK}`)
+    .replace(SECRET_ASSIGNMENT, `$1${MASK}`);
+  return redactText(masked);
+}
+
 /** Flattens control characters, redacts secrets, cuts to `max` characters (the last is `…`). */
 export function cleanText(raw: string, max: number): string {
   const flat = raw.slice(0, RAW_WINDOW).replace(CONTROL, " ").replace(/ {2,}/g, " ").trim();
-  const redacted = redactText(flat);
+  const redacted = redactSecrets(flat);
   return redacted.length > max ? `${redacted.slice(0, max - 1)}…` : redacted;
 }
 
@@ -142,7 +207,7 @@ function editOf(tool: string, input: Record<string, unknown>): Mapped | null {
 }
 
 function mapTool(tool: string, input: Record<string, unknown>): Mapped {
-  if (RUN_TOOLS[tool])
+  if (Object.hasOwn(RUN_TOOLS, tool))
     return { kind: "run", target: cleanText(str(input.command) ?? "", MAX_TARGET) };
   if (tool === "Edit" || tool === "Write" || tool === "MultiEdit" || tool === "NotebookEdit") {
     const edit = editOf(tool, input);

@@ -1077,6 +1077,19 @@ code.break {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+/* Agent text shown whole: wrapped, monospace, whitespace and escapes visible. */
+.reveal-block {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+.reveal-mark {
+  color: var(--warning-text);
+  font-weight: 600;
+  outline: 1px dotted currentColor;
+}
 /* A missing fact is flagged in words, and underlined so it does not rely on colour. */
 .approval-missing {
   color: var(--warning-text);

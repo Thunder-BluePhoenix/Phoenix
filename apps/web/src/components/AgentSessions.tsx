@@ -1222,6 +1222,11 @@ function DiffView({ path, diff, onClose }: { path: string; diff: LiveDiff; onClo
           {diff.diff}
         </pre>
       )}
+      {diff.redacted && (
+        <p className="small" role="status">
+          Text that looked like a secret was hidden. This is a best-effort check: it can miss some.
+        </p>
+      )}
       {diff.truncated && (
         <p className="small" role="status">
           This diff was truncated: only the first part is shown.

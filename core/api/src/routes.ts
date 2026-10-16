@@ -22,6 +22,11 @@ import type { CoreServices } from "./services";
 const notFound = (what: string) =>
   new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, `${what} not found`);
 
+/** Event types only Core emits (Phase 58 live signals); `POST /api/events` refuses them. */
+const CORE_ONLY_EVENT = /^agent\.(session\.step|usage\.updated)$/;
+const isCoreOnlyEvent = (type: unknown): boolean =>
+  typeof type === "string" && CORE_ONLY_EVENT.test(type);
+
 export function buildRoutes(s: CoreServices): Route[] {
   const notes = () => {
     if (!s.notifications) throw notFound("Notifications");
@@ -96,6 +101,14 @@ export function buildRoutes(s: CoreServices): Route[] {
       // "core" is reserved for events Phoenix itself emits.
       if (expectObject(event).source === "core") {
         throw new PhoenixError(ErrorCode.SECURITY_POLICY_BLOCKED, 'Source "core" is reserved');
+      }
+      // The live agent-session signals are Core's own: a durable copy from another source would
+      // be stored, replayed after reconnect and shown as a real step or usage reading.
+      if (isCoreOnlyEvent(expectObject(event).event_type)) {
+        throw new PhoenixError(
+          ErrorCode.SECURITY_POLICY_BLOCKED,
+          `Event type "${String(expectObject(event).event_type)}" is reserved for Core`,
+        );
       }
       const result = s.bus.publish(event);
       if (!result.ok) throw result.error;

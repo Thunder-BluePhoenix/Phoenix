@@ -3,6 +3,7 @@
 //
 // relayCall against real sockets: a RelayServer for the happy and rejected paths, and tiny scripted
 // net servers for protocol faults. The timeout runs on fake timers.
+import { chmod, symlink, writeFile } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -176,5 +177,55 @@ describe("runSelfTest", () => {
       pass: false,
       message: expect.stringContaining("nope"),
     });
+  });
+});
+
+describe("relayCall: socket trust", () => {
+  it("refuses a socket path reached through a symlink and never connects", async () => {
+    const { path, dataDir } = await startRelay({ handlers: { report: () => ({ ok: 1 }) } });
+    const link = join(await tempDataDir(), "link.sock");
+    await symlink(path, link);
+    expect(await relayCall("ping", {}, { socketPath: link, timeoutMs: 5_000 })).toMatchObject({
+      ok: false,
+      kind: "unavailable",
+      message: expect.stringContaining("symlink"),
+    });
+    expect(await relayCall("ping", {}, { dataDir, timeoutMs: 5_000 })).toMatchObject({ ok: true });
+  });
+
+  it("refuses a socket whose directory is group/world accessible", async () => {
+    const { path, dataDir } = await startRelay();
+    await chmod(join(dataDir, "relay"), 0o755);
+    try {
+      expect(await relayCall("ping", {}, { socketPath: path, timeoutMs: 5_000 })).toMatchObject({
+        ok: false,
+        kind: "unavailable",
+        message: expect.stringContaining("accessible to other users"),
+      });
+    } finally {
+      await chmod(join(dataDir, "relay"), 0o700);
+    }
+  });
+
+  it("applies the same check to $PHOENIX_RELAY_SOCKET and $PHOENIX_DATA_DIR", async () => {
+    const dir = await tempDataDir();
+    const regular = join(dir, "not-a-socket");
+    await writeFile(regular, "x");
+    const env = { PHOENIX_RELAY_SOCKET: regular };
+    expect(
+      await relayCall("ping", {}, { socketPath: resolveRelaySocket(env), timeoutMs: 5_000 }),
+    ).toMatchObject({
+      ok: false,
+      kind: "unavailable",
+      message: expect.stringContaining("not a socket"),
+    });
+    await chmod(dir, 0o755);
+    expect(
+      await relayCall(
+        "ping",
+        {},
+        { socketPath: resolveRelaySocket({ PHOENIX_DATA_DIR: dir }), timeoutMs: 5_000 },
+      ),
+    ).toMatchObject({ ok: false, kind: "unavailable" });
   });
 });

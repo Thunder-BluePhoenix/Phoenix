@@ -71,7 +71,7 @@ export class WebSocketHub {
       s.bus.subscribe("api.websocket", "*", (event, info) => {
         // Ephemeral events are not history, so most are not sent. The live agent-session signals
         // (Phase 58) are exactly that: sub-second updates for a view that is open right now.
-        if (!info.ephemeral || LIVE_EPHEMERAL.test(event.event_type)) {
+        if (!info.ephemeral || (event.source === "core" && LIVE_EPHEMERAL.test(event.event_type))) {
           this.broadcast("event.created", {
             seq: info.seq,
             event,

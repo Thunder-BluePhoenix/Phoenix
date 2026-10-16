@@ -59,6 +59,8 @@ export interface RelayServerOptions {
 }
 
 const MAX_CONNECTIONS = 64;
+/** Concurrent `approval.wait` long-polls; more are answered `busy` instead of piling up. */
+const MAX_CONCURRENT_WAITS = 16;
 
 const defaultTimers: RelayTimers = {
   after(ms, fn) {
@@ -110,6 +112,7 @@ export class RelayServer {
   readonly #path: string;
   readonly #sockets = new Set<Socket>();
   #server: Server | undefined;
+  #waiting = 0;
   #stopping: Promise<void> | undefined;
 
   constructor(options: RelayServerOptions) {
@@ -232,7 +235,8 @@ export class RelayServer {
 
   #onConnection(socket: Socket): void {
     this.#sockets.add(socket);
-    let buffered = Buffer.alloc(0);
+    const chunks: Buffer[] = [];
+    let received = 0;
     // Set once the request is complete or refused; later bytes are ignored.
     let settled = false;
     let cancelIdle: () => void = () => {};
@@ -255,17 +259,25 @@ export class RelayServer {
     });
     socket.on("data", (chunk: Buffer) => {
       if (settled) return;
-      buffered = Buffer.concat([buffered, chunk]);
-      const newline = buffered.indexOf(0x0a);
-      if ((newline === -1 ? buffered.length : newline) > this.#maxRequestBytes) {
+      const newline = chunk.indexOf(0x0a);
+      // The running count, not a re-joined buffer, decides "too large": work stays linear.
+      const lineBytes = received + (newline === -1 ? chunk.length : newline);
+      if (lineBytes > this.#maxRequestBytes) {
+        chunks.length = 0;
         respond(fail("too_large", `request line exceeds ${this.#maxRequestBytes} bytes`));
         return;
       }
-      if (newline === -1) return;
+      if (newline === -1) {
+        chunks.push(chunk);
+        received += chunk.length;
+        return;
+      }
       settled = true;
       cancelIdle();
-      void this.#dispatch(buffered.subarray(0, newline).toString("utf8")).then(respond);
-      buffered = Buffer.alloc(0);
+      chunks.push(chunk.subarray(0, newline));
+      const line = chunks.length === 1 ? chunks[0]! : Buffer.concat(chunks);
+      chunks.length = 0;
+      void this.#dispatch(line.toString("utf8")).then(respond);
     });
   }
 
@@ -296,6 +308,13 @@ export class RelayServer {
     }
     const handler = this.#handlers[op];
     if (!handler) return fail("not_available", "operation is not available");
+    const longPoll = op === "approval.wait";
+    if (longPoll) {
+      if (this.#waiting >= MAX_CONCURRENT_WAITS) {
+        return fail("busy", "too many approvals are being waited on; try again shortly");
+      }
+      this.#waiting += 1;
+    }
     try {
       const result = await handler(request.body);
       return { v: RELAY_VERSION, ok: true, result: result ?? null };
@@ -307,6 +326,8 @@ export class RelayServer {
         error: err instanceof Error ? err.message : String(err),
       });
       return fail("internal_error", "relay handler failed");
+    } finally {
+      if (longPoll) this.#waiting -= 1;
     }
   }
 }

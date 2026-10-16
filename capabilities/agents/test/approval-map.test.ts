@@ -66,18 +66,97 @@ describe("mapApprovalPayload: permission", () => {
     });
   });
 
-  it("summarises file tools by path only: file content is never copied", () => {
-    const mapped = map(permission("Write", { file_path: "/tmp/a.txt", content: "SECRET BODY" }));
-    expect(mapped?.request.input_summary).toEqual({ path: "/tmp/a.txt" });
-    expect(JSON.stringify(mapped)).not.toContain("SECRET BODY");
+  it("puts every other tool-input field in `detail` as compact JSON with sorted keys", () => {
+    const mapped = map(permission("Write", { file_path: "/tmp/a.txt", content: "body", mode: 1 }));
+    expect(mapped?.request.input_summary).toEqual({
+      path: "/tmp/a.txt",
+      detail: '{"content":"body","mode":1}',
+    });
+    const web = map(permission("WebFetch", { url: "https://example.org/x", prompt: "p" }));
+    expect(web?.request.input_summary.detail).toBe('{"prompt":"p","url":"https://example.org/x"}');
   });
 
-  it("truncates to the contract limits", () => {
+  it("omits `detail` when there are no other fields", () => {
+    const mapped = map(permission("Bash", { command: "ls", description: "List" }));
+    expect(mapped?.request.input_summary).toEqual({ command: "ls", description: "List" });
+  });
+
+  it("shows escalation flags in `detail`, and they change the digest", () => {
+    const plain = map(permission("Bash", { command: "ls" }))!.request;
+    const escalated = map(
+      permission("Bash", { command: "ls", dangerouslyDisableSandbox: true }),
+    )!.request;
+    expect(escalated.input_summary).toEqual({
+      command: "ls",
+      detail: '{"dangerouslyDisableSandbox":true}',
+    });
+    expect(approvalDigest(escalated)).not.toBe(approvalDigest(plain));
+    const codex = codexSummary("Bash", { command: ["ls"], with_escalated_permissions: true });
+    expect(codex).toEqual({ command: "ls", detail: '{"with_escalated_permissions":true}' });
+  });
+
+  it.each([
+    ["command", { command: "x".repeat(2_001) }],
+    ["path", { file_path: "/" + "p".repeat(1_000) }],
+    ["description", { command: "ls", description: "d".repeat(501) }],
+    ["detail", { command: "ls", blob: "b".repeat(2_000) }],
+  ])("a %s over its limit gives no decision instead of a truncated one", (_field, input) => {
+    const reasons: string[] = [];
+    const mapped = mapApprovalPayload(permission("Bash", input), {
+      agent: "claude-code",
+      onReject: (r) => reasons.push(r),
+    });
+    expect(mapped).toBeNull();
+    expect(reasons).toHaveLength(1);
+  });
+
+  it("accepts fields exactly at their limits, whole", () => {
     const mapped = map(
-      permission("Bash", { command: "x".repeat(5_000), description: "d".repeat(900) }),
+      permission("Bash", { command: "x".repeat(2_000), description: "d".repeat(500) }),
     );
     expect(mapped?.request.input_summary.command).toHaveLength(2_000);
     expect(mapped?.request.input_summary.description).toHaveLength(500);
+  });
+
+  it.each([
+    ["a newline in the command", { command: "ls\nrm -rf /" }],
+    ["a bidi override in the command", { command: "ls \u202Etxt.sh" }],
+    ["a bidi isolate in the path", { file_path: "/tmp/\u2066a" }],
+    ["a zero-width space in the description", { command: "ls", description: "a\u200Bb" }],
+    ["a word joiner in the description", { command: "ls", description: "a\u2060b" }],
+    ["a BOM in the command", { command: "\uFEFFls" }],
+    ["a left-to-right mark in the command", { command: "ls\u200E" }],
+    ["a control character in an extra field", { command: "ls", url: "a\u0085b" }],
+    ["a bidi character in an extra field", { command: "ls", url: "a\u202Db" }],
+    ["a zero-width joiner in an extra key", { command: "ls", ["k\u200D"]: 1 }],
+  ])("returns no request for %s", (_name, input) => {
+    expect(map(permission("Bash", input))).toBeNull();
+  });
+
+  it.each([
+    ["the tool name", { ...permission("Ba\u200Bsh", {}) }],
+    ["the project", { ...permission("Bash", {}), cwd: "/tmp/\u202Ea" }],
+    ["the session id", { ...permission("Bash", {}), session_id: "s\u2060" }],
+  ])("returns no request for a hidden character in %s", (_name, payload) => {
+    expect(map(payload)).toBeNull();
+  });
+
+  it("returns no request for hidden characters in question text, header, labels, descriptions", () => {
+    const withQuestion = (patch: Record<string, unknown>, option: Record<string, unknown> = {}) =>
+      askPayload([
+        {
+          question: "Which?",
+          header: "H",
+          options: [{ label: "A", ...option }, { label: "B" }],
+          ...patch,
+        },
+      ]);
+    expect(map(withQuestion({}))).not.toBeNull();
+    expect(map(withQuestion({ question: "Wh\u202Eich?" }))).toBeNull();
+    expect(map(withQuestion({ header: "H\u200B" }))).toBeNull();
+    expect(map(withQuestion({}, { label: "A\u2066" }))).toBeNull();
+    expect(map(withQuestion({}, { description: "d\u0007" }))).toBeNull();
+    expect(map(withQuestion({}, { description: "d".repeat(501) }))).toBeNull();
   });
 
   it("accepts a custom decision timeout and refuses one outside 5 s..10 min", () => {
@@ -181,9 +260,53 @@ describe("codex summaries", () => {
     expect(JSON.stringify(summary)).not.toContain("secret");
   });
 
-  it("does not copy MCP arguments", () => {
+  it("apply_patch: every Add/Update/Delete/Move header counts, and a multi-file subject lists all", () => {
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: src/a.ts",
+      "*** Move to: src/b.ts",
+      "@@",
+      "-secret old",
+      "+secret new",
+      "*** Add File: docs/it's here.md",
+      "+body",
+      "*** Delete File: old.txt",
+      "*** End Patch",
+    ].join("\n");
+    const summary = codexSummary("apply_patch", { command: patch });
+    expect(summary).toEqual({
+      path: "src/a.ts",
+      command: "src/a.ts src/b.ts 'docs/it'\\''s here.md' old.txt",
+      detail: JSON.stringify({ files: ["src/a.ts", "src/b.ts", "docs/it's here.md", "old.txt"] }),
+    });
+    expect(JSON.stringify(summary)).not.toContain("secret");
+  });
+
+  it("apply_patch: a single move names both files", () => {
+    const patch = "*** Begin Patch\n*** Update File: a.ts\n*** Move to: b.ts\n@@\n";
+    expect(codexSummary("apply_patch", { command: patch })).toEqual({
+      path: "a.ts",
+      command: "a.ts b.ts",
+      detail: '{"files":["a.ts","b.ts"]}',
+    });
+  });
+
+  it("an argv is shell-quoted when joined, so it reads back as the same arguments", () => {
+    expect(
+      codexSummary("Bash", { command: ["echo", "a b", "it's", "", "x;y", "plain-1.txt"] }),
+    ).toEqual({
+      command: "echo 'a b' 'it'\\''s' '' 'x;y' plain-1.txt",
+    });
+    // These two argv differ and must not look alike.
+    const one = codexSummary("Bash", { command: ["rm", "a b"] });
+    const two = codexSummary("Bash", { command: ["rm", "a", "b"] });
+    expect(one?.command).not.toBe(two?.command);
+  });
+
+  it("MCP arguments are in `detail`", () => {
     expect(codexSummary("mcp__fs__read", { path: "/tmp/x", token: "hunter2" })).toEqual({
       path: "/tmp/x",
+      detail: '{"token":"hunter2"}',
     });
   });
 });

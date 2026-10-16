@@ -71,10 +71,18 @@ const fail = (message: string) => new PhoenixError(ErrorCode.CAPABILITY_UNAVAILA
 
 /** The window title to look for: the project folder's name, bounded and without control characters. */
 export function windowTitle(project: string): string {
-  // eslint-disable-next-line no-control-regex
-  return (basename(project) || project)
-    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
-    .slice(0, MAX_TITLE);
+  // Control characters become spaces; bidi and zero-width characters (invisible, so they could
+  // make the confirmation text lie about the title) are dropped.
+  return (
+    (basename(project) || project)
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+      .replace(
+        /[\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb]/g,
+        "",
+      )
+      .slice(0, MAX_TITLE)
+  );
 }
 
 function checkTarget(target: TerminalTarget): void {
@@ -86,10 +94,13 @@ function checkTarget(target: TerminalTarget): void {
   }
 }
 
-/** Terminal.app: match a tab by its tty. iTerm2: match a session by its tty. Both via argv. */
+const FOCUS_TARGET_ENV = "PHOENIX_FOCUS_TARGET";
+const FOCUS_TARGET_LINE = `set wanted to do shell script "printf %s \\"$${FOCUS_TARGET_ENV}\\""`;
+
+/** Terminal.app: match a tab by its tty. iTerm2: match a session by its tty. */
 const MAC_TTY_SCRIPT = [
-  "on run argv",
-  "set wanted to item 1 of argv",
+  "on run",
+  FOCUS_TARGET_LINE,
   'if application "Terminal" is running then',
   'tell application "Terminal"',
   "repeat with w in windows",
@@ -126,8 +137,8 @@ const MAC_TTY_SCRIPT = [
 
 /** By window name (Terminal.app and iTerm2 title contains the project folder). */
 const MAC_TITLE_SCRIPT = [
-  "on run argv",
-  "set wanted to item 1 of argv",
+  "on run",
+  FOCUS_TARGET_LINE,
   'if application "Terminal" is running then',
   'tell application "Terminal"',
   "repeat with w in windows",
@@ -154,10 +165,13 @@ const MAC_TITLE_SCRIPT = [
   "end run",
 ];
 
-const osascriptArgv = (script: readonly string[], arg: string): string[] => [
-  ...script.flatMap((line) => ["-e", line]),
-  arg,
-];
+/**
+ * osascript treats an argument that starts with `-` as one of its options (`-lJavaScript` selects
+ * another language), so the tty/title never travels in argv: the script reads it from the
+ * environment, byte for byte, through the shell it starts with a fixed command.
+ */
+const osascriptArgv = (script: readonly string[]): string[] =>
+  script.flatMap((line) => ["-e", line]);
 
 /** `/dev/ttysNNN` of the terminal a process runs in, from `ps -o tty=`; undefined for "??" or anything else. */
 export async function ttyOfPid(exec: FocusExec, pid: number): Promise<string | undefined> {
@@ -176,14 +190,15 @@ export class MacTerminalFocuser implements TerminalFocuser {
     checkTarget(target);
     const tty = target.tty ?? (target.pid ? await ttyOfPid(this.exec, target.pid) : undefined);
     if (tty) {
-      const byTty = await this.exec("osascript", osascriptArgv(MAC_TTY_SCRIPT, tty));
+      const byTty = await this.exec("osascript", osascriptArgv(MAC_TTY_SCRIPT), {
+        [FOCUS_TARGET_ENV]: tty,
+      });
       if (byTty.code === 0)
         return { focused: true, method: `osascript:${byTty.stdout.trim() || "tty"}-tty` };
     }
-    const byTitle = await this.exec(
-      "osascript",
-      osascriptArgv(MAC_TITLE_SCRIPT, windowTitle(target.project)),
-    );
+    const byTitle = await this.exec("osascript", osascriptArgv(MAC_TITLE_SCRIPT), {
+      [FOCUS_TARGET_ENV]: windowTitle(target.project),
+    });
     if (byTitle.code === 0)
       return { focused: true, method: `osascript:${byTitle.stdout.trim() || "window"}-title` };
     throw fail(

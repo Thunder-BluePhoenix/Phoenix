@@ -28,6 +28,7 @@ import {
   exportMarkdown,
   parseThresholds,
   readDiff,
+  windowTitle,
   validateStep,
   validateUsage,
   execGit,
@@ -97,6 +98,28 @@ const inside = (parent: string, child: string): boolean => {
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 };
 
+// eslint-disable-next-line no-control-regex
+const UNSEEN =
+  /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb]/g;
+
+/** A name from a hook, safe to show in a confirmation: no control, bidi or zero-width characters, at most 80. */
+export function displayName(raw: string): string {
+  const clean = raw.replace(UNSEEN, "").trim();
+  return clean.length > 80 ? `${clean.slice(0, 79)}…` : clean;
+}
+
+/** What the user is asked to confirm: the exact terminal Core will act on. */
+function focusSummary(target: LiveSession): string {
+  const where = [
+    target.tty ? `tty ${target.tty}` : undefined,
+    target.pid ? `pid ${target.pid}` : undefined,
+    `window titled "${displayName(windowTitle(target.project))}"`,
+  ].filter((part) => part !== undefined);
+  const agent = displayName(target.agent) || "an agent";
+  const project = displayName(basename(target.project)) || "a project";
+  return `Agents: bring the terminal window of ${agent} in ${project} to the front (${where.join(", ")})`;
+}
+
 export class AgentLive implements AgentLiveApi {
   private sessionsByKey: Record<string, LiveSession> = {};
   private readonly tracker: UsageTracker;
@@ -132,7 +155,8 @@ export class AgentLive implements AgentLiveApi {
       {
         agent: step.agent,
         session_id: step.session_id,
-        project: step.project,
+        // The session's own project (its first report), whatever this step's cwd was.
+        project: session.project,
         n: logged.n,
         kind: step.kind,
         tool: step.tool,
@@ -157,8 +181,10 @@ export class AgentLive implements AgentLiveApi {
   recordUsage(body: unknown): { accepted: number } {
     const result = validateUsage(body, this.now());
     if (!result.ok) throw invalid(result.problems);
-    for (const sample of result.samples) this.acceptUsage(sample);
-    return { accepted: result.samples.length };
+    const accepted = result.samples.filter((sample) => this.acceptUsage(sample)).length;
+    if (accepted === 0 && result.samples.length > 0)
+      throw invalid(["too many different agents are reporting usage"]);
+    return { accepted };
   }
 
   setThresholds(body: unknown): { thresholds: number[] } {
@@ -173,8 +199,8 @@ export class AgentLive implements AgentLiveApi {
     return { thresholds: parsed };
   }
 
-  private acceptUsage(sample: UsageSample): void {
-    this.tracker.record(sample);
+  private acceptUsage(sample: UsageSample): boolean {
+    if (!this.tracker.record(sample)) return false;
     this.publish(
       "agent.usage.updated",
       {
@@ -185,6 +211,7 @@ export class AgentLive implements AgentLiveApi {
       },
       { ephemeral: true },
     );
+    return true;
   }
 
   private warn(w: UsageWarning): void {
@@ -255,7 +282,6 @@ export class AgentLive implements AgentLiveApi {
       }
     }
     session.lastSeen = at;
-    session.project = step.project;
     if (step.pid) session.pid = step.pid;
     if (step.tty) session.tty = step.tty;
     return session;
@@ -360,16 +386,23 @@ export class AgentLive implements AgentLiveApi {
     }
   }
 
+  /**
+   * The diff of one file. A live session is diffed in the project of its FIRST report (a later
+   * step claiming another cwd never moves it); an orchestrated `ph-…` id is diffed in the
+   * workspace Phoenix configured for it.
+   */
   async diff(id: string, path: string): Promise<LiveDiffView> {
-    const { live } = await this.resolve(id);
+    const { live, orchestrated } = await this.resolve(id);
     const owner =
       live.find((s) => s.files.has(path)) ??
       live.find((s) => isAbsolute(path) && inside(s.project, path)) ??
       live[0];
-    if (!owner) throw notFound("No live session of this folder has reported file changes");
-    const file = await readDiff(owner.project, path, this.d.git ?? execGit);
+    const workspace = orchestrated?.session?.workspace;
+    const project = workspace ?? owner?.project;
+    if (!project) throw notFound("No live session of this folder has reported file changes");
+    const file = await readDiff(project, path, this.d.git ?? execGit);
     const { commits, ci_runs } = diffLinks(await this.linksFor(id, owner));
-    return { session_id: owner.id, ...file, commits, ci_runs };
+    return { session_id: owner?.id ?? id, ...file, commits, ci_runs };
   }
 
   async exportMarkdown(id: string): Promise<string> {
@@ -430,7 +463,7 @@ export class AgentLive implements AgentLiveApi {
       command: "session.focus_terminal",
       permissions: [],
       sideEffect: "execute",
-      summary: `Agents: bring the terminal window of ${target.agent} in ${basename(target.project) || "a project"} to the front`,
+      summary: focusSummary(target),
     });
     try {
       const done = await focuser.focus({

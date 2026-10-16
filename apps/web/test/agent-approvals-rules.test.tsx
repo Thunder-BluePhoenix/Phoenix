@@ -16,6 +16,7 @@ afterEach(() => {
 
 const rule = (patch: Partial<AgentApprovalRule> = {}): AgentApprovalRule => ({
   id: "rule_1",
+  agent: "claude-code",
   project: "/work/acme",
   tool: "Bash",
   pattern: "npm test *",
@@ -51,6 +52,8 @@ describe("Settings: Agent approval rules", () => {
     const i = within(item);
     expect(i.getByText("npm test *").tagName).toBe("CODE");
     expect(i.getByText("/work/acme")).toBeTruthy();
+    expect(i.getByText("claude-code")).toBeTruthy();
+    expect(i.getByText("Agent", { selector: "dt" })).toBeTruthy();
     expect(i.getByText("3 times")).toBeTruthy();
     expect(i.getByText(/2026|Oct/)).toBeTruthy();
     expect(s.getByText("1 time")).toBeTruthy();

@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CODEX_UNSUPPORTED,
+  MAX_USAGE_KEYS,
   UsageTracker,
   extractClaudeUsage,
   mapCodexRateLimits,
@@ -235,6 +236,47 @@ describe("UsageTracker: one warning per window per threshold, before the limit",
     restarted.record(sampleAt(96));
     expect(again.map((w) => w.threshold)).toEqual([95]);
     expect(first.saved.length).toBeGreaterThan(0);
+  });
+
+  it("a flood of distinct agents is bounded: 32 keys kept, the rest refused, no growing writes", () => {
+    const { tracker, saved } = make();
+    const accepted: boolean[] = [];
+    for (let i = 0; i < 500; i++)
+      accepted.push(tracker.record(sampleAt(90, { agent: `agent-${i}` })));
+    expect(accepted.filter(Boolean)).toHaveLength(MAX_USAGE_KEYS);
+    expect(accepted.slice(MAX_USAGE_KEYS).some(Boolean)).toBe(false);
+    expect(tracker.views()).toHaveLength(MAX_USAGE_KEYS);
+    expect(Object.keys(tracker.exportFired()).length).toBeLessThanOrEqual(MAX_USAGE_KEYS);
+    // One write per newly warned window; refused samples write nothing.
+    expect(saved).toHaveLength(MAX_USAGE_KEYS);
+    expect(JSON.stringify(saved.at(-1)).length).toBeLessThan(10_000);
+  });
+
+  it("known keys keep updating when the table is full; ended windows free room", () => {
+    const { tracker, advance } = make();
+    for (let i = 0; i < MAX_USAGE_KEYS; i++) tracker.record(sampleAt(10, { agent: `a-${i}` }));
+    expect(tracker.record(sampleAt(20, { agent: "a-3" }))).toBe(true);
+    expect(tracker.record(sampleAt(20, { agent: "newcomer" }))).toBe(false);
+    advance(4 * 3600_000);
+    const later = sampleAt(20, {
+      agent: "newcomer",
+      resets_at: new Date(NOW + 9 * 3600_000).toISOString(),
+    });
+    expect(tracker.record(later)).toBe(true);
+  });
+
+  it("does not persist for readings that warn nothing, however often they arrive or reset", () => {
+    const { tracker, saved } = make();
+    for (let i = 0; i < 50; i++) {
+      tracker.record(
+        sampleAt(10 + (i % 5), { resets_at: new Date((RESETS + i * 1200) * 1000).toISOString() }),
+      );
+    }
+    expect(saved).toEqual([]);
+    tracker.record(sampleAt(85));
+    expect(saved).toHaveLength(1);
+    tracker.record(sampleAt(86));
+    expect(saved).toHaveLength(1);
   });
 
   it("views carry the level, and mark old readings or past windows stale", () => {

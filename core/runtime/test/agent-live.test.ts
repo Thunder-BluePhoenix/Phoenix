@@ -314,6 +314,37 @@ describe("diff", () => {
     expect(viaPh.commits).toEqual(viaLive.commits);
   });
 
+  it("diffs a live session in the project of its FIRST report; a later step's cwd never moves it", async () => {
+    const r = rig();
+    const home = project();
+    const planted = project();
+    writeFileSync(join(home, "a.ts"), "home\n");
+    writeFileSync(join(planted, "a.ts"), "planted\n");
+    r.live.recordStep(step(home));
+    r.live.recordStep(step(planted));
+    expect(r.live.sessions()[0]!.project).toBe(home);
+    const out = await r.live.diff(LIVE, "a.ts");
+    expect(out.diff).toContain("+home");
+    expect(out.diff).not.toContain("planted");
+    // The event a viewer receives names the session's project, too.
+    await flush();
+    const last = r.events.filter((e) => e.event.event_type === "agent.session.step").at(-1)!;
+    expect(last.event.payload.project).toBe(home);
+  });
+
+  it("diffs an orchestrated ph- session in its configured workspace, not a project a hook reported", async () => {
+    const r = rig();
+    const workspace = project();
+    const hooked = project();
+    writeFileSync(join(workspace, "a.ts"), "configured\n");
+    writeFileSync(join(hooked, "a.ts"), "hooked\n");
+    r.live.recordStep(step(hooked));
+    r.ph.sessions = [phSession(workspace)];
+    r.ph.details[PH] = { session: phSession(workspace), links: [], ambiguous: [], timeline: [] };
+    const out = await r.live.diff(PH, "a.ts");
+    expect(out.diff).toContain("+configured");
+  });
+
   it("links nothing when the session is not associated with an orchestrated one", async () => {
     const r = rig();
     const cwd = project();
@@ -357,6 +388,25 @@ describe("focusTerminal asks first, then focuses", () => {
     expect(r.authorized[0]).toMatch(/^session\.focus_terminal:execute:/);
     expect(r.focused).toEqual([{ project: cwd, pid: 77, tty: "/dev/ttys004" }]);
     expect(r.outcomes).toEqual(["succeeded"]);
+  });
+
+  it("asks with a sanitised project name and the exact tty, pid and window it will act on", async () => {
+    const r = rig();
+    const cwd = realpathSync(mkdtempSync(join(tmpdir(), "phoenix-live-")));
+    dirs.push(cwd);
+    const evil = join(cwd, "app\u202e\u200b\u2066fdp" + "x".repeat(200));
+    mkdirSync(evil);
+    r.live.recordStep(step(evil, { tty: "/dev/ttys004", pid: 77 }));
+    await r.live.focusTerminal(LIVE);
+    const text = r.authorized[0]!;
+    // eslint-disable-next-line no-control-regex
+    expect(text).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e]/);
+    expect(text).toContain("tty /dev/ttys004");
+    expect(text).toContain("pid 77");
+    expect(text).toContain("window titled");
+    expect(text).toContain("app");
+    const shown = /in (.*?) to the front/.exec(text)![1]!;
+    expect(shown.length).toBeLessThanOrEqual(80);
   });
 
   it("does not start anything when the user declines", async () => {
@@ -418,6 +468,23 @@ describe("plan usage and warnings", () => {
     samples: [
       { window: "5h", used_pct: used, resets_at: new Date(T0 + 3600_000).toISOString(), ...over },
     ],
+  });
+
+  it("refuses readings beyond 32 different agent/window pairs and writes no growing state", async () => {
+    const r = rig();
+    for (let i = 0; i < 40; i++) {
+      const call = () => r.live.recordUsage({ ...body(90), agent: `agent-${i}` });
+      if (i < 32) expect(call()).toEqual({ accepted: 1 });
+      else
+        expect(call).toThrow(
+          expect.objectContaining({ details: [expect.stringMatching(/too many/)] }),
+        );
+    }
+    await flush();
+    expect(r.live.usage().usage).toHaveLength(32);
+    const saved = r.settings.get<Record<string, unknown>>(FIRED_KEY, {});
+    expect(Object.keys(saved).length).toBeLessThanOrEqual(32);
+    expect(r.events.filter((e) => e.event.event_type === "agent.usage.updated")).toHaveLength(32);
   });
 
   it("emits agent.usage.updated (ephemeral) per sample and exposes levels, thresholds and Codex as unsupported", async () => {

@@ -17,6 +17,17 @@ export interface AgentApprovalDecisionView {
   answers?: Record<string, string>;
 }
 
+/** What the agent asked to do, redacted. `detail` is compact JSON of every other tool-input field. */
+export interface AgentApprovalInputSummary {
+  command?: string;
+  path?: string;
+  description?: string;
+  detail?: string;
+}
+
+/** Which door the request came through: the owner-only relay socket or the HTTP route. */
+export type AgentApprovalVia = "relay" | "http";
+
 /** One pending request as listed. Never carries the waiter's nonce. */
 export interface AgentApprovalPendingView {
   id: string;
@@ -24,8 +35,9 @@ export interface AgentApprovalPendingView {
   agent: string;
   project: string;
   tool: string;
-  input_summary: { command?: string; path?: string; description?: string };
+  input_summary: AgentApprovalInputSummary;
   questions?: AgentApprovalQuestionView[];
+  via: AgentApprovalVia;
   created_at: string;
   expires_at: string;
   /** Whether an "Always allow here" rule may be created from this request. */
@@ -45,7 +57,7 @@ export type AgentApprovalCreateResult =
       id: string;
       digest: string;
       status: "terminal";
-      reason: "kill_switch" | "too_many_pending";
+      reason: "kill_switch" | "too_many_pending" | "rate_limited";
     };
 
 export type AgentApprovalWaitResult =
@@ -61,6 +73,8 @@ export type AgentApprovalWaitResult =
 
 export interface AgentApprovalRuleView {
   id: string;
+  /** A rule belongs to the agent that raised the request; it never allows another agent. */
+  agent: string;
   project: string;
   tool: string;
   pattern: string;
@@ -88,7 +102,7 @@ export interface AgentApprovalHistoryRow {
  * capability command or tool, so an agent cannot call `decide` or manage rules.
  */
 export interface AgentApprovalsApi {
-  create(body: unknown): AgentApprovalCreateResult;
+  create(body: unknown, via?: AgentApprovalVia): AgentApprovalCreateResult;
   wait(id: string, body: unknown): Promise<AgentApprovalWaitResult>;
   list(): AgentApprovalPendingView[];
   decide(
@@ -109,7 +123,7 @@ export function agentApprovalRoutes(s: CoreServices): Route[] {
   };
   return [
     route("POST", "/api/agent-approvals", async ({ res, body }) => {
-      const created = approvals().create(await body());
+      const created = approvals().create(await body(), "http");
       res.statusCode = 201;
       return created;
     }),

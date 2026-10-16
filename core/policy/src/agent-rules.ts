@@ -7,7 +7,8 @@ import { PolicyError, type Actor, type PolicyAuditSink } from "./types";
 /**
  * "Always allow here" rules for coding-agent permission requests (Phase 56).
  *
- * A rule is scoped to one project (absolute path) and one tool, and to a command pattern:
+ * A rule is scoped to one agent (the one that raised the request: a `claude-code` rule never
+ * allows `codex`), one project (absolute path) and one tool, and to a command pattern:
  * either the exact string, or a prefix ending in ` *` (`npm test *`). Nothing else: no regex, no
  * other wildcard. Rules expire (at most 24 h), are listed and revoked by the user, and every
  * create, use and revoke is audited. Like `PolicyAdmin`, only an authenticated user actor can
@@ -27,15 +28,23 @@ export function isChained(subject: string): boolean {
 
 const PREFIX_SUFFIX = " *";
 
+/** Homoglyphs and invisible characters make a command read as something else to its approver. */
+const NON_ASCII = /[^\x00-\x7f]/;
+
+/** True when `subject` has any non-ASCII character. */
+export const hasNonAscii = (subject: string): boolean => NON_ASCII.test(subject);
+
 /**
  * Whether `subject` can be the subject of a rule at all: it must fit the pattern limit, and an
  * exact pattern ending in ` *` would be read back as a prefix, so such a subject has no exact form.
+ * Subjects with non-ASCII characters never qualify: the user cannot tell what they approve.
  */
 export function agentRuleSubjectEligible(subject: string): boolean {
   return (
     subject.length > 0 &&
     subject.length <= AGENT_RULE_MAX_PATTERN &&
-    !subject.endsWith(PREFIX_SUFFIX)
+    !subject.endsWith(PREFIX_SUFFIX) &&
+    !hasNonAscii(subject)
   );
 }
 
@@ -45,6 +54,7 @@ export function agentPatternProblem(pattern: unknown): string | undefined {
     return "pattern must be a non-empty string";
   if (pattern.length > AGENT_RULE_MAX_PATTERN)
     return `pattern must be at most ${AGENT_RULE_MAX_PATTERN} characters`;
+  if (hasNonAscii(pattern)) return "pattern must be ASCII";
   if (pattern.endsWith(PREFIX_SUFFIX)) {
     const prefix = pattern.slice(0, -PREFIX_SUFFIX.length);
     if (prefix.trim().length === 0) return "a prefix pattern needs text before ` *`";
@@ -66,6 +76,7 @@ export function agentPatternMatches(pattern: string, subject: string): boolean {
 
 export interface AgentRule {
   id: string;
+  agent: string;
   project: string;
   tool: string;
   pattern: string;
@@ -77,6 +88,7 @@ export interface AgentRule {
 
 interface RuleRow {
   id: string;
+  agent: string;
   project: string;
   tool: string;
   pattern: string;
@@ -88,6 +100,7 @@ interface RuleRow {
 
 const toRule = (row: RuleRow): AgentRule => ({
   id: row.id,
+  agent: row.agent,
   project: row.project,
   tool: row.tool,
   pattern: row.pattern,
@@ -104,6 +117,7 @@ export interface AgentRuleBookOptions {
 }
 
 export interface AgentRuleRequest {
+  agent: string;
   project: string;
   tool: string;
   pattern: string;
@@ -132,13 +146,13 @@ export class AgentRuleBook {
     ).map(toRule);
   }
 
-  /** The active rule for this project and tool that covers `subject`, if any. */
-  match(project: string, tool: string, subject: string): AgentRule | undefined {
+  /** The active rule for this agent, project and tool that covers `subject`, if any. */
+  match(agent: string, project: string, tool: string, subject: string): AgentRule | undefined {
     const rows = this.db
       .prepare(
-        "SELECT * FROM agent_approval_rules WHERE project = ? AND tool = ? AND expires_at > ? ORDER BY created_at, id",
+        "SELECT * FROM agent_approval_rules WHERE agent = ? AND project = ? AND tool = ? AND expires_at > ? ORDER BY created_at, id",
       )
-      .all(project, tool, this.now()) as unknown as RuleRow[];
+      .all(agent, project, tool, this.now()) as unknown as RuleRow[];
     return rows.map(toRule).find((r) => agentPatternMatches(r.pattern, subject));
   }
 
@@ -151,15 +165,23 @@ export class AgentRuleBook {
     this.record(
       { kind: "system", id: "agent-rule", trustedByUser: false },
       "agent_approval.rule.used",
-      { ruleId: rule.id, project: rule.project, tool: rule.tool, pattern: rule.pattern },
+      {
+        ruleId: rule.id,
+        agent: rule.agent,
+        project: rule.project,
+        tool: rule.tool,
+        pattern: rule.pattern,
+      },
     );
     return true;
   }
 
   create(request: AgentRuleRequest): AgentRule {
-    const { project, tool, pattern, ttlMs, by } = request;
+    const { agent, project, tool, pattern, ttlMs, by } = request;
     this.requireUser(by, "agent_approval.rule.create");
     const problems: string[] = [];
+    if (typeof agent !== "string" || !/^[a-z0-9-]{1,24}$/.test(agent))
+      problems.push("agent must match [a-z0-9-]{1,24}");
     if (typeof project !== "string" || project.length === 0 || project.length > 1000)
       problems.push("project must be an absolute path of at most 1000 characters");
     if (typeof tool !== "string" || tool.length === 0 || tool.length > 100)
@@ -169,7 +191,7 @@ export class AgentRuleBook {
     if (!Number.isInteger(ttlMs) || ttlMs <= 0) problems.push("ttlMs must be a positive integer");
     else if (ttlMs > MAX_APPROVAL_TTL_MS) problems.push("ttlMs must be at most 24 h");
     if (problems.length > 0) {
-      this.record(by, "agent_approval.rule.rejected", { project, tool, problems }, "denied");
+      this.record(by, "agent_approval.rule.rejected", { agent, project, tool, problems }, "denied");
       throw new PolicyError("INVALID_APPROVAL", "Invalid agent approval rule", problems);
     }
 
@@ -177,13 +199,16 @@ export class AgentRuleBook {
     // Expired rules carry no information the audit log does not already hold.
     this.db.prepare("DELETE FROM agent_approval_rules WHERE expires_at <= ?").run(nowMs);
     const existing = this.db
-      .prepare("SELECT * FROM agent_approval_rules WHERE project = ? AND tool = ? AND pattern = ?")
-      .get(project, tool, pattern) as unknown as RuleRow | undefined;
+      .prepare(
+        "SELECT * FROM agent_approval_rules WHERE agent = ? AND project = ? AND tool = ? AND pattern = ?",
+      )
+      .get(agent, project, tool, pattern) as unknown as RuleRow | undefined;
     const expiresAt = nowMs + ttlMs;
     if (existing) {
       // The same scope again refreshes the expiry instead of stacking duplicates.
       this.record(by, "agent_approval.rule.created", {
         ruleId: existing.id,
+        agent,
         project,
         tool,
         pattern,
@@ -203,6 +228,7 @@ export class AgentRuleBook {
 
     const rule: AgentRule = {
       id: `arl_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`,
+      agent,
       project,
       tool,
       pattern,
@@ -213,6 +239,7 @@ export class AgentRuleBook {
     };
     this.record(by, "agent_approval.rule.created", {
       ruleId: rule.id,
+      agent,
       project,
       tool,
       pattern,
@@ -220,11 +247,34 @@ export class AgentRuleBook {
     });
     this.db
       .prepare(
-        `INSERT INTO agent_approval_rules (id, project, tool, pattern, created_at, expires_at, created_by, uses)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+        `INSERT INTO agent_approval_rules (id, agent, project, tool, pattern, created_at, expires_at, created_by, uses)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
       )
-      .run(rule.id, project, tool, pattern, rule.createdAt, rule.expiresAt, rule.createdBy);
+      .run(rule.id, agent, project, tool, pattern, rule.createdAt, rule.expiresAt, rule.createdBy);
     return rule;
+  }
+
+  /**
+   * Takes back a rule `create` just made because the decision it belonged to could not be
+   * recorded: restores the previous expiry when the create only refreshed an existing rule,
+   * deletes it otherwise. Never throws; the audit note is best-effort.
+   */
+  undo(rule: AgentRule, previousExpiresAt: number | undefined): void {
+    if (previousExpiresAt === undefined)
+      this.db.prepare("DELETE FROM agent_approval_rules WHERE id = ?").run(rule.id);
+    else
+      this.db
+        .prepare("UPDATE agent_approval_rules SET expires_at = ? WHERE id = ?")
+        .run(previousExpiresAt, rule.id);
+    try {
+      this.record(
+        { kind: "system", id: "agent-rule", trustedByUser: false },
+        "agent_approval.rule.rolled_back",
+        { ruleId: rule.id, agent: rule.agent, project: rule.project, tool: rule.tool },
+      );
+    } catch {
+      // The rule is already gone; nothing more can be said if the audit log is the failure.
+    }
   }
 
   revoke(by: Actor, id: string): void {

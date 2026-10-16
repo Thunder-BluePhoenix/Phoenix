@@ -15,12 +15,13 @@ import {
 } from "@phoenix/policy";
 import { ErrorCode, PhoenixError, type PhoenixEvent } from "@phoenix/protocol";
 import { silentLogger } from "@phoenix/logging";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { FAKE_GITHUB_TOKEN } from "../../../protocol/testing/fake-secrets";
 import {
   AgentApprovals,
   EVENT_COMMAND_CHARS,
   MAX_PENDING_APPROVALS,
+  RATE_LIMIT_PER_MINUTE,
   type ApprovalClock,
 } from "../src/agent-approvals";
 
@@ -602,6 +603,7 @@ describe("Always rules", () => {
     expect(Date.parse(rule.expires_at) - Date.parse(rule.created_at)).toBe(24 * 60 * MIN);
     expect(() =>
       env.rules.create({
+        agent: "claude",
         project: "/p",
         tool: "Bash",
         pattern: "ls",
@@ -645,6 +647,7 @@ describe("Always rules", () => {
     allowAlways(env, {}, "npm test *", 10);
     env.clock.advance(5 * MIN);
     env.rules.create({
+      agent: "claude",
       project: "/work/phoenix",
       tool: "Bash",
       pattern: "npm test *",
@@ -660,7 +663,14 @@ describe("Always rules", () => {
     const env = setup();
     const agent: Actor = { kind: "agent", id: "claude", trustedByUser: true };
     expect(() =>
-      env.rules.create({ project: "/p", tool: "Bash", pattern: "ls", ttlMs: MIN, by: agent }),
+      env.rules.create({
+        agent: "claude",
+        project: "/p",
+        tool: "Bash",
+        pattern: "ls",
+        ttlMs: MIN,
+        by: agent,
+      }),
     ).toThrow(expect.objectContaining({ code: "NOT_USER_ACTOR" }));
     expect(() => env.rules.revoke({ ...user, trustedByUser: false }, "arl_x")).toThrow(
       expect.objectContaining({ code: "NOT_USER_ACTOR" }),
@@ -797,7 +807,7 @@ describe("bounded pending", () => {
   it(`holds at most ${MAX_PENDING_APPROVALS} and answers 'terminal' beyond that`, async () => {
     const env = setup();
     for (let i = 0; i < MAX_PENDING_APPROVALS; i++)
-      pendingOf(env, { input_summary: { command: `cmd ${i}` } });
+      pendingOf(env, { session_id: `s${i}`, input_summary: { command: `cmd ${i}` } });
     const over = env.approvals.create(request({ input_summary: { command: "one too many" } }));
     expect(over).toMatchObject({ status: "terminal", reason: "too_many_pending" });
     expect(env.approvals.list()).toHaveLength(MAX_PENDING_APPROVALS);
@@ -901,5 +911,415 @@ describe("history", () => {
       actor: "user:web",
       decision: "allowed",
     });
+  });
+});
+
+const fake = (...parts: string[]) => parts.join("");
+
+describe("detail, hidden characters and non-ASCII subjects", () => {
+  it("shows a redacted detail, binds it into the digest and refuses an over-limit one", () => {
+    const env = setup();
+    const secret = fake("sec", "ret-detail-", "77");
+    const detail = JSON.stringify({ env: `API_TOKEN=${secret}`, timeout: 5 });
+    const a = pendingOf(env, { input_summary: { command: "run", detail } });
+    const [listed] = env.approvals.list();
+    expect(listed!.input_summary.detail).toContain("[REDACTED]");
+    expect(listed!.input_summary.detail).not.toContain(secret);
+    const b = pendingOf(env, { input_summary: { command: "run", detail: '{"timeout":6}' } });
+    expect(a.digest).not.toBe(b.digest);
+    expect(
+      env.approvals.create(request({ input_summary: { detail: "d".repeat(2000) } })).status,
+    ).toBe("pending");
+    expect(
+      failure(() => env.approvals.create(request({ input_summary: { detail: "d".repeat(2001) } })))
+        .code,
+    ).toBe(ErrorCode.INVALID_REQUEST);
+  });
+
+  it("refuses control, bidi and zero-width characters in every text field", () => {
+    const env = setup();
+    const hidden = [
+      "\u0000",
+      "\u0007",
+      "\u001b",
+      "\u007f",
+      "\u202e",
+      "\u2066",
+      "\u200e",
+      "\u200b",
+      "\u200d",
+      "\u2060",
+      "\ufeff",
+    ];
+    const fields: Record<string, (c: string) => Record<string, unknown>> = {
+      project: (c) => ({ project: `/work/ph${c}oenix` }),
+      tool: (c) => ({ tool: `Ba${c}sh` }),
+      session_id: (c) => ({ session_id: `s${c}1` }),
+      agent: (c) => ({ agent: `cl${c}aude` }),
+      command: (c) => ({ input_summary: { command: `ls ${c}-la` } }),
+      path: (c) => ({ input_summary: { path: `/a/b${c}.txt` } }),
+      description: (c) => ({ input_summary: { description: `list${c}files` } }),
+      detail: (c) => ({ input_summary: { detail: `{"a":"b${c}"}` } }),
+    };
+    for (const [field, build] of Object.entries(fields)) {
+      for (const c of hidden) {
+        expect(
+          failure(() => env.approvals.create(request(build(c)))).code,
+          `${field} ${c.codePointAt(0)?.toString(16)}`,
+        ).toBe(ErrorCode.INVALID_REQUEST);
+      }
+    }
+    expect(env.approvals.list()).toEqual([]);
+  });
+
+  it("offers no Always rule, and matches none, for a subject with a non-ASCII character", () => {
+    const env = setup();
+    const lookalike = "echo caf\u00e9";
+    const a = pendingOf(env, { input_summary: { command: lookalike } });
+    expect(env.approvals.list()[0]!.always_ok).toBe(false);
+    expect(
+      failure(() => env.approvals.decide(a.id, { behavior: "allow", always: { ttl_minutes: 5 } }))
+        .code,
+    ).toBe(ErrorCode.INVALID_REQUEST);
+    // A rule that exists for that exact text (written around the book) never answers it.
+    env.db
+      .prepare(
+        `INSERT INTO agent_approval_rules (id, agent, project, tool, pattern, created_at, expires_at, created_by, uses)
+         VALUES ('arl_x', 'claude', '/work/phoenix', 'Bash', ?, ?, ?, 'user:owner', 0)`,
+      )
+      .run(lookalike, T0, T0 + MIN);
+    expect(() =>
+      env.rules.create({
+        agent: "claude",
+        project: "/work/phoenix",
+        tool: "Bash",
+        pattern: lookalike,
+        ttlMs: MIN,
+        by: user,
+      }),
+    ).toThrow(PolicyError);
+    expect(env.approvals.create(request({ input_summary: { command: lookalike } })).status).toBe(
+      "pending",
+    );
+    env.approvals.decide(a.id, { behavior: "allow" });
+    expect(env.approvals.rules().map((r) => r.id)).toEqual(["arl_x"]);
+  });
+});
+
+describe("Always rules belong to an agent", () => {
+  it("a claude-code rule never allows codex, and the view and audit name the agent", () => {
+    const env = setup();
+    const a = pendingOf(env, { agent: "claude-code", input_summary: { command: "npm test a" } });
+    const outcome = env.approvals.decide(a.id, {
+      behavior: "allow",
+      always: { ttl_minutes: 60, pattern: "npm test *" },
+    });
+    expect(outcome.rule).toMatchObject({ agent: "claude-code", pattern: "npm test *" });
+    expect(env.approvals.rules()[0]).toMatchObject({ agent: "claude-code" });
+    const status = (agent: string) =>
+      env.approvals.create(request({ agent, input_summary: { command: "npm test b" } })).status;
+    expect(status("claude-code")).toBe("decided");
+    expect(status("codex")).toBe("pending");
+    expect(status("claude")).toBe("pending");
+    const audited = env.audit.list({ capabilityId: "agent_approval", limit: 50 });
+    expect(audited.find((e) => e.action === "agent_approval.rule.created")!.details.agent).toBe(
+      "claude-code",
+    );
+    expect(audited.find((e) => e.action === "agent_approval.rule.used")!.details.agent).toBe(
+      "claude-code",
+    );
+  });
+
+  it("the same pattern for two agents is two rules, and revoking one leaves the other", () => {
+    const env = setup();
+    for (const agent of ["claude-code", "codex"]) {
+      const a = pendingOf(env, { agent, input_summary: { command: "make lint" } });
+      env.approvals.decide(a.id, { behavior: "allow", always: { ttl_minutes: 60 } });
+    }
+    const rules = env.approvals.rules();
+    expect(rules.map((r) => r.agent).sort()).toEqual(["claude-code", "codex"]);
+    env.approvals.revokeRule(rules.find((r) => r.agent === "codex")!.id);
+    const status = (agent: string) =>
+      env.approvals.create(request({ agent, input_summary: { command: "make lint" } })).status;
+    expect(status("claude-code")).toBe("decided");
+    expect(status("codex")).toBe("pending");
+  });
+});
+
+describe("audit never holds the raw command", () => {
+  const password = fake("hun", "ter-", "two");
+  const tokenValue = fake("tok", "en-value-", "9");
+  const command = `deploy --password ${password} ${"x".repeat(300)} TOKEN=${tokenValue}`;
+
+  async function everything(env: Env): Promise<string> {
+    await env.flush();
+    return JSON.stringify([
+      env.approvals.history(200),
+      env.events,
+      env.audit.list({ limit: 500 }),
+      env.approvals.list(),
+    ]);
+  }
+
+  it("matches a deny rule on the raw text but records only redacted text of at most 200 characters", async () => {
+    const env = setup();
+    env.admin.addRule(user, {
+      id: "no-pw-deploy",
+      effect: "deny",
+      match: { tool: "agent_approval.bash", resource: "deploy --password *" },
+    });
+    const denied = env.approvals.create(request({ input_summary: { command } }));
+    expect(denied).toMatchObject({ status: "decided", decided_by: "policy" });
+    const all = await everything(env);
+    expect(all).not.toContain(password);
+    expect(all).not.toContain(tokenValue);
+    const row = env.audit
+      .list({ limit: 50 })
+      .find((e) => e.action === "policy.decision" && e.details.matched !== undefined)!;
+    expect(row.details.matched).toEqual(["no-pw-deploy"]);
+    expect(String(row.details.resource)).toContain("[REDACTED]");
+    expect(String(row.details.resource).length).toBeLessThanOrEqual(201);
+  });
+
+  it("also keeps it out of every row when the stored policy is unreadable (fail closed)", async () => {
+    const env = setup();
+    env.db
+      .prepare(
+        "INSERT INTO policy_rules (id, rule, created_by, created_at) VALUES ('bad', '{}', 'x', 'y')",
+      )
+      .run();
+    expect(env.approvals.create(request({ input_summary: { command } }))).toMatchObject({
+      status: "decided",
+      decided_by: "policy",
+    });
+    const all = await everything(env);
+    expect(all).not.toContain(password);
+    expect(all).not.toContain(tokenValue);
+    const row = env.audit.list({ limit: 50 }).find((e) => e.action === "policy.decision")!;
+    expect(row.details.matched).toEqual(["builtin:invalid-rules"]);
+    expect(String(row.details.resource)).toContain("[REDACTED]");
+  });
+
+  it("a pending, allowed request leaves no secret in any row either", async () => {
+    const env = setup();
+    const a = pendingOf(env, { input_summary: { command } });
+    env.approvals.decide(a.id, { behavior: "allow" });
+    const all = await everything(env);
+    expect(all).not.toContain(password);
+    expect(all).not.toContain(tokenValue);
+  });
+});
+
+describe("deny rules resist cheap bypasses (best-effort, not a sandbox)", () => {
+  it("denies every spelling of a denied command, and still lets unrelated commands through", () => {
+    const env = setup();
+    env.admin.addRule(user, {
+      id: "no-rm-rf",
+      effect: "deny",
+      match: { tool: "agent_approval.bash", resource: "rm -rf *" },
+    });
+    const bypasses = [
+      "rm -rf /",
+      " rm -rf /",
+      "rm   -rf  /",
+      "rm\t-rf /",
+      "rm -fr /",
+      "rm -r -f /",
+      "rm -f -r /",
+      "/bin/rm -rf /",
+      "/usr/bin/rm -rf /",
+      "\\rm -rf /",
+      "'rm' -rf /",
+      "sudo rm -rf /",
+      "sudo -u root rm -rf /",
+      "FOO=1 rm -rf /",
+      "FOO=1 BAR='a b' rm -rf /",
+      "env FOO=1 rm -rf /",
+      "command rm -rf /",
+      "nohup rm -rf /",
+      "time rm -rf /",
+      "exec rm -rf /",
+      "sudo env X=1 nohup /bin/rm -fr /",
+      "ls; rm -rf /",
+      "ls ;rm -rf /",
+      "ls && rm -rf /",
+      "false || rm -rf /",
+      "ls | rm -rf /",
+      "ls & rm -rf /",
+      "ls\nrm -rf /",
+      "echo $(rm -rf /)",
+      "echo `rm -rf /`",
+      "(rm -rf /)",
+      "{ rm -rf /; }",
+      "bash -c 'rm -rf /'",
+      'sh -c "ls; /bin/rm -fr /"',
+    ];
+    for (const [i, command] of bypasses.entries()) {
+      expect(
+        env.approvals.create(request({ session_id: `b${i}`, input_summary: { command } })),
+        JSON.stringify(command),
+      ).toMatchObject({ status: "decided", decided_by: "policy" });
+    }
+    for (const command of [
+      "ls",
+      "echo rm -rf is dangerous",
+      "rmdir x",
+      "npm run rm-rf",
+      "git rm file",
+    ]) {
+      expect(env.approvals.create(request({ input_summary: { command } })).status, command).toBe(
+        "pending",
+      );
+    }
+  });
+
+  it("an exact deny pattern is met in normalised form too", () => {
+    const env = setup();
+    env.admin.addRule(user, {
+      id: "no-curl-evil",
+      effect: "deny",
+      match: { tool: "agent_approval.bash", resource: "curl http://evil.example" },
+    });
+    for (const command of [
+      "curl http://evil.example",
+      "curl  http://evil.example",
+      "ls; /usr/bin/curl http://evil.example",
+      "sudo curl http://evil.example",
+    ])
+      expect(env.approvals.create(request({ input_summary: { command } })).status, command).toBe(
+        "decided",
+      );
+    expect(
+      env.approvals.create(request({ input_summary: { command: "curl http://good.example" } }))
+        .status,
+    ).toBe("pending");
+  });
+});
+
+describe("a failed audit write does not leave an Always rule behind", () => {
+  it("rolls back the new rule, keeps the request pending, and can be retried", () => {
+    const env = setup();
+    const a = pendingOf(env);
+    const record = env.audit.record.bind(env.audit);
+    const spy = vi.spyOn(env.audit, "record").mockImplementation((entry) => {
+      if (entry.action === "agent_approval.resolved") throw new Error("disk full");
+      return record(entry);
+    });
+    expect(() =>
+      env.approvals.decide(a.id, { behavior: "allow", always: { ttl_minutes: 60 } }),
+    ).toThrow("disk full");
+    expect(env.approvals.rules()).toEqual([]);
+    expect(env.approvals.list()).toHaveLength(1);
+    expect(env.approvals.create(request()).status).toBe("pending");
+    spy.mockRestore();
+    expect(
+      env.approvals.decide(a.id, { behavior: "allow", always: { ttl_minutes: 60 } }).rule,
+    ).toBeDefined();
+    expect(env.approvals.rules()).toHaveLength(1);
+  });
+
+  it("restores the old expiry when the failed decision only refreshed an existing rule", () => {
+    const env = setup();
+    const first = pendingOf(env);
+    const second = pendingOf(env, { session_id: "s2" });
+    env.approvals.decide(first.id, { behavior: "allow", always: { ttl_minutes: 10 } });
+    const record = env.audit.record.bind(env.audit);
+    vi.spyOn(env.audit, "record").mockImplementation((entry) => {
+      if (entry.action === "agent_approval.resolved") throw new Error("disk full");
+      return record(entry);
+    });
+    expect(() =>
+      env.approvals.decide(second.id, { behavior: "allow", always: { ttl_minutes: 1440 } }),
+    ).toThrow("disk full");
+    expect(env.approvals.rules()).toHaveLength(1);
+    expect(env.approvals.rules()[0]!.expires_at).toBe(new Date(T0 + 10 * MIN).toISOString());
+  });
+});
+
+describe("per agent-session rate limit", () => {
+  it("answers terminal rate_limited past 20 creates a minute, per agent + session, and recovers", () => {
+    const env = setup();
+    for (let i = 0; i < RATE_LIMIT_PER_MINUTE; i++)
+      expect(env.approvals.create(request({ input_summary: { command: `c ${i}` } })).status).toBe(
+        "pending",
+      );
+    const limited = env.approvals.create(request({ input_summary: { command: "c over" } }));
+    expect(limited).toMatchObject({ status: "terminal", reason: "rate_limited" });
+    expect(limited).not.toHaveProperty("nonce");
+    // Another session and another agent have their own budget.
+    expect(env.approvals.create(request({ session_id: "other" })).status).toBe("pending");
+    expect(env.approvals.create(request({ agent: "codex" })).status).toBe("pending");
+    expect(env.approvals.list().some((p) => p.input_summary.command === "c over")).toBe(false);
+    expect(
+      env.audit
+        .list({ capabilityId: "agent_approval", limit: 200 })
+        .some((e) => e.details.reason === "rate_limited"),
+    ).toBe(true);
+    env.clock.advance(60_000);
+    expect(env.approvals.create(request({ input_summary: { command: "again" } })).status).toBe(
+      "pending",
+    );
+  });
+
+  it("keeps the 50 pending cap on top of the rate limit", () => {
+    const env = setup();
+    for (let i = 0; i < MAX_PENDING_APPROVALS; i++)
+      env.approvals.create(request({ session_id: `s${i}`, input_summary: { command: `c ${i}` } }));
+    expect(env.approvals.create(request({ session_id: "z" }))).toMatchObject({
+      reason: "too_many_pending",
+    });
+  });
+});
+
+describe("production heuristic for Always", () => {
+  it("refuses Always for prd, prod_, _prod, -prod, prod-, prod. and prod-valued context/namespace", () => {
+    const env = setup();
+    const risky = [
+      "deploy --env prd",
+      "run prod_migrate",
+      "run migrate_prod",
+      "ship app-prod",
+      "ship prod-eu",
+      "scp a host.prod.example.com",
+      "scp a prod.example.com:/x",
+      "kubectl get pods --context my-prod-cluster",
+      "kubectl get pods --context=corp-prod",
+      "kubectl get pods --namespace production-ns",
+      "kubectl get pods --namespace=payments-prod",
+      "kubectl get pods -n prod",
+      "kubectl get pods -nprod",
+      "kubectl get pods -n=prod",
+      "deploy PRODUCTION",
+    ];
+    for (const command of risky)
+      pendingOf(env, { session_id: command, input_summary: { command } });
+    const safe = [
+      "npm test product",
+      "kubectl get pods -n staging",
+      "ls approved/",
+      "echo improdigy",
+    ];
+    for (const command of safe) pendingOf(env, { session_id: command, input_summary: { command } });
+    const flags = Object.fromEntries(
+      env.approvals.list().map((p) => [p.input_summary.command, p.always_ok]),
+    );
+    for (const command of risky) expect(flags[command], command).toBe(false);
+    for (const command of safe) expect(flags[command], command).toBe(true);
+  });
+});
+
+describe("via", () => {
+  it("lists and audits the door a request came through; http by default", () => {
+    const env = setup();
+    const viaRelay = env.approvals.create(request({ input_summary: { command: "a" } }), "relay");
+    env.approvals.create(request({ input_summary: { command: "b" } }));
+    env.approvals.create(request({ input_summary: { command: "c" } }), "http");
+    expect(viaRelay.status).toBe("pending");
+    expect(env.approvals.list().map((p) => p.via)).toEqual(["relay", "http", "http"]);
+    env.approvals.decide(env.approvals.list()[0]!.id, { behavior: "deny" });
+    const row = env.audit
+      .list({ capabilityId: "agent_approval", limit: 50 })
+      .find((e) => e.action === "agent_approval.resolved")!;
+    expect(row.details.via).toBe("relay");
   });
 });

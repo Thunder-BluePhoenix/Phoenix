@@ -5,14 +5,10 @@ import { ApiError } from "../core/client";
 import { useClient } from "../core/context";
 import { useAgentApprovals } from "../core/hooks";
 import type { AgentApproval } from "../core/types";
+import { hasHiddenChars, RevealedBlock, revealNodes, revealPlain } from "./RevealedText";
 
-/** Longest command or path shown on a card; the full text is never needed to decide. */
-const SHOWN_CHARS = 300;
 const MAX_QUESTIONS = 4;
 const ALWAYS_TTL_MINUTES = 60;
-
-const truncate = (text: string) =>
-  text.length > SHOWN_CHARS ? `${text.slice(0, SHOWN_CHARS)}…` : text;
 
 /** "1:59", or "0:07": whole seconds left, never negative. */
 export function formatRemaining(ms: number): string {
@@ -34,7 +30,9 @@ function useNow(active: boolean): number {
 }
 
 const titleOf = (a: AgentApproval) =>
-  a.kind === "question" ? `${a.agent} has a question` : `${a.agent} wants to use ${a.tool}`;
+  a.kind === "question"
+    ? `${revealPlain(a.agent)} has a question`
+    : `${revealPlain(a.agent)} wants to use ${revealPlain(a.tool)}`;
 
 type Outcome = "allowed" | "denied" | "always" | "answered" | "terminal" | "stale";
 
@@ -121,7 +119,10 @@ function AgentApprovalCard({
   const remaining = Date.parse(a.expires_at) - now;
   const isQuestion = a.kind === "question";
   const answered = questions.length > 0 && questions.every((_, i) => (picks[i]?.length ?? 0) > 0);
-  const { command, path, description } = a.input_summary;
+  const { command, path, description, detail } = a.input_summary;
+  const hidden = [a.agent, a.project, a.tool, command, path, description, detail].some(
+    (text) => text !== undefined && hasHiddenChars(text),
+  );
 
   const pick = (index: number, label: string, multi: boolean, on: boolean) =>
     setPicks((prev) =>
@@ -176,18 +177,24 @@ function AgentApprovalCard({
       <p id={`${id}-title`} className="approval-summary">
         {title}
       </p>
+      {hidden && (
+        <p className="approval-missing small" role="note">
+          Warning: this request contains non-ASCII characters. Each one is shown below as an escape
+          such as {"\\u{202e}"}.
+        </p>
+      )}
       <dl className="approval-facts small">
         <dt>Agent</dt>
-        <dd>{a.agent}</dd>
+        <dd className="reveal-block">{revealNodes(a.agent)}</dd>
         <dt>Project</dt>
-        <dd className="memory-text">{a.project}</dd>
+        <dd className="reveal-block">{revealNodes(a.project)}</dd>
         <dt>Tool</dt>
-        <dd>{a.tool}</dd>
+        <dd className="reveal-block">{revealNodes(a.tool)}</dd>
         {command && (
           <>
             <dt>Command</dt>
             <dd>
-              <code className="memory-text">{truncate(command)}</code>
+              <RevealedBlock text={command} />
             </dd>
           </>
         )}
@@ -195,14 +202,30 @@ function AgentApprovalCard({
           <>
             <dt>Path</dt>
             <dd>
-              <code className="memory-text">{truncate(path)}</code>
+              <RevealedBlock text={path} />
             </dd>
           </>
         )}
         {description && (
           <>
             <dt>Description</dt>
-            <dd className="memory-text">{truncate(description)}</dd>
+            <dd>
+              <RevealedBlock text={description} />
+            </dd>
+          </>
+        )}
+        {detail && (
+          <>
+            <dt>Other arguments</dt>
+            <dd>
+              <RevealedBlock text={detail} />
+            </dd>
+          </>
+        )}
+        {a.via === "relay" && (
+          <>
+            <dt>Sent through</dt>
+            <dd>the local relay</dd>
           </>
         )}
         {Number.isFinite(remaining) && (

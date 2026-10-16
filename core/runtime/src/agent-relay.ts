@@ -125,7 +125,7 @@ export class AgentRelay implements AgentRelayApi {
           await this.d.invokeReport(body);
           return { accepted: true };
         },
-        "approval.create": (body) => this.d.approvals.create(body),
+        "approval.create": (body) => this.d.approvals.create(body, "relay"),
         "approval.wait": (body) => this.wait(body),
         ...(live
           ? {

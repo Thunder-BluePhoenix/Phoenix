@@ -19,7 +19,8 @@ import {
   APPROVAL_TIMEOUT,
   approvalHookTimeoutSeconds,
   defaultSummary,
-  MAX_PATH,
+  shellQuote,
+  summarizeExtra,
   type InputSummarizer,
   type InputSummary,
 } from "./approval-map";
@@ -27,20 +28,30 @@ import { isRecord } from "./guards";
 
 export const CODEX_AGENT = "codex";
 
-const PATCH_FILE = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/m;
+/** Every file a patch touches: `*** Add|Update|Delete File: <p>` and `*** Move to: <p>`. */
+const PATCH_FILE = /^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$/gm;
 
 /**
- * Bash and MCP tools: command / path / description like Claude Code. apply_patch: the first file
- * named in the patch, never the patch text (it is file content).
+ * Bash and MCP tools: command / path / description like Claude Code. apply_patch: the files named
+ * in the patch, never the patch text (it is file content). `path` is the first file. Several files
+ * are all in the `command` (shell-quoted, space separated; Core's rule subject is the command, else
+ * the path) so an Always rule covers every one of them, and in `detail` with the other tool-input
+ * fields (escalation flags).
  */
 export const codexSummary: InputSummarizer = (tool, toolInput) => {
   if (tool !== "apply_patch") return defaultSummary(tool, toolInput);
   const input = isRecord(toolInput) ? toolInput : {};
   const patch = typeof input.command === "string" ? input.command : "";
-  const file = PATCH_FILE.exec(patch)?.[1]?.trim();
-  const summary: InputSummary = defaultSummary(tool, { description: input.description });
-  if (file && file.length <= MAX_PATH && !/\p{Cc}/u.test(file)) summary.path = file;
-  return summary;
+  const files = [...patch.matchAll(PATCH_FILE)].map((m) => m[1]!.trim()).filter((f) => f !== "");
+  const { command: _patch, description, ...rest } = input;
+  const extra = summarizeExtra({ ...rest, ...(files.length > 1 ? { files } : {}) });
+  if (!extra) return null;
+  const summary: InputSummary = {};
+  if (files.length > 0) summary.path = files[0];
+  // Core's rule subject is the command, else the path: a multi-file patch puts every file in it.
+  if (files.length > 1) summary.command = files.map(shellQuote).join(" ");
+  if (typeof description === "string" && description.length > 0) summary.description = description;
+  return { ...summary, ...extra };
 };
 
 /** Per-agent summarizers; agents not listed use the Claude Code tool shapes. */

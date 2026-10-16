@@ -272,7 +272,11 @@ describe.skipIf(process.platform === "win32")("Core hosts the relay socket", () 
         {
           agent: "claude-code",
           samples: [
-            { window: "5h", used_pct: 42, resets_at: new Date(Date.now() + 3_600_000).toISOString() },
+            {
+              window: "5h",
+              used_pct: 42,
+              resets_at: new Date(Date.now() + 3_600_000).toISOString(),
+            },
           ],
         },
         options,

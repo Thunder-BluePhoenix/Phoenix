@@ -217,13 +217,16 @@ interface WindowState {
   fired: Record<number, true>;
 }
 
+/** Distinct (agent, window) readings kept; a sender cannot make Core track or persist more. */
+export const MAX_USAGE_KEYS = 32;
+
 /** The latest reading per agent and window, and the one-shot warnings. */
 export class UsageTracker {
   private windows: Record<string, WindowState> = {};
   private samples: Record<string, UsageSample> = {};
 
   constructor(private readonly o: UsageTrackerOptions) {
-    for (const [key, saved] of Object.entries(o.fired ?? {})) {
+    for (const [key, saved] of Object.entries(o.fired ?? {}).slice(0, MAX_USAGE_KEYS)) {
       this.windows[key] = {
         resets_at: saved.resets_at,
         fired: Object.fromEntries(saved.thresholds.map((t) => [t, true as const])),
@@ -231,26 +234,52 @@ export class UsageTracker {
     }
   }
 
-  record(sample: UsageSample): void {
+  /** Makes room for one more (agent, window) key by dropping those whose window has ended. */
+  private hasRoomFor(key: string): boolean {
+    if (key in this.windows || key in this.samples) return true;
+    if (Object.keys({ ...this.windows, ...this.samples }).length < MAX_USAGE_KEYS) return true;
+    const nowMs = this.o.now();
+    for (const [k, w] of Object.entries(this.windows)) {
+      if (Date.parse(w.resets_at) < nowMs) {
+        delete this.windows[k];
+        delete this.samples[k];
+      }
+    }
+    for (const [k, s] of Object.entries(this.samples)) {
+      if (Date.parse(s.resets_at) < nowMs) delete this.samples[k];
+    }
+    return Object.keys({ ...this.windows, ...this.samples }).length < MAX_USAGE_KEYS;
+  }
+
+  /**
+   * Takes one reading. Returns false (and keeps nothing) when `sample` would be the 33rd distinct
+   * (agent, window) pair while all 32 are still current: a sender cannot grow this without bound.
+   */
+  record(sample: UsageSample): boolean {
     const key = `${sample.agent}:${sample.window}`;
+    if (!this.hasRoomFor(key)) return false;
     const prev = this.windows[key];
     const sameWindow =
       prev !== undefined &&
       Math.abs(Date.parse(prev.resets_at) - Date.parse(sample.resets_at)) < SAME_WINDOW_MS;
     const fired: Record<number, true> = sameWindow ? { ...prev.fired } : {};
     const thresholds = this.o.thresholds();
-    let changed = !sameWindow;
     if (sameWindow) {
       for (const t of thresholds) {
-        if (fired[t] && sample.used_pct < t - REARM_DROP) {
-          delete fired[t];
-          changed = true;
-        }
+        if (fired[t] && sample.used_pct < t - REARM_DROP) delete fired[t];
       }
     }
     const crossed = thresholds.filter((t) => sample.used_pct >= t && !fired[t]);
     for (const t of crossed) fired[t] = true;
-    if (crossed.length > 0) changed = true;
+    // Persisted state matters only for what has been warned: a window with nothing warned, before
+    // and after, is not worth a write however often its reset time moves.
+    const before = Object.keys(prev?.fired ?? {});
+    const after = Object.keys(fired);
+    const changed =
+      (before.length > 0 || after.length > 0) &&
+      (before.length !== after.length ||
+        before.some((t) => !fired[Number(t)]) ||
+        prev?.resets_at !== sample.resets_at);
     this.windows[key] = { resets_at: sample.resets_at, fired };
     this.samples[key] = sample;
     if (changed) this.o.persist?.(this.exportFired());
@@ -264,19 +293,23 @@ export class UsageTracker {
         resets_at: sample.resets_at,
       });
     }
+    return true;
   }
 
+  /** Only windows with a warning already sent: the rest carry nothing worth persisting. */
   exportFired(): FiredState {
     return Object.fromEntries(
-      Object.entries(this.windows).map(([key, w]) => [
-        key,
-        {
-          resets_at: w.resets_at,
-          thresholds: Object.keys(w.fired)
-            .map(Number)
-            .sort((a, b) => a - b),
-        },
-      ]),
+      Object.entries(this.windows)
+        .filter(([, w]) => Object.keys(w.fired).length > 0)
+        .map(([key, w]) => [
+          key,
+          {
+            resets_at: w.resets_at,
+            thresholds: Object.keys(w.fired)
+              .map(Number)
+              .sort((a, b) => a - b),
+          },
+        ]),
     );
   }
 

@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -13,13 +14,16 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { FAKE_GITHUB_TOKEN } from "../../../protocol/testing/fake-secrets";
 import {
   FileTallies,
+  GIT_OUTPUT_CUT_MARKER,
   MAX_DIFF_CHARS,
   MAX_TRACKED_FILES,
   boundDiff,
   diffHeadArgv,
   diffLinks,
+  execGit,
   readDiff,
   resolveProjectFile,
   type ExecResult,
@@ -233,6 +237,172 @@ describe("readDiff uses git with a fixed argv, no shell", () => {
     expect(out.diff).toContain("+changed");
     expect(existsSync(join(root, "PWNED"))).toBe(false);
     expect(existsSync(join(root, "PWNED2"))).toBe(false);
+  });
+});
+
+describe("readDiff never runs a program the repository configures", () => {
+  /** A repository whose attributes send every file through a clean filter that touches a marker. */
+  function filtered(driverKeys: readonly string[]): { root: string; marker: string } {
+    const root = repo();
+    const marker = join(root, "PWNED-FILTER");
+    writeFileSync(join(root, ".gitattributes"), "* filter=evil\n");
+    for (const key of driverKeys) git(root, "config", `filter.evil.${key}`, `touch ${marker}; cat`);
+    return { root, marker };
+  }
+
+  it("a clean filter in .git/config is not run for a tracked file (the working file is hashed)", async () => {
+    const { root, marker } = filtered(["clean"]);
+    writeFileSync(join(root, "src", "a.ts"), "one\nTWO\nthree\n");
+    const out = await readDiff(root, "src/a.ts");
+    expect(out.diff).toContain("+TWO");
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("a clean filter is not run for an untracked file either", async () => {
+    const { root, marker } = filtered(["clean"]);
+    writeFileSync(join(root, "src", "fresh.ts"), "brand new\n");
+    const out = await readDiff(root, "src/fresh.ts");
+    expect(out.source).toBe("untracked file");
+    expect(out.diff).toContain("+brand new");
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("a long-running `process` filter and a `smudge` filter are not started", async () => {
+    const { root, marker } = filtered(["process", "smudge"]);
+    writeFileSync(join(root, "src", "a.ts"), "changed\n");
+    await readDiff(root, "src/a.ts");
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("a `required` filter that would fail does not make the diff fail", async () => {
+    const { root, marker } = filtered(["clean"]);
+    git(root, "config", "filter.evil.required", "true");
+    writeFileSync(join(root, "src", "a.ts"), "changed\n");
+    const out = await readDiff(root, "src/a.ts");
+    expect(out.diff).toContain("+changed");
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("a driver name with dots and odd characters is neutralised too", async () => {
+    const root = repo();
+    const marker = join(root, "PWNED-DOTTED");
+    writeFileSync(join(root, ".gitattributes"), "* filter=a.b-c\n");
+    git(root, "config", "filter.a.b-c.clean", `touch ${marker}; cat`);
+    writeFileSync(join(root, "src", "a.ts"), "changed\n");
+    const out = await readDiff(root, "src/a.ts");
+    expect(out.diff).toContain("+changed");
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("the fixture really fires without the guard (the marker would be created)", () => {
+    const { root, marker } = filtered(["clean"]);
+    writeFileSync(join(root, "src", "a.ts"), "changed\n");
+    git(root, "diff", "--no-ext-diff", "--no-textconv", "HEAD", "--", "src/a.ts");
+    expect(existsSync(marker)).toBe(true);
+  });
+
+  it("does not run a core.fsmonitor program from the repository config", async () => {
+    const root = repo();
+    const marker = join(root, "PWNED-FSMONITOR");
+    git(root, "config", "core.fsmonitor", `touch ${marker}`);
+    writeFileSync(join(root, "src", "a.ts"), "changed\n");
+    await readDiff(root, "src/a.ts");
+    expect(existsSync(marker)).toBe(false);
+  });
+});
+
+describe("git is started from a neutral directory", () => {
+  it("runs with cwd = the temp dir and selects the repository with `-C <root>`", async () => {
+    const root = repo();
+    const bin = temp();
+    const log = join(bin, "log.txt");
+    // A stand-in `git` first on PATH that records where it was started and with what.
+    writeFileSync(
+      join(bin, "git"),
+      `#!/bin/sh\nprintf '%s\\n' "$PWD" "$1" "$2" >> "${log}"\nexit 1\n`,
+      { mode: 0o755 },
+    );
+    const saved = process.env.PATH;
+    process.env.PATH = `${bin}:${saved ?? ""}`;
+    try {
+      await execGit(["status"], root);
+    } finally {
+      process.env.PATH = saved ?? "";
+    }
+    const lines = readFileSync(log, "utf8").trim().split("\n");
+    const calls: { cwd: string; first: string; second: string }[] = [];
+    for (let i = 0; i < lines.length; i += 3)
+      calls.push({ cwd: lines[i]!, first: lines[i + 1]!, second: lines[i + 2]! });
+    expect(calls.length).toBeGreaterThan(0);
+    for (const c of calls) {
+      expect(realpathSync(c.cwd)).toBe(realpathSync(tmpdir()));
+      expect(c.cwd).not.toBe(root);
+      expect([c.first, c.second]).toEqual(["-C", root]);
+    }
+  });
+});
+
+describe("readDiff output", () => {
+  const exec =
+    (stdout: string, truncated = false): GitExec =>
+    async () => ({
+      code: truncated ? null : 0,
+      stdout,
+      stderr: "",
+      ...(truncated ? { truncated } : {}),
+    });
+
+  it("masks key=value secrets, private-key blocks and token shapes, and says so", async () => {
+    const root = repo();
+    const block = [
+      "-----BEGIN RSA PRIVATE KEY-----",
+      "MIIEabcdef",
+      "-----END RSA PRIVATE KEY-----",
+    ];
+    const text = [
+      "diff --git a/x b/x",
+      "+db_password=hunter2",
+      `+token = ${FAKE_GITHUB_TOKEN}`,
+      ...block.map((l) => `+${l}`),
+      "+const keep = 1;",
+      "",
+    ].join("\n");
+    const out = await readDiff(root, "src/a.ts", exec(text));
+    expect(out.redacted).toBe(true);
+    expect(out.diff).not.toMatch(/hunter2|MIIEabcdef/);
+    expect(out.diff).not.toContain(FAKE_GITHUB_TOKEN);
+    expect(out.diff).toContain("+const keep = 1;");
+  });
+
+  it("redacted is false when nothing was masked", async () => {
+    const root = repo();
+    const out = await readDiff(root, "src/a.ts", exec("diff --git a/x b/x\n+const a = 1;\n"));
+    expect(out.redacted).toBe(false);
+  });
+
+  it("returns a truncated diff with a marker when git's output passed the buffer limit", async () => {
+    const root = repo();
+    const out = await readDiff(
+      root,
+      "src/a.ts",
+      exec("diff --git a/x b/x\n+one\n+partial li", true),
+    );
+    expect(out.truncated).toBe(true);
+    expect(out.diff).toContain("+one\n");
+    expect(out.diff).not.toContain("partial li");
+    expect(out.diff.endsWith(GIT_OUTPUT_CUT_MARKER)).toBe(true);
+  });
+
+  it("a real git whose output passes the buffer yields a truncated diff, not an error", async () => {
+    const root = repo();
+    writeFileSync(
+      join(root, "src", "big.ts"),
+      "line of text that is fairly long\n".repeat(120_000),
+    );
+    const out = await readDiff(root, "src/big.ts");
+    expect(out.source).toBe("untracked file");
+    expect(out.truncated).toBe(true);
+    expect(out.diff.endsWith(GIT_OUTPUT_CUT_MARKER)).toBe(true);
   });
 });
 

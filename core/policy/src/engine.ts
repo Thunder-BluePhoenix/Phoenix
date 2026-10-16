@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { isPermission, SIDE_EFFECTS } from "@phoenix/protocol";
+import { commandCandidates, normalizeResourcePattern } from "./command-normalize";
 import { assessRisk, riskAtLeast } from "./risk";
 import { matchPattern, ruleMatches, type PolicyRule } from "./rules";
 import type { AutonomyController } from "./autonomy";
@@ -220,10 +221,18 @@ export class PolicyEngine {
    * deny when a user-created deny rule matches, otherwise undefined. Allow rules, approvals and
    * the risk baseline are not consulted, and kill switch / tool registry checks belong to the
    * caller. Like `evaluate`, an unreadable rule store fails closed (deny).
+   *
+   * `request.resource` is the RAW command and is matched as such. Deny rules are best-effort and
+   * NOT a sandbox: a rule's `resource` is also tried against a normalised form of the command
+   * (whitespace, chained segments, wrappers, env assignments, path prefixes, flag order; see
+   * `command-normalize.ts`), which closes the cheap bypasses only. `recordedResource` is what the
+   * audit row stores instead of the raw text; the caller passes it redacted, because the raw
+   * command can hold credentials. When omitted the raw resource is recorded (as `decide` does).
    */
   denyByRule(
     request: ToolRequest,
     context: Record<string, unknown> = {},
+    recordedResource: string | undefined = request.resource,
   ): AuditedDecision | undefined {
     const { risk, reasons: riskReasons } = assessRisk(request);
     let rules: PolicyRule[];
@@ -239,9 +248,21 @@ export class PolicyEngine {
           matched: ["builtin:invalid-rules"],
         },
         context,
+        recordedResource,
       );
     }
-    const denied = rules.filter((r) => r.effect === "deny" && ruleMatches(r.match, request));
+    const candidates = request.resource === undefined ? [] : commandCandidates(request.resource);
+    const denied = rules.filter((r) => {
+      if (r.effect !== "deny") return false;
+      if (r.match.resource === undefined || candidates.length === 0)
+        return ruleMatches(r.match, request);
+      const patterns = [r.match.resource, normalizeResourcePattern(r.match.resource)];
+      return patterns.some((resource) =>
+        candidates.some((candidate) =>
+          ruleMatches({ ...r.match, resource }, { ...request, resource: candidate }),
+        ),
+      );
+    });
     if (denied.length === 0) return undefined;
     return this.record(
       request,
@@ -254,6 +275,7 @@ export class PolicyEngine {
         matched: denied.map((r) => r.id),
       },
       context,
+      recordedResource,
     );
   }
 
@@ -261,6 +283,7 @@ export class PolicyEngine {
     request: ToolRequest,
     decision: PolicyDecision,
     context: Record<string, unknown>,
+    resource: string | undefined = request.resource,
   ): AuditedDecision {
     let auditId: number;
     try {
@@ -282,7 +305,7 @@ export class PolicyEngine {
           sideEffect: request.sideEffect,
           permissions: request.permissions,
           environment: request.environment,
-          resource: clip(request.resource, 200),
+          resource: clip(resource, 200),
           dataClass: request.dataClass,
           trustedByUser: request.actor.trustedByUser,
           autonomy: request.autonomy

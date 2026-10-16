@@ -3,7 +3,8 @@
 //
 // Delivers a Phase 58 step or usage report to Phoenix Core: the local relay first (Phase 57),
 // loopback HTTP with the session token as the fallback, exactly like `sendReport`. Never throws.
-import { DEFAULT_CORE_URL, resolveSessionToken } from "@phoenix/sdk";
+import { resolveSessionToken } from "@phoenix/sdk";
+import { trustedCoreUrl } from "./core-url";
 import { relayCall, relayPreference } from "./relay/client";
 import type { SendOptions, SendResult } from "./send";
 
@@ -25,16 +26,16 @@ export async function sendLive(
     // The relay answered and refused: that is the result. Only "not there" falls back to HTTP.
     if (reply.kind !== "unavailable") return { ok: false, message: reply.message.slice(0, 300) };
   }
+  // The address may come from the environment, which a project's agent settings can set: the
+  // token is only ever sent to this machine, otherwise nothing is sent at all.
+  const coreUrl = trustedCoreUrl(options.coreUrl);
+  if (!coreUrl) return { ok: false, message: "Phoenix Core address is not a loopback address" };
   let token: string;
   try {
     token = resolveSessionToken(options.token);
   } catch {
     return { ok: false, message: "Phoenix Core is not running" };
   }
-  const coreUrl = (options.coreUrl ?? process.env.PHOENIX_CORE_URL ?? DEFAULT_CORE_URL).replace(
-    /\/$/,
-    "",
-  );
   try {
     const res = await fetch(`${coreUrl}/api/agent/live/${op}`, {
       method: "POST",

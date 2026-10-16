@@ -17,7 +17,7 @@ The first capability is **Kage**, which handles meeting capture, transcription, 
 | `protocol/`     | Versioned event schema, error codes, Fawkes state definitions                |
 | `core/`         | Phoenix Core: config, logging, persistence, event bus, state engine, runtime |
 | `pet/`          | Fawkes runtime, states, animations and assets                                |
-| `apps/`         | `web` (navbar + Pet Panel) and `desktop` (floating Fawkes)                   |
+| `apps/`         | `web` (navbar + Pet Panel) and `desktop` (floating Fawkes or island)         |
 | `sdk/`          | Capability SDK                                                               |
 | `capabilities/` | First-party capabilities, e.g. Kage, Git, GitHub, terminal, Docker, Frappe   |
 | `docs/`         | Vision, phases, ADRs, contracts                                              |
@@ -36,7 +36,7 @@ Open <http://127.0.0.1:4870>. Fawkes lives in the top bar; click it for the Pet 
 
 For UI development with hot reload, run `pnpm dev:core` in one terminal and `pnpm dev:web` in another, then open <http://localhost:5173> (the Vite dev server proxies the API and picks up the core's session token).
 
-The floating desktop Fawkes (Phase 14, in progress) is a Tauri v2 app in `apps/desktop`. It needs Rust ≥ 1.90 and a running core:
+The floating desktop Fawkes (Phase 14, in progress) and the optional notch/top-edge island (Phase 60, run on a Mac without a notch only) are a Tauri v2 app in `apps/desktop`. It needs Rust ≥ 1.90 and a running core:
 
 ```sh
 pnpm dev:core

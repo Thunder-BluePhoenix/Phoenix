@@ -115,6 +115,60 @@ describe("mapClaudeStep", () => {
     expect(cmd.target).toContain("[REDACTED]");
   });
 
+  it("redacts what redactText alone misses in a command line", () => {
+    // Joined at runtime: a literal `curl -u name:password` is what the CI secret scanner flags.
+    const pw = "s3cr3t" + "pw";
+    const basic = ["alice", pw].join(":");
+    const quoted = ["bob", "two words"].join(":");
+    const basicHeader = Buffer.from(["user", "pass"].join(":")).toString("base64");
+    const cases: [string, string[]][] = [
+      [`curl -u ${basic} https://x.example`, [pw]],
+      [`curl -u${basic} https://x.example`, [pw]],
+      [`curl --user '${quoted}' https://x.example`, ["two words", "bob:"]],
+      [`curl -H "Authorization: Basic ${basicHeader}" x`, [basicHeader]],
+      ["curl -H 'Proxy-Authorization: Digest abc123xyz' x", ["abc123xyz"]],
+      ["curl -H 'X-Api-Key: k9k9k9k9' x", ["k9k9k9k9"]],
+      ["curl -H 'Cookie: sid=zz11; theme=dark' x", ["zz11"]],
+      ["curl -H 'Set-Cookie: sid=zz22' x", ["zz22"]],
+      ["export db_password=hunter22 && run", ["hunter22"]],
+      ["DB_PASS=hunter23 MYSQL_PWD=hunter24 run", ["hunter23", "hunter24"]],
+      ['api_key="has some spaces" run', ["has some spaces", "spaces"]],
+      ["TOKEN='a b c d' run", ["a b c d"]],
+      ["curl 'https://h.example/p?user=1&access_token=AAAA1111&x=2'", ["AAAA1111"]],
+      ["curl https://h.example/p?sig=SIG55&Signature=SIG66", ["SIG55", "SIG66"]],
+      ["mysql -uroot -pSECRETPW db", ["SECRETPW"]],
+      ["mysql -u root -p'my pass word' db", ["my pass word"]],
+      ["git clone https://u:p%2Fw@host.example/x", ["p%2Fw"]],
+      ["git clone https://u:p/w@host.example/x", ["p/w"]],
+      ["git clone https://u:p@w@host.example/x", ["p@w"]],
+    ];
+    for (const [command, secrets] of cases) {
+      const target = map(post("Bash", { command }))!.target;
+      for (const secret of secrets) expect(target, command).not.toContain(secret);
+      expect(target, command).toContain("[REDACTED]");
+    }
+  });
+
+  it("keeps ordinary commands readable", () => {
+    for (const command of [
+      "ls -la /tmp",
+      "git commit -m 'fix key handling'",
+      "npm run passthrough",
+      "curl http://host.example:8080/@x",
+      "cat keyboard.txt",
+    ]) {
+      expect(map(post("Bash", { command }))!.target).toBe(command);
+    }
+  });
+
+  it("treats an inherited property name as an unknown tool, not a Bash-like one", () => {
+    for (const tool_name of ["toString", "constructor", "__proto__", "hasOwnProperty"]) {
+      const step = map(post(tool_name, { command: "echo hi" }))!;
+      expect(step.kind).toBe("other");
+      expect(step.target).toBe("");
+    }
+  });
+
   it("truncates a huge command to 200 characters, however large the input", () => {
     const step = map(post("Bash", { command: "x".repeat(5_000_000) }))!;
     expect(step.target).toHaveLength(MAX_TARGET);

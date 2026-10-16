@@ -1139,4 +1139,26 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX agent_approval_rules_scope ON agent_approval_rules (project, tool, expires_at);
     `,
   },
+  {
+    version: 26,
+    name: "agent_approval_rules_agent",
+    // Rules from migration 25 were not bound to an agent, so one agent's "always" could allow
+    // another. They are at most 24 h old and cannot be attributed, so they are dropped, not guessed.
+    sql: `
+      DROP TABLE agent_approval_rules;
+      CREATE TABLE agent_approval_rules (
+        id TEXT PRIMARY KEY,
+        agent TEXT NOT NULL,
+        project TEXT NOT NULL,
+        tool TEXT NOT NULL,
+        pattern TEXT NOT NULL,
+        created_at INTEGER NOT NULL,   -- epoch ms
+        expires_at INTEGER NOT NULL,   -- epoch ms; at most 24 h after creation; enforced at match time
+        created_by TEXT NOT NULL,
+        uses INTEGER NOT NULL DEFAULT 0,
+        UNIQUE (agent, project, tool, pattern)
+      );
+      CREATE INDEX agent_approval_rules_scope ON agent_approval_rules (agent, project, tool, expires_at);
+    `,
+  },
 ];

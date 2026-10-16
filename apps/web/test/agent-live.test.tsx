@@ -103,14 +103,19 @@ function openLive(id: string, routes: Record<string, () => unknown> = {}) {
 }
 
 /** An ephemeral event: seq is null, as Core sends it. */
-function pushEvent(ws: FakeWebSocket, event_type: string, payload: Record<string, unknown>) {
+function pushEvent(
+  ws: FakeWebSocket,
+  event_type: string,
+  payload: Record<string, unknown>,
+  source = "core",
+) {
   act(() =>
     ws.message("event.created", {
       seq: null,
       event: {
         event_id: `evt_${event_type}`,
         event_type,
-        source: "core",
+        source,
         severity: "info",
         timestamp: AT,
         payload,
@@ -131,6 +136,11 @@ const pushStep = (ws: FakeWebSocket, s: LiveStepOf, extra: Record<string, unknow
     at: s.at,
     ...extra,
   });
+
+/** Lets any reload an event might have started reach the fake API (promise ticks only). */
+async function flushPromises() {
+  for (let i = 0; i < 10; i++) await act(async () => {});
+}
 
 const getsOf = (api: { calls: { method: string; path: string }[] }, path: string) =>
   api.calls.filter((c) => c.method === "GET" && c.path === path).length;
@@ -170,6 +180,45 @@ describe("Live session page: steps", () => {
     expect(last.textContent).toContain("Bash");
     expect(last.querySelector("code")?.textContent).toBe("pnpm test");
     expect(getsOf(api, `/api/agent/sessions/${LIVE}`)).toBe(before);
+  });
+
+  it("ignores an agent.session.step that does not come from core", async () => {
+    const { api, ws } = openLive(LIVE);
+    await screen.findByRole("log", { name: "Steps" });
+    pushEvent(
+      ws,
+      "agent.session.step",
+      {
+        agent: "claude-code",
+        session_id: LIVE,
+        project: "/p",
+        n: 3,
+        kind: "run",
+        tool: "Bash",
+        target: "forged",
+        at: AT,
+      },
+      "terminal",
+    );
+    pushEvent(
+      ws,
+      "agent.session.step",
+      {
+        agent: "claude-code",
+        session_id: "someone-else",
+        project: "/p",
+        n: 1,
+        kind: "run",
+        tool: "Bash",
+        target: "x",
+        at: AT,
+      },
+      "terminal",
+    );
+    await flushPromises();
+    expect(logRows()).toHaveLength(2);
+    expect(screen.queryByText("forged")).toBeNull();
+    expect(getsOf(api, `/api/agent/sessions/${LIVE}`)).toBe(1);
   });
 
   it("does not duplicate a step that arrives twice", async () => {
@@ -501,6 +550,29 @@ describe("Plan usage", () => {
     );
     expect(screen.getByText("Almost at the limit")).toBeTruthy();
     expect(getsOf(api, `/api/agent/sessions/${LIVE}`)).toBe(1);
+  });
+
+  it("ignores an agent.usage.updated that does not come from core", async () => {
+    let current = [usage({ used_pct: 40 })];
+    const { api, ws } = openLive(LIVE, {
+      "GET /api/agent/usage": () => ({ usage: current, thresholds: [80, 95], unsupported: [] }),
+    });
+    await screen.findByRole("meter", { name: "Claude Code 5-hour plan usage" });
+    const before = getsOf(api, "/api/agent/usage");
+    current = [usage({ used_pct: 96, level: "critical" })];
+    pushEvent(
+      ws,
+      "agent.usage.updated",
+      { agent: "claude-code", window: "5h", used_pct: 96, resets_at: AT },
+      "terminal",
+    );
+    await flushPromises();
+    expect(getsOf(api, "/api/agent/usage")).toBe(before);
+    expect(
+      screen
+        .getByRole("meter", { name: "Claude Code 5-hour plan usage" })
+        .getAttribute("aria-valuenow"),
+    ).toBe("40");
   });
 
   it("is silent when Core has no usage route", async () => {

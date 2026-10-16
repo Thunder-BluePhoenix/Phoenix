@@ -34,25 +34,28 @@ describe("windowTitle", () => {
   it("is the project folder name, bounded, without control characters", () => {
     expect(windowTitle("/work/phoenix")).toBe("phoenix");
     expect(windowTitle("/work/a\nb")).toBe("a b");
+    expect(windowTitle("/work/a\u202eb\u200bc")).toBe("abc");
     expect(windowTitle(`/w/${"x".repeat(500)}`)).toHaveLength(100);
   });
 });
 
+const TARGET_ENV = "PHOENIX_FOCUS_TARGET";
+/** Every argv element is `-e` or a script line: nothing variable can be taken for an option. */
+const onlyScript = (argv: readonly string[]) =>
+  argv.every((a, i) => (i % 2 === 0 ? a === "-e" : !a.startsWith("-")));
+
 describe("macOS (osascript)", () => {
-  it("activates by tty first; the tty is a separate argv element, never inside the script", async () => {
+  it("activates by tty first; the tty travels in the environment, never in argv or the script", async () => {
     const { exec, calls } = fake([{ code: 0, stdout: "terminal\n" }]);
     const r = await new MacTerminalFocuser(exec).focus(target);
     expect(r).toEqual({ focused: true, method: "osascript:terminal-tty" });
     expect(calls).toHaveLength(1);
     expect(calls[0]!.file).toBe("osascript");
-    expect(calls[0]!.argv.at(-1)).toBe("/dev/ttys003");
-    expect(
-      calls[0]!.argv
-        .slice(0, -1)
-        .filter((a) => a !== "-e")
-        .join("\n"),
-    ).not.toContain("ttys003");
+    expect(calls[0]!.env).toEqual({ [TARGET_ENV]: "/dev/ttys003" });
+    expect(onlyScript(calls[0]!.argv)).toBe(true);
+    expect(calls[0]!.argv.join("\n")).not.toContain("ttys003");
     expect(calls[0]!.argv.join("\n")).toContain('application "iTerm2"');
+    expect(calls[0]!.argv.join("\n")).toContain(`$${TARGET_ENV}`);
   });
 
   it("finds the tty of the agent process with ps when none was reported", async () => {
@@ -63,7 +66,7 @@ describe("macOS (osascript)", () => {
     const r = await new MacTerminalFocuser(exec).focus({ project: "/work/phoenix", pid: 4242 });
     expect(r.method).toBe("osascript:iterm-tty");
     expect(calls[0]).toEqual({ file: "ps", argv: ["-o", "tty=", "-p", "4242"], env: undefined });
-    expect(calls[1]!.argv.at(-1)).toBe("/dev/ttys007");
+    expect(calls[1]!.env).toEqual({ [TARGET_ENV]: "/dev/ttys007" });
   });
 
   it("ignores a process without a terminal (ps prints ??) and uses the title", async () => {
@@ -72,21 +75,21 @@ describe("macOS (osascript)", () => {
       { code: 0, stdout: "terminal" },
     ]);
     await new MacTerminalFocuser(exec).focus({ project: "/work/phoenix", pid: 4242 });
-    expect(calls[1]!.argv.at(-1)).toBe("phoenix");
+    expect(calls[1]!.env).toEqual({ [TARGET_ENV]: "phoenix" });
   });
 
   it("falls back to the window title when the tty is not found, and says which app matched", async () => {
     const { exec, calls } = fake([{ code: 1 }, { code: 0, stdout: "iterm\n" }]);
     const r = await new MacTerminalFocuser(exec).focus(target);
     expect(r.method).toBe("osascript:iterm-title");
-    expect(calls[1]!.argv.at(-1)).toBe("phoenix");
+    expect(calls[1]!.env).toEqual({ [TARGET_ENV]: "phoenix" });
   });
 
   it("works with only a project (no tty)", async () => {
     const { exec, calls } = fake([{ code: 0, stdout: "terminal" }]);
     await new MacTerminalFocuser(exec).focus({ project: "/work/phoenix" });
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.argv.at(-1)).toBe("phoenix");
+    expect(calls[0]!.env).toEqual({ [TARGET_ENV]: "phoenix" });
   });
 
   it("fails clearly when no window matches", async () => {
@@ -96,17 +99,20 @@ describe("macOS (osascript)", () => {
     );
   });
 
-  it("a hostile window title stays one argument", async () => {
+  it("a hostile window title is data in the environment, never code", async () => {
     const { exec, calls } = fake([{ code: 0 }]);
     const evil = '/w/x" & do shell script "touch pwn" & "';
     await new MacTerminalFocuser(exec).focus({ project: evil });
-    expect(calls[0]!.argv.at(-1)).toBe('x" & do shell script "touch pwn" & "');
-    expect(
-      calls[0]!.argv
-        .slice(0, -1)
-        .filter((a) => a !== "-e")
-        .join("\n"),
-    ).not.toContain("pwn");
+    expect(calls[0]!.env).toEqual({ [TARGET_ENV]: 'x" & do shell script "touch pwn" & "' });
+    expect(calls[0]!.argv.join("\n")).not.toContain("pwn");
+  });
+
+  it("a title starting with `-` (-lJavaScript) can never be an osascript option", async () => {
+    const { exec, calls } = fake([{ code: 0 }]);
+    await new MacTerminalFocuser(exec).focus({ project: "/work/-lJavaScript" });
+    expect(calls[0]!.env).toEqual({ [TARGET_ENV]: "-lJavaScript" });
+    expect(calls[0]!.argv).not.toContain("-lJavaScript");
+    expect(onlyScript(calls[0]!.argv)).toBe(true);
   });
 });
 
