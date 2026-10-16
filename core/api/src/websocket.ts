@@ -50,7 +50,7 @@ export interface WebSocketMetrics {
 }
 
 /** Ephemeral events that are still pushed to clients as `event.created` (seq is null). */
-const LIVE_EPHEMERAL = /^agent\.(session\.step|usage\.updated)$/;
+const LIVE_EPHEMERAL = /^(agent\.(session\.step|usage\.updated)|attachments\.changed)$/;
 
 /** Fans core activity out to WebSocket clients on named channels. */
 export class WebSocketHub {

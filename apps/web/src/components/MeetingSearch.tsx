@@ -6,6 +6,7 @@ import { MAX_QUESTION } from "../core/review";
 import type { MeetingAnswer, MeetingSearchHit, MeetingSearchResult } from "../core/types";
 import { formatDate } from "../core/format";
 import { Feedback } from "./Feedback";
+import { RECORDED_HERE } from "../core/notetaker";
 import { RetrievalNote } from "./RetrievalNote";
 
 const meetingLink = (id: string) => `#/meetings/${encodeURIComponent(id)}`;
@@ -13,6 +14,7 @@ const meetingLink = (id: string) => `#/meetings/${encodeURIComponent(id)}`;
 const ORIGIN_TEXT: Record<MeetingSearchHit["origin"], string> = {
   reviewed: "Reviewed by you",
   kage: "From Kage's summary, not reviewed here",
+  notetaker: `${RECORDED_HERE}: from the call summary, not reviewed here`,
 };
 
 /** Search and questions over the meetings Phoenix may read (Phase 35). Results are stored text. */
@@ -87,7 +89,7 @@ export function MeetingSearch() {
             <p className="muted small">
               {blocked
                 ? "No results: meeting content is not allowed in memory."
-                : `No meeting matched “${found.query}”. Only reviewed items and Kage's summaries are searched.`}
+                : `No meeting matched “${found.query}”. Only reviewed items and call summaries (Kage's and ones recorded on this computer) are searched.`}
             </p>
           ) : (
             <>

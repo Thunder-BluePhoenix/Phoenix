@@ -68,7 +68,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
-            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -90,7 +90,13 @@ jobs:
       - name: Lint
         run: cargo clippy --all-targets --locked -- -D warnings
         working-directory: apps/desktop/src-tauri
+      # The lifecycle test builds GTK menus on Linux, which needs a display: run under xvfb.
+      - name: Test (Linux, virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a cargo test --locked
+        working-directory: apps/desktop/src-tauri
       - name: Test
+        if: runner.os != 'Linux'
         run: cargo test --locked
         working-directory: apps/desktop/src-tauri
 

@@ -4,6 +4,8 @@ import type { DragEvent } from "@phoenix/pet-runtime";
 import { visualFor } from "@phoenix/pet-states";
 import { useCallback, useEffect, useState } from "react";
 import { FawkesAvatar } from "../components/FawkesAvatar";
+import { ActiveSourcePills } from "../components/SourcePills";
+import { useWornOutfit } from "../core/appearance";
 import { useDisplayedState } from "../core/context";
 import { usePetSettings } from "../core/hooks";
 import type { PetState } from "../core/types";
@@ -48,6 +50,7 @@ export function FloatingApp({ shell }: { shell: DesktopShell | null }) {
   const state = useDisplayedState();
   const { data: settings } = usePetSettings();
   const bubble = useBubble(state);
+  const outfit = useWornOutfit();
 
   const onDrag = useCallback(
     (e: DragEvent) => {
@@ -78,10 +81,12 @@ export function FloatingApp({ shell }: { shell: DesktopShell | null }) {
         size={FLOATING_SIZE}
         draggable
         reducedMotion={settings.reduced_motion}
+        outfit={outfit}
         actionHint="Open in Phoenix"
         onDrag={onDrag}
         onActivate={() => shell?.openInPhoenix(routeFor(state))}
       />
+      <ActiveSourcePills />
       {state.recording && (
         <span className="rec-pill" role="status">
           <span className="rec-dot" aria-hidden="true" /> Recording

@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
 import { expectBoolean, expectObject, intParam, route, type Route } from "./http";
-import type { CoreServices } from "./services";
+import type { AiApi, CoreServices } from "./services";
 
 /** Longest question or search text accepted. */
 export const MAX_QUESTION_CHARS = 500;
@@ -15,6 +15,17 @@ const MAX_OFFSET = 1_000_000;
 const MAX_FILTER_CHARS = 32;
 
 const invalid = (message: string) => new PhoenixError(ErrorCode.INVALID_REQUEST, message);
+
+/** The shape of every provider id (presets and the user's own endpoints). */
+const PROVIDER_ID = /^[a-z][a-z0-9-]{1,23}$/;
+
+/** A provider id from the path: the wrong shape is a 400, a well-formed unknown id is a 404. */
+function providerId(raw: string, ai: AiApi): string {
+  if (!PROVIDER_ID.test(raw)) throw invalid("The provider id is not valid");
+  if (!ai.hasProvider(raw))
+    throw new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, "AI provider not found");
+  return raw;
+}
 
 function ranged(url: URL, key: string, fallback: number, min: number, max: number): number {
   const n = intParam(url, key, fallback)!;
@@ -110,7 +121,13 @@ export function memoryRoutes(s: CoreServices): Route[] {
       return { forgotten: true };
     }),
 
-    route("GET", "/api/ai/status", () => ai().status()),
+    route("GET", "/api/ai/status", ({ url }) => {
+      const modelsOf = url.searchParams.get("models");
+      if (modelsOf !== null && !PROVIDER_ID.test(modelsOf)) {
+        throw invalid('"models" must be a provider id');
+      }
+      return ai().status(modelsOf ?? undefined);
+    }),
     route("POST", "/api/ai/settings", async ({ body }) =>
       ai().setSettings(expectObject(await body())),
     ),
@@ -118,17 +135,20 @@ export function memoryRoutes(s: CoreServices): Route[] {
       ai().setExternalProcessing(expectBoolean(expectObject(await body()), "granted")),
     ),
     // Write-only, like capability secrets: the value goes to OS secret storage, never back out.
-    route("POST", "/api/ai/secret", async ({ body }) => {
+    // One key per provider. The old single /api/ai/secret route is gone.
+    route("POST", "/api/ai/providers/:id/secret", async ({ params, body }) => {
+      const id = providerId(params.id!, ai());
       const value = expectObject(await body()).value;
       if (typeof value !== "string" || value.length === 0 || value.length > MAX_SECRET_CHARS) {
         throw invalid(`"value" must be a string of 1-${MAX_SECRET_CHARS} characters`);
       }
-      await ai().setSecret(value);
-      return { anthropic_key_set: true };
+      await ai().setSecret(id, value);
+      return { provider: id, key_set: true };
     }),
-    route("DELETE", "/api/ai/secret", async () => {
-      await ai().deleteSecret();
-      return { anthropic_key_set: false };
+    route("DELETE", "/api/ai/providers/:id/secret", async ({ params }) => {
+      const id = providerId(params.id!, ai());
+      await ai().deleteSecret(id);
+      return { provider: id, key_set: false };
     }),
   ];
 }

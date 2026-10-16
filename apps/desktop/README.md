@@ -5,7 +5,7 @@ Floating desktop Fawkes ([Phase 14](../../docs/phases/phase-14-floating-desktop-
 ## How it works
 
 - The window shows `apps/web/floating.html`, which uses the same pet runtime as the navbar Fawkes.
-- The Rust shell (`src-tauri/`) owns everything OS-specific: the window, tray, context menu, start on login and the saved position. The pages reach it only through seven commands (`core_connection`, `move_window_by`, `drag_finished`, `open_in_phoenix`, `show_menu`, `island_event`, `island_frame`); the move and save commands refuse any window but the floating one, and the island commands any window but the island.
+- The Rust shell (`src-tauri/`) owns the window, tray, context menu, start on login, saved position, dictation hotkey and clipboard paste. Tauri commands are scoped to their intended webview: movement to the floating window, island events to the island, and dictation events/paste to the pill.
 - The shell finds Core on `127.0.0.1` (`PHOENIX_PORT`, default 4870) and reads the session token from `<data dir>/session.token`, the same file `curl` users read. The page re-reads it before every reconnect, so restarting Core needs no restart of the desktop app.
 - `open_in_phoenix` accepts only plain in-app routes such as `/meetings`; the page cannot choose the host.
 - Position, "keep on top" and visibility are stored in `desktop.json` in the app data directory, not in Core's database, so Fawkes remembers its place when Core is down. Keep-on-top is off by default.
@@ -23,6 +23,14 @@ Tray menu → **Floating Fawkes / Island / Navbar only** switches live; the choi
 - **Click-through:** a hidden island ignores the mouse wherever the shell polls the pointer; on Wayland the strip stays live so hover reaches the page.
 
 All geometry, the state machine and the per-OS decisions are pure Rust (`island_state.rs`, `island_geometry.rs`, `island_controller.rs`, `island_platform.rs`) with unit tests; `island.rs`, `island_macos.rs`, `island_linux.rs` and `island_windows.rs` only apply them to the OS.
+
+## Dictation pill (Phase 64)
+
+Dictation is off by default in Core and separately off in the desktop tray. **Enable dictation hotkey** requests keyboard/Accessibility access only when selected; a saved opt-in merely preflights permission on startup. The pill is hidden by default (tray: **Show dictation pill**). The desktop preference `dictation_key` selects `right_option`, `fn`, `right_command`, or `right_control` on macOS (only `right_control` elsewhere). `paste_again_chord` in `desktop.json` accepts a modifier-plus-letter/digit such as `ctrl+alt+v`; an invalid value resets to the default. Restart the hotkey listener after editing the file. The page requests microphone access only upon starting a Core-approved session. The pill's Record a call button opens `/notetaker`; it does not begin recording.
+
+macOS uses a Core Graphics event tap for modifier flags changes and Esc/key presses; ordinary global-shortcut libraries cannot observe a bare Option/Fn press or swallow a consumed Esc. Linux uses XRecord/XTest on X11; Wayland global key listening/paste is unavailable. Windows uses a low-level keyboard hook/SendInput. The OS listener only queues actions; Core's authenticated `GET /api/dictation/status` gates every hotkey start and Core's session API is the final guard. No session token or dictated text is logged. Secure Event Input blocks macOS paste; the clipboard decision table preserves non-text data and restores previous text after the paste chord where possible.
+
+The pill runs as an explicitly scoped loopback webview with a narrowly scoped Tauri IPC capability. Its capture/level display runs in the web page, while the shell owns only the key, window and paste. The Rust state machine, paste decision table, mailto validator and page behavior are covered with fake-driven tests; no test exercises real microphone access, key capture, permission prompts, or pasting into an application.
 
 ## Run
 

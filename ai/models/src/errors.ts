@@ -87,7 +87,9 @@ export interface Attempt {
 /** Nothing was allowed to run the task (privacy, missing grant, offline, ...). */
 export class NoProviderError extends PhoenixError {
   readonly attempts: readonly Attempt[];
-  constructor(attempts: readonly Attempt[]) {
+  /** Set when the user routed this kind of work to one provider: the only one that was tried. */
+  readonly routedTo: string | undefined;
+  constructor(attempts: readonly Attempt[], routedTo?: string) {
     super(
       ErrorCode.CAPABILITY_UNAVAILABLE,
       "No AI provider is allowed and available for this request",
@@ -95,13 +97,16 @@ export class NoProviderError extends PhoenixError {
     );
     this.name = "NoProviderError";
     this.attempts = attempts;
+    this.routedTo = routedTo;
   }
 }
 
 /** Every allowed provider was tried and failed. */
 export class AllProvidersFailedError extends PhoenixError {
   readonly attempts: readonly Attempt[];
-  constructor(attempts: readonly Attempt[]) {
+  /** Set when the user routed this kind of work to one provider: the only one that was tried. */
+  readonly routedTo: string | undefined;
+  constructor(attempts: readonly Attempt[], routedTo?: string) {
     super(
       ErrorCode.CAPABILITY_UNAVAILABLE,
       "Every allowed AI provider failed",
@@ -109,5 +114,6 @@ export class AllProvidersFailedError extends PhoenixError {
     );
     this.name = "AllProvidersFailedError";
     this.attempts = attempts;
+    this.routedTo = routedTo;
   }
 }

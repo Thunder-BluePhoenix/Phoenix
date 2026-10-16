@@ -1,0 +1,41 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Active-source pills (Phase 61). Each pill paints its own light surface, so the colour contrast the
+   Wardrobe checks holds on the page, in the floating window and on the dark island alike. */
+.source-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.source-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 1px 7px 1px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--pill-colour);
+  background: #ffffff;
+  border: 1.5px solid var(--pill-colour);
+  border-radius: 999px;
+}
+.source-pill svg {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  fill: currentColor;
+}
+.source-pill-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-pill-more {
+  color: #343a40;
+  --pill-colour: #343a40;
+}

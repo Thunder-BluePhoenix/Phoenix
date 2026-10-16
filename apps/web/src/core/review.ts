@@ -45,6 +45,8 @@ export const ITEM_ACTIONS: Record<
 export function extractedByLabel(extractedBy: string): string {
   if (extractedBy === "kage") return "Found by Kage";
   if (extractedBy === "manual") return "Written by you";
+  if (extractedBy.startsWith("ai:call-summary"))
+    return "Found in the summary of a call recorded on this computer";
   if (extractedBy.startsWith("ai:")) return `Suggested by AI (${extractedBy.slice(3)})`;
   return `Found by ${extractedBy}`;
 }

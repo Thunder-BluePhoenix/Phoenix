@@ -226,15 +226,63 @@ export interface MemoryAnswer {
   processed_by: string | null;
   ai_used: boolean;
   note: string | null;
+  /** Which model answered; absent in older answers. */
+  model?: string | null;
+  provider?: string | null;
+  provider_label?: string | null;
+  locality?: AiLocality | null;
+  usage?: { input_tokens: number | null; output_tokens: number | null } | null;
+  cost?: { amount: number; currency: "USD"; basis: "user-configured prices" } | null;
   retrieval: RetrievalInfo;
+}
+
+export type AiLocality = "local" | "cloud";
+
+/** A model a provider lists (only when asked via `?models=<providerId>`). */
+export interface AiModelInfo {
+  id: string;
+  kind: "chat" | "embed" | "unknown";
 }
 
 export interface AiProviderStatus {
   id: string;
   label: string;
-  locality: "local" | "cloud";
+  locality: AiLocality;
+  kind: "builtin" | "preset" | "custom";
   available: boolean;
   reason: string | null;
+  key_policy: "none" | "optional" | "required";
+  key_set: boolean;
+  default_model: string | null;
+  base_url: string | null;
+  /** Null unless asked for this provider and it could list them. */
+  models: AiModelInfo[] | null;
+  models_error: string | null;
+}
+
+/** Where one category of AI work goes; `model` null means the provider's default. */
+export interface AiRoute {
+  provider: string;
+  model: string | null;
+}
+
+export type AiRouteCategory = "chat" | "summaries" | "cleanup";
+
+export type AiPreset = "openai" | "deepseek" | "qwen" | "moonshot" | "lmstudio";
+
+/** A user-added OpenAI-compatible server. Locality is derived by Core from the URL. */
+export interface AiEndpoint {
+  id: string;
+  label: string;
+  base_url: string;
+  preset: AiPreset | null;
+  locality: AiLocality;
+}
+
+/** User-supplied prices in USD per million tokens; Phoenix has no built-in prices. */
+export interface AiPrice {
+  input_per_mtok: number;
+  output_per_mtok: number;
 }
 
 /** GET /api/ai/status. */
@@ -243,6 +291,10 @@ export interface AiStatus {
   preferred: string | null;
   cloud_opt_in: Record<MemorySensitivity, boolean>;
   external_processing_granted: boolean;
+  routing: Record<AiRouteCategory, AiRoute | null>;
+  endpoints: AiEndpoint[];
+  /** Keyed "<providerId>:<model>". */
+  prices: Record<string, AiPrice>;
   providers: AiProviderStatus[];
 }
 
@@ -490,7 +542,7 @@ export interface MeetingSearchHit {
   item_id: string | null;
   memory_id: string;
   text: string;
-  origin: "reviewed" | "kage";
+  origin: "reviewed" | "kage" | "notetaker";
   part: string;
   observed_at: string;
   freshness: "fresh" | "stale";
@@ -512,7 +564,7 @@ export interface MeetingAnswer {
     meeting_id: string;
     item_id: string | null;
     memory_id: string;
-    origin: "reviewed" | "kage";
+    origin: "reviewed" | "kage" | "notetaker";
   }[];
   interpretation: string | null;
   processed_by: string | null;

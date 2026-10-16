@@ -8,3 +8,4 @@ export * from "./answer";
 export * from "./engine";
 export * from "./question";
 export * from "./time";
+export * from "./attachments";

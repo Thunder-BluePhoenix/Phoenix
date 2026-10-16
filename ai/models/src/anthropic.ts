@@ -84,6 +84,8 @@ export class AnthropicProvider implements ModelProvider {
   readonly capabilities = { generate: true, stream: true, embed: false };
   readonly costTier = 2 as const;
   readonly typicalLatencyMs = 2_500;
+  readonly keyPolicy = "required" as const;
+  readonly defaultModel: string;
 
   private readonly baseUrl: string;
   private readonly model: string;
@@ -97,6 +99,7 @@ export class AnthropicProvider implements ModelProvider {
   constructor(options: AnthropicOptions) {
     this.baseUrl = assertSafeAnthropicUrl(options.baseUrl ?? DEFAULT_ANTHROPIC_URL);
     this.model = options.model ?? DEFAULT_ANTHROPIC_MODEL;
+    this.defaultModel = this.model;
     this.getKey = options.getKey;
     this.fetchFn = options.fetch ?? ((url, init) => fetch(url, init));
     this.generateTimeoutMs = options.generateTimeoutMs ?? 60_000;
@@ -120,10 +123,10 @@ export class AnthropicProvider implements ModelProvider {
     try {
       key = await this.getKey();
     } catch {
-      throw new ModelError("auth", this.id, "The Anthropic API key could not be read");
+      throw new ModelError("auth", this.id, `The API key for ${this.label} could not be read`);
     }
     if (key === undefined || key.trim() === "") {
-      throw new ModelError("auth", this.id, "No Anthropic API key is set");
+      throw new ModelError("auth", this.id, `No API key is set for ${this.label}`);
     }
     return key;
   }
@@ -192,7 +195,7 @@ export class AnthropicProvider implements ModelProvider {
     try {
       key = await this.requireKey();
     } catch {
-      return { available: false, detail: "No Anthropic API key is set" };
+      return { available: false, detail: `No API key is set for ${this.label}` };
     }
     const started = Date.now();
     const scope = createScope(undefined, { totalMs: this.healthTimeoutMs });

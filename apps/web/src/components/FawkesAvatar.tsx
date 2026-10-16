@@ -5,6 +5,7 @@ import {
   type DragEvent,
   type FawkesController,
   type InteractionOptions,
+  type OutfitPack,
   type SoundPlayer,
 } from "@phoenix/pet-runtime";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
@@ -28,6 +29,12 @@ export interface FawkesAvatarProps {
    * jump on a real completion event (default on). All of it is cosmetic and never changes `state`.
    */
   interactive?: boolean;
+  /**
+   * Phase 61: the outfit Fawkes wears (null or omitted: none). Purely cosmetic: it never changes
+   * `data-state`, the accessible name or the live region, and under reduced motion only the still
+   * variants render.
+   */
+  outfit?: OutfitPack | null;
   /** Sound player (policy and backend injected by the host). Omit for a silent Fawkes. */
   sounds?: SoundPlayer;
   /** Test seam: injected clock/RNG/timers for the interactions. */
@@ -51,6 +58,7 @@ export const FawkesAvatar = forwardRef<FawkesAvatarHandle, FawkesAvatarProps>(fu
     actionHint,
     reducedMotion = "auto",
     interactive = true,
+    outfit,
     sounds,
     interactionOptions,
   },
@@ -70,6 +78,8 @@ export const FawkesAvatar = forwardRef<FawkesAvatarHandle, FawkesAvatarProps>(fu
   initial.current = state;
   const reducedMotionRef = useRef(reducedMotion);
   reducedMotionRef.current = reducedMotion;
+  const outfitRef = useRef(outfit);
+  outfitRef.current = outfit;
 
   useImperativeHandle(ref, () => ({ focus: () => pet.current?.element.focus() }), []);
 
@@ -80,6 +90,7 @@ export const FawkesAvatar = forwardRef<FawkesAvatarHandle, FawkesAvatarProps>(fu
       ...(draggable ? { draggable } : {}),
       reducedMotion:
         reducedMotionRef.current === "auto" ? "auto" : reducedMotionRef.current === "on",
+      outfit: outfitRef.current ?? null,
       ...(interactive
         ? {
             interactions: {
@@ -109,6 +120,10 @@ export const FawkesAvatar = forwardRef<FawkesAvatarHandle, FawkesAvatarProps>(fu
   useEffect(() => {
     pet.current?.update(state);
   }, [state]);
+
+  useEffect(() => {
+    pet.current?.setOutfit(outfit ?? null);
+  }, [outfit]);
 
   useEffect(() => {
     pet.current?.setReducedMotion(reducedMotion === "auto" ? "auto" : reducedMotion === "on");

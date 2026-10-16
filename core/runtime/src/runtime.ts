@@ -11,6 +11,11 @@ import {
   ToolGateway,
   ToolRegistry,
 } from "@phoenix/ai-tool-gateway";
+import {
+  LocalOllamaVision,
+  WhisperStdinRecognizer,
+  type SpeechRecognizer,
+} from "@phoenix/ai-multimodal";
 import { ApiServer, generateSessionToken, type CoreServices } from "@phoenix/api";
 import { CapabilityManager, type CapabilityModule } from "@phoenix/capability-manager";
 import type { PhoenixConfig } from "@phoenix/config";
@@ -39,6 +44,7 @@ import {
 } from "@phoenix/policy";
 import { StateEngine } from "@phoenix/state-engine";
 import {
+  AGENT_ADAPTERS,
   execFocus,
   focuserFor,
   type AgentsServices,
@@ -50,7 +56,7 @@ import {
 } from "@phoenix/capability-agents";
 import { AgentRuntime } from "./agents";
 import { AgentApprovals } from "./agent-approvals";
-import { AgentLive } from "./agent-live";
+import { AgentLive, displayName } from "./agent-live";
 import { AgentRelay } from "./agent-relay";
 import { AiRuntime } from "./ai";
 import { AutonomyRuntime } from "./autonomy";
@@ -60,8 +66,12 @@ import { GraphRuntime } from "./graph";
 import { MeetingReviewRuntime } from "./meeting-review";
 import { PlanningRuntime } from "./planning";
 import { MultimodalRuntime } from "./multimodal";
+import { DictationRuntime } from "./dictation";
+import { NotetakerRuntime } from "./notetaker";
+import { AttachmentRuntime } from "./attachments";
 import { syncMeetings } from "./meetings";
 import { PrivacyService, type DerivedInventory } from "./privacy";
+import { AppearanceRuntime, type KnownSource } from "./appearance";
 import { ProactiveRuntime } from "./proactive";
 import { RetrievalRuntime } from "./retrieval";
 import { ImprovementRuntime } from "./improvement";
@@ -120,6 +130,16 @@ export interface RuntimeOptions {
   terminalFocuser?: TerminalFocuser;
   /** Runs `git` for on-demand diffs (tests inject a fake). */
   gitExec?: GitExec;
+  /** Speech recogniser for dictation (tests inject a fake). Default: whisper.cpp over stdin when a Whisper model is set, else none. */
+  dictationRecognizer?: SpeechRecognizer;
+  /** Speech recogniser for the notetaker (tests inject a fake). Default: the dictation one. */
+  notetakerRecognizer?: SpeechRecognizer;
+  /** Samples per notetaker transcription window (tests make it small). Default: 30 s. */
+  notetakerWindowSamples?: number;
+  /** Clock for attachment expiry (tests inject one). */
+  attachmentClock?: () => number;
+  /** Delimiter nonce for attachment questions (tests inject a known one to prove a forged delimiter fails). */
+  attachmentNonce?: () => string;
 }
 
 /**
@@ -152,8 +172,16 @@ export class PhoenixRuntime implements CoreServices {
   readonly sync: SyncRuntime;
   readonly registry: LocalRegistryRuntime;
   readonly multimodal: MultimodalRuntime;
+  /** Dictation (Phase 64): off by default, audio in memory only, text pipeline, aggregate stats. */
+  readonly dictation: DictationRuntime;
+  /** Botless notetaker (Phase 65): off by default, consent every time, audio in memory only. */
+  readonly notetaker: NotetakerRuntime;
+  /** Files, images, folders and windows given to Fawkes as context (Phase 62): memory only, local-only ask. */
+  readonly attachments: AttachmentRuntime;
   /** Governed improvement history; no trusted task reader/baseline/apply configured by default. */
   readonly improvement: ImprovementRuntime;
+  /** Fawkes outfit, user packs and per-source pills (Phase 61); session-token routes only. */
+  readonly appearance: AppearanceRuntime;
   /**
    * The only path from an agent to a capability (Phase 30). Phase 31 hands this, and nothing
    * else, to the agent runtime.
@@ -290,6 +318,53 @@ export class PhoenixRuntime implements CoreServices {
       ...(options.visionModel ? { visionModel: options.visionModel } : {}),
       ...(options.ollamaUrl ? { ollamaUrl: options.ollamaUrl } : {}),
       ...(options.fetch ? { fetch: options.fetch } : {}),
+    });
+    this.dictation = new DictationRuntime({
+      db: this.db,
+      settings: this.settings,
+      bus: this.bus,
+      state: this.state,
+      permissions: this.permissions,
+      ai: this.ai.service,
+      aiEnabled: () => this.ai.aiSettings().enabled,
+      recognizer:
+        options.dictationRecognizer ??
+        (options.whisperModelPath
+          ? new WhisperStdinRecognizer({ modelPath: options.whisperModelPath })
+          : null),
+      logger: this.logger.child("dictation"),
+    });
+    this.notetaker = new NotetakerRuntime({
+      settings: this.settings,
+      bus: this.bus,
+      state: this.state,
+      permissions: this.permissions,
+      meetings: this.meetings,
+      ai: this.ai.service,
+      aiEnabled: () => this.ai.aiSettings().enabled,
+      recognizer:
+        options.notetakerRecognizer ??
+        options.dictationRecognizer ??
+        (options.whisperModelPath
+          ? new WhisperStdinRecognizer({ modelPath: options.whisperModelPath })
+          : null),
+      logger: this.logger.child("notetaker"),
+      ...(options.notetakerWindowSamples ? { windowSamples: options.notetakerWindowSamples } : {}),
+    });
+    this.attachments = new AttachmentRuntime({
+      bus: this.bus,
+      permissions: this.permissions,
+      ai: this.ai.service,
+      aiEnabled: () => this.ai.aiSettings().enabled,
+      vision: options.visionModel
+        ? new LocalOllamaVision(options.visionModel, {
+            ...(options.ollamaUrl ? { baseUrl: options.ollamaUrl } : {}),
+            ...(options.fetch ? { fetch: options.fetch } : {}),
+          })
+        : null,
+      logger: this.logger.child("attachments"),
+      ...(options.attachmentClock ? { now: options.attachmentClock } : {}),
+      ...(options.attachmentNonce ? { nonce: options.attachmentNonce } : {}),
     });
     this.memory = new MemoryRuntime({
       db: this.db,
@@ -485,6 +560,11 @@ export class PhoenixRuntime implements CoreServices {
       logger: this.logger,
     });
     this.improvement = new ImprovementRuntime({ db: this.db });
+    this.appearance = new AppearanceRuntime({
+      settings: this.settings,
+      bus: this.bus,
+      known: () => this.knownSources(),
+    });
     this.sync = new SyncRuntime(this.settings, options.secrets);
     this.registry = new LocalRegistryRuntime(options.registry, {
       sdk: "0.1.0",
@@ -575,7 +655,10 @@ export class PhoenixRuntime implements CoreServices {
     await this.agentRelay.start();
     if (this.options.writeTokenFile ?? true) this.writeTokenFile();
 
-    this.ticker = setInterval(() => this.state.tick(), this.options.tickMs ?? 1_000);
+    this.ticker = setInterval(() => {
+      this.state.tick();
+      this.attachments.purgeExpired();
+    }, this.options.tickMs ?? 1_000);
     this.ticker.unref();
     this.privacy.prune();
     // Not awaited: reading a large docs folder must not delay the API coming up.
@@ -698,6 +781,20 @@ export class PhoenixRuntime implements CoreServices {
     ];
   }
 
+  /** Capabilities, and the coding agents Phoenix can see, that may get a Fawkes pill. */
+  private knownSources(): KnownSource[] {
+    const out: KnownSource[] = this.capabilities
+      .list()
+      .map((c) => ({ id: `capability:${c.id}`, label: c.name, kind: "capability" as const }));
+    const agents: Record<string, string> = {};
+    for (const a of AGENT_ADAPTERS) agents[a.id] = a.label;
+    for (const s of this.agentLive.sessions()) agents[s.agent] ??= s.agent;
+    for (const [slug, label] of Object.entries(agents)) {
+      out.push({ id: `agent:${slug}`, label: displayName(label), kind: "agent" });
+    }
+    return out;
+  }
+
   /** Fawkes appearance, shared by every Fawkes view (web, desktop). */
   petSettings(): PetSettings {
     return {
@@ -766,6 +863,9 @@ export class PhoenixRuntime implements CoreServices {
   stop(): Promise<void> {
     this.stopping ??= (async () => {
       this.proactive.stopScheduler();
+      this.dictation.close();
+      this.notetaker.close();
+      this.attachments.close();
       this.agentApprovals.close();
       clearInterval(this.syncTimer ?? undefined);
       if (this.ticker) clearInterval(this.ticker);

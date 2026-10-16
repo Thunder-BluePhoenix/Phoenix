@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { fawkes, type FawkesAsset } from "@phoenix/pet-assets";
+import { fawkes, type FawkesAsset, type OutfitPack } from "@phoenix/pet-assets";
 import { completionEvent, visualFor, type InteractionEmote } from "@phoenix/pet-states";
 import { attachDrag, type DragEvent } from "./interaction";
 import { createInteractionEngine, type InteractionConfig } from "./interaction-engine";
 import type { SoundPlayer } from "./sounds";
 import type { SoundEvent } from "@phoenix/pet-assets";
+import { applyOutfit, OUTFIT_CSS } from "./outfit";
 import { BASE_CSS, ensureStyles } from "./styles";
 
 /** What the runtime renders; a subset of the core state snapshot. */
@@ -51,6 +52,8 @@ export interface MountOptions {
   draggable?: boolean;
   /** Suffix for the accessible name, e.g. "Open Pet Panel". */
   actionHint?: string;
+  /** Phase 61: an outfit drawn over Fawkes (validated again here). Never changes state or its text. */
+  outfit?: OutfitPack | null;
   /** Opt in to Phase 59 interactions: greeting, gaze, hover, poke, dizzy, completion jump. */
   interactions?: InteractionOptions;
 }
@@ -73,6 +76,8 @@ export interface FawkesController {
   /** The app just launched: play the greeting (if calm). */
   greet(): void;
   setReducedMotion(value: boolean | "auto"): void;
+  /** Phase 61: put an outfit on Fawkes (null takes it off). State, label and live region stay as they are. */
+  setOutfit(outfit: OutfitPack | null): void;
   on<K extends keyof FawkesEvents>(
     type: K,
     listener: (payload: FawkesEvents[K]) => void,
@@ -93,7 +98,7 @@ export function mountFawkes(container: HTMLElement, options: MountOptions = {}):
   const doc = container.ownerDocument;
   const win = doc.defaultView;
   const asset = options.asset ?? fawkes;
-  ensureStyles(doc, "phoenix-fawkes-base", BASE_CSS);
+  ensureStyles(doc, "phoenix-fawkes-base", `${BASE_CSS}\n${OUTFIT_CSS}`);
   // Emote CSS comes after the state CSS so an emote may override a state animation briefly.
   ensureStyles(doc, `phoenix-fawkes-asset-${asset.id}`, `${asset.css}\n${asset.emoteCss}`);
 
@@ -235,11 +240,14 @@ export function mountFawkes(container: HTMLElement, options: MountOptions = {}):
 
   // Reduced motion.
   let reducedPref: boolean | "auto" = options.reducedMotion ?? "auto";
+  let outfit: OutfitPack | null = options.outfit ?? null;
   const media = win?.matchMedia?.(REDUCED_MOTION_QUERY);
+  const isReduced = () => (reducedPref === "auto" ? Boolean(media?.matches) : reducedPref);
   const applyReduced = () => {
-    const reduced = reducedPref === "auto" ? Boolean(media?.matches) : reducedPref;
+    const reduced = isReduced();
     el.setAttribute("data-reduced-motion", String(reduced));
     engine?.setReducedMotion(reduced);
+    applyOutfit(art, outfit, reduced);
   };
   media?.addEventListener?.("change", applyReduced);
   applyReduced();
@@ -306,6 +314,10 @@ export function mountFawkes(container: HTMLElement, options: MountOptions = {}):
     setReducedMotion(value) {
       reducedPref = value;
       applyReduced();
+    },
+    setOutfit(next) {
+      outfit = next;
+      applyOutfit(art, outfit, isReduced());
     },
     on(type, listener) {
       listeners[type].add(listener as never);

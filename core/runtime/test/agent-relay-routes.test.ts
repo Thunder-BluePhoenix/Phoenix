@@ -97,7 +97,7 @@ describe("agent relay HTTP routes", () => {
     const s = await setup();
     const p = await preview(s, "install");
     expect(p.changed).toBe(true);
-    expect(p.diff).toContain("phoenix");
+    expect(p.diff).toContain("capabilities/agents/src/claude-hook.ts");
     expect(p.hash).toMatch(/^[0-9a-f]{64}$/);
     expect(p.path).toBe(s.settings);
     expect(readFileSync(s.settings, "utf8")).toBe(USER_SETTINGS);
@@ -124,7 +124,7 @@ describe("agent relay HTTP routes", () => {
     });
     const written = JSON.parse(readFileSync(s.settings, "utf8")) as Record<string, unknown>;
     expect(written.theme).toBe("dark");
-    expect(JSON.stringify(written.hooks)).toContain("phoenix");
+    expect(JSON.stringify(written.hooks)).toContain("capabilities/agents/src/claude-hook.ts");
     expect(readdirSync(s.backupDir).length).toBeGreaterThan(0);
 
     await s.core.runtime.bus.drain();

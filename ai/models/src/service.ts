@@ -29,21 +29,38 @@ import {
   type ExternalAiPolicy,
   type GateDecision,
 } from "./gate";
+import { purposeCategory, type RoutableCategory } from "./purposes";
 import type { ProviderRegistry } from "./registry";
-import { route, type RoutePlan, type RouteTask, type RouterProvider } from "./router";
+import {
+  ONLY_ON_REQUEST,
+  route,
+  type RoutePlan,
+  type RouteTask,
+  type RouterProvider,
+} from "./router";
 import {
   PRIVACY_CLASSES,
+  type Cost,
   type CostTier,
+  type KeyPolicy,
   type EmbedRequest,
   type EmbedResult,
   type GenerateRequest,
   type GenerateResult,
   type ModelProvider,
+  type Price,
   type PrivacyClass,
   type Provenance,
   type StreamChunk,
   type TaskKind,
+  type Usage,
 } from "./types";
+
+/** A user's choice of where one kind of work goes. `model` absent = the provider's default. */
+export interface Route {
+  provider: string;
+  model?: string;
+}
 
 /** User settings for the AI layer. */
 export interface AiSettings {
@@ -51,6 +68,37 @@ export interface AiSettings {
   /** Provider id the user prefers among the allowed ones. */
   preferred?: string;
   cloudOptIn: CloudOptIn;
+  /**
+   * Where each kind of work goes (chat, summaries, cleanup). A route beats `preferred`. It picks
+   * the provider, nothing more: the privacy gate below still decides whether it may run.
+   */
+  routing?: Partial<Record<RoutableCategory, Route>>;
+  /** USER-supplied prices by "<providerId>:<model>". Phoenix hard-codes none. */
+  prices?: Record<string, Price>;
+}
+
+/**
+ * Cost of one call from the user's own prices, or null when it cannot be given honestly: the
+ * model ran on this device (free), no price was entered for it, or the provider reported no
+ * token counts. Tries the model the server says it used, then the one that was asked for.
+ */
+export function costOf(
+  provenance: Pick<Provenance, "provider" | "model" | "locality">,
+  requestedModel: string | undefined,
+  usage: Usage | undefined,
+  prices: Record<string, Price> | undefined,
+): Cost | null {
+  if (provenance.locality === "local" || !prices || !usage) return null;
+  if (usage.inputTokens === undefined || usage.outputTokens === undefined) return null;
+  const own = (key: string) => (Object.hasOwn(prices, key) ? prices[key] : undefined);
+  const price =
+    own(`${provenance.provider}:${provenance.model}`) ??
+    (requestedModel === undefined ? undefined : own(`${provenance.provider}:${requestedModel}`));
+  if (!price) return null;
+  const amount =
+    (usage.inputTokens / 1_000_000) * price.input_per_mtok +
+    (usage.outputTokens / 1_000_000) * price.output_per_mtok;
+  return { amount, currency: "USD", basis: "user-configured prices" };
 }
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
@@ -181,6 +229,8 @@ export interface ProviderStatus {
   label: string;
   locality: ModelProvider["locality"];
   capabilities: ModelProvider["capabilities"];
+  keyPolicy: KeyPolicy;
+  defaultModel: string | undefined;
   /** undefined when the provider was not checked (cloud provider that is not allowed to run). */
   available: boolean | undefined;
   detail: string;
@@ -213,6 +263,11 @@ export class AiService {
     this.now = deps.now ?? Date.now;
     this.retry = deps.retry ?? DEFAULT_RETRY;
     this.healthTtlMs = deps.healthTtlMs ?? 15_000;
+  }
+
+  /** Forget what was learned about a provider (its key changed): the next call checks again. */
+  forgetHealth(providerId: string): void {
+    delete this.healthCache[providerId];
   }
 
   /** Throws AiDisabledError before anything else happens: no routing, no health check, no fetch. */
@@ -251,13 +306,17 @@ export class AiService {
     purpose: string,
     localProvider?: string,
     localOnly = false,
+    /** For a call: the providers this call may use that are only used on request. Undefined = status. */
+    requested?: readonly (string | undefined)[],
   ): Promise<void> {
     const stale = this.deps.registry
       .list()
       .filter(
         (p) =>
           (!localOnly || p.locality === "local") &&
-          (localProvider === undefined || p.id === localProvider),
+          (localProvider === undefined || p.id === localProvider) &&
+          // A provider that is only used on request is not contacted for a call that did not ask for it.
+          (requested === undefined || p.explicitOnly !== true || requested.includes(p.id)),
       )
       .filter((p) => this.gateFor(p, privacy, settings, purpose).allowed)
       .filter((p) => {
@@ -288,11 +347,30 @@ export class AiService {
     };
   }
 
+  /**
+   * The user's route for this purpose, if any. Only generate / stream are routable: embeddings
+   * never leave this device, whatever the routing says.
+   */
+  private routeFor(kind: TaskKind, purpose: string, settings: AiSettings): Route | undefined {
+    if (kind === "embed") return undefined;
+    const category = purposeCategory(purpose);
+    if (category !== "chat" && category !== "summaries" && category !== "cleanup") return undefined;
+    const routing = settings.routing;
+    return routing !== undefined && Object.hasOwn(routing, category)
+      ? routing[category]
+      : undefined;
+  }
+
   /** The plan for a task using cached health. For UI explanations; makes no network calls. */
   plan(task: RouteTask): RoutePlan {
     const settings = this.requireEnabled();
+    const routed = this.routeFor(task.kind, task.purpose ?? "", settings);
     return route(
-      { ...task, preferred: task.preferred ?? settings.preferred },
+      {
+        ...task,
+        preferred: task.preferred ?? settings.preferred,
+        ...(routed && task.preferred === undefined ? { routedProvider: routed.provider } : {}),
+      },
       this.routerState(settings, this.deps.auditCloudSend !== undefined),
     );
   }
@@ -303,8 +381,15 @@ export class AiService {
     if (!settings.enabled) {
       return { enabled: false, cloudOptIn: settings.cloudOptIn, providers: [] };
     }
+    // Providers that are only used on request are checked only once the user has chosen them.
+    const chosen = [
+      settings.preferred,
+      ...Object.values(settings.routing ?? {}).map((r) => r.provider),
+    ];
     await Promise.all(
-      PRIVACY_CLASSES.map((c) => this.refreshHealth(c, settings, PURPOSE_ANSWER_FROM_MEMORY)),
+      PRIVACY_CLASSES.map((c) =>
+        this.refreshHealth(c, settings, PURPOSE_ANSWER_FROM_MEMORY, undefined, false, chosen),
+      ),
     );
     const providers = this.deps.registry.list().map((p): ProviderStatus => {
       const entry = this.healthCache[p.id];
@@ -320,8 +405,14 @@ export class AiService {
         label: p.label,
         locality: p.locality,
         capabilities: p.capabilities,
+        keyPolicy: p.keyPolicy ?? "none",
+        defaultModel: p.defaultModel,
         available: entry?.ok,
-        detail: entry?.detail ?? "not checked (not allowed to run)",
+        detail:
+          entry?.detail ??
+          (p.explicitOnly === true && !chosen.includes(p.id)
+            ? "not checked (used only when you choose it)"
+            : "not checked (not allowed to run)"),
         access,
       };
     });
@@ -340,12 +431,36 @@ export class AiService {
   async run(task: AiTask): Promise<AiOutcome> {
     const settings = this.requireEnabled();
     const privacy = task.request.privacy;
+    // A route beats the global `preferred`, and then the route is the ONLY provider tried. The
+    // gate below still applies to it exactly as to any other provider.
+    const routed =
+      task.preferred === undefined
+        ? this.routeFor(task.kind, task.request.purpose, settings)
+        : undefined;
+    if (routed !== undefined && !this.deps.registry.get(routed.provider)) {
+      throw new NoProviderError(
+        [
+          {
+            provider: routed.provider,
+            outcome: "skipped",
+            reason: `the provider you chose (${routed.provider.slice(0, 40)}) no longer exists; choose another in Settings`,
+            calls: 0,
+          },
+        ],
+        routed.provider,
+      );
+    }
+    if (routed?.model !== undefined && task.request.model === undefined) {
+      task = { ...task, request: { ...task.request, model: routed.model } } as AiTask;
+    }
     await this.refreshHealth(
       privacy,
       settings,
       task.request.purpose,
-      task.kind === "embed" ? task.localProvider : undefined,
+      // A routed task talks to its route only: no other provider is even health-checked.
+      routed?.provider ?? (task.kind === "embed" ? task.localProvider : undefined),
       task.kind === "embed",
+      [routed?.provider, task.preferred ?? settings.preferred],
     );
     const plan = route(
       {
@@ -355,19 +470,26 @@ export class AiService {
         latencyBudgetMs: task.latencyBudgetMs,
         maxCostTier: task.maxCostTier,
         preferred: task.preferred ?? settings.preferred,
+        ...(routed ? { routedProvider: routed.provider } : {}),
         localProvider: task.kind === "embed" ? task.localProvider : undefined,
       },
       this.routerState(settings, this.deps.auditCloudSend !== undefined),
     );
     const attempts: Attempt[] = plan.candidates
-      .filter((c) => c.refusedBecause !== undefined)
+      .filter((c) => c.refusedBecause !== undefined && c.refusedBecause !== ONLY_ON_REQUEST)
+      // The other providers are out only because of the route; the route's own refusal is the news.
+      .filter((c) => routed === undefined || c.providerId === routed.provider)
       .map((c) => ({
         provider: c.providerId,
         outcome: "skipped",
-        reason: c.refusedBecause,
+        // "No API key is set for X" says more than "unavailable": show the health detail.
+        reason:
+          routed !== undefined && c.refusedBecause?.startsWith("unavailable")
+            ? (this.healthCache[c.providerId]?.detail ?? c.refusedBecause)
+            : c.refusedBecause,
         calls: 0,
       }));
-    if (plan.order.length === 0) throw this.noProvider(task, attempts);
+    if (plan.order.length === 0) throw this.noProvider(task, attempts, routed?.provider);
 
     for (const id of plan.order) {
       const provider = this.deps.registry.get(id);
@@ -400,7 +522,38 @@ export class AiService {
         }
       }
     }
-    throw new AllProvidersFailedError(attempts);
+    throw new AllProvidersFailedError(attempts, routed?.provider);
+  }
+
+  /** Adds who answered (label), what it used and what it cost (from the user's prices) to a provenance. */
+  private describe(
+    provider: ModelProvider,
+    provenance: Provenance,
+    usage: Usage | undefined,
+    requestedModel: string | undefined,
+  ): Provenance {
+    return {
+      ...provenance,
+      label: provider.label,
+      ...(usage ? { usage } : {}),
+      cost: costOf(provenance, requestedModel, usage, this.deps.settings().prices),
+    };
+  }
+
+  /** Streamed chunks carry the label; the final one also carries usage and cost. */
+  private async *withCost(
+    provider: ModelProvider,
+    chunks: AsyncIterable<StreamChunk>,
+    requestedModel: string | undefined,
+  ): AsyncGenerator<StreamChunk> {
+    for await (const chunk of chunks) {
+      yield chunk.kind === "done"
+        ? {
+            ...chunk,
+            provenance: this.describe(provider, chunk.provenance, chunk.usage, requestedModel),
+          }
+        : { ...chunk, provenance: { ...chunk.provenance, label: provider.label } };
+    }
   }
 
   /** Sensitive data on its way to a cloud provider is recorded first; no record, no send. */
@@ -422,9 +575,9 @@ export class AiService {
     }
   }
 
-  private noProvider(task: AiTask, attempts: Attempt[]): NoProviderError {
+  private noProvider(task: AiTask, attempts: Attempt[], routedTo?: string): NoProviderError {
     this.deps.logger?.warn("ai.no_provider", { kind: task.kind, purpose: task.request.purpose });
-    return new NoProviderError(attempts);
+    return new NoProviderError(attempts, routedTo);
   }
 
   private async callProvider(
@@ -451,14 +604,21 @@ export class AiService {
       try {
         const base = { provider: provider.id, attempts };
         if (task.kind === "generate") {
-          const result = await provider.generate(task.request, opts);
-          return { ...base, kind: "generate", result, provenance: result.provenance };
+          const raw = await provider.generate(task.request, opts);
+          const provenance = this.describe(provider, raw.provenance, raw.usage, task.request.model);
+          return { ...base, kind: "generate", result: { ...raw, provenance }, provenance };
         }
         if (task.kind === "embed") {
           const result = await provider.embed(task.request, opts);
           return { ...base, kind: "embed", result, provenance: result.provenance };
         }
-        return { ...base, ...(await openStream(provider, task.request, opts)), kind: "stream" };
+        const opened = await openStream(provider, task.request, opts);
+        return {
+          ...base,
+          kind: "stream",
+          provenance: this.describe(provider, opened.provenance, undefined, task.request.model),
+          stream: this.withCost(provider, opened.stream, task.request.model),
+        };
       } catch (err) {
         const failure = toModelError(err, provider.id);
         if (!failure.retryable || n >= maxAttempts) throw failure;

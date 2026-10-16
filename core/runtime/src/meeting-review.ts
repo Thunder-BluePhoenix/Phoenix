@@ -39,13 +39,14 @@ import type {
 } from "@phoenix/api";
 import type { Logger } from "@phoenix/logging";
 import type { AuditLog } from "@phoenix/permissions";
-import type { Database, MeetingStore } from "@phoenix/persistence";
+import type { Database, Meeting, MeetingStore } from "@phoenix/persistence";
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
+import { NOTETAKER_CAPABILITY_ID } from "./notetaker";
 import type { MemoryRuntime } from "./memory";
 import type { RetrievalRuntime } from "./retrieval";
 
 /** Capabilities whose summaries are imported as proposed items. */
-const IMPORT_CAPABILITIES = ["kage"];
+const IMPORT_CAPABILITIES = ["kage", NOTETAKER_CAPABILITY_ID];
 
 const invalid = (message: string) => new PhoenixError(ErrorCode.INVALID_REQUEST, message);
 
@@ -164,7 +165,10 @@ export class MeetingReviewRuntime implements MeetingReviewApi {
     });
   }
 
-  /** Kage's own items for every synced meeting that has a summary. Local, no model. */
+  /**
+   * The summary items for every synced meeting that has a summary: Kage's own, and the ones of a
+   * call Phoenix recorded (written by a local model, so they are labelled as AI-made). Local, no model.
+   */
   importAll(): { imported: number } {
     let imported = 0;
     if (this.closed) return { imported };
@@ -172,12 +176,24 @@ export class MeetingReviewRuntime implements MeetingReviewApi {
     for (const meeting of all) {
       if (!IMPORT_CAPABILITIES.includes(meeting.capability_id) || !meeting.has_summary) continue;
       try {
-        imported += this.service.importKage(meeting.id).imported;
+        imported += this.service.importKage(meeting.id, this.originOf(meeting)).imported;
       } catch (err) {
         this.d.logger.warn("meeting review: import failed", { error: (err as Error).message });
       }
     }
     return { imported };
+  }
+
+  /** Who wrote the summary: Kage, or (for a call recorded here) the local model named in the summary. */
+  private originOf(meeting: Meeting): "kage" | `ai:${string}` {
+    if (meeting.capability_id !== NOTETAKER_CAPABILITY_ID) return "kage";
+    const summary = this.d.meetings.summary(meeting.id);
+    const model =
+      summary && "generated_model" in summary && typeof summary.generated_model === "string"
+        ? summary.generated_model
+        : "";
+    // A label of its own: re-importing the summary must never remove items the on-demand AI search stored.
+    return /^[\w.:/@+-]{1,100}$/u.test(model) ? `ai:call-summary/${model}` : "ai:call-summary";
   }
 
   /** Re-derives memory facts from accepted items, for example after sensitive meetings were allowed. */
@@ -229,7 +245,11 @@ export class MeetingReviewRuntime implements MeetingReviewApi {
   }
 
   async extract(meetingId: string): Promise<MeetingExtractionView> {
-    const report = await this.service.extract(meetingId, { useAi: true });
+    const meeting = this.d.meetings.get(meetingId);
+    const report = await this.service.extract(meetingId, {
+      useAi: true,
+      ...(meeting ? { summaryBy: this.originOf(meeting) } : {}),
+    });
     this.d.onItemsChanged();
     return {
       meeting_id: meetingId,

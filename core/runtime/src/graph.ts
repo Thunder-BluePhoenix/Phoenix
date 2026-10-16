@@ -68,10 +68,11 @@ import type { Logger } from "@phoenix/logging";
 import type { AuditLog } from "@phoenix/permissions";
 import type { Database, MeetingStore } from "@phoenix/persistence";
 import type { PhoenixEvent } from "@phoenix/protocol";
+import { NOTETAKER_CAPABILITY_ID } from "./notetaker";
 import type { RetrievalRuntime } from "./retrieval";
 
 const PURPOSE_NARRATE = "narrate a knowledge graph path";
-const MEETING_CAPABILITIES = ["kage"];
+const MEETING_CAPABILITIES = ["kage", NOTETAKER_CAPABILITY_ID];
 /** Counting visible nodes per type stops here, so a huge graph cannot make status slow. */
 const COUNT_CAP = 10_000;
 const DOCUMENT_LIMIT = 5;

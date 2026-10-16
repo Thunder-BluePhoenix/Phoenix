@@ -272,7 +272,7 @@ function ExtractionReport({ report }: { report: MeetingExtraction }) {
   return (
     <div className="small" role="status">
       <p>
-        From Kage: {report.kage.imported} new, {report.kage.duplicates} already here.
+        From the summary: {report.kage.imported} new, {report.kage.duplicates} already here.
       </p>
       {report.ai === null && <p>This meeting has no transcript, so no AI search was made.</p>}
       {report.ai?.unavailable && <p>{report.ai.unavailable}</p>}
@@ -331,7 +331,7 @@ function Extract({
       <p id={`${meetingId}-extract-note`} className="muted small">
         {aiOn
           ? "A model reads the transcript on this computer and proposes items, each with a quote that must appear in it. Nothing is accepted for you. This can take a minute."
-          : "AI is off, so only the items Kage found are listed. Turn AI on in Settings to let a model look for more."}
+          : "AI is off, so only the items found in the summary are listed. Turn AI on in Settings to let a model look for more."}
       </p>
       <Feedback error={error} />
       {report && <ExtractionReport report={report} />}
@@ -381,7 +381,8 @@ export function MeetingItemsReview({
       )}
       {!aiOn && ai !== null && (
         <p className="review-notice small" role="note">
-          <strong>AI is off.</strong> Only decisions and action items that Kage found are listed.
+          <strong>AI is off.</strong> Only decisions and action items found in the summary are
+          listed.
         </p>
       )}
       <p className="muted small">
@@ -424,7 +425,7 @@ export function MeetingItemsReview({
             <p className="muted">
               No decisions or action items yet.{" "}
               {hasTranscript
-                ? "Kage has not reported any for this meeting."
+                ? "The summary has not reported any for this meeting."
                 : "This meeting has no transcript yet."}
             </p>
           ) : shown.length === 0 ? (

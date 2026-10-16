@@ -7,6 +7,7 @@ import { App } from "../src/App";
 import { PhoenixClient } from "../src/core/client";
 import { CoreProvider } from "../src/core/context";
 import type {
+  AiProviderStatus,
   AiStatus,
   MemoryAnswer,
   MemoryItem,
@@ -445,20 +446,39 @@ const memorySettings: MemorySettings = {
   capture_git: true,
 };
 
+const provider = (over: Partial<AiProviderStatus> & Pick<AiProviderStatus, "id" | "label">) =>
+  ({
+    locality: "local",
+    kind: "builtin",
+    available: true,
+    reason: null,
+    key_policy: "none",
+    key_set: false,
+    default_model: null,
+    base_url: null,
+    models: null,
+    models_error: null,
+    ...over,
+  }) satisfies AiProviderStatus;
+
 const aiStatus: AiStatus = {
   enabled: false,
   preferred: null,
   cloud_opt_in: { public: false, internal: false, sensitive: false },
   external_processing_granted: false,
+  routing: { chat: null, summaries: null, cleanup: null },
+  endpoints: [],
+  prices: {},
   providers: [
-    { id: "ollama", label: "Ollama", locality: "local", available: true, reason: null },
-    {
+    provider({ id: "ollama", label: "Ollama", default_model: "llama3.2" }),
+    provider({
       id: "anthropic",
       label: "Anthropic Claude",
       locality: "cloud",
       available: false,
       reason: "No API key",
-    },
+      key_policy: "required",
+    }),
   ],
 };
 
@@ -698,32 +718,39 @@ describe("AI settings", () => {
   it("posts the Anthropic key once and never shows it again", async () => {
     const api = settingsSetup();
     const ai = await section("AI");
-    const input = (await ai.findByLabelText(/^Anthropic API key/)) as HTMLInputElement;
+    const secret = ["fake", "key", "for", "test", "123"].join("-");
+    fireEvent.click(await ai.findByRole("button", { name: "Set key" }));
+    const input = (await ai.findByLabelText(/^Anthropic Claude API key/)) as HTMLInputElement;
     expect(input.type).toBe("password");
     expect(
-      (ai.getByRole("button", { name: "Save Anthropic key" }) as HTMLButtonElement).disabled,
+      (ai.getByRole("button", { name: "Save Anthropic Claude key" }) as HTMLButtonElement).disabled,
     ).toBe(true);
-    fireEvent.change(input, { target: { value: "sk-ant-secret-123" } });
-    fireEvent.click(ai.getByRole("button", { name: "Save Anthropic key" }));
+    fireEvent.change(input, { target: { value: secret } });
+    fireEvent.click(ai.getByRole("button", { name: "Save Anthropic Claude key" }));
     await waitFor(() =>
-      expect(api.posts("/api/ai/secret")[0]?.body).toEqual({ value: "sk-ant-secret-123" }),
+      expect(api.posts("/api/ai/providers/anthropic/secret")[0]?.body).toEqual({ value: secret }),
     );
     expect(await ai.findByText(/Key set\./)).toBeTruthy();
     expect(input.value).toBe("");
-    expect(document.body.innerHTML).not.toContain("sk-ant-secret-123");
-    expect(JSON.stringify(api.calls.filter((c) => c.method === "GET"))).not.toContain("sk-ant");
+    expect(document.body.innerHTML).not.toContain(secret);
+    expect(JSON.stringify(api.calls.filter((c) => c.method === "GET"))).not.toContain(secret);
+    expect(api.calls.some((c) => c.path === "/api/ai/secret")).toBe(false);
   });
 
-  it("removes the key with DELETE", async () => {
-    const api = settingsSetup({ "DELETE /api/ai/secret": () => ({}) });
+  it("removes the key with DELETE on the per-provider route", async () => {
+    const api = settingsSetup({ "DELETE /api/ai/providers/anthropic/secret": () => ({}) });
     const ai = await section("AI");
-    fireEvent.click(await ai.findByRole("button", { name: "Remove Anthropic key" }));
+    fireEvent.click(await ai.findByRole("button", { name: "Set key" }));
+    fireEvent.click(await ai.findByRole("button", { name: "Remove Anthropic Claude key" }));
     await waitFor(() =>
-      expect(api.calls.some((c) => c.method === "DELETE" && c.path === "/api/ai/secret")).toBe(
-        true,
-      ),
+      expect(
+        api.calls.some(
+          (c) => c.method === "DELETE" && c.path === "/api/ai/providers/anthropic/secret",
+        ),
+      ).toBe(true),
     );
     expect(await ai.findByText("Key removed from your keychain.")).toBeTruthy();
+    expect(api.calls.some((c) => c.path === "/api/ai/secret")).toBe(false);
   });
 
   it("shows API errors as alerts and keeps the typed key out of the DOM text", async () => {

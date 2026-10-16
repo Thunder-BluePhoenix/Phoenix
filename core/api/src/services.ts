@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import type { AgentApprovalsApi } from "./agent-approval-routes";
+import type { DictationApi } from "./dictation-routes";
+import type { NotetakerApi } from "./notetaker-routes";
+import type { AttachmentsApi } from "./attachment-routes";
 import type { AgentLiveApi } from "./agent-live-routes";
+import type { AppearanceApi } from "./appearance-routes";
 import type { AgentRelayApi } from "./agent-relay-routes";
 import type { ImprovementApi } from "./improvement-routes";
 import type { PhoenixConfig } from "@phoenix/config";
@@ -166,6 +170,15 @@ export interface MemoryAnswerView {
   interpretation: string | null;
   interpretation_classification: "hypothesis" | null;
   processed_by: string | null;
+  /** The model that answered (null when no AI was used). */
+  model: string | null;
+  /** Provider id and display label of the answerer. */
+  provider: string | null;
+  provider_label: string | null;
+  locality: "local" | "cloud" | null;
+  usage: { input_tokens: number | null; output_tokens: number | null } | null;
+  /** From the user's own prices only; null for on-device models and when no price was entered. */
+  cost: { amount: number; currency: "USD"; basis: "user-configured prices" } | null;
   ai_used: boolean;
   note: string | null;
   retrieval: RetrievalInfoView;
@@ -266,8 +279,8 @@ export interface MeetingHitView {
   item_id: string | null;
   memory_id: string;
   text: string;
-  /** "reviewed": accepted in Phoenix. "kage": from Kage's summary, not reviewed here. */
-  origin: "reviewed" | "kage";
+  /** "reviewed": accepted in Phoenix. "kage": from Kage's summary. "notetaker": from a call recorded on this computer. Neither of the last two is reviewed here. */
+  origin: "reviewed" | "kage" | "notetaker";
   /** decision | action_item | summary ... */
   part: string;
   observed_at: string;
@@ -291,7 +304,7 @@ export interface MeetingAskView {
     meeting_id: string;
     item_id: string | null;
     memory_id: string;
-    origin: "reviewed" | "kage";
+    origin: "reviewed" | "kage" | "notetaker";
   }[];
   /** Generated from the facts above; null when no AI was used. */
   interpretation: string | null;
@@ -546,27 +559,73 @@ export interface GraphApi {
   forgetPerson(name: string): { removed: { provenance: number; nodes: number; edges: number } };
 }
 
+export type AiLocalityView = "local" | "cloud";
+
+/** Where one kind of work goes. `model` null = the provider's default. */
+export interface AiRouteView {
+  provider: string;
+  model: string | null;
+}
+
+/** A user-added OpenAI-compatible server. `locality` is derived from `base_url`, never claimed. */
+export interface AiEndpointView {
+  id: string;
+  label: string;
+  base_url: string;
+  preset: string | null;
+  locality: AiLocalityView;
+}
+
+/** A price the USER entered, in USD per million tokens. Phoenix has no built-in prices. */
+export interface AiPriceView {
+  input_per_mtok: number;
+  output_per_mtok: number;
+}
+
+export interface AiProviderModelView {
+  id: string;
+  kind: "chat" | "embed" | "unknown";
+}
+
+export interface AiProviderView {
+  id: string;
+  label: string;
+  locality: AiLocalityView;
+  kind: "builtin" | "preset" | "custom";
+  available: boolean;
+  reason: string | null;
+  /** "none" = never needs one (on this device), "optional" = may take one, "required" = cannot work without. */
+  key_policy: "none" | "optional" | "required";
+  /** Whether a key is stored. The key itself is never returned. */
+  key_set: boolean;
+  default_model: string | null;
+  base_url: string | null;
+  /** Only filled for the provider asked for with `?models=<id>`; null otherwise. */
+  models: AiProviderModelView[] | null;
+  models_error: string | null;
+}
+
 export interface AiStatusView {
   enabled: boolean;
   preferred: string | null;
   cloud_opt_in: { public: boolean; internal: boolean; sensitive: boolean };
   external_processing_granted: boolean;
-  providers: {
-    id: string;
-    label: string;
-    locality: "local" | "cloud";
-    available: boolean;
-    reason: string | null;
-  }[];
+  routing: Record<"chat" | "summaries" | "cleanup", AiRouteView | null>;
+  endpoints: AiEndpointView[];
+  prices: Record<string, AiPriceView>;
+  providers: AiProviderView[];
 }
 
-/** AI settings, the external-processing grant and the cloud API key. Values are never returned. */
+/** AI settings, the external-processing grant and the per-provider API keys. Values are never returned. */
 export interface AiApi {
-  status(): Promise<AiStatusView>;
+  /** `modelsOf`: also list the models of that one provider (a request to it; nothing is sent to it). */
+  status(modelsOf?: string): Promise<AiStatusView>;
   setSettings(input: unknown): Promise<AiStatusView>;
   setExternalProcessing(granted: boolean): Promise<AiStatusView>;
-  setSecret(value: string): Promise<void>;
-  deleteSecret(): Promise<void>;
+  /** False = no such provider (the route answers 404). */
+  hasProvider(id: string): boolean;
+  setSecret(providerId: string, value: string): Promise<void>;
+  deleteSecret(providerId: string): Promise<void>;
 }
 
 /** One task as listed. Stable snake_case JSON; the phase 31 doc is the contract. */
@@ -1197,10 +1256,14 @@ export interface CoreServices {
   sync?: SyncApi;
   registry?: RegistryApi;
   multimodal?: MultimodalApi;
+  dictation?: DictationApi;
+  notetaker?: NotetakerApi;
   agentApprovals?: AgentApprovalsApi;
   agentRelay?: AgentRelayApi;
   agentLive?: AgentLiveApi;
   improvement?: ImprovementApi;
+  appearance?: AppearanceApi;
+  attachments?: AttachmentsApi;
   petSettings?(): unknown;
   setPetSettings?(input: unknown): unknown;
   /** Persists the user's sleep preference. */

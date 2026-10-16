@@ -38,13 +38,24 @@ export interface Citation {
   memoryId: string;
 }
 
+export type MeetingHitOrigin = "reviewed" | "kage" | "notetaker";
+
+/** The memory source of facts made from a call Phoenix recorded itself (its meetings' capability id). */
+const NOTETAKER_SOURCE = "notetaker";
+
+/** Where a fact came from, for the label shown beside it. */
+export function originOfSource(source: string): MeetingHitOrigin {
+  if (source === REVIEW_MEMORY_SOURCE) return "reviewed";
+  return source === NOTETAKER_SOURCE ? "notetaker" : "kage";
+}
+
 export interface MeetingHit {
   citation: Citation;
   text: string;
   /** "fact": stored as the source or a reviewer said it. Never a model's interpretation. */
   kind: MemoryKind;
-  /** "reviewed": a person accepted it in Phoenix. "kage": taken from Kage's summary, unreviewed. */
-  origin: "reviewed" | "kage";
+  /** "reviewed": a person accepted it in Phoenix. "kage": from Kage's summary. "notetaker": from a call recorded on this computer. Neither of the last two is reviewed. */
+  origin: MeetingHitOrigin;
   /** decision | action_item | summary ... */
   part: string;
   observedAt: string;
@@ -73,7 +84,7 @@ function hitOf(item: MemoryItem, score: number, now: Date): MeetingHit | null {
     citation: { meetingId, itemId, memoryId: item.id },
     text: item.text,
     kind: item.kind,
-    origin: item.source === REVIEW_MEMORY_SOURCE ? "reviewed" : "kage",
+    origin: originOfSource(item.source),
     part,
     observedAt: item.observedAt,
     freshness: freshnessOf(item, now),
@@ -154,8 +165,7 @@ export async function askAboutMeetings(
             ref: fact.ref,
             text: fact.text,
             citation,
-            origin:
-              fact.source === REVIEW_MEMORY_SOURCE ? ("reviewed" as const) : ("kage" as const),
+            origin: originOfSource(fact.source),
           },
         ]
       : [];

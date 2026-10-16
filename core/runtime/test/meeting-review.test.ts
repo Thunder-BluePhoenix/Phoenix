@@ -240,7 +240,10 @@ describe("AI extraction is user-triggered, grounded and local", () => {
   it("refuses a cloud provider for a transcript even with every opt-in, and the cloud is never contacted", async () => {
     const network = fakeNetwork({ ollama: "down" });
     const core = await boot(network);
-    await core.runtime.ai.setSecret(["sk", "ant", "test", "key", "0123456789"].join("-"));
+    await core.runtime.ai.setSecret(
+      "anthropic",
+      ["sk", "ant", "test", "key", "0123456789"].join("-"),
+    );
     await core.api("POST", "/api/ai/settings", {
       enabled: true,
       cloud_opt_in: { public: true, internal: true, sensitive: true },

@@ -7,6 +7,9 @@
 import { checkGate, type CloudOptIn, type ExternalAiPolicy } from "./gate";
 import type { CostTier, ModelProvider, PrivacyClass, TaskKind } from "./types";
 
+/** Why a provider that is only used on request is not in a plan the user did not ask it for. */
+export const ONLY_ON_REQUEST = "only used when you choose it";
+
 export interface RouteTask {
   kind: TaskKind;
   privacy: PrivacyClass;
@@ -23,12 +26,18 @@ export interface RouteTask {
    * list of purposes (SENSITIVE_CLOUD_PURPOSES). Absent = no purpose = never a cloud provider.
    */
   purpose?: string;
+  /**
+   * The provider the user routed this kind of work to (Settings, per-purpose routing). It wins
+   * over `preferred` and is the ONLY provider tried: if the gate or availability refuses it the
+   * task fails with that reason, it never silently goes elsewhere. The gate still applies.
+   */
+  routedProvider?: string;
 }
 
 /** The facts about a provider the router needs. A ModelProvider satisfies this. */
 export type RouterProvider = Pick<
   ModelProvider,
-  "id" | "label" | "locality" | "capabilities" | "costTier" | "typicalLatencyMs"
+  "id" | "label" | "locality" | "capabilities" | "costTier" | "typicalLatencyMs" | "explicitOnly"
 >;
 
 export interface RouterState {
@@ -72,6 +81,21 @@ export function route(task: RouteTask, state: RouterState): RoutePlan {
   const providers = [...state.providers].sort((a, b) => a.id.localeCompare(b.id));
   for (const p of providers) {
     const base = { providerId: p.id, label: p.label, locality: p.locality };
+    // 0. A provider that is only used on request is out unless the user asked for it. Checked
+    //    first so the gate's reason is not reported for a provider nobody chose.
+    if (
+      p.explicitOnly === true &&
+      task.preferred !== p.id &&
+      task.routedProvider !== p.id &&
+      task.localProvider !== p.id
+    ) {
+      refused.push({
+        ...base,
+        reasons: [],
+        refusedBecause: ONLY_ON_REQUEST,
+      });
+      continue;
+    }
     // 1. Privacy gate: a hard rule, evaluated before anything else so its reason is the one shown.
     const gate = checkGate(
       p.locality,
@@ -82,6 +106,14 @@ export function route(task: RouteTask, state: RouterState): RoutePlan {
     );
     if (!gate.allowed) {
       refused.push({ ...base, reasons: [], refusedBecause: gate.reason });
+      continue;
+    }
+    if (task.routedProvider !== undefined && p.id !== task.routedProvider) {
+      refused.push({
+        ...base,
+        reasons: [],
+        refusedBecause: `you routed this kind of work to ${task.routedProvider}`,
+      });
       continue;
     }
     if (task.kind === "embed" && p.locality !== "local") {

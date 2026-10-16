@@ -9,6 +9,14 @@ export interface Call {
 
 type Handler = (body: unknown, url: URL) => unknown;
 
+/** What `fakeApi` hands to a test: the fetch stand-in, every recorded call and route helpers. */
+export interface FakeApi {
+  fetchImpl: typeof fetch;
+  calls: Call[];
+  posts(path: string): Call[];
+  set(route: string, handler: Handler): void;
+}
+
 const DEFAULTS: Record<string, Handler> = {
   "GET /api/confirmations": () => ({ confirmations: [] }),
   "GET /api/capabilities": () => ({ capabilities: [] }),
@@ -26,7 +34,7 @@ const DEFAULTS: Record<string, Handler> = {
 };
 
 /** A fetch stand-in routed by "METHOD /path" (query ignored). Records every call. */
-export function fakeApi(routes: Record<string, Handler> = {}) {
+export function fakeApi(routes: Record<string, Handler> = {}): FakeApi {
   const calls: Call[] = [];
   const table = { ...DEFAULTS, ...routes };
   const fetchImpl = (async (input: string, init?: RequestInit) => {
@@ -35,7 +43,10 @@ export function fakeApi(routes: Record<string, Handler> = {}) {
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ method, path: url.pathname + url.search, body });
     // Decoded like core's router does (kage%3A1 → kage:1).
-    const handler = table[`${method} ${decodeURIComponent(url.pathname)}`];
+    const path = decodeURIComponent(url.pathname);
+    // A trailing "/*" key serves every path directly under that prefix (one segment).
+    const handler =
+      table[`${method} ${path}`] ?? table[`${method} ${path.slice(0, path.lastIndexOf("/"))}/*`];
     if (!handler) {
       if (method === "POST") return new Response("{}", { status: 200 });
       return new Response(JSON.stringify({ code: "RESOURCE_NOT_FOUND", message: "Not found" }), {

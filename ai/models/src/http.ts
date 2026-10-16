@@ -136,15 +136,20 @@ function errorMessageOf(body: Record<string, unknown> | undefined): string | und
   return undefined;
 }
 
-/** Builds the error for a non-2xx reply. 401/403 are auth, 429 and 5xx are retryable. */
+/**
+ * Builds the error for a non-2xx reply. 401/403 are auth, 429 and 5xx are retryable. With
+ * `withDetail: false` the message is built from the status code alone: nothing the server wrote
+ * (which can echo request fields) reaches the message.
+ */
 export function httpError(
   provider: string,
   status: number,
   bodyText: string,
   retryAfter: string | null,
   secrets: readonly string[],
+  withDetail = true,
 ): ModelError {
-  const detail = errorMessageOf(parseJsonObject(bodyText));
+  const detail = withDetail ? errorMessageOf(parseJsonObject(bodyText)) : undefined;
   const suffix = detail === undefined ? "" : `: ${scrub(detail, secrets)}`;
   if (status === 401 || status === 403) {
     return new ModelError(
@@ -156,12 +161,22 @@ export function httpError(
       },
     );
   }
-  return new ModelError("http", provider, `${provider} replied HTTP ${status}${suffix}`, {
+  const meaning = withDetail
+    ? ""
+    : (STATUS_MEANING[status] ?? (status >= 500 ? " (server error)" : ""));
+  return new ModelError("http", provider, `${provider} replied HTTP ${status}${meaning}${suffix}`, {
     status,
     retryable: status === 429 || status >= 500,
     retryAfterMs: parseRetryAfter(retryAfter),
   });
 }
+
+/** Fixed wording for statuses worth explaining when the server's own text is not used. */
+const STATUS_MEANING: Record<number, string> = {
+  400: " (the request was rejected: check the model name)",
+  404: " (not found: check the base URL and the model name)",
+  429: " (rate limit reached)",
+};
 
 interface ChunkReader {
   read(): Promise<{ done: boolean; value?: Uint8Array }>;
@@ -223,6 +238,8 @@ export interface SendInit {
   body?: string;
   /** Strings that must never appear in an error message (API keys). */
   secrets?: readonly string[];
+  /** false = never put text from the server's error body into the message. Default true. */
+  errorDetail?: boolean;
 }
 
 /**
@@ -262,6 +279,7 @@ export async function send(
     bodyText,
     res.headers.get("retry-after"),
     init.secrets ?? [],
+    init.errorDetail !== false,
   );
 }
 

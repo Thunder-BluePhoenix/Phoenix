@@ -1161,4 +1161,20 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX agent_approval_rules_scope ON agent_approval_rules (agent, project, tool, expires_at);
     `,
   },
+  {
+    version: 27,
+    name: "dictation_stats",
+    // Aggregates ONLY (Phase 64): counts per local day and app. No text, no audio, no finer time.
+    // `app` is user-private and is deleted with "delete all dictation statistics".
+    sql: `
+      CREATE TABLE dictation_stats (
+        day TEXT NOT NULL CHECK (length(day) = 10),
+        app TEXT NOT NULL,                  -- app id, or '' when unknown
+        words INTEGER NOT NULL CHECK (words >= 0),
+        speech_ms INTEGER NOT NULL CHECK (speech_ms >= 0),
+        sessions INTEGER NOT NULL CHECK (sessions >= 0),
+        PRIMARY KEY (day, app)
+      );
+    `,
+  },
 ];

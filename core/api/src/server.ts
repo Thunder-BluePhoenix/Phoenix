@@ -4,9 +4,19 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
-import { decodeParams, matchRoute, readJsonBody, sendError, sendJson, type Route } from "./http";
+import {
+  ATTACHMENT_BODY_MAX_BYTES,
+  decodeParams,
+  matchRoute,
+  readJsonBody,
+  sendError,
+  sendJson,
+  type Route,
+} from "./http";
 import { buildRoutes } from "./routes";
 import { isAllowedHost, isAllowedOrigin, requestToken, tokensEqual } from "./security";
+import { DICTATION_STREAM_PATH, DictationStreamSocket } from "./dictation-socket";
+import { NOTETAKER_STREAM_PATH, NotetakerStreamSocket } from "./notetaker-socket";
 import { MultimodalCaptureSocket } from "./multimodal-capture";
 import { StaticSite } from "./static";
 import type { CoreServices } from "./services";
@@ -25,6 +35,8 @@ export class ApiServer {
   readonly server: Server;
   readonly hub: WebSocketHub;
   readonly capture: MultimodalCaptureSocket;
+  readonly dictation: DictationStreamSocket;
+  readonly notetaker: NotetakerStreamSocket;
   private readonly routes: Route[];
   private readonly s: CoreServices;
   private readonly token: string;
@@ -37,6 +49,8 @@ export class ApiServer {
     this.routes = buildRoutes(this.s);
     this.hub = new WebSocketHub(this.s);
     this.capture = new MultimodalCaptureSocket(this.s);
+    this.dictation = new DictationStreamSocket(this.s);
+    this.notetaker = new NotetakerStreamSocket(this.s);
     this.server = createServer((req, res) => void this.onRequest(req, res));
     this.server.on("upgrade", (req, socket, head) => this.onUpgrade(req, socket, head));
   }
@@ -52,6 +66,8 @@ export class ApiServer {
   async close(): Promise<void> {
     await this.hub.close();
     this.capture.close();
+    this.dictation.close();
+    this.notetaker.close();
     await new Promise<void>((resolve) => {
       this.server.close(() => resolve());
       this.server.closeAllConnections();
@@ -113,7 +129,18 @@ export class ApiServer {
         res,
         url,
         params: decodeParams(params),
-        body: () => readJsonBody(req),
+        // Only POST /api/attachments may read more than the default; the route (already
+        // authenticated above) asks for it, nobody else gets it.
+        body: (maxBytes) =>
+          readJsonBody(
+            req,
+            maxBytes !== undefined &&
+              req.method === "POST" &&
+              url.pathname === "/api/attachments" &&
+              maxBytes <= ATTACHMENT_BODY_MAX_BYTES
+              ? maxBytes
+              : undefined,
+          ),
       });
       sendJson(
         res,
@@ -133,6 +160,18 @@ export class ApiServer {
       socket.destroy();
     };
     const url = new URL(req.url ?? "/", "http://localhost");
+    if (url.pathname === DICTATION_STREAM_PATH) {
+      const refusal = this.dictation.check(req, url, () => this.authenticate(req));
+      if (refusal) return reject(refusal.status, refusal.message);
+      this.dictation.handleUpgrade(req, socket, head, url.searchParams.get("session")!);
+      return;
+    }
+    if (url.pathname === NOTETAKER_STREAM_PATH) {
+      const refusal = this.notetaker.check(req, url, () => this.authenticate(req));
+      if (refusal) return reject(refusal.status, refusal.message);
+      this.notetaker.handleUpgrade(req, socket, head, url.searchParams.get("session")!);
+      return;
+    }
     if (url.pathname !== "/api/ws" && url.pathname !== "/api/multimodal/capture")
       return reject(404, "Not Found");
     if (url.pathname === "/api/multimodal/capture") {

@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { ApiError, type PhoenixClient } from "./client";
+import type { AttachmentAnswer } from "./attachments";
 import type { AgentTaskSummary, MemoryAnswer } from "./types";
 
 /** The same cap as POST /api/memory/ask (core/api MAX_QUESTION_CHARS). */
 export const CHAT_MAX_CHARS = 500;
+/** POST /api/attachments/ask takes up to 2000 characters, but the chat box stops at CHAT_MAX_CHARS. */
+const ATTACHMENT_QUESTION_MAX = 2000;
 
 export type ChatItem =
   | { id: number; kind: "user"; text: string }
   | { id: number; kind: "answer"; answer: MemoryAnswer }
+  | { id: number; kind: "attachment_answer"; answer: AttachmentAnswer }
   | { id: number; kind: "error"; text: string }
   | { id: number; kind: "task"; taskId: string; title: string };
 
@@ -90,6 +94,45 @@ export class ChatStore {
     } finally {
       this.set({ asking: false });
     }
+  }
+
+  /**
+   * Asks Core to answer from the chosen attachments with a model on this device (POST
+   * /api/attachments/ask). Same rules as `ask`: one request at a time, the question and the reply
+   * join the conversation, and a failure is a message. Returns true when it was sent.
+   */
+  async askAttachments(
+    raw: string,
+    ids: readonly string[],
+    names: readonly string[],
+  ): Promise<boolean> {
+    const text = raw.trim();
+    if (!text || text.length > ATTACHMENT_QUESTION_MAX || this.snapshot.asking || ids.length === 0)
+      return false;
+    this.set({
+      items: [
+        ...this.snapshot.items,
+        { id: this.id(), kind: "user", text: `${text}\n(about: ${names.join(", ")})` },
+      ],
+      draft: "",
+    });
+    this.set({ asking: true });
+    try {
+      const answer = await this.client.request<AttachmentAnswer>("POST", "/api/attachments/ask", {
+        question: text,
+        attachment_ids: ids,
+      });
+      this.push({ id: this.id(), kind: "attachment_answer", answer });
+    } catch (err) {
+      this.push({
+        id: this.id(),
+        kind: "error",
+        text: `Asking about attachments failed: ${failureText(err)}.`,
+      });
+    } finally {
+      this.set({ asking: false });
+    }
+    return true;
   }
 
   /** Starts a CI-failure task. Returns null on success, otherwise what went wrong in plain words. */

@@ -105,6 +105,8 @@ export class OllamaProvider implements ModelProvider {
   readonly capabilities = { generate: true, stream: true, embed: true };
   readonly costTier = 0 as const;
   readonly typicalLatencyMs = 2_000;
+  readonly keyPolicy = "none" as const;
+  readonly defaultModel: string;
 
   private readonly verifiedLocal: Record<string, true | undefined> = {};
   private readonly baseUrl: string;
@@ -119,6 +121,7 @@ export class OllamaProvider implements ModelProvider {
   constructor(options: OllamaOptions = {}) {
     this.baseUrl = assertLoopbackOllamaUrl(options.baseUrl ?? DEFAULT_OLLAMA_URL);
     this.chatModel = options.chatModel ?? DEFAULT_OLLAMA_CHAT_MODEL;
+    this.defaultModel = this.chatModel;
     this.embedModel = options.embedModel ?? DEFAULT_OLLAMA_EMBED_MODEL;
     this.fetchFn = options.fetch ?? ((url, init) => fetch(url, init));
     this.generateTimeoutMs = options.generateTimeoutMs ?? 120_000;

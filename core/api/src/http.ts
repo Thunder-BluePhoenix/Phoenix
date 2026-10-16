@@ -4,11 +4,17 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { ERROR_HTTP_STATUS, ErrorCode, PhoenixError } from "@phoenix/protocol";
 
 export const MAX_BODY_BYTES = 256 * 1024;
+/**
+ * The one larger body: `POST /api/attachments` (Phase 62). A 5 MiB image is 6,990,508 bytes of
+ * base64; 7 MiB leaves ~350 KB for the JSON envelope. The server grants it to that exact method and
+ * path only, and only after authentication; every other route keeps MAX_BODY_BYTES.
+ */
+export const ATTACHMENT_BODY_MAX_BYTES = 7 * 1024 * 1024;
 
-/** Thrown when a body exceeds MAX_BODY_BYTES; answered with 413 and the connection closed. */
+/** Thrown when a body exceeds its limit (MAX_BODY_BYTES unless the route asked for more); answered with 413 and the connection closed. */
 export class BodyTooLargeError extends PhoenixError {
-  constructor() {
-    super(ErrorCode.INVALID_REQUEST, `Request body exceeds ${MAX_BODY_BYTES} bytes`);
+  constructor(limit: number = MAX_BODY_BYTES) {
+    super(ErrorCode.INVALID_REQUEST, `Request body exceeds ${limit} bytes`);
   }
 }
 
@@ -17,7 +23,8 @@ export interface RequestContext {
   res: ServerResponse;
   url: URL;
   params: Record<string, string>;
-  body: () => Promise<unknown>;
+  /** Reads the JSON body (at most MAX_BODY_BYTES; `POST /api/attachments` may ask for ATTACHMENT_BODY_MAX_BYTES). */
+  body: (maxBytes?: number) => Promise<unknown>;
 }
 
 export type Handler = (ctx: RequestContext) => Promise<unknown> | unknown;
@@ -76,7 +83,10 @@ export function decodeParams(raw: Record<string, string>): Record<string, string
   return Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, decodeSegment(v)]));
 }
 
-export function readJsonBody(req: IncomingMessage): Promise<unknown> {
+export function readJsonBody(
+  req: IncomingMessage,
+  maxBytes: number = MAX_BODY_BYTES,
+): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const type = req.headers["content-type"] ?? "";
     if (!type.startsWith("application/json")) {
@@ -84,8 +94,8 @@ export function readJsonBody(req: IncomingMessage): Promise<unknown> {
       req.resume();
       return;
     }
-    if (Number(req.headers["content-length"] ?? 0) > MAX_BODY_BYTES) {
-      reject(new BodyTooLargeError());
+    if (Number(req.headers["content-length"] ?? 0) > maxBytes) {
+      reject(new BodyTooLargeError(maxBytes));
       return;
     }
     let size = 0;
@@ -94,11 +104,11 @@ export function readJsonBody(req: IncomingMessage): Promise<unknown> {
     req.on("data", (chunk: Buffer) => {
       if (tooLarge) return;
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > maxBytes) {
         tooLarge = true;
         chunks.length = 0;
         req.pause();
-        reject(new BodyTooLargeError());
+        reject(new BodyTooLargeError(maxBytes));
         return;
       }
       chunks.push(chunk);

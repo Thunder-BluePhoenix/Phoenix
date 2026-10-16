@@ -49,6 +49,7 @@ import type { Logger } from "@phoenix/logging";
 import type { AuditLog } from "@phoenix/permissions";
 import type { Database, MeetingStore, SettingsStore } from "@phoenix/persistence";
 import { ErrorCode, PhoenixError, type PhoenixEvent } from "@phoenix/protocol";
+import { NOTETAKER_CAPABILITY_ID } from "./notetaker";
 import type { RetrievalRuntime } from "./retrieval";
 
 const SETTINGS_KEY = "memory.settings";
@@ -57,7 +58,7 @@ export const MAX_VIEW_TEXT = 2000;
 const MAX_DOC_PATHS = 50;
 const MAX_DOC_PATH_CHARS = 1024;
 /** Capabilities whose meetings become memories. */
-const MEETING_CAPABILITIES = ["kage"];
+const MEETING_CAPABILITIES = ["kage", NOTETAKER_CAPABILITY_ID];
 /** Facts and tokens one question may bring to a model. */
 const ASK_LIMIT = 10;
 const ASK_TOKEN_BUDGET = 3000;
@@ -363,6 +364,8 @@ export class MemoryRuntime implements MemoryApi {
     if (source === "project-docs") return true;
     // Facts made from items the user reviewed. Sensitive ones still need allow_sensitive_meetings.
     if (source === REVIEW_SOURCE) return true;
+    // A call recorded on this computer is Phoenix's own, not a capability that can be switched off.
+    if (source === NOTETAKER_CAPABILITY_ID) return true;
     try {
       return this.d.capabilities.get(source).status === "enabled";
     } catch {
@@ -745,6 +748,17 @@ export class MemoryRuntime implements MemoryApi {
       interpretation: answer.interpretation,
       interpretation_classification: answer.interpretation === null ? null : "hypothesis",
       processed_by: answer.model?.processedBy ?? null,
+      model: answer.model?.model ?? null,
+      provider: answer.model?.provider ?? null,
+      provider_label: answer.model?.label ?? null,
+      locality: answer.model?.locality ?? null,
+      usage: answer.model?.usage
+        ? {
+            input_tokens: answer.model.usage.inputTokens ?? null,
+            output_tokens: answer.model.usage.outputTokens ?? null,
+          }
+        : null,
+      cost: answer.model?.cost ?? null,
       ai_used: answer.interpretation !== null,
       note: answer.noInterpretationReason,
       retrieval: info,

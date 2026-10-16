@@ -3,6 +3,7 @@
 import { visualFor } from "@phoenix/pet-states";
 import { forwardRef } from "react";
 import type { ConnectionStatus, PetState } from "../core/types";
+import { useWornOutfit, WARDROBE_ROUTE } from "../core/appearance";
 import { usePetSettings } from "../core/hooks";
 import { FawkesAvatar, type FawkesAvatarHandle } from "./FawkesAvatar";
 import { NotificationCenter } from "./NotificationCenter";
@@ -30,6 +31,7 @@ export const Navbar = forwardRef<FawkesAvatarHandle, NavbarProps>(function Navba
 ) {
   const connectionText = CONNECTION_TEXT[connection];
   const { data: petSettings } = usePetSettings();
+  const outfit = useWornOutfit();
   return (
     <header className="navbar">
       <a className="brand" href="#/" aria-label="Phoenix home">
@@ -52,7 +54,14 @@ export const Navbar = forwardRef<FawkesAvatarHandle, NavbarProps>(function Navba
           Settings
         </a>
       </nav>
-      <div className="navbar-fawkes">
+      {/* Right-click Fawkes: the Wardrobe (the desktop pet's native menu opens the same route). */}
+      <div
+        className="navbar-fawkes"
+        onContextMenu={(e) => {
+          e.preventDefault();
+          window.location.hash = `#${WARDROBE_ROUTE}`;
+        }}
+      >
         {state.recording && (
           <span className="rec-pill" role="status">
             <span className="rec-dot" aria-hidden="true" /> Recording
@@ -76,6 +85,7 @@ export const Navbar = forwardRef<FawkesAvatarHandle, NavbarProps>(function Navba
           expanded={panelOpen}
           controls={panelId}
           reducedMotion={petSettings.reduced_motion}
+          outfit={outfit}
           onActivate={onToggleFawkes}
         />
       </div>

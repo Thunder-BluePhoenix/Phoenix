@@ -8,6 +8,10 @@
 //! page only talks to it through the commands below (ADR-0013).
 
 mod connection;
+mod core_status;
+mod dictation_hotkey;
+mod dictation_keys;
+mod dictation_paste;
 mod island;
 mod island_controller;
 mod island_geometry;
@@ -19,6 +23,9 @@ mod island_platform;
 mod island_state;
 #[cfg(windows)]
 mod island_windows;
+mod mailto;
+mod pill;
+mod pill_geometry;
 mod position;
 mod settings;
 
@@ -26,6 +33,7 @@ use connection::{connection, locate, phoenix_url, CoreConnection, Locator};
 use island_controller::{Frame, PageEvent};
 use parking_lot::Mutex;
 use position::{place, Point, Rect};
+use serde::Serialize;
 use settings::{Mode, Settings};
 use std::path::PathBuf;
 use tauri::menu::{
@@ -74,6 +82,7 @@ struct Shell<R: Runtime> {
     menu: Mutex<Option<MenuItems<R>>>,
     open_url: UrlOpener,
     island: island::Host,
+    dictation: pill::Host,
 }
 
 struct MenuItems<R: Runtime> {
@@ -83,6 +92,9 @@ struct MenuItems<R: Runtime> {
     login: CheckMenuItem<R>,
     modes: Vec<(Mode, CheckMenuItem<R>)>,
     display: MenuItem<R>,
+    dictation_hotkey: CheckMenuItem<R>,
+    dictation_key: MenuItem<R>,
+    dictation_pill: CheckMenuItem<R>,
 }
 
 impl<R: Runtime> Shell<R> {
@@ -179,6 +191,121 @@ fn open_in_phoenix<R: Runtime>(
     if let Some(url) = phoenix_url(&shell.locator.base_url, &route) {
         (shell.open_url)(&url);
     }
+}
+/// Opens an editable draft in the user's mail app. It does not send an email.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+struct MailtoRefusal {
+    code: mailto::MailtoError,
+    message: &'static str,
+}
+
+#[tauri::command]
+fn open_mailto<R: Runtime>(
+    _app: AppHandle<R>,
+    shell: tauri::State<'_, Shell<R>>,
+    url: String,
+) -> Result<(), MailtoRefusal> {
+    mailto::validate(&url).map_err(|code| MailtoRefusal {
+        code,
+        message: code.message(),
+    })?;
+    // Reuse the existing opener plugin through the injected `open_url` seam (same as
+    // open_in_phoenix). Tests inspect the URL without launching a real mail app.
+    (shell.open_url)(&url);
+    Ok(())
+}
+
+/// The pill acknowledges that its event listeners are registered before it can accept a key.
+#[tauri::command]
+fn pill_ready<R: Runtime>(window: WebviewWindow<R>, shell: tauri::State<'_, Shell<R>>) {
+    if pill::is_pill_page(&window, &shell.locator) {
+        shell.dictation.ready(window.app_handle());
+    }
+}
+
+/// The page tells the shell that it finished WITHOUT a paste (cancel, error, empty result).
+#[tauri::command]
+fn dictation_ended<R: Runtime>(window: WebviewWindow<R>, shell: tauri::State<'_, Shell<R>>) {
+    if pill::is_pill_page(&window, &shell.locator) {
+        shell.dictation.ended();
+        if !shell.settings.lock().pill {
+            pill::hide(window.app_handle());
+        }
+    }
+}
+
+/// `dictation_paste` is the only bridge from recognised text into another application. A
+/// worker thread handles the short clipboard restore delay on macOS/Windows. GTK is
+/// main-thread-only on Linux, so the Linux command executes on Tauri's GTK main thread.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+struct PasteResponse {
+    pasted: &'static str,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+struct PasteRefusal {
+    code: &'static str,
+    message: &'static str,
+}
+
+impl From<dictation_paste::PasteError> for PasteRefusal {
+    fn from(error: dictation_paste::PasteError) -> Self {
+        let code = match error.code {
+            dictation_paste::PasteErrorCode::EmptyText => "empty_text",
+            dictation_paste::PasteErrorCode::TooLong => "too_long",
+            dictation_paste::PasteErrorCode::ControlCharacters => "bad_characters",
+            dictation_paste::PasteErrorCode::SecureInput => "secure_input",
+            dictation_paste::PasteErrorCode::TypingUnavailable => "typing_unavailable",
+            dictation_paste::PasteErrorCode::PasteUnavailable => "permission_needed",
+            _ => "paste_failed",
+        };
+        Self {
+            code,
+            message: error.message,
+        }
+    }
+}
+
+#[tauri::command]
+async fn dictation_paste<R: Runtime>(
+    window: WebviewWindow<R>,
+    shell: tauri::State<'_, Shell<R>>,
+    text: String,
+) -> Result<PasteResponse, PasteRefusal> {
+    if !pill::is_pill_page(&window, &shell.locator) {
+        return Err(PasteRefusal {
+            code: "wrong_window",
+            message: "Only the dictation pill can paste a dictation.",
+        });
+    }
+    // Validate *before* any OS access and before queuing work. The decision table checks it
+    // again so no platform can accidentally paste an invalid string.
+    dictation_paste::validate_text(&text).map_err(PasteRefusal::from)?;
+    #[cfg(target_os = "linux")]
+    let result = dictation_paste::paste(&text);
+    #[cfg(not(target_os = "linux"))]
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let result = dictation_paste::paste(&text);
+        (result, text)
+    })
+    .await
+    .map_err(|_| PasteRefusal {
+        code: "paste_failed",
+        message: "The dictation could not be pasted.",
+    });
+    #[cfg(not(target_os = "linux"))]
+    let (result, text) = result?;
+    let outcome = result.map_err(PasteRefusal::from)?;
+    shell.dictation.paste_finished(text);
+    if !shell.settings.lock().pill {
+        pill::hide(window.app_handle());
+    }
+    Ok(PasteResponse {
+        pasted: match outcome {
+            dictation_paste::PasteOutcome::Pasted => "clipboard",
+            dictation_paste::PasteOutcome::Typed => "typed",
+        },
+    })
 }
 
 #[tauri::command]
@@ -346,6 +473,85 @@ fn set_start_on_login<R: Runtime>(app: &AppHandle<R>, on: bool) {
         manager.disable()
     };
 }
+fn set_dictation_hotkey<R: Runtime>(app: &AppHandle<R>, on: bool) {
+    let shell = app.state::<Shell<R>>();
+    if on {
+        let settings = shell.settings.lock();
+        let key = settings.dictation_key;
+        let chord =
+            dictation_keys::PasteChord::parse(&settings.paste_again_chord).unwrap_or_default();
+        drop(settings);
+        match shell
+            .dictation
+            .enable(app, key, chord, shell.locator.clone(), true)
+        {
+            Ok(()) => {
+                shell.update(|s| s.dictation_hotkey = true);
+                if let Some(items) = shell.menu.lock().as_ref() {
+                    let _ = items.dictation_hotkey.set_checked(true);
+                }
+            }
+            Err(reason) => pill::error(app, &reason),
+        }
+    } else {
+        shell.dictation.disable(app);
+        shell.update(|s| s.dictation_hotkey = false);
+        if let Some(items) = shell.menu.lock().as_ref() {
+            let _ = items.dictation_hotkey.set_checked(false);
+        }
+    }
+}
+
+fn cycle_dictation_key<R: Runtime>(app: &AppHandle<R>) {
+    let shell = app.state::<Shell<R>>();
+    let current = shell.settings.lock().dictation_key;
+    let supported = dictation_keys::DictationKey::supported();
+    let index = supported
+        .iter()
+        .position(|key| *key == current)
+        .unwrap_or(0);
+    let next = supported[(index + 1) % supported.len()];
+    let enabled = shell.settings.lock().dictation_hotkey;
+    if enabled {
+        shell.dictation.disable(app);
+        if let Err(reason) = shell.dictation.enable(
+            app,
+            next,
+            dictation_keys::PasteChord::parse(&shell.settings.lock().paste_again_chord)
+                .unwrap_or_default(),
+            shell.locator.clone(),
+            false,
+        ) {
+            shell.update(|s| s.dictation_hotkey = false);
+            if let Some(items) = shell.menu.lock().as_ref() {
+                let _ = items.dictation_hotkey.set_checked(false);
+            }
+            pill::error(app, &reason);
+        }
+    }
+    shell.update(|s| s.dictation_key = next);
+    if let Some(items) = shell.menu.lock().as_ref() {
+        let _ = items
+            .dictation_key
+            .set_text(format!("Dictation key: {}", next.label()));
+    };
+}
+
+fn set_dictation_pill<R: Runtime>(app: &AppHandle<R>, on: bool) {
+    let shell = app.state::<Shell<R>>();
+    if on {
+        if let Err(e) = pill::show(app) {
+            pill::error(app, &format!("Could not show the dictation pill: {e}"));
+            return;
+        }
+    } else {
+        pill::hide(app);
+    }
+    shell.update(|s| s.pill = on);
+    if let Some(items) = shell.menu.lock().as_ref() {
+        let _ = items.dictation_pill.set_checked(on);
+    };
+}
 
 fn build_menu<R: Runtime>(
     app: &AppHandle<R>,
@@ -407,8 +613,32 @@ fn build_menu<R: Runtime>(
         display_choice,
         None::<&str>,
     )?;
+    let dictation_hotkey = CheckMenuItem::with_id(
+        app,
+        "dictation_hotkey",
+        "Enable dictation hotkey (requests keyboard permission)",
+        true,
+        settings.dictation_hotkey,
+        None::<&str>,
+    )?;
+    let dictation_key = MenuItem::with_id(
+        app,
+        "dictation_key",
+        format!("Dictation key: {}", settings.dictation_key.label()),
+        true,
+        None::<&str>,
+    )?;
+    let dictation_pill = CheckMenuItem::with_id(
+        app,
+        "dictation_pill",
+        "Show dictation pill",
+        true,
+        settings.pill,
+        None::<&str>,
+    )?;
     let mut entries: Vec<&dyn IsMenuItem<R>> = vec![&toggle, &open];
     let separators = [
+        PredefinedMenuItem::separator(app)?,
         PredefinedMenuItem::separator(app)?,
         PredefinedMenuItem::separator(app)?,
         PredefinedMenuItem::separator(app)?,
@@ -417,6 +647,12 @@ fn build_menu<R: Runtime>(
     entries.extend(modes.iter().map(|(_, item)| item as &dyn IsMenuItem<R>));
     entries.push(&display);
     entries.push(&separators[1]);
+    entries.extend([
+        &dictation_hotkey as &dyn IsMenuItem<R>,
+        &dictation_key,
+        &dictation_pill,
+    ]);
+    entries.push(&separators[3]);
     entries.extend([&on_top as &dyn IsMenuItem<R>, &login, &separators[2], &quit]);
     let menu = Menu::with_items(app, &entries)?;
     Ok(MenuItems {
@@ -426,6 +662,9 @@ fn build_menu<R: Runtime>(
         login,
         modes,
         display,
+        dictation_hotkey,
+        dictation_key,
+        dictation_pill,
     })
 }
 
@@ -457,6 +696,15 @@ pub fn handle_menu<R: Runtime>(app: &AppHandle<R>, id: &str) {
             }
         }
         "island_display" => cycle_island_display(app),
+        "dictation_hotkey" => {
+            let on = !app.state::<Shell<R>>().settings.lock().dictation_hotkey;
+            set_dictation_hotkey(app, on);
+        }
+        "dictation_key" => cycle_dictation_key(app),
+        "dictation_pill" => {
+            let on = !app.state::<Shell<R>>().settings.lock().pill;
+            set_dictation_pill(app, on);
+        }
         // Quit is always available from the tray and the window's menu.
         "quit" => app.exit(0),
         _ => {}
@@ -529,6 +777,10 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
             move_window_by,
             drag_finished,
             open_in_phoenix,
+            open_mailto,
+            pill_ready,
+            dictation_ended,
+            dictation_paste,
             show_menu,
             island_event,
             island_frame
@@ -552,6 +804,23 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
             let settings = settings::load(&settings_path);
             let env = env.unwrap_or_else(|| Box::new(|k| std::env::var(k).ok()));
             let locator = locate(env, handle.path().home_dir().ok(), repo_dev_data_dir());
+            // Core chooses its loopback port at run time. Grant Tauri IPC to *that exact*
+            // pill URL (not other Core routes, wildcard ports, or arbitrary remote pages).
+            // This capability is in addition to the static default one for the pet windows.
+            let pill_url = format!("{}/pill.html", locator.base_url);
+            if !skip_native_window_styling {
+                handle.add_capability(
+                    tauri::ipc::CapabilityBuilder::new("dictation-pill-current-core")
+                        .local(false)
+                        .remote(pill_url)
+                        .window(pill::LABEL)
+                        .permission("core:default")
+                        .permission("allow-pill-ready")
+                        .permission("allow-dictation-ended")
+                        .permission("allow-dictation-paste")
+                        .permission("allow-open-in-phoenix"),
+                )?;
+            }
             let open_url = open_url.unwrap_or_else(|| {
                 let opener = handle.clone();
                 Box::new(move |url| {
@@ -573,12 +842,35 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
                     platform,
                     !skip_native_window_styling,
                 ),
+                dictation: pill::Host::new(skip_native_window_styling),
             });
             create_window(handle, &settings)?;
             // Only the window of the saved mode is shown; the island window is created on
             // first use, so a user who never picks the island never gets one.
             apply_mode(handle);
             island::spawn_loop(handle.clone());
+            if settings.pill && !skip_native_window_styling {
+                let _ = pill::show(handle);
+            }
+            // A saved opt-in starts a listener without asking for permissions at startup.
+            // A fresh opt-in from the tray is the only path that requests them.
+            if settings.dictation_hotkey && !skip_native_window_styling {
+                let shell = handle.state::<Shell<R>>();
+                if let Err(reason) = shell.dictation.enable(
+                    handle,
+                    settings.dictation_key,
+                    dictation_keys::PasteChord::parse(&settings.paste_again_chord)
+                        .unwrap_or_default(),
+                    shell.locator.clone(),
+                    false,
+                ) {
+                    pill::error(handle, &reason);
+                }
+            }
+            handle
+                .state::<Shell<R>>()
+                .dictation
+                .spawn_ticks(handle.clone());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -591,6 +883,11 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
                     if let Some(shell) = window.app_handle().try_state::<Shell<R>>() {
                         shell.remember(|s| s.position = Some(Point { x: p.x, y: p.y }));
                     }
+                }
+            }
+            if window.label() == pill::LABEL && matches!(event, WindowEvent::Destroyed) {
+                if let Some(shell) = window.app_handle().try_state::<Shell<R>>() {
+                    shell.dictation.unload();
                 }
             }
         })

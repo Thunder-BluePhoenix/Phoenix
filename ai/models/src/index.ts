@@ -10,6 +10,7 @@ export * from "./gate";
 export * from "./router";
 export * from "./registry";
 export * from "./service";
+export * from "./purposes";
 export * from "./multimodal";
 export {
   AnthropicProvider,
@@ -29,4 +30,20 @@ export {
   assertLoopbackOllamaUrl,
   type OllamaOptions,
 } from "./ollama";
+export {
+  OpenAiCompatibleProvider,
+  OPENAI_COMPATIBLE_PRESETS,
+  type OpenAiCompatibleConfig,
+  type OpenAiCompatiblePreset,
+} from "./openai-compatible";
+export {
+  GeminiProvider,
+  GEMINI_ID,
+  GEMINI_LABEL,
+  DEFAULT_GEMINI_URL,
+  DEFAULT_GEMINI_EMBED_MODEL,
+  type GeminiOptions,
+} from "./gemini";
+export { assertSafeBaseUrl, isLoopbackHost, localityOfUrl } from "./url";
+export { isModelId } from "./keyed-provider";
 export type { FetchLike } from "./http";

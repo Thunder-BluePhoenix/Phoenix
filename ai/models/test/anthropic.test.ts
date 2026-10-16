@@ -299,7 +299,7 @@ describe("AnthropicProvider.health / models never expose the key", () => {
   it("reports each state with fixed text", async () => {
     expect(await make(fakeFetch(() => json({ data: [] })).fetch, undefined).health()).toEqual({
       available: false,
-      detail: "No Anthropic API key is set",
+      detail: "No API key is set for Anthropic (cloud)",
     });
     const rejected = await make(
       fakeFetch(() => json({ error: { message: SEEDED_KEY } }, 401)).fetch,

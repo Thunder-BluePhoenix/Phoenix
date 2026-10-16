@@ -26,7 +26,7 @@ import {
   VectorStore,
   type IndexReport,
 } from "@phoenix/ai-retrieval";
-import { REVIEW_MEMORY_SOURCE, type MeetingHit } from "@phoenix/ai-meetings";
+import { originOfSource, type MeetingHit } from "@phoenix/ai-meetings";
 import type {
   RetrievalApi,
   RetrievalInfoView,
@@ -321,7 +321,7 @@ export class RetrievalRuntime implements RetrievalApi {
           },
           text: item.text,
           kind: item.kind,
-          origin: item.source === REVIEW_MEMORY_SOURCE ? "reviewed" : "kage",
+          origin: originOfSource(item.source),
           part,
           observedAt: item.observedAt,
           freshness: freshnessOf(item, now),

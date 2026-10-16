@@ -3,6 +3,8 @@
 import { visualFor } from "@phoenix/pet-states";
 import { useEffect, useState, type CSSProperties } from "react";
 import { FawkesAvatar } from "../components/FawkesAvatar";
+import { ActiveSourcePills } from "../components/SourcePills";
+import { useWornOutfit } from "../core/appearance";
 import { useDisplayedState } from "../core/context";
 import { usePetSettings } from "../core/hooks";
 import type { PetState } from "../core/types";
@@ -64,6 +66,7 @@ export function IslandApp({ shell }: { shell: IslandShell | null }) {
   const state = useDisplayedState();
   const { data: settings } = usePetSettings();
   const bubble = useBubble(state);
+  const outfit = useWornOutfit();
   const frame = useFrame(shell);
   const { active, urgent } = activityOf(state);
 
@@ -107,6 +110,7 @@ export function IslandApp({ shell }: { shell: IslandShell | null }) {
                 size={expanded ? EXPANDED_AVATAR_SIZE : ISLAND_AVATAR_SIZE}
                 expanded={expanded}
                 reducedMotion={settings.reduced_motion}
+                outfit={outfit}
                 actionHint={expanded ? "Collapse the island" : "Expand the island"}
                 onActivate={() => shell?.send({ kind: "toggle" })}
               />
@@ -125,6 +129,7 @@ export function IslandApp({ shell }: { shell: IslandShell | null }) {
                   {bubble ?? state.explanation}
                 </p>
               )}
+              <ActiveSourcePills />
               {state.recording && (
                 <span className="rec-pill" role="status">
                   <span className="rec-dot" aria-hidden="true" /> Recording

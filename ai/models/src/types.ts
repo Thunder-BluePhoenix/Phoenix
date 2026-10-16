@@ -23,6 +23,22 @@ export interface ProviderCapabilities {
   embed: boolean;
 }
 
+/** What a call cost, computed ONLY from prices the user entered (Phoenix hard-codes none). */
+export interface Cost {
+  amount: number;
+  currency: "USD";
+  basis: "user-configured prices";
+}
+
+/** User-supplied price of a model in USD per one million tokens. */
+export interface Price {
+  input_per_mtok: number;
+  output_per_mtok: number;
+}
+
+/** Whether a provider needs an API key: never (on-device), may take one, or cannot work without. */
+export type KeyPolicy = "none" | "optional" | "required";
+
 /** Who answered, so any output can be labelled "processed by X". */
 export interface Provenance {
   /** Provider id, e.g. "ollama". */
@@ -31,6 +47,12 @@ export interface Provenance {
   locality: Locality;
   /** Human-readable label, e.g. "Ollama · llama3.2 · on this device". */
   processedBy: string;
+  /** The provider's display label (attached by AiService). */
+  label?: string;
+  /** Token counts the provider reported. Attached by AiService to generate results. */
+  usage?: Usage;
+  /** null = no cost can be given (local, no price entered, or no token counts). */
+  cost?: Cost | null;
 }
 
 export interface ChatMessage {
@@ -111,6 +133,15 @@ export interface ModelProvider {
   readonly costTier: CostTier;
   /** Typical end-to-end latency, used only to order candidates. */
   readonly typicalLatencyMs: number;
+  /** Whether an API key is needed. Absent = not applicable. */
+  readonly keyPolicy?: KeyPolicy;
+  /** Model used when a request names none. Absent = the server's first listed chat model. */
+  readonly defaultModel?: string;
+  /**
+   * True = never chosen as an automatic fallback: only when the user routes a purpose to it or
+   * prefers it. Providers the user added or that take a key are explicit-only.
+   */
+  readonly explicitOnly?: boolean;
   models(): Promise<ModelInfo[]>;
   generate(req: GenerateRequest, opts?: CallOptions): Promise<GenerateResult>;
   stream(req: GenerateRequest, opts?: CallOptions): AsyncIterable<StreamChunk>;

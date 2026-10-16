@@ -5,8 +5,10 @@ import type { ActiveTask, PetState } from "../core/types";
 import { ActivityFeed } from "./ActivityFeed";
 import { CapabilityList } from "./CapabilityList";
 import { Chat } from "./Chat";
+import { NotetakerBanner } from "./Notetaker";
 import { MemoryPanel } from "./MemoryPanel";
 import { Overview } from "./Overview";
+import { Wardrobe } from "./Wardrobe";
 
 export interface PetPanelProps {
   id: string;
@@ -23,6 +25,7 @@ export const TABS = [
   { id: "activity", label: "Activity" },
   { id: "capabilities", label: "Capabilities" },
   { id: "memory", label: "Memory" },
+  { id: "wardrobe", label: "Wardrobe" },
 ] as const;
 export type TabId = (typeof TABS)[number]["id"];
 
@@ -109,11 +112,13 @@ export function PetPanel({ id, state, tasks, onClose, initialTab = "overview" }:
         aria-labelledby={`${id}-tab-${tab}`}
         className="tabpanel"
       >
+        <NotetakerBanner />
         {tab === "overview" && <Overview state={state} tasks={tasks} />}
         {tab === "chat" && <Chat />}
         {tab === "activity" && <ActivityFeed />}
         {tab === "capabilities" && <CapabilityList />}
         {tab === "memory" && <MemoryPanel />}
+        {tab === "wardrobe" && <Wardrobe />}
       </div>
     </section>
   );

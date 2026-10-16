@@ -230,7 +230,7 @@ export function useAction() {
   return { run, busy, error, details };
 }
 
-const isMeetingEvent = (t: string) => t.startsWith("kage.");
+const isMeetingEvent = (t: string) => t.startsWith("kage.") || t === "notetaker.meeting.updated";
 
 export function useMeetings(archived = false) {
   return useLiveResource<Meeting[]>(

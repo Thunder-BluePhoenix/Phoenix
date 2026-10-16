@@ -6,6 +6,7 @@ import { formatSince } from "../core/format";
 import { useAction, useKillSwitch } from "../core/hooks";
 import type { ActiveTask, PetState } from "../core/types";
 import { AgentApprovals } from "./AgentApprovals";
+import { FawkesDropTarget } from "./Attachments";
 import { Approvals } from "./Approvals";
 import { AgentsGlance, FrappeSites } from "./Integrations";
 import { MeetingsGlance } from "./Meetings";
@@ -57,6 +58,7 @@ export function Overview({ state, tasks }: { state: PetState; tasks: ActiveTask[
           <span className="rec-dot" aria-hidden="true" /> Recording is active.
         </p>
       )}
+      <FawkesDropTarget />
       <AgentApprovals />
       <Approvals />
       <CurrentTask />

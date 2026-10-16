@@ -82,13 +82,60 @@ export async function startCore(
   return { runtime, port, base, api, dataDir };
 }
 
+/** A JSON value as it arrives over the socket. */
+export type JsonValue =
+  string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+/** The event inside an `event.created` message. */
+export interface HubEvent {
+  event_type: string;
+  source: string;
+  payload: { [key: string]: JsonValue };
+}
+
+/** The `payload` of a `notification.created` message (and similar wrappers). */
+export interface HubPayload {
+  notification?: JsonValue;
+  [key: string]: JsonValue | undefined;
+}
+
+/** The channel payload of a hub message. Fields not named here stay plain JSON. */
+export interface HubData {
+  state?: string;
+  recording?: boolean;
+  event: HubEvent;
+  tasks: JsonValue[];
+  payload: HubPayload;
+  [key: string]: JsonValue | HubEvent | HubPayload | undefined;
+}
+
+/**
+ * One message from `/api/ws`: `state.changed` carries `state` and flags, `event.created` carries
+ * `event`, `task.updated` carries `tasks`, `notification.created` carries `payload.notification`.
+ */
+export interface HubMessage {
+  type?: string;
+  channel?: string;
+  seq?: number | null;
+  data: HubData;
+}
+
+/** A subscribed `/api/ws` client: every received message is kept and can be waited for. */
+export interface HubClient {
+  ws: WebSocket;
+  messages: HubMessage[];
+  next(pred: (m: HubMessage) => boolean, timeoutMs?: number): Promise<HubMessage>;
+  opened: Promise<void>;
+  send(message: unknown): void;
+}
+
 /** WebSocket client that records every message and lets tests wait for one. */
-export function connect(port: number, token = TOKEN) {
+export function connect(port: number, token = TOKEN): HubClient {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/api/ws`, [WS_PROTOCOL, WS_TOKEN_PREFIX + token]);
-  const messages: any[] = [];
-  const waiters: { pred: (m: any) => boolean; resolve: (m: any) => void }[] = [];
+  const messages: HubMessage[] = [];
+  const waiters: { pred: (m: HubMessage) => boolean; resolve: (m: HubMessage) => void }[] = [];
   ws.on("message", (raw) => {
-    const m = JSON.parse(raw.toString());
+    const m = JSON.parse(raw.toString()) as HubMessage;
     messages.push(m);
     for (const w of [...waiters]) {
       if (w.pred(m)) {
@@ -97,29 +144,38 @@ export function connect(port: number, token = TOKEN) {
       }
     }
   });
-  const next = (pred: (m: any) => boolean, timeoutMs = 2000) =>
-    new Promise<any>((resolve, reject) => {
-      const found = messages.find(pred);
-      if (found) {
-        messages.splice(messages.indexOf(found), 1);
-        return resolve(found);
-      }
-      const t = setTimeout(() => reject(new Error("timed out waiting for message")), timeoutMs);
-      waiters.push({
-        pred,
-        resolve: (m) => {
-          clearTimeout(t);
-          messages.splice(messages.indexOf(m), 1);
-          resolve(m);
-        },
-      });
+  const next = (pred: (m: HubMessage) => boolean, timeoutMs = 2000): Promise<HubMessage> => {
+    const found = messages.find(pred);
+    if (found) {
+      messages.splice(messages.indexOf(found), 1);
+      return Promise.resolve(found);
+    }
+    const result = Promise.withResolvers<HubMessage>();
+    const t = setTimeout(
+      () => result.reject(new Error("timed out waiting for message")),
+      timeoutMs,
+    );
+    waiters.push({
+      pred,
+      resolve: (m) => {
+        clearTimeout(t);
+        messages.splice(messages.indexOf(m), 1);
+        result.resolve(m);
+      },
     });
-  const opened = new Promise<void>((resolve, reject) => {
-    ws.once("open", () => resolve());
-    ws.once("error", reject);
-    ws.once("unexpected-response", (_req, res) => reject(new Error(`HTTP ${res.statusCode}`)));
-  });
-  return { ws, messages, next, opened, send: (m: unknown) => ws.send(JSON.stringify(m)) };
+    return result.promise;
+  };
+  const opened = Promise.withResolvers<void>();
+  ws.once("open", () => opened.resolve());
+  ws.once("error", opened.reject);
+  ws.once("unexpected-response", (_req, res) => opened.reject(new Error(`HTTP ${res.statusCode}`)));
+  return {
+    ws,
+    messages,
+    next,
+    opened: opened.promise,
+    send: (m: unknown) => ws.send(JSON.stringify(m)),
+  };
 }
 
 export const event = (event_type: string, extra: Record<string, unknown> = {}) => ({

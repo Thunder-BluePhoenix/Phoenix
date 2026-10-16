@@ -239,11 +239,14 @@ describe("tabs", () => {
     fireEvent.keyDown(tab("Chat"), { key: "ArrowRight" });
     expect(tab("Activity").getAttribute("aria-selected")).toBe("true");
     fireEvent.keyDown(tab("Activity"), { key: "End" });
+    expect(tab("Wardrobe").getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(tab("Wardrobe"), { key: "ArrowLeft" });
     expect(tab("Memory").getAttribute("aria-selected")).toBe("true");
     fireEvent.keyDown(tab("Memory"), { key: "ArrowLeft" });
     expect(tab("Capabilities").getAttribute("aria-selected")).toBe("true");
     fireEvent.keyDown(tab("Capabilities"), { key: "ArrowRight" });
     fireEvent.keyDown(tab("Memory"), { key: "ArrowRight" });
+    fireEvent.keyDown(tab("Wardrobe"), { key: "ArrowRight" });
     expect(tab("Overview").getAttribute("aria-selected")).toBe("true");
   });
 });

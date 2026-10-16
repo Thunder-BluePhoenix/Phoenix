@@ -40,6 +40,7 @@ import {
   type ItemKind,
   type ItemStatus,
   type MeetingItem,
+  type ExtractedBy,
 } from "./types";
 
 /** The memory `source` of facts made from reviewed items. The runtime's memory policy must know it. */
@@ -156,28 +157,30 @@ export class MeetingItemService {
   // ── Extraction ───────────────────────────────────────────────────────────
 
   /**
-   * Imports Kage's own decisions, action items and topics as `proposed`. Cheap and local; run it
-   * whenever a summary arrives. Items already known (in any review state) are not added again.
+   * Imports the decisions, action items and topics of a stored summary as `proposed`. Cheap and
+   * local; run it whenever a summary arrives. Items already known (in any review state) are not
+   * added again. `extractedBy` says who wrote the summary: "kage" for Kage's, `ai:<model>` for one a
+   * local model made from a call Phoenix recorded itself.
    */
-  importKage(meetingId: string): KageImport {
+  importKage(meetingId: string, extractedBy: Exclude<ExtractedBy, "manual"> = "kage"): KageImport {
     const meeting = this.meetingFor(meetingId);
     const summary = this.o.meetings.summary(meeting.id);
     const report: KageImport = { imported: 0, duplicates: 0, removed: 0 };
     if (!summary) return report;
     const found = kageItems(summary, this.o.meetings.transcript(meeting.id));
     for (const item of found) {
-      if (this.items.insertExtracted(meeting.id, item, "kage")) report.imported++;
+      if (this.items.insertExtracted(meeting.id, item, extractedBy)) report.imported++;
       else report.duplicates++;
     }
     report.removed = this.items.removeStaleProposed(
       meeting.id,
-      "kage",
+      extractedBy,
       found.map((i) => i.dedupeKey),
     );
     if (report.imported + report.removed > 0) {
       this.o.audit("meeting.items.imported", {
         meeting_id: meeting.id,
-        extracted_by: "kage",
+        extracted_by: extractedBy.startsWith("ai:") ? "ai" : extractedBy,
         imported: report.imported,
         removed: report.removed,
       });
@@ -223,9 +226,12 @@ export class MeetingItemService {
     return { stored, stats: result.stats, unavailable: result.unavailable };
   }
 
-  /** Kage's items, then (when `useAi`) the model's. */
-  async extract(meetingId: string, options: { useAi: boolean }): Promise<ExtractionReport> {
-    const kage = this.importKage(meetingId);
+  /** The summary's items, then (when `useAi`) the model's. */
+  async extract(
+    meetingId: string,
+    options: { useAi: boolean; summaryBy?: Exclude<ExtractedBy, "manual"> },
+  ): Promise<ExtractionReport> {
+    const kage = this.importKage(meetingId, options.summaryBy);
     const ai = options.useAi ? await this.extractWithAi(meetingId) : null;
     return { meetingId, kage, ai };
   }

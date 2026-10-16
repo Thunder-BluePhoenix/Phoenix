@@ -7,11 +7,14 @@ import { useAction, useCapabilities, useMeeting, useMeetings } from "../core/hoo
 import type { ActionItem, Meeting, PetState, Summary, Transcript } from "../core/types";
 import { Approvals } from "./Approvals";
 import { MeetingItemsReview } from "./MeetingItems";
+import { RECORDED_HERE } from "../core/notetaker";
+import { NotetakerBanner, RecordCall } from "./Notetaker";
 import { MeetingSearch } from "./MeetingSearch";
 import { MeetingPlans } from "./Plans";
 
 /** Phoenix lifecycle status → label; `step` marks processing progress (of 3). */
 const STATUS: Record<string, { label: string; step?: number }> = {
+  in_progress: { label: "Recording…" },
   processing: { label: "Processing", step: 1 },
   transcribing: { label: "Transcribing…", step: 2 },
   summarizing: { label: "Summarising…", step: 3 },
@@ -22,6 +25,8 @@ const STATUS: Record<string, { label: string; step?: number }> = {
 
 const meetingHref = (id: string) => `#/meetings/${encodeURIComponent(id)}`;
 const title = (m: Meeting) => m.title ?? `Meeting ${m.external_id}`;
+/** A call Phoenix recorded on this computer (not one a capability such as Kage captured). */
+const recordedHere = (m: Meeting) => m.capability_id === "notetaker";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "";
@@ -181,7 +186,9 @@ export function MeetingsPage({ state }: { state: PetState }) {
     <div className="meetings">
       <h1>Meetings</h1>
       <RecordingBanner recording={state.recording} />
+      <NotetakerBanner />
       <StartMeeting />
+      <RecordCall />
       <MeetingSearch />
       <div className="list-head">
         <h2 className="h3">{archived ? "Archived meetings" : "Recent meetings"}</h2>
@@ -202,6 +209,7 @@ export function MeetingsPage({ state }: { state: PetState }) {
               <strong>{title(m)}</strong>
             </a>
             <MeetingStatus status={m.status} />
+            {recordedHere(m) && <span className="chip">{RECORDED_HERE}</span>}
             <span className="muted small">
               {[formatDate(m.started_at), formatDuration(m.duration_seconds)]
                 .filter(Boolean)
@@ -350,6 +358,7 @@ export function MeetingDetail({ id, state }: { id: string; state: PetState }) {
       <RecordingBanner recording={state.recording} />
       <p className="meeting-meta">
         <MeetingStatus status={m.status} />
+        {recordedHere(m) && <span className="chip">{RECORDED_HERE}</span>}
         <span className="muted small">
           {[
             formatDate(m.started_at),
@@ -361,17 +370,26 @@ export function MeetingDetail({ id, state }: { id: string; state: PetState }) {
         </span>
       </p>
       {m.status === "failed" && (
-        <p className="error-text">Kage could not process this meeting. Check Kage for details.</p>
+        <p className="error-text">
+          {recordedHere(m)
+            ? "Nothing was transcribed before this recording ended."
+            : "Kage could not process this meeting. Check Kage for details."}
+        </p>
       )}
-      {processing && (
+      {recordedHere(m) && m.status === "in_progress" && (
+        <p className="muted" role="status">
+          This call is being recorded; the transcript grows as it goes on.
+        </p>
+      )}
+      {!recordedHere(m) && processing && (
         <p className="muted">Kage is still working on this meeting; this page updates by itself.</p>
       )}
-      {content === "fetching" && (
+      {!recordedHere(m) && content === "fetching" && (
         <p className="muted" role="status">
           Fetching the transcript from Kage…
         </p>
       )}
-      {content === "unavailable" && (
+      {!recordedHere(m) && content === "unavailable" && (
         <p className="error-text" role="alert">
           Phoenix could not fetch this meeting's transcript from Kage. It is still in Kage.
         </p>
@@ -401,9 +419,9 @@ export function MeetingDetail({ id, state }: { id: string; state: PetState }) {
           <p className="muted small">No recording reference.</p>
         )}
         <p className="muted small">
-          Phoenix keeps a local copy of the details, transcript and summary. Deleting here removes
-          Phoenix's copy only; delete the recording in{" "}
-          {m.capability_id === "kage" ? "Kage" : m.capability_id}.
+          {recordedHere(m)
+            ? "Phoenix keeps a local copy of the transcript and summary. The audio was never stored. Deleting here removes Phoenix's copy."
+            : `Phoenix keeps a local copy of the details, transcript and summary. Deleting here removes Phoenix's copy only; delete the recording in ${m.capability_id === "kage" ? "Kage" : m.capability_id}.`}
         </p>
         <div className="button-row wrap">
           <button

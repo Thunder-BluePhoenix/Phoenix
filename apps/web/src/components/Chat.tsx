@@ -6,7 +6,11 @@ import { CHAT_MAX_CHARS, type CiTaskInput, type ChatItem } from "../core/chat-st
 import { useChat } from "../core/chat";
 import { useDisplayedState } from "../core/context";
 import { useAgentSettings } from "../core/hooks";
+import { useAttachments } from "../core/attachments";
 import { AnswerView } from "./AnswerView";
+import { AttachmentAnswerView, AttachmentsTray, DropZone } from "./Attachments";
+import { DictateButton } from "./Dictation";
+import { ModelSwitcher } from "./ModelSwitcher";
 import { CurrentTask, TaskCard } from "./TaskView";
 
 const REPOSITORY = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$/;
@@ -121,6 +125,13 @@ function Message({ item }: { item: ChatItem }) {
           <AnswerView answer={item.answer} />
         </li>
       );
+    case "attachment_answer":
+      return (
+        <li className="chat-msg chat-fawkes">
+          <p className="chat-who small">Fawkes</p>
+          <AttachmentAnswerView answer={item.answer} />
+        </li>
+      );
     case "error":
       return (
         <li className="chat-msg chat-fawkes">
@@ -146,6 +157,9 @@ export function Chat() {
   const state = useDisplayedState();
   const { data: agents } = useAgentSettings();
   const [formOpen, setFormOpen] = useState(false);
+  const att = useAttachments();
+  // Ids the user unticked; everything else attached is included in the next question about attachments.
+  const [excluded, setExcluded] = useState<Record<string, true>>({});
   const log = useRef<HTMLUListElement>(null);
   const id = useId();
   const visual = visualFor(state.state);
@@ -160,6 +174,20 @@ export function Chat() {
   }, [chat.items.length]);
 
   const send = () => void store.ask(chat.draft);
+  const attached = att.data?.attachments ?? [];
+  const chosen = attached.filter((a) => !excluded[a.id]);
+  const canAskAttached = chosen.length > 0 && chosen.length <= 5;
+  const askAttached = () =>
+    void store.askAttachments(
+      chat.draft,
+      chosen.map((a) => a.id),
+      chosen.map((a) => a.name),
+    );
+  const toggle = (id: string) =>
+    setExcluded((cur) => {
+      const { [id]: was, ...rest } = cur;
+      return was ? rest : { ...rest, [id]: true };
+    });
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter sends; Shift+Enter is a newline. Never while an IME is composing a character.
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -194,52 +222,76 @@ export function Chat() {
           Waiting for Phoenix Core to answer…
         </p>
       )}
-      <form
-        className="memory-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          send();
-        }}
-      >
-        <label htmlFor={`${id}-msg`} className="small">
-          Message to Fawkes
-        </label>
-        <textarea
-          id={`${id}-msg`}
-          rows={3}
-          value={chat.draft}
-          maxLength={CHAT_MAX_CHARS}
-          aria-describedby={`${id}-count`}
-          onChange={(e) => store.setDraft(e.target.value)}
-          onFocus={() => store.setFocused(true)}
-          onBlur={() => store.setFocused(false)}
-          onKeyDown={onKey}
-        />
-        <p id={`${id}-count`} className="muted small">
-          {chat.draft.length} / {CHAT_MAX_CHARS} characters · Enter sends, Shift+Enter starts a new
-          line
-        </p>
-        <div className="button-row wrap">
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={chat.asking || empty}
-            aria-disabled={chat.asking || empty}
-          >
-            {chat.asking ? "Sending…" : "Send"}
-          </button>
-          <button
-            type="button"
-            className="btn"
-            aria-expanded={formOpen}
-            onClick={() => {
-              setFormOpen(!formOpen);
-            }}
-          >
-            Diagnose a CI failure
-          </button>
-        </div>
-      </form>
+      <ModelSwitcher />
+      <AttachmentsTray att={att} excluded={excluded} onToggle={toggle} />
+      <DropZone label="the chat box" onDone={() => void att.reload()}>
+        <form
+          className="memory-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            send();
+          }}
+        >
+          <label htmlFor={`${id}-msg`} className="small">
+            Message to Fawkes
+          </label>
+          <textarea
+            id={`${id}-msg`}
+            rows={3}
+            value={chat.draft}
+            maxLength={CHAT_MAX_CHARS}
+            aria-describedby={`${id}-count`}
+            onChange={(e) => store.setDraft(e.target.value)}
+            onFocus={() => store.setFocused(true)}
+            onBlur={() => store.setFocused(false)}
+            onKeyDown={onKey}
+          />
+          <p id={`${id}-count`} className="muted small">
+            {chat.draft.length} / {CHAT_MAX_CHARS} characters · Enter sends, Shift+Enter starts a
+            new line
+          </p>
+          <div className="button-row wrap">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={chat.asking || empty}
+              aria-disabled={chat.asking || empty}
+            >
+              {chat.asking ? "Sending…" : "Send"}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={chat.asking || empty || !canAskAttached}
+              aria-disabled={chat.asking || empty || !canAskAttached}
+              title={
+                chosen.length === 0
+                  ? "Attach something first, or tick an attachment"
+                  : "Sends your question and the ticked attachments to a model on this device"
+              }
+              onClick={askAttached}
+            >
+              Ask about attachments
+            </button>
+            <DictateButton
+              onText={(text) => {
+                const draft = store.getSnapshot().draft;
+                store.setDraft(draft && !/\s$/.test(draft) ? `${draft} ${text}` : draft + text);
+              }}
+            />
+            <button
+              type="button"
+              className="btn"
+              aria-expanded={formOpen}
+              onClick={() => {
+                setFormOpen(!formOpen);
+              }}
+            >
+              Diagnose a CI failure
+            </button>
+          </div>
+        </form>
+      </DropZone>
       {agents && !agents.enabled && (
         <p className="warning-text small" role="note">
           Automation is off, so Fawkes cannot start tasks. Turn it on in Settings, under Automation.

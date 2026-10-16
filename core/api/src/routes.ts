@@ -15,15 +15,20 @@ import { workflowRoutes } from "./workflow-routes";
 import { proactiveRoutes } from "./proactive-routes";
 import { syncRoutes } from "./sync-routes";
 import { registryRoutes } from "./registry-routes";
+import { dictationRoutes } from "./dictation-routes";
+import { notetakerRoutes } from "./notetaker-routes";
 import { multimodalRoutes } from "./multimodal-routes";
 import { improvementRoutes } from "./improvement-routes";
+import { appearanceRoutes } from "./appearance-routes";
+import { attachmentRoutes } from "./attachment-routes";
 import type { CoreServices } from "./services";
 
 const notFound = (what: string) =>
   new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, `${what} not found`);
 
-/** Event types only Core emits (Phase 58 live signals); `POST /api/events` refuses them. */
-const CORE_ONLY_EVENT = /^agent\.(session\.step|usage\.updated)$/;
+/** Event types only Core emits (Phase 58 live signals, Phase 65 recording signals); `POST /api/events` refuses them. */
+const CORE_ONLY_EVENT =
+  /^(agent\.(session\.step|usage\.updated)|notetaker\.(recording|idle|meeting\.updated))$/;
 const isCoreOnlyEvent = (type: unknown): boolean =>
   typeof type === "string" && CORE_ONLY_EVENT.test(type);
 
@@ -318,7 +323,11 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...registryRoutes(s),
     ...syncRoutes(s),
     ...multimodalRoutes(s),
+    ...dictationRoutes(s),
+    ...notetakerRoutes(s),
     ...improvementRoutes(s),
+    ...appearanceRoutes(s),
+    ...attachmentRoutes(s),
     ...agentApprovalRoutes(s),
     ...agentRelayRoutes(s),
     ...agentLiveRoutes(s),

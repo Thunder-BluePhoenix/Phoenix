@@ -64,6 +64,30 @@ function AnswerRecord({
   );
 }
 
+/** At least 0.01 shows cents; smaller amounts keep up to six significant digits, never exponent form. */
+function formatCost(amount: number): string {
+  if (amount >= 0.01) return amount.toFixed(2);
+  if (amount <= 0) return "0";
+  const decimals = Math.min(20, Math.max(0, 5 - Math.floor(Math.log10(amount))));
+  return amount.toFixed(decimals).replace(/\.?0+$/, "");
+}
+
+/** Exactly one line saying who answered, where, and what it cost; nothing for older answers. */
+function Attribution({ answer }: { answer: MemoryAnswer }) {
+  const { provider, locality } = answer;
+  if (!provider || !locality) return null;
+  const where = locality === "local" ? "on this device" : "in the cloud (leaves this device)";
+  let cost = "cost unknown";
+  if (locality === "local") cost = "free, on this device";
+  else if (answer.cost) cost = `about $${formatCost(answer.cost.amount)} (from your prices)`;
+  return (
+    <p className="small memory-attribution">
+      Answered by {answer.model ?? "its default model"} via {answer.provider_label ?? provider} ·{" "}
+      {where} · {cost}
+    </p>
+  );
+}
+
 /** Core keeps assertions, retrieved material, previous interpretations and generated text apart. */
 export function AnswerView({ answer }: { answer: MemoryAnswer }) {
   return (
@@ -107,6 +131,7 @@ export function AnswerView({ answer }: { answer: MemoryAnswer }) {
               established conclusion.
             </strong>
           </p>
+          <Attribution answer={answer} />
           <p className="memory-text">{answer.interpretation}</p>
         </div>
       ) : (

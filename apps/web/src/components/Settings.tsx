@@ -18,12 +18,15 @@ import { ApprovalRulesSection } from "./ApprovalRules";
 import { AutomationSettings } from "./AutomationSettings";
 import { AiSettings, MemorySettingsSection } from "./MemorySettings";
 import { Feedback } from "./Feedback";
+import { DictationSettingsSection } from "./Dictation";
+import { NotetakerSettingsSection } from "./Notetaker";
 import { Multimodal } from "./Multimodal";
 import { QuickActions } from "./Overview";
 import { ProactiveSettingsSection } from "./ProactiveSettings";
 import { RetrievalSettingsSection } from "./RetrievalSettings";
 import { RegistrySettingsSection } from "./RegistrySettings";
 import { SyncSettingsSection } from "./SyncSettings";
+import { FawkesAppearanceSection } from "./Wardrobe";
 
 /** Settings (PRD v2.0 §16, FR-014): Fawkes, notifications, capabilities, privacy, memory, AI. */
 export function SettingsPage({ state }: { state: PetState }) {
@@ -31,12 +34,15 @@ export function SettingsPage({ state }: { state: PetState }) {
     <div className="settings">
       <h1>Settings</h1>
       <FawkesSettings />
+      <FawkesAppearanceSection />
       <NotificationSettings />
       <CapabilitySettings recording={state.recording} />
       <PrivacySettings />
       <MemorySettingsSection />
       <AiSettings />
       <Multimodal />
+      <DictationSettingsSection />
+      <NotetakerSettingsSection />
       <RetrievalSettingsSection />
       <AutomationSettings />
       <ApprovalRulesSection />

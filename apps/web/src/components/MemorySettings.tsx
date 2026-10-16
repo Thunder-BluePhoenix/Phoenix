@@ -9,6 +9,7 @@ import {
   type MemorySensitivity,
   type MemorySettings,
 } from "../core/types";
+import { AiProviders } from "./AiProviders";
 import { Feedback } from "./Feedback";
 
 const RETENTION_CHOICES: [string, string][] = [
@@ -196,70 +197,6 @@ const CLASS_LABEL: Record<MemorySensitivity, string> = {
   sensitive: "Sensitive memories (including sensitive meeting summaries)",
 };
 
-function ProviderList({ status }: { status: AiStatus }) {
-  if (status.providers.length === 0) return <p className="muted small">No AI providers found.</p>;
-  return (
-    <ul className="privacy-list ai-providers" aria-label="AI providers">
-      {status.providers.map((p) => (
-        <li key={p.id}>
-          <strong>{p.label}</strong>{" "}
-          <span className="small">
-            {p.locality === "local" ? "On this device" : "Cloud (leaves this device)"}
-          </span>{" "}
-          <span className="small">
-            {p.available ? "Available" : `Not available${p.reason ? `: ${p.reason}` : ""}`}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** The key goes to Core and into the OS keychain; this component never holds it after saving. */
-function AnthropicKey() {
-  const { run, busy, error } = useAction();
-  const [value, setValue] = useState("");
-  const [saved, setSaved] = useState<string | null>(null);
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setSaved(null);
-    if ((await run("POST", "/api/ai/secret", { value })) !== undefined) {
-      setValue("");
-      setSaved("Key set. It is stored in your OS keychain and is never shown again.");
-    }
-  };
-  const remove = async () => {
-    setSaved(null);
-    if ((await run("DELETE", "/api/ai/secret")) !== undefined) {
-      setSaved("Key removed from your keychain.");
-    }
-  };
-  return (
-    <form className="settings-form" onSubmit={(e) => void submit(e)}>
-      <label className="field">
-        Anthropic API key
-        <input
-          type="password"
-          autoComplete="off"
-          value={value}
-          maxLength={512}
-          onChange={(e) => setValue(e.target.value)}
-        />
-        <span className="muted small">Only used if you allow external AI below.</span>
-      </label>
-      <div className="button-row wrap">
-        <button type="submit" className="btn" disabled={busy || !value}>
-          Save Anthropic key
-        </button>
-        <button type="button" className="btn" disabled={busy} onClick={() => void remove()}>
-          Remove Anthropic key
-        </button>
-      </div>
-      <Feedback error={error} saved={saved} />
-    </form>
-  );
-}
-
 function AiSettingsForm({ status, reload }: { status: AiStatus; reload: () => Promise<void> }) {
   const { run, busy, error } = useAction();
   const [confirmSensitive, setConfirmSensitive] = useState(false);
@@ -289,7 +226,6 @@ function AiSettingsForm({ status, reload }: { status: AiStatus; reload: () => Pr
           ? "AI is on. Local models run on this device."
           : "AI is off. Nothing is sent to any AI model."}
       </p>
-      <ProviderList status={status} />
       <label className="field">
         Preferred AI provider
         <select
@@ -381,7 +317,7 @@ function AiSettingsForm({ status, reload }: { status: AiStatus; reload: () => Pr
           )}
         </div>
       </fieldset>
-      <AnthropicKey />
+      <AiProviders status={status} reload={reload} />
       <Feedback error={error} />
     </>
   );

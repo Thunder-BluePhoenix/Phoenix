@@ -267,6 +267,19 @@ export interface AskOptions {
   maxTokens?: number;
 }
 
+/**
+ * When the user routed this work to one provider, say why that provider did not run ("No API key
+ * is set for X", or the privacy gate's refusal). The reasons are written by Phoenix, never taken
+ * from a server's reply, so they are safe to show.
+ */
+function unavailableReason(err: Error): string {
+  const generic = UNAVAILABLE_REASON[err.name] ?? "AI was unavailable.";
+  if (!(err instanceof NoProviderError || err instanceof AllProvidersFailedError)) return generic;
+  if (err.routedTo === undefined) return generic;
+  const why = err.attempts.find((a) => a.provider === err.routedTo)?.reason;
+  if (why === undefined) return generic;
+  return `The AI provider you chose did not run (${why}), so no AI was used. These are the stored facts only.`;
+}
 const UNAVAILABLE_REASON: Record<string, string> = {
   AiDisabledError: "AI is turned off, so no AI was used. These are the stored facts only.",
   NoProviderError:
@@ -320,7 +333,7 @@ export async function ask(request: ContextRequest, options: AskOptions): Promise
       err instanceof NoProviderError ||
       err instanceof AllProvidersFailedError
     ) {
-      return withoutAi(UNAVAILABLE_REASON[err.name] ?? "AI was unavailable.");
+      return withoutAi(unavailableReason(err));
     }
     throw err;
   }

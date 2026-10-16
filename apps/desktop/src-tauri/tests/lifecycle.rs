@@ -80,6 +80,9 @@ fn starts_with_window_tray_and_full_menu() {
             "mode_island",
             "mode_navbar",
             "island_display",
+            "dictation_hotkey",
+            "dictation_key",
+            "dictation_pill",
             "on_top",
             "login",
             "quit"
@@ -96,6 +99,8 @@ fn starts_with_window_tray_and_full_menu() {
         item(&s.app, "on_top"),
         ("Keep Fawkes on top".into(), Some(false))
     );
+    assert_eq!(item(&s.app, "dictation_hotkey").1, Some(false));
+    assert_eq!(item(&s.app, "dictation_pill").1, Some(false));
     // Nothing is written until the user changes something.
     assert!(!dir.path().join(SETTINGS_FILE).exists());
 }
@@ -218,6 +223,11 @@ fn unknown_mode_ids_are_ignored() {
 }
 
 fn main() {
+    // Tauri's Linux runtime builds GTK menus, which need GTK initialised (and a display; CI
+    // runs this under xvfb). Without this the mock runtime panics in gtk::Menu::new.
+    #[cfg(target_os = "linux")]
+    gtk::init().expect("GTK failed to initialise: is a display available (xvfb-run)?");
+
     let tests: [(&str, fn()); 11] = [
         (
             "starts with window, tray and full menu",

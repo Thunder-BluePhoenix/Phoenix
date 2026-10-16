@@ -2563,6 +2563,8 @@ dependencies = [
 name = "phoenix-desktop"
 version = "0.1.0"
 dependencies = [
+ "core-foundation",
+ "core-graphics",
  "gtk",
  "libloading",
  "objc2",
@@ -2577,6 +2579,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tempfile",
  "windows",
+ "x11-dl",
 ]
 
 [[package]]

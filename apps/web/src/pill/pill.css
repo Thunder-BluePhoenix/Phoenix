@@ -1,0 +1,164 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* The pill window is transparent: only the rounded bar paints. */
+:root {
+  --pill-bg: #101114;
+  --pill-text: #f1f3f5;
+  --pill-muted: #adb5bd;
+  --pill-accent: #ffa94d;
+  --danger: #ff6b6b;
+  --success: #51cf66;
+  --focus: #91a7ff;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+}
+html,
+body {
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.pill-root {
+  box-sizing: border-box;
+  width: 100vw;
+  color: var(--pill-text);
+}
+.pill-bar {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding: 0 8px 0 14px;
+  background: var(--pill-bg);
+  border-radius: 22px;
+}
+.pill-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pill-muted);
+  opacity: var(--dot-opacity, 0.35);
+  transform: scale(var(--dot-scale, 1));
+  transition:
+    transform 80ms linear,
+    opacity 80ms linear;
+}
+.pill-root[data-state="listening"] .pill-dot {
+  background: var(--danger);
+}
+.pill-root[data-state="recognising"] .pill-dot,
+.pill-root[data-state="starting"] .pill-dot {
+  background: var(--pill-accent);
+  animation: pill-pulse 1.2s ease-in-out infinite;
+  animation-delay: calc(var(--dot-index, 0) * 120ms);
+}
+@keyframes pill-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.5);
+  }
+}
+.pill-status {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--pill-muted);
+}
+.pill-root[data-state="listening"] .pill-status {
+  color: var(--danger);
+  font-weight: 600;
+}
+.pill-root[data-tone="error"] .pill-status {
+  color: var(--danger);
+}
+.pill-root[data-tone="success"] .pill-status {
+  color: var(--success);
+}
+.pill-btn {
+  flex: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pill-text);
+  background: transparent;
+  border: 1px solid var(--pill-muted);
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.pill-btn:hover:not(:disabled) {
+  border-color: var(--pill-text);
+}
+.pill-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pill-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.pill-primary {
+  background: var(--pill-text);
+  color: var(--pill-bg);
+  border-color: var(--pill-text);
+}
+.pill-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+/* Browser mode only: the recognised text is shown (the desktop shell pastes it instead). */
+.pill-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 8px 12px;
+  background: var(--pill-bg);
+  border-radius: 14px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.pill-text {
+  flex: 1 1 0;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pill-dot {
+    transition: none;
+  }
+  .pill-root[data-state="recognising"] .pill-dot,
+  .pill-root[data-state="starting"] .pill-dot {
+    animation: none;
+    opacity: 0.8;
+    transform: scale(1.25);
+  }
+}

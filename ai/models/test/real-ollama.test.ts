@@ -5,7 +5,7 @@
 //   PHOENIX_REAL_OLLAMA=1 npx vitest run ai/models/test/real-ollama.test.ts
 // Needs `llama3.2` (generation) and `nomic-embed-text` (embeddings) pulled.
 import { describe, expect, it } from "vitest";
-import { OllamaProvider } from "../src";
+import { OllamaProvider, OpenAiCompatibleProvider } from "../src";
 
 const request = {
   privacy: "sensitive" as const,
@@ -98,6 +98,58 @@ describe.skipIf(!process.env.PHOENIX_REAL_OLLAMA)(
         }
       })();
       await expect(run).rejects.toMatchObject({ kind: "aborted" });
+    });
+  },
+);
+
+// Ollama also serves an OpenAI-compatible API under /v1. This runs the ONE OpenAI-compatible
+// adapter against it (loopback, so no key). Only llama3.2 and nomic-embed-text are used.
+describe.skipIf(!process.env.PHOENIX_REAL_OLLAMA)(
+  "OpenAiCompatibleProvider against Ollama's /v1",
+  { timeout: REAL_TIMEOUT_MS },
+  () => {
+    const p = new OpenAiCompatibleProvider({
+      id: "ollama-v1",
+      label: "Ollama /v1",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      defaultModel: "llama3.2",
+      embedModel: "nomic-embed-text",
+      getKey: () => Promise.resolve(undefined),
+      generateTimeoutMs: 120_000,
+    });
+
+    it("is local, lists models, answers and streams", async () => {
+      expect(p.locality).toBe("local");
+      expect((await p.health()).available).toBe(true);
+      const ids = (await p.models()).map((m) => m.id);
+      expect(ids).toContain("llama3.2:latest");
+      const r = await p.generate(request);
+      expect(r.text.toLowerCase()).toContain("pong");
+      expect(r.provenance).toMatchObject({ provider: "ollama-v1", locality: "local" });
+      let text = "";
+      let done = false;
+      for await (const c of p.stream(request)) {
+        if (c.kind === "text") text += c.text;
+        else done = true;
+      }
+      expect(done).toBe(true);
+      expect(text.toLowerCase()).toContain("pong");
+    });
+
+    it("embeds through /v1/embeddings", async () => {
+      const r = await p.embed({
+        privacy: "sensitive",
+        purpose: "real-ollama test",
+        input: ["a cat", "a dog"],
+      });
+      expect(r.embeddings).toHaveLength(2);
+      expect(r.dimensions).toBeGreaterThan(100);
+    });
+
+    it("refuses a model that Ollama forwards to a remote service, without sending anything", async () => {
+      await expect(p.generate({ ...request, model: "gpt-oss:120b-cloud" })).rejects.toMatchObject({
+        kind: "config",
+      });
     });
   },
 );

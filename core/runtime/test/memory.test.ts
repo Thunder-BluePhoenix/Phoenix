@@ -560,11 +560,12 @@ describe("memory routes: hostile input", () => {
     ["POST", "/api/ai/external-processing", {}],
     ["POST", "/api/ai/external-processing", { granted: "true" }],
     ["POST", "/api/ai/external-processing", { granted: 1 }],
-    ["POST", "/api/ai/secret", {}],
-    ["POST", "/api/ai/secret", { value: 5 }],
-    ["POST", "/api/ai/secret", { value: "" }],
-    ["POST", "/api/ai/secret", { value: "a".repeat(8193) }],
-    ["POST", "/api/ai/secret", { value: "two\nlines" }],
+    ["POST", "/api/ai/providers/anthropic/secret", {}],
+    ["POST", "/api/ai/providers/anthropic/secret", { value: 5 }],
+    ["POST", "/api/ai/providers/anthropic/secret", { value: "" }],
+    ["POST", "/api/ai/providers/anthropic/secret", { value: "a".repeat(8193) }],
+    ["POST", "/api/ai/providers/anthropic/secret", { value: "two\nlines" }],
+    ["POST", "/api/ai/providers/Bad_Id/secret", { value: "x" }],
   ];
 
   it.each(bad)("%s %s %j is a 400 and changes nothing", async (method, path, body) => {
@@ -608,8 +609,9 @@ describe("memory routes: hostile input", () => {
       ["GET", "/api/ai/status"],
       ["POST", "/api/ai/settings", {}],
       ["POST", "/api/ai/external-processing", { granted: true }],
-      ["POST", "/api/ai/secret", { value: "x" }],
-      ["DELETE", "/api/ai/secret"],
+      ["POST", "/api/ai/providers/anthropic/secret", { value: "x" }],
+      ["DELETE", "/api/ai/providers/anthropic/secret"],
+      ["GET", "/api/ai/status?models=ollama"],
     ];
     for (const [method, path, body] of routes) {
       for (const authorization of ["", "Bearer wrong"]) {
@@ -631,7 +633,16 @@ describe("AI settings", () => {
       cloud_opt_in: { public: false, internal: false, sensitive: false },
       external_processing_granted: false,
     });
-    expect(status.providers.map((p: { id: string }) => p.id)).toEqual(["anthropic", "ollama"]);
+    expect(status.providers.map((p: { id: string }) => p.id)).toEqual([
+      "anthropic",
+      "deepseek",
+      "gemini",
+      "lmstudio",
+      "moonshot",
+      "ollama",
+      "openai",
+      "qwen",
+    ]);
     await list(core);
     await core.api("GET", "/api/privacy");
     await core.api("POST", "/api/memory/ask", { question: "what happened" });
@@ -745,10 +756,12 @@ describe("AI settings", () => {
 
   it("the API key is write-only: stored in the secret store, never returned, logged or audited", async () => {
     const core = await boot();
-    const KEY = "sk-ant-api03-WRITEONLYCANARY0123456789abcdefWRITEONLYCANARY";
-    expect((await core.api("POST", "/api/ai/secret", { value: KEY })).json).toEqual({
-      anthropic_key_set: true,
-    });
+    // Built at runtime so no credential-shaped literal sits in the tree.
+    const KEY = ["WRITEONLYCANARY", "0123456789", "abcdef", "WRITEONLYCANARY"].join("-");
+    expect(
+      (await core.api("POST", "/api/ai/providers/anthropic/secret", { value: KEY })).json,
+    ).toEqual({ provider: "anthropic", key_set: true });
+    // The Anthropic ref name is unchanged, so keys stored before Phase 63 keep working.
     expect(await core.secrets.get("phoenix.ai.anthropic_api_key")).toBe(KEY);
     for (const path of [
       "/api/ai/status",
@@ -762,7 +775,10 @@ describe("AI settings", () => {
         "WRITEONLYCANARY",
       );
     }
-    expect((await core.api("DELETE", "/api/ai/secret")).json).toEqual({ anthropic_key_set: false });
+    expect((await core.api("DELETE", "/api/ai/providers/anthropic/secret")).json).toEqual({
+      provider: "anthropic",
+      key_set: false,
+    });
     expect(await core.secrets.get("phoenix.ai.anthropic_api_key")).toBeUndefined();
     const audit = (await core.api("GET", "/api/audit")).json.entries as { action: string }[];
     expect(audit.map((e) => e.action)).toEqual(

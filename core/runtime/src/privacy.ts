@@ -27,7 +27,8 @@ const DEFAULT_RETENTION: Retention = { events: null, notifications: null, meetin
 const DESCRIPTIONS: Record<DataClass, string> = {
   events: "What capabilities reported: commands, builds, meetings, Git.",
   notifications: "Alerts Fawkes showed you.",
-  meetings: "Phoenix's copy of details, transcripts and summaries (recordings stay in Kage).",
+  meetings:
+    "Phoenix's copy of details, transcripts and summaries (recordings made by Kage stay in Kage; calls Phoenix records on this computer are never stored as audio).",
   memory:
     "What Fawkes remembers: commit messages, project docs you listed and, if you allow it, meeting summaries. Retention is set per kind of memory in the memory settings.",
 };

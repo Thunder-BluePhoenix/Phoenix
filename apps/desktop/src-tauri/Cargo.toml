@@ -24,8 +24,10 @@ parking_lot = "0.12"
 # already pull in, so no new crate enters the lockfile.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSScreen", "NSWindow", "NSResponder"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSScreen", "NSWindow", "NSResponder", "NSPasteboard"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSString", "NSArray"] }
+core-graphics = "0.25"
+core-foundation = "0.10"
 
 # Island window on Linux: the GTK window handle (same gtk 0.18 tauri uses) and libloading, which
 # is already in the lockfile through tauri's dependencies. libgtk-layer-shell is opened with
@@ -33,10 +35,11 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
 libloading = "0.7"
+x11-dl = "2.21"
 
 # Island window on Windows: extended window styles (no activation, tool window, topmost).
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_Threading", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_UI_Input_KeyboardAndMouse"] }
 
 [dev-dependencies]
 tempfile = "3"

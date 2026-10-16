@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-move-window-by"
+description = "Enables the move_window_by command without any pre-configured scope."
+commands.allow = ["move_window_by"]
+
+[[permission]]
+identifier = "deny-move-window-by"
+description = "Denies the move_window_by command without any pre-configured scope."
+commands.deny = ["move_window_by"]

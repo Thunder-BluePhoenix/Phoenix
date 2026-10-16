@@ -3,6 +3,11 @@
 export * from "./agent-approval-routes";
 export * from "./agent-live-routes";
 export * from "./agent-relay-routes";
+export * from "./appearance-routes";
+export * from "./attachment-routes";
+export * from "./dictation-routes";
+export * from "./notetaker-routes";
+export { ATTACHMENT_BODY_MAX_BYTES, MAX_BODY_BYTES } from "./http";
 export * from "./security";
 export * from "./server";
 export * from "./services";
