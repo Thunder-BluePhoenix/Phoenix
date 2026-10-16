@@ -4,7 +4,7 @@
 // Phase 65 through the public HTTP/WebSocket API. NO real call, microphone, system audio or Whisper
 // transcription is involved: the recogniser is a FakeRecognizer, the model is a fake Ollama, the
 // "audio" is fixed bytes. What is proven here is Core's behaviour around them.
-import { readdirSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WS_PROTOCOL, WS_TOKEN_PREFIX } from "@phoenix/api";
@@ -12,7 +12,7 @@ import { FakeRecognizer } from "@phoenix/ai-multimodal";
 import { createLogger, type LogRecord } from "@phoenix/logging";
 import { MemorySecretStore } from "@phoenix/persistence";
 import { createEvent } from "@phoenix/protocol";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import WebSocket from "ws";
 import { fakeNetwork, type FakeNetwork } from "./ai-network";
 import { TOKEN, connect, startCore, type TestCore } from "./helpers";
@@ -176,12 +176,26 @@ function listing(dir: string): string[] {
     .map((e) => join(e.parentPath, e.name))
     .sort();
 }
-/** Entries of the OS temp dir that are not another test's own working directory. */
-const tmpFiles = () =>
-  readdirSync(tmpdir(), { withFileTypes: true })
-    .filter((e) => !(e.isDirectory() && /^phoenix-/.test(e.name)))
-    .map((e) => e.name)
-    .sort();
+/**
+ * Gives this process a private, empty OS temp dir until the test ends. Comparing the shared temp
+ * dir raced: other test files running in parallel create and remove their own working dirs there
+ * (the Docker mock's `pd-*`), and other apps write to it too. `os.tmpdir()` reads these variables
+ * on every call, so anything in Core that asks for a temp dir gets this one, which must stay empty.
+ */
+function privateTmpDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "phoenix-notetaker-tmp-"));
+  const vars = ["TMPDIR", "TMP", "TEMP"] as const;
+  const previous = vars.map((v) => process.env[v]);
+  for (const v of vars) process.env[v] = dir;
+  onTestFinished(() => {
+    vars.forEach((v, i) => {
+      if (previous[i] === undefined) delete process.env[v];
+      else process.env[v] = previous[i];
+    });
+    rmSync(dir, { recursive: true, force: true });
+  });
+  return dir;
+}
 
 describe("settings and start rules", () => {
   it("is off by default; a start is refused and nothing records", async () => {
@@ -440,7 +454,8 @@ describe("a recording from start to meeting", () => {
     await hub.opened;
     hub.send({ type: "subscribe", channels: ["state.changed"] });
     await hub.next((m) => m.channel === "state.changed");
-    const tmpBefore = tmpFiles();
+    const privateTmp = privateTmpDir();
+    expect(tmpdir()).toBe(privateTmp);
     const dataBefore = listing(core!.dataDir);
 
     const session = await startSession({ title: SECRET_TITLE });
@@ -532,7 +547,7 @@ describe("a recording from start to meeting", () => {
 
     // The audio never touched the disk: neither the data dir nor the temp dir gained anything.
     expect(listing(core!.dataDir)).toEqual(dataBefore);
-    expect(tmpFiles()).toEqual(tmpBefore);
+    expect(readdirSync(privateTmp)).toEqual([]);
 
     // No transcript text, title or audio in events, audit rows or logs.
     const events = JSON.stringify((await core!.api("GET", "/api/events?limit=500")).json);
