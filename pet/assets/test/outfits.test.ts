@@ -8,6 +8,9 @@ import {
   DEFAULT_SOURCE_COLOURS,
   defaultSourceStyle,
   GLYPH_NAMES,
+  isGlyphName,
+  SERVICE_SOURCE_STYLES,
+  SOURCE_COLOUR,
   GLYPHS,
   MAX_LAYER_CHARS,
   OutfitError,
@@ -466,6 +469,35 @@ describe("source glyphs and colours", () => {
     for (const c of DEFAULT_SOURCE_COLOURS) {
       expect(contrastRatio(c, PILL_BACKGROUND), c).toBeGreaterThanOrEqual(AA_CONTRAST);
     }
+  });
+
+  it("gives each of the nine service capabilities a fixed, AA-readable colour and its own glyph", () => {
+    const ids = [
+      "vercel",
+      "stripe",
+      "n8n",
+      "resend",
+      "notion",
+      "calcom",
+      "spotify",
+      "apple-music",
+      "portfolio",
+    ].map((id) => `capability:${id}`);
+    expect(Object.keys(SERVICE_SOURCE_STYLES).sort()).toEqual([...ids].sort());
+    const glyphs = new Set<string>();
+    for (const id of ids) {
+      const style = defaultSourceStyle(id);
+      expect(style).toEqual({ ...SERVICE_SOURCE_STYLES[id], show: true });
+      expect(contrastRatio(style.colour, PILL_BACKGROUND), id).toBeGreaterThanOrEqual(AA_CONTRAST);
+      expect(isGlyphName(style.glyph)).toBe(true);
+      glyphs.add(style.glyph);
+    }
+    expect(glyphs.size).toBe(ids.length);
+    // An unknown or prototype-ish id still falls back to the hashed look, never to a table lookup.
+    expect(defaultSourceStyle("capability:constructor")).toEqual(
+      defaultSourceStyle("capability:constructor"),
+    );
+    expect(SOURCE_COLOUR.test(defaultSourceStyle("capability:toString").colour)).toBe(true);
   });
 
   it("gives a source a stable default look", () => {

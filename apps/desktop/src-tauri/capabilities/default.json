@@ -13,6 +13,9 @@
     "allow-open-mailto",
     "allow-show-menu",
     "allow-island-event",
-    "allow-island-frame"
+    "allow-island-frame",
+    "allow-shortcuts-list",
+    "allow-shortcuts-set",
+    "allow-shortcuts-reset"
   ]
 }

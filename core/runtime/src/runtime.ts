@@ -57,6 +57,7 @@ import {
 import { AgentRuntime } from "./agents";
 import { AgentApprovals } from "./agent-approvals";
 import { AgentLive, displayName } from "./agent-live";
+import { RecapRuntime } from "./recap";
 import { AgentRelay } from "./agent-relay";
 import { AiRuntime } from "./ai";
 import { AutonomyRuntime } from "./autonomy";
@@ -67,16 +68,19 @@ import { MeetingReviewRuntime } from "./meeting-review";
 import { PlanningRuntime } from "./planning";
 import { MultimodalRuntime } from "./multimodal";
 import { DictationRuntime } from "./dictation";
+import { VoiceRuntime, type VoiceRuntimeDeps } from "./voice";
 import { NotetakerRuntime, type NotetakerConsentChannel } from "./notetaker";
 import { AttachmentRuntime } from "./attachments";
 import { syncMeetings } from "./meetings";
 import { PrivacyService, type DerivedInventory } from "./privacy";
 import { AppearanceRuntime, type KnownSource } from "./appearance";
+import { UiSettingsRuntime } from "./ui-settings";
 import { ProactiveRuntime } from "./proactive";
 import { RetrievalRuntime } from "./retrieval";
 import { ImprovementRuntime } from "./improvement";
 import { LocalRegistryRuntime, type LocalRegistryConfig } from "./registry";
 import { SyncRuntime } from "./sync";
+import { DemoRuntime, type DemoTuning } from "./demo";
 import { WorkflowsRuntime } from "./workflows";
 
 export interface PetSettings {
@@ -132,6 +136,10 @@ export interface RuntimeOptions {
   gitExec?: GitExec;
   /** Speech recogniser for dictation (tests inject a fake). Default: whisper.cpp over stdin when a Whisper model is set, else none. */
   dictationRecognizer?: SpeechRecognizer;
+  /** Speech recogniser for the voice assistant (tests inject a fake). Default: the dictation one. */
+  voiceRecognizer?: SpeechRecognizer;
+  /** Voice timing and gate overrides (tests inject timers and a small utterance gate). */
+  voice?: Pick<VoiceRuntimeDeps, "timers" | "now" | "utterance" | "limits">;
   /** Speech recogniser for the notetaker (tests inject a fake). Default: the dictation one. */
   notetakerRecognizer?: SpeechRecognizer;
   /** Samples per notetaker transcription window (tests make it small). Default: 30 s. */
@@ -145,6 +153,16 @@ export interface RuntimeOptions {
   attachmentClock?: () => number;
   /** Delimiter nonce for attachment questions (tests inject a known one to prove a forged delimiter fails). */
   attachmentNonce?: () => string;
+  /** Clock and IANA time zone of the weekly recap (tests inject them). */
+  recapClock?: () => number;
+  recapTimeZone?: string;
+  /**
+   * Demo mode (Phase 70) tuning (tests inject the idle timer). `false` builds no demo service: the
+   * demo's own runtime is built that way, so a demo can never start another demo.
+   */
+  demo?: DemoTuning | false;
+  /** Start the owner-only agent relay socket (default true). The demo runtime never opens one. */
+  startAgentRelay?: boolean;
 }
 
 /**
@@ -179,6 +197,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly multimodal: MultimodalRuntime;
   /** Dictation (Phase 64): off by default, audio in memory only, text pipeline, aggregate stats. */
   readonly dictation: DictationRuntime;
+  /** « OK Fawkes » voice assistant (Phase 66): off by default, VAD first, audio in memory only, may deny but never approve. */
+  readonly voice: VoiceRuntime;
   /** Botless notetaker (Phase 65): off by default, consent every time, audio in memory only. */
   readonly notetaker: NotetakerRuntime;
   /** Files, images, folders and windows given to Fawkes as context (Phase 62): memory only, local-only ask. */
@@ -187,6 +207,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly improvement: ImprovementRuntime;
   /** Fawkes outfit, user packs and per-source pills (Phase 61); session-token routes only. */
   readonly appearance: AppearanceRuntime;
+  /** The interface language (Phase 70, `ui.locale`); session-token routes only. */
+  readonly uiSettings: UiSettingsRuntime;
   /**
    * The only path from an agent to a capability (Phase 30). Phase 31 hands this, and nothing
    * else, to the agent runtime.
@@ -219,6 +241,10 @@ export class PhoenixRuntime implements CoreServices {
   readonly agentRelay: AgentRelay;
   /** Live agent sessions: steps, changed files, diffs, plan usage (Phase 58); session-token routes only. */
   readonly agentLive: AgentLive;
+  /** Weekly recap (Phase 69): day counts only, kept past the events cap; local, no AI. */
+  readonly recap: RecapRuntime;
+  /** Demo mode (Phase 70): a second, isolated in-memory runtime; absent inside the demo itself. */
+  readonly demo: DemoRuntime | undefined;
   /**
    * Changes policy. Deliberately private and unused by any route: only code that holds the
    * runtime (never an agent, never a tool result) could reach it, and every method also refuses
@@ -484,7 +510,18 @@ export class PhoenixRuntime implements CoreServices {
         focuser = undefined; // an unsupported system: the route says so when asked
       }
     }
+    this.recap = new RecapRuntime({
+      db: this.db,
+      settings: this.settings,
+      bus: this.bus,
+      audit: this.permissions.audit,
+      meetingsAllowed: () => this.memory.settings().allow_sensitive_meetings,
+      logger: this.logger.child("recap"),
+      ...(options.recapClock ? { now: options.recapClock } : {}),
+      ...(options.recapTimeZone ? { timeZone: options.recapTimeZone } : {}),
+    });
     this.agentLive = new AgentLive({
+      recap: this.recap,
       bus: this.bus,
       permissions: this.permissions,
       settings: this.settings,
@@ -524,6 +561,21 @@ export class PhoenixRuntime implements CoreServices {
       audit: this.permissions.audit,
       approver: approverFromPermissions(this.permissions),
       logger: this.logger,
+    });
+    this.voice = new VoiceRuntime({
+      settings: this.settings,
+      bus: this.bus,
+      state: this.state,
+      permissions: this.permissions,
+      gateway: this.toolGateway,
+      recognizer:
+        options.voiceRecognizer ??
+        options.dictationRecognizer ??
+        (options.whisperModelPath
+          ? new WhisperStdinRecognizer({ modelPath: options.whisperModelPath })
+          : null),
+      logger: this.logger.child("voice"),
+      ...options.voice,
     });
 
     this.agents = new AgentRuntime({
@@ -571,7 +623,19 @@ export class PhoenixRuntime implements CoreServices {
       bus: this.bus,
       known: () => this.knownSources(),
     });
+    this.uiSettings = new UiSettingsRuntime(this.settings, this.bus);
     this.sync = new SyncRuntime(this.settings, options.secrets);
+    this.demo =
+      options.demo === false
+        ? undefined
+        : new DemoRuntime({
+            ...options.demo,
+            config: this.config,
+            logger: this.logger.child("demo"),
+            killSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
+            bus: this.bus,
+            createRuntime: (demoOptions) => new PhoenixRuntime(demoOptions),
+          });
     this.registry = new LocalRegistryRuntime(options.registry, {
       sdk: "0.1.0",
       core: "0.1.0",
@@ -588,6 +652,7 @@ export class PhoenixRuntime implements CoreServices {
       audit: this.permissions.audit,
       memory: this.memory,
       workflowHistory: this.workflows,
+      recap: this.recap,
       derived: () => this.derivedInventory(),
       externalAi: () => this.ai.describeExternalProcessing(),
     });
@@ -658,7 +723,7 @@ export class PhoenixRuntime implements CoreServices {
       ...(this.config.webRoot ? { webRoot: this.config.webRoot } : {}),
     });
     const address = await this.api.listen(this.config.port, this.config.host);
-    await this.agentRelay.start();
+    if (this.options.startAgentRelay ?? true) await this.agentRelay.start();
     if (this.options.writeTokenFile ?? true) this.writeTokenFile();
 
     this.ticker = setInterval(() => {
@@ -667,6 +732,7 @@ export class PhoenixRuntime implements CoreServices {
     }, this.options.tickMs ?? 1_000);
     this.ticker.unref();
     this.privacy.prune();
+    this.recap.maintain();
     // Not awaited: reading a large docs folder must not delay the API coming up.
     void this.memory.maintain().then(() => {
       this.graph.ingestMemory();
@@ -675,6 +741,7 @@ export class PhoenixRuntime implements CoreServices {
     });
     this.pruner = setInterval(() => {
       this.privacy.prune();
+      this.recap.maintain();
       void this.memory.maintain().then(() => this.graph.ingestMemory());
     }, 3_600_000);
     this.pruner.unref();
@@ -784,6 +851,13 @@ export class PhoenixRuntime implements CoreServices {
         count: this.tableCount("workflow_runs"),
         deleted_with: "events (eligible runs); retained protected runs require review",
       },
+      {
+        id: "recap",
+        description:
+          'Weekly recap numbers: counts per day (steps, files, lines, commands, sessions, minutes, commits, CI results) and per agent and project name. No file names, commands or text. They outlive the activity history on purpose and are deleted only with "Delete all" for the recap.',
+        count: this.recap.store.count(),
+        deleted_with: 'recap (POST /api/privacy/delete {"data":"recap"} or DELETE /api/recap)',
+      },
     ];
   }
 
@@ -827,6 +901,10 @@ export class PhoenixRuntime implements CoreServices {
     this.state.setSleeping(sleeping);
   }
 
+  viewersChanged(count: number): void {
+    this.capabilities.presence.setClients(count);
+  }
+
   health() {
     const snapshot = this.state.snapshot();
     return {
@@ -868,8 +946,11 @@ export class PhoenixRuntime implements CoreServices {
   /** Graceful shutdown: stop accepting requests, flush the bus, close the database. Idempotent. */
   stop(): Promise<void> {
     this.stopping ??= (async () => {
+      await this.demo?.stop();
       this.proactive.stopScheduler();
       this.dictation.close();
+      this.voice.close();
+      this.recap.close();
       this.notetaker.close();
       this.attachments.close();
       this.agentApprovals.close();

@@ -20,6 +20,9 @@ fn main() {
             "pill_ready",
             "dictation_ended",
             "dictation_paste",
+            "shortcuts_list",
+            "shortcuts_set",
+            "shortcuts_reset",
         ]),
     ))
     .expect("Tauri build failed");

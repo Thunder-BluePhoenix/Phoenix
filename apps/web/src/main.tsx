@@ -4,15 +4,15 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { PhoenixClient, readInjectedToken } from "./core/client";
-import { CoreProvider } from "./core/context";
+import { DemoHost } from "./components/Demo";
 import "./styles.css";
 
 const client = new PhoenixClient({ token: readInjectedToken() });
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <CoreProvider client={client}>
+    <DemoHost client={client}>
       <App />
-    </CoreProvider>
+    </DemoHost>
   </StrictMode>,
 );

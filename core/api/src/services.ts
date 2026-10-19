@@ -6,8 +6,12 @@ import type { NotetakerApi } from "./notetaker-routes";
 import type { AttachmentsApi } from "./attachment-routes";
 import type { AgentLiveApi } from "./agent-live-routes";
 import type { AppearanceApi } from "./appearance-routes";
+import type { UiSettingsApi } from "./ui-routes";
 import type { AgentRelayApi } from "./agent-relay-routes";
 import type { ImprovementApi } from "./improvement-routes";
+import type { DemoApi } from "./demo-routes";
+import type { VoiceApi } from "./voice-routes";
+import type { RecapApi } from "./recap-routes";
 import type { PhoenixConfig } from "@phoenix/config";
 import type { EventBus } from "@phoenix/event-bus";
 import type { Logger } from "@phoenix/logging";
@@ -1257,17 +1261,23 @@ export interface CoreServices {
   registry?: RegistryApi;
   multimodal?: MultimodalApi;
   dictation?: DictationApi;
+  voice?: VoiceApi;
   notetaker?: NotetakerApi;
   agentApprovals?: AgentApprovalsApi;
   agentRelay?: AgentRelayApi;
   agentLive?: AgentLiveApi;
   improvement?: ImprovementApi;
   appearance?: AppearanceApi;
+  uiSettings?: UiSettingsApi;
   attachments?: AttachmentsApi;
+  recap?: RecapApi;
+  demo?: DemoApi;
   petSettings?(): unknown;
   setPetSettings?(input: unknown): unknown;
   /** Persists the user's sleep preference. */
   setSleeping(sleeping: boolean): void;
+  /** Called with the number of connected WebSocket clients whenever it changes. */
+  viewersChanged?(count: number): void;
   health(): Record<string, unknown>;
   /** Support report with no secrets and no meeting content (GET /api/diagnostics). */
   diagnostics?(): unknown;

@@ -31,7 +31,8 @@ export const PAGE_HEADERS: Record<string, string> = {
     // The pet runtime injects <style> elements; React uses inline style attributes.
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
-    "connect-src 'self' ws: wss:",
+    // Loopback http: the demo's own Core (Phase 70) listens on another port of this machine.
+    "connect-src 'self' http://127.0.0.1:* ws: wss:",
     "frame-ancestors 'none'",
     "base-uri 'none'",
     "form-action 'none'",

@@ -12,6 +12,7 @@ import { meetingReviewRoutes } from "./meeting-routes";
 import { memoryRoutes } from "./memory-routes";
 import { planRoutes } from "./plan-routes";
 import { workflowRoutes } from "./workflow-routes";
+import { voiceRoutes } from "./voice-routes";
 import { proactiveRoutes } from "./proactive-routes";
 import { syncRoutes } from "./sync-routes";
 import { registryRoutes } from "./registry-routes";
@@ -20,7 +21,10 @@ import { notetakerRoutes } from "./notetaker-routes";
 import { multimodalRoutes } from "./multimodal-routes";
 import { improvementRoutes } from "./improvement-routes";
 import { appearanceRoutes } from "./appearance-routes";
+import { uiRoutes } from "./ui-routes";
 import { attachmentRoutes } from "./attachment-routes";
+import { demoRoutes } from "./demo-routes";
+import { recapRoutes } from "./recap-routes";
 import type { CoreServices } from "./services";
 
 const notFound = (what: string) =>
@@ -33,7 +37,7 @@ const notFound = (what: string) =>
  * ones would fake it.
  */
 const CORE_ONLY_EVENT =
-  /^(agent\.(session\.step|usage\.updated)|dictation\.(listening|idle)|notetaker\.(recording|idle|meeting\.updated))$/;
+  /^(agent\.(session\.step|usage\.updated)|dictation\.(listening|idle)|voice\.(listening|idle)|notetaker\.(recording|idle|meeting\.updated))$/;
 const isCoreOnlyEvent = (type: unknown): boolean =>
   typeof type === "string" && CORE_ONLY_EVENT.test(type);
 
@@ -329,12 +333,16 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...syncRoutes(s),
     ...multimodalRoutes(s),
     ...dictationRoutes(s),
+    ...voiceRoutes(s),
     ...notetakerRoutes(s),
     ...improvementRoutes(s),
     ...appearanceRoutes(s),
+    ...uiRoutes(s),
     ...attachmentRoutes(s),
+    ...demoRoutes(s),
     ...agentApprovalRoutes(s),
     ...agentRelayRoutes(s),
     ...agentLiveRoutes(s),
+    ...recapRoutes(s),
   ];
 }

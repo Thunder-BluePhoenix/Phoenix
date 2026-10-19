@@ -3,6 +3,7 @@
 export * from "./database";
 export * from "./event-store";
 export * from "./meeting-store";
+export * from "./recap-store";
 export * from "./migrations";
 export * from "./secret-store";
 export * from "./settings-store";

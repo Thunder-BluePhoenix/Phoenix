@@ -29,6 +29,7 @@ mod pill;
 mod pill_geometry;
 mod position;
 mod settings;
+pub mod shortcuts;
 
 use connection::{connection, locate, phoenix_url, CoreConnection, Locator};
 use island_controller::{Frame, PageEvent};
@@ -42,7 +43,7 @@ use tauri::menu::{
 };
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{
-    AppHandle, Manager, PhysicalPosition, PhysicalSize, RunEvent, Runtime, WebviewUrl,
+    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, RunEvent, Runtime, WebviewUrl,
     WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_autostart::ManagerExt as _;
@@ -86,6 +87,9 @@ struct Shell<R: Runtime> {
     dictation: pill::Host,
     /// Where keyboard focus was when the current dictation started (set by the hotkey worker).
     focus: focus_target::FocusGuard<focus_target::SystemFocus>,
+    shortcuts: shortcuts::Host,
+    /// False under the mock runtime: no operating-system hotkey is ever registered there.
+    native_shortcuts: bool,
 }
 
 struct MenuItems<R: Runtime> {
@@ -98,6 +102,8 @@ struct MenuItems<R: Runtime> {
     dictation_hotkey: CheckMenuItem<R>,
     dictation_key: MenuItem<R>,
     dictation_pill: CheckMenuItem<R>,
+    shortcuts_enabled: CheckMenuItem<R>,
+    mute: CheckMenuItem<R>,
 }
 
 impl<R: Runtime> Shell<R> {
@@ -378,6 +384,96 @@ fn island_frame<R: Runtime>(
         .flatten()
 }
 
+/// Only the pet's own windows may read or change the bindings.
+fn may_configure_shortcuts<R: Runtime>(
+    window: &WebviewWindow<R>,
+) -> Result<(), shortcuts::Refusal> {
+    if window.label() == WINDOW_LABEL || window.label() == island::ISLAND_LABEL {
+        Ok(())
+    } else {
+        Err(shortcuts::Refusal::new(
+            "forbidden",
+            "This window cannot change shortcuts.",
+        ))
+    }
+}
+
+/// Every action with its current binding and state, and the mute flag.
+#[tauri::command]
+fn shortcuts_list<R: Runtime>(
+    window: WebviewWindow<R>,
+    shell: tauri::State<'_, Shell<R>>,
+) -> Result<shortcuts::Report, shortcuts::Refusal> {
+    may_configure_shortcuts(&window)?;
+    // One guard, both fields: `parking_lot::Mutex` is not reentrant, so locking twice in one
+    // expression would block this (main) thread forever.
+    let (enabled, muted) = {
+        let settings = shell.settings.lock();
+        (settings.shortcuts_enabled, settings.muted)
+    };
+    Ok(shortcuts::Report {
+        enabled,
+        muted,
+        shortcuts: shell.shortcuts.statuses(),
+    })
+}
+
+/// Binds `action` to `accelerator` (empty text unbinds it). A refused accelerator changes
+/// nothing.
+#[tauri::command]
+fn shortcuts_set<R: Runtime>(
+    window: WebviewWindow<R>,
+    shell: tauri::State<'_, Shell<R>>,
+    action: String,
+    accelerator: String,
+) -> Result<shortcuts::Report, shortcuts::Refusal> {
+    may_configure_shortcuts(&window)?;
+    let Some(action) = shortcuts::Action::parse(&action) else {
+        return Err(shortcuts::Refusal::new(
+            "unknown_action",
+            "That is not a shortcut action.",
+        ));
+    };
+    let (user, chord) = {
+        let settings = shell.settings.lock();
+        (
+            settings.shortcuts.clone(),
+            settings.paste_again_chord.clone(),
+        )
+    };
+    let text = shortcuts::validate_set(action, &accelerator, &user, &chord)?;
+    shell.update(|s| {
+        s.shortcuts
+            .insert(action.as_str().to_string(), text.unwrap_or_default());
+    });
+    Ok(apply_shortcuts(window.app_handle()))
+}
+
+/// Restores the default binding of one action (or of all of them when `action` is absent).
+#[tauri::command]
+fn shortcuts_reset<R: Runtime>(
+    window: WebviewWindow<R>,
+    shell: tauri::State<'_, Shell<R>>,
+    action: Option<String>,
+) -> Result<shortcuts::Report, shortcuts::Refusal> {
+    may_configure_shortcuts(&window)?;
+    match action {
+        None => shell.update(|s| s.shortcuts.clear()),
+        Some(name) => {
+            let Some(action) = shortcuts::Action::parse(&name) else {
+                return Err(shortcuts::Refusal::new(
+                    "unknown_action",
+                    "That is not a shortcut action.",
+                ));
+            };
+            shell.update(|s| {
+                s.shortcuts.remove(action.as_str());
+            });
+        }
+    }
+    Ok(apply_shortcuts(window.app_handle()))
+}
+
 fn save_position<R: Runtime>(window: &WebviewWindow<R>, shell: &Shell<R>) {
     if let Ok(p) = window.outer_position() {
         shell.update(|s| s.position = Some(Point { x: p.x, y: p.y }));
@@ -587,6 +683,100 @@ fn set_dictation_pill<R: Runtime>(app: &AppHandle<R>, on: bool) {
     };
 }
 
+/// The page that opens a Phoenix route in the user's browser (the shell chooses the host).
+fn open_route<R: Runtime>(app: &AppHandle<R>, route: &str) {
+    let shell = app.state::<Shell<R>>();
+    if let Some(url) = phoenix_url(&shell.locator.base_url, route) {
+        (shell.open_url)(&url);
+    }
+}
+
+/// What a global shortcut (or its menu twin) does.
+pub fn run_shortcut<R: Runtime>(app: &AppHandle<R>, action: shortcuts::Action) {
+    let shell = app.state::<Shell<R>>();
+    match action {
+        shortcuts::Action::SwitchPills => open_route(app, shell.shortcuts.next_pill_route()),
+        shortcuts::Action::Mute => {
+            let on = !shell.settings.lock().muted;
+            set_muted(app, on);
+        }
+        shortcuts::Action::SendToDesktop => {
+            let (mode, visible) = {
+                let settings = shell.settings.lock();
+                (settings.mode, settings.visible)
+            };
+            let plan = shortcuts::send_to_desktop(mode, visible);
+            if let Some(mode) = plan.mode {
+                set_mode(app, mode);
+            }
+            set_visible(app, plan.visible);
+        }
+        other => {
+            if let Some(route) = other.route() {
+                open_route(app, route);
+            }
+        }
+    }
+}
+
+/// Remembers the mute flag, tells the desktop pages (`shortcuts://mute`) and ticks the menu.
+/// The shell never plays sounds itself; the pages and the web app honour the flag.
+fn set_muted<R: Runtime>(app: &AppHandle<R>, muted: bool) {
+    let shell = app.state::<Shell<R>>();
+    shell.update(|s| s.muted = muted);
+    if let Some(items) = shell.menu.lock().as_ref() {
+        let _ = items.mute.set_checked(muted);
+    }
+    let _ = app.emit(shortcuts::MUTE_EVENT, shortcuts::MutePayload { muted });
+}
+
+/// Makes the operating system's registrations match the settings and announces the result
+/// (`shortcuts://status`). A binding the OS refuses is reported on its own action; the others
+/// still register and nothing here can abort the app.
+fn apply_shortcuts<R: Runtime>(app: &AppHandle<R>) -> shortcuts::Report {
+    let shell = app.state::<Shell<R>>();
+    let (enabled, user, chord) = {
+        let settings = shell.settings.lock();
+        (
+            settings.shortcuts_enabled,
+            settings.shortcuts.clone(),
+            settings.paste_again_chord.clone(),
+        )
+    };
+    let registrar: Box<dyn shortcuts::Registrar> = if shell.native_shortcuts {
+        match shortcuts::NativeRegistrar::open(app, enabled) {
+            Ok(Some(native)) => Box::new(native),
+            Ok(None) => Box::new(shortcuts::Refusing::new("shortcuts are off")),
+            Err(reason) => Box::new(shortcuts::Refusing::new(reason)),
+        }
+    } else {
+        Box::new(shortcuts::Refusing::new(
+            "global shortcuts are not available in this environment",
+        ))
+    };
+    let statuses = shell
+        .shortcuts
+        .apply(registrar.as_ref(), enabled, &user, &chord);
+    if let Some(items) = shell.menu.lock().as_ref() {
+        let _ = items
+            .shortcuts_enabled
+            .set_text(shortcuts::menu_text(&statuses, enabled));
+        let _ = items.shortcuts_enabled.set_checked(enabled);
+    }
+    let report = shortcuts::Report {
+        enabled,
+        muted: shell.settings.lock().muted,
+        shortcuts: statuses,
+    };
+    let _ = app.emit(shortcuts::STATUS_EVENT, &report);
+    report
+}
+
+fn set_shortcuts_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) {
+    app.state::<Shell<R>>().update(|s| s.shortcuts_enabled = on);
+    apply_shortcuts(app);
+}
+
 fn build_menu<R: Runtime>(
     app: &AppHandle<R>,
     settings: &Settings,
@@ -670,7 +860,24 @@ fn build_menu<R: Runtime>(
         settings.pill,
         None::<&str>,
     )?;
-    let mut entries: Vec<&dyn IsMenuItem<R>> = vec![&toggle, &open];
+    let wardrobe = MenuItem::with_id(app, "wardrobe", "Wardrobe", true, None::<&str>)?;
+    let shortcuts_enabled = CheckMenuItem::with_id(
+        app,
+        "shortcuts_enabled",
+        shortcuts::menu_text(&[], settings.shortcuts_enabled),
+        true,
+        settings.shortcuts_enabled,
+        None::<&str>,
+    )?;
+    let mute = CheckMenuItem::with_id(
+        app,
+        "mute",
+        "Mute sounds and notifications",
+        true,
+        settings.muted,
+        None::<&str>,
+    )?;
+    let mut entries: Vec<&dyn IsMenuItem<R>> = vec![&toggle, &open, &wardrobe];
     let separators = [
         PredefinedMenuItem::separator(app)?,
         PredefinedMenuItem::separator(app)?,
@@ -687,7 +894,14 @@ fn build_menu<R: Runtime>(
         &dictation_pill,
     ]);
     entries.push(&separators[3]);
-    entries.extend([&on_top as &dyn IsMenuItem<R>, &login, &separators[2], &quit]);
+    entries.extend([
+        &shortcuts_enabled as &dyn IsMenuItem<R>,
+        &mute,
+        &on_top,
+        &login,
+        &separators[2],
+        &quit,
+    ]);
     let menu = Menu::with_items(app, &entries)?;
     Ok(MenuItems {
         menu,
@@ -699,6 +913,8 @@ fn build_menu<R: Runtime>(
         dictation_hotkey,
         dictation_key,
         dictation_pill,
+        shortcuts_enabled,
+        mute,
     })
 }
 
@@ -709,6 +925,15 @@ pub fn handle_menu<R: Runtime>(app: &AppHandle<R>, id: &str) {
         "open" => {
             let shell = app.state::<Shell<R>>();
             (shell.open_url)(&shell.locator.base_url);
+        }
+        "wardrobe" => run_shortcut(app, shortcuts::Action::Wardrobe),
+        "shortcuts_enabled" => {
+            let on = !app.state::<Shell<R>>().settings.lock().shortcuts_enabled;
+            set_shortcuts_enabled(app, on);
+        }
+        "mute" => {
+            let on = !app.state::<Shell<R>>().settings.lock().muted;
+            set_muted(app, on);
         }
         "on_top" => {
             let on = !app.state::<Shell<R>>().settings.lock().always_on_top;
@@ -817,7 +1042,10 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
             dictation_paste,
             show_menu,
             island_event,
-            island_frame
+            island_frame,
+            shortcuts_list,
+            shortcuts_set,
+            shortcuts_reset
         ])
         .setup(move |app| {
             let handle = app.handle();
@@ -878,7 +1106,13 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
                 ),
                 dictation: pill::Host::new(skip_native_window_styling),
                 focus: focus_target::FocusGuard::new(focus_target::SystemFocus),
+                shortcuts: shortcuts::Host::default(),
+                // The mock runtime (lifecycle tests) has no hotkey manager; never touch the OS there.
+                native_shortcuts: !skip_native_window_styling,
             });
+            // Reports every binding (and registers them only when the user turned shortcuts on). A
+            // refused registration is reported per action and never stops startup.
+            apply_shortcuts(handle);
             create_window(handle, &settings)?;
             // Only the window of the saved mode is shown; the island window is created on
             // first use, so a user who never picks the island never gets one.

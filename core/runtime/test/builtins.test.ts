@@ -30,6 +30,8 @@ describe("built-in capabilities", () => {
     expect(ids).toEqual(
       [
         "agents",
+        "apple-music",
+        "calcom",
         "capture-microphone",
         "capture-screen",
         "docker",
@@ -39,8 +41,15 @@ describe("built-in capabilities", () => {
         "issues",
         "kage",
         "mock",
+        "n8n",
+        "notion",
+        "portfolio",
         "plans",
+        "resend",
+        "spotify",
+        "stripe",
         "terminal",
+        "vercel",
       ].sort(),
     );
     expect(listed.every((c) => c.status === "installed")).toBe(true);

@@ -21,6 +21,8 @@ import type { MemoryDomain } from "@phoenix/ai-memory";
 const run = promisify(execFile);
 
 const SHA = /^[0-9a-f]{40}$/;
+/** A Vercel deployment id (`dpl_…`): one safe path segment, so it cannot reshape a graph key. */
+const VERCEL_ID = /^[A-Za-z0-9_-]{1,100}$/;
 const REPOSITORY = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
 /** Most files recorded per commit; the rest are counted in the detail, not stored. */
 export const MAX_FILES_PER_COMMIT = 200;
@@ -40,6 +42,7 @@ export const GRAPH_EVENT_PATTERNS: readonly string[] = [
   "github.pr.*",
   "github.ci.*",
   "github.deploy.*",
+  "vercel.deploy.*",
   "docker.container.*",
   "issues.*",
 ];
@@ -164,11 +167,13 @@ export class GraphIngestor {
                 ? this.ciEvent(event, out)
                 : t.startsWith("github.deploy.")
                   ? this.deployEvent(event, out)
-                  : t.startsWith("docker.container.")
-                    ? this.dockerEvent(event, out)
-                    : t.startsWith("issues.")
-                      ? this.issueEvent(event, out)
-                      : false;
+                  : t.startsWith("vercel.deploy.")
+                    ? this.vercelDeployEvent(event, out)
+                    : t.startsWith("docker.container.")
+                      ? this.dockerEvent(event, out)
+                      : t.startsWith("issues.")
+                        ? this.issueEvent(event, out)
+                        : false;
         if (!ok) out.skipped++;
       });
     } catch {
@@ -411,6 +416,71 @@ export class GraphIngestor {
         { sha_source: deploymentSha !== undefined ? "deployment.sha" : "deployment.ref" },
         out,
       );
+    }
+    const actor = str(event.payload.actor);
+    if (actor !== undefined && actor !== "unknown") {
+      const key = personKeyOf(actor);
+      if (key !== null) this.person(base, actor, key, ref, "TRIGGERED", out);
+    }
+    return true;
+  }
+
+  // -------------------------------------------------------------- vercel
+
+  /**
+   * A Vercel deployment. It is a Deployment node and a deployment of the Vercel project (a Service).
+   * With a `repository` it is also PART_OF that repository and, when the payload carries a full
+   * commit sha, DEPLOYED_TO from that commit; without one it is only tied to its project. A sha
+   * that is not 40 hex characters links nothing: it is not proof of a commit.
+   */
+  private vercelDeployEvent(event: PhoenixEvent, out: IngestOutcome): boolean {
+    const id = str(event.payload.deployment_id, 100);
+    const project = str(event.payload.project, 100);
+    if (id === undefined || !VERCEL_ID.test(id) || project === undefined) return false;
+    const repo = this.repoOf(event);
+    const service: NodeRef = { type: "Service", key: `vercel:${project}` };
+    if (keyProblem("Service", service.key) !== null) return false;
+    const base: Base = {
+      sourceKind: "event",
+      sourceId: event.event_id,
+      capability: "vercel",
+      observedAt: event.timestamp,
+      scope: repo !== null ? `repo:${repo}` : `service:vercel:${project}`,
+      domain: repo !== null ? "git" : "general",
+      sensitivity: "internal",
+    };
+    const ref: NodeRef = {
+      type: "Deployment",
+      key: repo !== null ? `${repo}/deploy/${id}` : `vercel/${project}/deploy/${id}`,
+    };
+    if (keyProblem("Deployment", ref.key) !== null) return false;
+    const target = str(event.payload.target, 100) ?? "unknown";
+    const detail: Detail = {
+      title: `${target} deployment of ${project}`,
+      environment: target,
+      project,
+      state: event.event_type.slice("vercel.deploy.".length).slice(0, 20),
+    };
+    const branch = str(event.payload.branch, 100);
+    if (branch !== undefined) detail.ref = branch;
+    this.node(base, ref, detail, out);
+    this.node(base, service, { title: project, provider: "vercel" }, out);
+    this.edge(base, ref, "DEPLOYED_TO", service, {}, out);
+    if (repo !== null) {
+      this.repos[repo] = true;
+      this.edge(base, ref, "PART_OF", { type: "Repository", key: repo }, {}, out);
+      const rawSha = event.payload.sha;
+      const sha = typeof rawSha === "string" ? rawSha.toLowerCase() : undefined;
+      if (sha !== undefined && SHA.test(sha)) {
+        this.edge(
+          base,
+          { type: "Commit", key: `${repo}@${sha}` },
+          "DEPLOYED_TO",
+          ref,
+          { sha_source: "deployment.sha" },
+          out,
+        );
+      }
     }
     const actor = str(event.payload.actor);
     if (actor !== undefined && actor !== "unknown") {

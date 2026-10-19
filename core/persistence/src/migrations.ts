@@ -1177,4 +1177,21 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 28,
+    name: "recap_daily",
+    // Aggregates ONLY (Phase 69): counts per local day and metric, so the weekly recap survives the
+    // events table being capped. `key` is '' for a day total, or an agent id / project NAME (never a
+    // path) for the per-agent and per-project step counts. No content, no file names, no commands.
+    // Deleted with "delete all recap statistics".
+    sql: `
+      CREATE TABLE recap_daily (
+        day TEXT NOT NULL CHECK (length(day) = 10),
+        metric TEXT NOT NULL CHECK (length(metric) BETWEEN 1 AND 40),
+        key TEXT NOT NULL DEFAULT '' CHECK (length(key) <= 120),
+        value INTEGER NOT NULL CHECK (value >= 0),
+        PRIMARY KEY (day, metric, key)
+      );
+    `,
+  },
 ];

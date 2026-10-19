@@ -129,6 +129,20 @@ export class PhoenixClient {
     return socket;
   }
 
+  /** The audio stream of one voice session (single use). Same-origin and session token only. */
+  openVoiceSocket(session: string): WebSocket {
+    if (this.closed || this.status_ !== "online" || !this.token)
+      throw new Error("Phoenix Core is not connected");
+    if (typeof location === "undefined" || new URL(this.base).origin !== location.origin)
+      throw new Error("Voice requires the Phoenix page and Core to share an origin");
+    const url = new URL("/api/voice/stream", this.base);
+    url.searchParams.set("session", session);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new this.WS(url.href, [WS_PROTOCOL, WS_TOKEN_PREFIX + this.token]);
+    socket.binaryType = "arraybuffer";
+    return socket;
+  }
+
   /** The audio stream of one notetaker session (single use). Same-origin and session token only. */
   openNotetakerSocket(session: string): WebSocket {
     if (this.closed || this.status_ !== "online" || !this.token)

@@ -45,8 +45,15 @@ import {
 import type { EventBus } from "@phoenix/event-bus";
 import type { Logger } from "@phoenix/logging";
 import type { PermissionGateway } from "@phoenix/permissions";
-import type { SettingsStore } from "@phoenix/persistence";
+import type { RecapBump, SettingsStore } from "@phoenix/persistence";
 import { createEvent, ErrorCode, PhoenixError } from "@phoenix/protocol";
+import {
+  IDLE_GAP_MS,
+  MAX_AGENTS_PER_DAY,
+  MAX_PROJECTS_PER_DAY,
+  RECAP_METRIC,
+  type RecapSink,
+} from "./recap";
 
 export const THRESHOLDS_KEY = "agents.usage.thresholds";
 export const FIRED_KEY = "agents.usage.fired";
@@ -65,6 +72,8 @@ interface LiveSession {
   project: string;
   firstSeen: number;
   lastSeen: number;
+  /** Time between reports that were close enough together to count as coding. */
+  activeMs: number;
   steps: StepLog;
   files: FileTallies;
   pid: number | undefined;
@@ -87,6 +96,8 @@ export interface AgentLiveDeps {
   focuser?: TerminalFocuser;
   git?: GitExec;
   now?: () => number;
+  /** Where the weekly recap's counts go (Phase 69); absent = nothing is counted. */
+  recap?: RecapSink;
 }
 
 const notFound = (what: string) => new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, what);
@@ -147,9 +158,12 @@ export class AgentLive implements AgentLiveApi {
     const result = validateStep(body, this.now());
     if (!result.ok) throw invalid(result.problems);
     const step = result.step;
-    const session = this.touch(step);
+    const { session, created, gapMs } = this.touch(step);
     const logged = session.steps.push(step);
+    // A file is new to the recap the first time this live session changes it.
+    const newFile = step.file !== undefined && !session.files.has(step.file.path);
     const file = step.file ? session.files.apply(step.file, step.at) : undefined;
+    this.recapStep(step, session, { created, gapMs, newFile });
     this.publish(
       "agent.session.step",
       {
@@ -256,10 +270,11 @@ export class AgentLive implements AgentLiveApi {
   }
 
   /** Finds or creates the session a step belongs to; the table stays bounded. */
-  private touch(step: StepEvent): LiveSession {
+  private touch(step: StepEvent): { session: LiveSession; created: boolean; gapMs: number } {
     const key = `${step.agent}:${step.session_id}`;
     const at = this.now();
     let session = this.sessionsByKey[key];
+    const created = !session;
     if (!session) {
       session = {
         agent: step.agent,
@@ -267,6 +282,7 @@ export class AgentLive implements AgentLiveApi {
         project: step.project,
         firstSeen: at,
         lastSeen: at,
+        activeMs: 0,
         steps: new StepLog(),
         files: new FileTallies(),
         pid: undefined,
@@ -281,10 +297,58 @@ export class AgentLive implements AgentLiveApi {
         }
       }
     }
+    const gapMs = at - session.lastSeen;
     session.lastSeen = at;
     if (step.pid) session.pid = step.pid;
     if (step.tty) session.tty = step.tty;
-    return session;
+    return { session, created, gapMs };
+  }
+
+  /**
+   * The weekly recap's counts (Phase 69): numbers only, kept in `recap_daily`. Coding time is the
+   * time between two reports of one session when they are at most IDLE_GAP_MS apart. A session
+   * that resumes after a Core restart counts as a new one (the live table is memory only).
+   */
+  private recapStep(
+    step: StepEvent,
+    session: LiveSession,
+    seen: { created: boolean; gapMs: number; newFile: boolean },
+  ): void {
+    if (!this.d.recap) return;
+    const worked = !seen.created && seen.gapMs > 0 && seen.gapMs <= IDLE_GAP_MS ? seen.gapMs : 0;
+    session.activeMs += worked;
+    const bumps: RecapBump[] = [
+      { metric: RECAP_METRIC.steps, value: 1 },
+      {
+        metric: RECAP_METRIC.agentSteps,
+        key: displayName(step.agent),
+        value: 1,
+        maxKeys: MAX_AGENTS_PER_DAY,
+      },
+      {
+        metric: RECAP_METRIC.projectSteps,
+        key: displayName(basename(session.project)) || "(unnamed)",
+        value: 1,
+        maxKeys: MAX_PROJECTS_PER_DAY,
+      },
+    ];
+    if (seen.created) bumps.push({ metric: RECAP_METRIC.sessions, value: 1 });
+    if (worked > 0) bumps.push({ metric: RECAP_METRIC.activeMs, value: worked });
+    if (session.activeMs > 0)
+      bumps.push({ metric: RECAP_METRIC.longestSessionMs, value: session.activeMs, mode: "max" });
+    if (step.kind === "run") bumps.push({ metric: RECAP_METRIC.commands, value: 1 });
+    if (step.file) {
+      if (seen.newFile) bumps.push({ metric: RECAP_METRIC.files, value: 1 });
+      if (step.file.added > 0)
+        bumps.push({ metric: RECAP_METRIC.linesAdded, value: step.file.added });
+      if (step.file.removed > 0)
+        bumps.push({ metric: RECAP_METRIC.linesRemoved, value: step.file.removed });
+    }
+    try {
+      this.d.recap.bump(this.now(), bumps);
+    } catch (err) {
+      this.d.logger.warn("recap: could not count a step", { error: (err as Error).message });
+    }
   }
 
   // ── Reads ─────────────────────────────────────────────────────────────────

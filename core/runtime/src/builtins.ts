@@ -1,15 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { createAgentsCapability, type AgentsServices } from "@phoenix/capability-agents";
+import { createAppleMusicCapability } from "@phoenix/capability-apple-music";
 import { createDockerCapability } from "@phoenix/capability-docker";
 import { createFrappeCapability } from "@phoenix/capability-frappe";
+import { createCalcomCapability } from "@phoenix/capability-calcom";
 import { createGitCapability } from "@phoenix/capability-git";
 import { createGithubCapability } from "@phoenix/capability-github";
 import { createIssuesCapability } from "@phoenix/capability-issues";
 import { createKageCapability } from "@phoenix/capability-kage";
+import { createN8nCapability } from "@phoenix/capability-n8n";
 import { mockCapability } from "@phoenix/capability-mock";
+import { createNotionCapability } from "@phoenix/capability-notion";
 import { createPlanningCapability, type PlanningServices } from "@phoenix/capability-planning";
+import { createResendCapability } from "@phoenix/capability-resend";
+import { createPortfolioCapability } from "@phoenix/capability-portfolio";
+import { createStripeCapability } from "@phoenix/capability-stripe";
+import { createSpotifyCapability } from "@phoenix/capability-spotify";
 import { terminalCapability } from "@phoenix/capability-terminal";
+import { createVercelCapability } from "@phoenix/capability-vercel";
 import type { CapabilityModule } from "@phoenix/capability-manager";
 import type { PhoenixConfig } from "@phoenix/config";
 
@@ -32,6 +41,15 @@ export function builtinCapabilities(
     createKageCapability(),
     createGitCapability(),
     createGithubCapability(),
+    createVercelCapability(),
+    createStripeCapability(),
+    createN8nCapability(),
+    createResendCapability(),
+    createNotionCapability(),
+    createCalcomCapability(),
+    createSpotifyCapability(),
+    createAppleMusicCapability(),
+    createPortfolioCapability(),
     terminalCapability,
     createDockerCapability(),
     createFrappeCapability(),

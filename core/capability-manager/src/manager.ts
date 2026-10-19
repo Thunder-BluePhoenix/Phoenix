@@ -31,6 +31,7 @@ import type {
   HealthStatus,
   Operation,
 } from "./types";
+import { ViewerPresence } from "./presence";
 
 export interface CapabilityManagerOptions {
   db: Database;
@@ -81,6 +82,8 @@ let opCounter = 0;
 export class CapabilityManager {
   private readonly entries = new Map<string, Entry>();
   private readonly operations = new Map<string, Operation>();
+  /** Whether any client is connected; fed by the API server, read by pollers through the context. */
+  readonly presence = new ViewerPresence();
   private readonly logger: Logger;
   private readonly callTimeoutMs: number;
   private readonly healthIntervalMs: number;
@@ -714,6 +717,8 @@ export class CapabilityManager {
         this.o.secrets && SECRET_NAME.test(name)
           ? this.o.secrets.get(secretRef(entry.manifest.id, name))
           : undefined,
+      watched: () => this.presence.watched,
+      untilWatched: () => this.presence.untilWatched(signal),
       emit: (event, options) =>
         signal.aborted
           ? { ok: false, error: new PhoenixError(ErrorCode.CAPABILITY_DISABLED) }

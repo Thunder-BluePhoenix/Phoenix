@@ -16,6 +16,7 @@ import {
 import { buildRoutes } from "./routes";
 import { isAllowedHost, isAllowedOrigin, requestToken, tokensEqual } from "./security";
 import { DICTATION_STREAM_PATH, DictationStreamSocket } from "./dictation-socket";
+import { VOICE_STREAM_PATH, VoiceStreamSocket } from "./voice-socket";
 import { NOTETAKER_STREAM_PATH, NotetakerStreamSocket } from "./notetaker-socket";
 import { MultimodalCaptureSocket } from "./multimodal-capture";
 import { StaticSite } from "./static";
@@ -36,6 +37,7 @@ export class ApiServer {
   readonly hub: WebSocketHub;
   readonly capture: MultimodalCaptureSocket;
   readonly dictation: DictationStreamSocket;
+  readonly voice: VoiceStreamSocket;
   readonly notetaker: NotetakerStreamSocket;
   private readonly routes: Route[];
   private readonly s: CoreServices;
@@ -50,6 +52,7 @@ export class ApiServer {
     this.hub = new WebSocketHub(this.s);
     this.capture = new MultimodalCaptureSocket(this.s);
     this.dictation = new DictationStreamSocket(this.s);
+    this.voice = new VoiceStreamSocket(this.s);
     this.notetaker = new NotetakerStreamSocket(this.s);
     this.server = createServer((req, res) => void this.onRequest(req, res));
     this.server.on("upgrade", (req, socket, head) => this.onUpgrade(req, socket, head));
@@ -67,6 +70,7 @@ export class ApiServer {
     await this.hub.close();
     this.capture.close();
     this.dictation.close();
+    this.voice.close();
     this.notetaker.close();
     await new Promise<void>((resolve) => {
       this.server.close(() => resolve());
@@ -164,6 +168,12 @@ export class ApiServer {
       const refusal = this.dictation.check(req, url, () => this.authenticate(req));
       if (refusal) return reject(refusal.status, refusal.message);
       this.dictation.handleUpgrade(req, socket, head, url.searchParams.get("session")!);
+      return;
+    }
+    if (url.pathname === VOICE_STREAM_PATH) {
+      const refusal = this.voice.check(req, url, () => this.authenticate(req));
+      if (refusal) return reject(refusal.status, refusal.message);
+      this.voice.handleUpgrade(req, socket, head, url.searchParams.get("session")!);
       return;
     }
     if (url.pathname === NOTETAKER_STREAM_PATH) {

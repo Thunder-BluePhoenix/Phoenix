@@ -367,6 +367,75 @@ describe("github events", () => {
     expect(r.graph.node(OWNER, "Deployment:o/phoenix/deploy/5")).toBeNull();
   });
 
+  it("a vercel.deploy event creates a Deployment tied to its repository, commit and project", () => {
+    const r = rig(R);
+    expect(GRAPH_EVENT_PATTERNS).toContain("vercel.deploy.*");
+    const deployed = event("vercel.deploy.succeeded", {
+      deployment_id: "dpl_abc123",
+      project: "web",
+      repository: "o/phoenix",
+      sha: SHA_B.toUpperCase(),
+      target: "production",
+      branch: "main",
+      actor: "octo",
+    });
+    const out = r.ingest.handle(deployed);
+    expect(out.skipped).toBe(0);
+    const dep = "Deployment:o/phoenix/deploy/dpl_abc123";
+    expect(r.graph.node(OWNER, dep)?.detail).toMatchObject({
+      environment: "production",
+      state: "succeeded",
+      ref: "main",
+    });
+    expect(r.graph.edge(OWNER, `${dep}|PART_OF|Repository:o/phoenix`)).not.toBeNull();
+    expect(r.graph.edge(OWNER, `${dep}|DEPLOYED_TO|Service:vercel:web`)).not.toBeNull();
+    expect(
+      r.graph.edge(OWNER, `Commit:o/phoenix@${SHA_B}|DEPLOYED_TO|${dep}`)?.provenance[0],
+    ).toMatchObject({ capability: "vercel", detail: { sha_source: "deployment.sha" } });
+    expect(r.graph.edge(OWNER, `Person:octo|TRIGGERED|${dep}`)).not.toBeNull();
+    r.graph.removeSource("event", deployed.event_id);
+    expect(r.graph.node(OWNER, dep)).toBeNull();
+  });
+
+  it("a vercel.deploy event without a repository is still a Deployment, linked to no commit", () => {
+    const r = rig(R);
+    r.ingest.handle(
+      event("vercel.deploy.failed", { deployment_id: "dpl_x", project: "web", sha: SHA_A }),
+    );
+    const dep = "Deployment:vercel/web/deploy/dpl_x";
+    expect(r.graph.node(OWNER, dep)?.detail.state).toBe("failed");
+    expect(r.graph.edge(OWNER, `${dep}|DEPLOYED_TO|Service:vercel:web`)).not.toBeNull();
+    expect(r.graph.listByType(OWNER, "Commit", 10)).toEqual([]);
+    expect(r.graph.listByType(OWNER, "Repository", 10)).toEqual([]);
+  });
+
+  it("hostile vercel.deploy payloads are skipped or linked to nothing", () => {
+    const r = rig(R);
+    for (const payload of [
+      { project: "web" },
+      { deployment_id: "dpl_1" },
+      { deployment_id: "a|b", project: "web" },
+      { deployment_id: "../x", project: "web" },
+      { deployment_id: 7, project: "web" },
+      { deployment_id: "dpl_1", project: "we|b" },
+    ]) {
+      expect(
+        r.ingest.handle(event("vercel.deploy.started", payload)).skipped,
+        JSON.stringify(payload),
+      ).toBe(1);
+    }
+    r.ingest.handle(
+      event("vercel.deploy.started", {
+        deployment_id: "dpl_2",
+        project: "web",
+        repository: "o/phoenix",
+        sha: "a".repeat(39),
+      }),
+    );
+    expect(r.graph.listByType(OWNER, "Commit", 10)).toEqual([]);
+    expect(r.graph.node(OWNER, "Deployment:o/phoenix/deploy/dpl_2")).not.toBeNull();
+  });
+
   it("'unknown' actors (the capability's placeholder) do not become people", () => {
     const r = rig(R);
     r.ingest.handle(

@@ -3,4 +3,5 @@
 export * from "./external";
 export * from "./guard";
 export * from "./manager";
+export * from "./presence";
 export * from "./types";

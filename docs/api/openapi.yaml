@@ -206,6 +206,31 @@ paths:
       responses:
         "200": { description: Settings }
         "400": { $ref: "#/components/responses/Error" }
+  /api/ui/settings:
+    get:
+      summary: >-
+        Interface language (Phase 70): the saved locale (default en) and the supported codes
+        (en, zh, hi, es, ar, fr, bn, pt, ru, id). Every view reads it.
+      responses:
+        "200": { description: '{ locale, supported }' }
+    post:
+      summary: Set the interface language; publishes ui.settings.changed
+      requestBody:
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required: [locale],
+                    properties: { locale: { enum: [en, zh, hi, es, ar, fr, bn, pt, ru, id] } },
+                  },
+              },
+          }
+      responses:
+        "200": { description: Settings }
+        "400": { $ref: "#/components/responses/Error" }
   /api/events:
     get:
       summary: Recent durable events, newest first
@@ -531,7 +556,7 @@ paths:
                     required: [data, confirm],
                     properties:
                       {
-                        data: { enum: [events, notifications, meetings] },
+                        data: { enum: [events, notifications, meetings, memory, recap] },
                         confirm: { const: true },
                       },
                   },
@@ -669,6 +694,80 @@ paths:
         - { name: limit, in: query, schema: { type: integer } }
       responses:
         "200": { description: Entries }
+  /api/recap:
+    get:
+      summary: >-
+        Weekly recap (Phase 69), Monday-start local week: time coding, sessions, files, lines
+        changed, commands, permissions granted/denied (audit log), top agent and project, busiest
+        day, longest session, commits, CI outcomes, meetings and decisions (only while sensitive
+        meeting data is allowed) and a 53-week commit grid counted locally from git.commit.created
+        events. Counts only; no file names, commands or text. All local, no AI.
+      parameters:
+        - {
+            name: week,
+            in: query,
+            description: "Any local day YYYY-MM-DD of the wanted week; default this week",
+            schema: { type: string, pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+          }
+      responses:
+        "200": { description: Recap }
+        "400": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Delete all recap statistics (audited; same as POST /api/privacy/delete {data:recap})
+      parameters:
+        - { name: confirm, in: query, required: true, schema: { type: string, enum: ["true"] } }
+      responses:
+        "200": { description: "{ deleted: number }" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/voice/status:
+    get:
+      summary: "« OK Fawkes » voice assistant (Phase 66): enabled, kill switch, on-device recogniser availability, the active session and its phase (waiting | awake | thinking), limits. audio_on_disk is always false."
+      responses:
+        "200": { description: Voice status }
+  /api/voice/settings:
+    get:
+      summary: Voice settings ({ enabled }); off by default
+      responses:
+        "200": { description: Settings }
+    post:
+      summary: Turn the voice assistant on or off. Turning it off ends any session and zeroes its audio. Audited.
+      requestBody:
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required: [enabled],
+                    properties: { enabled: { type: boolean } },
+                    additionalProperties: false,
+                  },
+              },
+          }
+      responses:
+        "200": { description: Settings }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/voice/sessions:
+    post:
+      summary: >-
+        Start a listening session (body `{}`). Audio then goes over the single-use same-origin
+        WebSocket /api/voice/stream?session=<id> (binary 16 kHz mono 16-bit PCM only; the
+        server sends ready, state, reply and error frames). Refused (409) while voice is off or the
+        emergency stop is engaged, 503 without a local recogniser. Voice may deny waiting
+        confirmations but can never approve one; tool calls run as an untrusted actor through the
+        tool gateway, read-only tools only.
+      responses:
+        "200": { description: "{ id }" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /api/voice/sessions/{id}:
+    delete:
+      summary: Stop a voice session (idempotent); its audio is zeroed
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: "{ stopped: true }" }
   /api/security/kill-switch:
     get:
       summary: Emergency stop status
@@ -695,3 +794,60 @@ paths:
           }
       responses:
         "200": { description: Status }
+  /api/demo/start:
+    post:
+      summary: Start demo mode (Phase 70), an isolated in-memory Core
+      description: |
+        Starts a second Core with an in-memory database, memory-only secrets, no token file, no agent
+        relay, no network and only the mock capability. The returned token is valid only on the returned
+        URL (the real Core rejects it, and the demo Core rejects the real token). Refused with 403 while
+        the real emergency stop is engaged and with 400 while a demo is already running. It stops
+        itself after being idle, on `POST /api/demo/stop`, or when Core stops.
+      responses:
+        "200":
+          description: Where the demo Core listens and how to talk to it
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, token, steps]
+                properties:
+                  url: { type: string, description: "http://127.0.0.1:<port>" }
+                  token: { type: string }
+                  steps:
+                    type: array
+                    items:
+                      type: object
+                      required: [scenario, caption_id, caption, route]
+                      properties:
+                        scenario: { type: string }
+                        caption_id: { type: string }
+                        caption: { type: string }
+                        route: { type: string }
+        "400": { description: A demo is already running }
+        "403": { description: Emergency stop is engaged }
+  /api/demo/stop:
+    post:
+      summary: Stop the demo Core (idempotent)
+      responses:
+        "200":
+          description: Whether a demo was running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { stopped: { type: boolean } }
+  /api/demo/status:
+    get:
+      summary: Whether a demo is running
+      responses:
+        "200":
+          description: Demo status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  running: { type: boolean }
+                  step_count: { type: integer }
+                  idle_limit_ms: { type: integer }

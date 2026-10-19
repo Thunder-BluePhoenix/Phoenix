@@ -5,8 +5,10 @@ import { AgentSessionDetail, AgentSessionsPage } from "./components/AgentSession
 import type { FawkesAvatarHandle } from "./components/FawkesAvatar";
 import { MeetingDetail, MeetingsPage } from "./components/Meetings";
 import { Navbar } from "./components/Navbar";
+import { VoiceBanner } from "./components/Voice";
 import { PlanPage } from "./components/Plans";
 import { ProvenanceNode, ProvenancePage } from "./components/Provenance";
+import { RecapPage } from "./components/Recap";
 import { SettingsPage } from "./components/Settings";
 import { WorkflowDetailPage, WorkflowRunPage, WorkflowsPage } from "./components/Workflows";
 import { isTabId, PetPanel } from "./components/PetPanel";
@@ -75,6 +77,7 @@ export function App() {
         />
       )}
       <main id="main" ref={main} tabIndex={-1} className="content">
+        <VoiceBanner />
         {connection !== "unauthenticated" && route === "/settings" ? (
           <SettingsPage state={state} />
         ) : connection !== "unauthenticated" && route === "/meetings" ? (
@@ -101,6 +104,8 @@ export function App() {
           <AgentSessionsPage />
         ) : connection !== "unauthenticated" && agentId ? (
           <AgentSessionDetail key={agentId} sessionId={decodeURIComponent(agentId)} />
+        ) : connection !== "unauthenticated" && route === "/recap" ? (
+          <RecapPage />
         ) : (
           <Home connection={connection} />
         )}

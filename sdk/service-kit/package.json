@@ -1,0 +1,19 @@
+{
+  "name": "@phoenix/service-kit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "dependencies": {
+    "@phoenix/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@phoenix/capability-manager": "workspace:*",
+    "@phoenix/logging": "workspace:*",
+    "@phoenix/protocol": "workspace:*"
+  }
+}

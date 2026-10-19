@@ -710,9 +710,13 @@ describe("approve and create are user routes only", () => {
     const commands = modules.flatMap((m) =>
       m.manifest.commands.map((c) => `${m.manifest.id}.${c.name}`),
     );
+    // Plan and workflow approval/authorisation must never be a tool. Capabilities for outside
+    // services (n8n) may have their own approval-gated actions that merely mention a workflow.
     expect(
-      commands.filter((c) =>
-        /approve|authori[sz]e|revoke|plans?\.create|plans?\.preview|workflow/i.test(c),
+      commands.filter(
+        (c) =>
+          /approve|authori[sz]e|revoke|plans?\.create|plans?\.preview/i.test(c) ||
+          /^workflows?\./i.test(c),
       ),
     ).toEqual([]);
     const r = await rig();

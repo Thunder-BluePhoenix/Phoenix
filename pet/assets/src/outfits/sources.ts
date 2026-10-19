@@ -79,6 +79,24 @@ export interface SourceStyle {
   show: boolean;
 }
 
+/**
+ * Fixed looks for the service capabilities (Phase 67-68), so Vercel, Stripe, n8n and the rest are
+ * recognisable at a glance instead of getting a hashed colour. Colour and glyph only; each colour
+ * meets WCAG AA on the pill background (pinned by test) and no two services share a glyph and colour.
+ */
+export const SERVICE_SOURCE_STYLES: Readonly<Record<string, { colour: string; glyph: GlyphName }>> =
+  {
+    "capability:vercel": { colour: "#374151", glyph: "triangle" },
+    "capability:stripe": { colour: "#5b4fd6", glyph: "bars" },
+    "capability:n8n": { colour: "#c2410c", glyph: "spark" },
+    "capability:resend": { colour: "#0f766e", glyph: "crescent" },
+    "capability:notion": { colour: "#111827", glyph: "square" },
+    "capability:calcom": { colour: "#1971c2", glyph: "ring" },
+    "capability:spotify": { colour: "#1a7f37", glyph: "wave" },
+    "capability:apple-music": { colour: "#be123c", glyph: "diamond" },
+    "capability:portfolio": { colour: "#8a4b08", glyph: "hexagon" },
+  };
+
 /** FNV-1a: stable across runs, so a source keeps its default look. */
 function hash(text: string): number {
   let h = 0x811c9dc5;
@@ -88,6 +106,9 @@ function hash(text: string): number {
 
 /** The look a source has until the user changes it. */
 export function defaultSourceStyle(id: string): SourceStyle {
+  if (Object.hasOwn(SERVICE_SOURCE_STYLES, id)) {
+    return { ...SERVICE_SOURCE_STYLES[id]!, show: true };
+  }
   const h = hash(id);
   return {
     colour: DEFAULT_SOURCE_COLOURS[h % DEFAULT_SOURCE_COLOURS.length]!,

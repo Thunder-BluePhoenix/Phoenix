@@ -6,3 +6,4 @@ export * from "./speech";
 export * from "./vision";
 export * from "./dictation";
 export * from "./notetaker";
+export * from "./voice";

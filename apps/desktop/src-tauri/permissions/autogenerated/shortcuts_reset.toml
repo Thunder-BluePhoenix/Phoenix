@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-shortcuts-reset"
+description = "Enables the shortcuts_reset command without any pre-configured scope."
+commands.allow = ["shortcuts_reset"]
+
+[[permission]]
+identifier = "deny-shortcuts-reset"
+description = "Denies the shortcuts_reset command without any pre-configured scope."
+commands.deny = ["shortcuts_reset"]

@@ -120,12 +120,18 @@ export class WebSocketHub {
   private onConnection(ws: WebSocket): void {
     const client: Client = { ws, channels: new Set(), alive: true };
     this.clients.add(client);
+    this.s.viewersChanged?.(this.clients.size);
     this.m.totalConnections++;
     ws.on("pong", () => (client.alive = true));
-    ws.on("close", () => this.clients.delete(client));
-    ws.on("error", () => this.clients.delete(client));
+    ws.on("close", () => this.forget(client));
+    ws.on("error", () => this.forget(client));
     ws.on("message", (raw) => this.onMessage(client, raw.toString()));
     this.send(client, { type: "hello", protocol: PROTOCOL_VERSION, channels: CHANNELS });
+  }
+
+  /** Drops a client and tells Core whether anyone is still watching. */
+  private forget(client: Client): void {
+    if (this.clients.delete(client)) this.s.viewersChanged?.(this.clients.size);
   }
 
   private onMessage(client: Client, raw: string): void {
@@ -205,7 +211,7 @@ export class WebSocketHub {
       // A client that cannot keep up is dropped rather than slowing everyone down.
       this.m.droppedSlowClients++;
       client.ws.close(1013, "Client too slow");
-      this.clients.delete(client);
+      this.forget(client);
       return;
     }
     client.ws.send(JSON.stringify(message));

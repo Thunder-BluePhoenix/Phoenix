@@ -1,0 +1,33 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Demo mode (Phase 70). The banner must be impossible to miss: a solid, full-width bar above the app,
+   pinned while the page scrolls, with white text on the accent fill (AA contrast). */
+.demo-banner {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  padding: 8px 16px;
+  background: var(--accent-fill);
+  color: #ffffff;
+  font-size: 14px;
+  border-bottom: 3px solid var(--text);
+}
+.demo-banner strong {
+  font-size: 16px;
+}
+.demo-walkthrough {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 19;
+  width: min(420px, calc(100vw - 32px));
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.2);
+  border: 2px solid var(--accent-fill);
+}
+.demo-caption {
+  margin: 4px 0 8px;
+  font-weight: 600;
+}

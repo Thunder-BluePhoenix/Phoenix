@@ -8,6 +8,7 @@ use crate::dictation_keys::{DictationKey, PasteChord};
 use crate::island_geometry::IslandDisplay;
 use crate::position::Point;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -64,6 +65,40 @@ pub struct Settings {
     pub paste_again_chord: String,
     /// Keep the dictation pill on screen. Off: the pill only appears while dictating.
     pub pill: bool,
+    /// Phase 70: global shortcuts. Off until the user turns them on: a global hotkey can take a
+    /// key away from every other application.
+    pub shortcuts_enabled: bool,
+    /// The user's own accelerators by action name (`shortcuts::Action::as_str`). A missing action
+    /// uses its default, an empty text unbinds it, and text that fails validation leaves the
+    /// action unbound (see `shortcuts::resolve`). Anything that is not text is dropped on load.
+    #[serde(deserialize_with = "lenient_shortcuts")]
+    pub shortcuts: BTreeMap<String, String>,
+    /// Phase 70: sounds and notification toasts are silenced. The shell only keeps and announces
+    /// the flag (`shortcuts://mute`); the web app is what stays quiet.
+    pub muted: bool,
+}
+
+/// One malformed shortcut entry must not reset the pet's position and every other preference
+/// (a type error would make `load` fall back to all defaults): keep the text entries of known
+/// actions and ignore the rest.
+fn lenient_shortcuts<'de, D>(deserializer: D) -> Result<BTreeMap<String, String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    let serde_json::Value::Object(map) = value else {
+        return Ok(BTreeMap::new());
+    };
+    Ok(map
+        .into_iter()
+        .filter(|(action, _)| crate::shortcuts::Action::parse(action).is_some())
+        .map(|(action, text)| match text {
+            serde_json::Value::String(text) => (action, text),
+            // A non-text entry (null, false, a number) is a damaged binding: unbound, never
+            // the default chord.
+            _ => (action, String::new()),
+        })
+        .collect())
 }
 
 impl Default for Settings {
@@ -78,6 +113,9 @@ impl Default for Settings {
             dictation_key: DictationKey::default(),
             paste_again_chord: PasteChord::default().to_string(),
             pill: false,
+            shortcuts_enabled: false,
+            shortcuts: BTreeMap::new(),
+            muted: false,
         }
     }
 }
@@ -242,6 +280,9 @@ mod tests {
             dictation_key: DictationKey::RightControl,
             paste_again_chord: PasteChord::default().to_string(),
             pill: true,
+            shortcuts_enabled: true,
+            shortcuts: BTreeMap::from([("mute".to_string(), "Ctrl+Alt+Shift+9".to_string())]),
+            muted: true,
         };
         save(&path, &s).unwrap();
         assert_eq!(load(&path), s);
@@ -270,5 +311,41 @@ mod tests {
         let s = load(&path);
         assert!(s.always_on_top);
         assert!(s.visible);
+    }
+
+    #[test]
+    fn shortcuts_and_mute_are_off_by_default_and_a_file_without_them_stays_off() {
+        let s = Settings::default();
+        assert!(!s.shortcuts_enabled && !s.muted && s.shortcuts.is_empty());
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("desktop.json");
+        fs::write(&path, r#"{"mode":"island"}"#).unwrap();
+        let loaded = load(&path);
+        assert!(!loaded.shortcuts_enabled && !loaded.muted);
+    }
+
+    #[test]
+    fn a_malformed_shortcut_entry_does_not_reset_the_other_preferences() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("desktop.json");
+        fs::write(
+            &path,
+            r#"{"always_on_top":true,"shortcuts":{"mute":5,"open_chat":"Ctrl+Alt+Shift+K","bogus":"x"}}"#,
+        )
+        .unwrap();
+        let loaded = load(&path);
+        assert!(loaded.always_on_top);
+        // The damaged `mute` entry is kept as an empty binding (unbound), not dropped: a dropped
+        // entry would resolve to the default chord. Unknown actions are ignored.
+        assert_eq!(
+            loaded.shortcuts,
+            BTreeMap::from([
+                ("mute".to_string(), String::new()),
+                ("open_chat".to_string(), "Ctrl+Alt+Shift+K".to_string()),
+            ])
+        );
+        fs::write(&path, r#"{"always_on_top":true,"shortcuts":[1]}"#).unwrap();
+        let loaded = load(&path);
+        assert!(loaded.always_on_top && loaded.shortcuts.is_empty());
     }
 }

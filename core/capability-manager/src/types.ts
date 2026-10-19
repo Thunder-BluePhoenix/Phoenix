@@ -34,6 +34,13 @@ export interface CapabilityContext {
    * Ephemeral events reach live subscribers but are not stored or shown in history.
    */
   emit(event: CapabilityEventInput, options?: { ephemeral?: boolean }): PublishResult;
+  /** True while something (a window, a client) is connected to Core to see what this emits. */
+  watched(): boolean;
+  /**
+   * Resolves when something is watching, or when this capability is stopped. A poller awaits it
+   * before each cycle, so it makes no remote calls while nobody would see the result.
+   */
+  untilWatched(): Promise<void>;
 }
 
 export type CommandHandler = (input: unknown, ctx: CapabilityContext) => unknown | Promise<unknown>;

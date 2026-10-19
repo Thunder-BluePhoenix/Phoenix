@@ -24,6 +24,9 @@ export type Retention = Record<RetainedClass, number | null>;
 const RETENTION_KEY = "privacy.retention";
 const DEFAULT_RETENTION: Retention = { events: null, notifications: null, meetings: null };
 
+/** Deletable through `deleteAll` but not a retained class and not listed under `data`. */
+const RECAP_KIND = "recap";
+
 const DESCRIPTIONS: Record<DataClass, string> = {
   events: "What capabilities reported: commands, builds, meetings, Git.",
   notifications: "Alerts Fawkes showed you.",
@@ -60,6 +63,8 @@ export interface PrivacyDeps {
   };
   /** Workflow run snapshots copy event metadata; delete eligible history with events. */
   workflowHistory: { deleteHistoryForPrivacy(): number };
+  /** The weekly recap's day counts (numbers only); deleting reports how many rows went. */
+  recap: { deleteAll(): { deleted: number } };
   /** Derived data to list in the inventory, counted now. */
   derived(): DerivedInventory[];
   /** One sentence about what is sent to AI providers, derived from the live AI settings. */
@@ -123,12 +128,16 @@ export class PrivacyService {
     return removed;
   }
 
-  /** Deletes every record of one class. The audit log records that it happened. */
+  /**
+   * Deletes every record of one class, or (`recap`) every weekly-recap count. The recap counts are
+   * not a retained class: they are numbers only, listed under `derived`, and survive deleting
+   * events because that is their purpose. The audit log records that it happened.
+   */
   deleteAll(kind: unknown, confirm: unknown, by = "user"): { deleted: number } {
-    if (!(DATA_CLASSES as readonly unknown[]).includes(kind)) {
+    if (kind !== RECAP_KIND && !(DATA_CLASSES as readonly unknown[]).includes(kind)) {
       throw new PhoenixError(
         ErrorCode.INVALID_REQUEST,
-        `"data" must be one of ${DATA_CLASSES.join(", ")}`,
+        `"data" must be one of ${[...DATA_CLASSES, RECAP_KIND].join(", ")}`,
       );
     }
     if (confirm !== true) {
@@ -148,7 +157,9 @@ export class PrivacyService {
           ? this.d.notifications.deleteBefore()
           : kind === "meetings"
             ? this.d.meetings.deleteBefore()
-            : this.d.memory.deleteAll();
+            : kind === RECAP_KIND
+              ? this.d.recap.deleteAll().deleted
+              : this.d.memory.deleteAll();
     this.d.audit.record({
       actor: by,
       action: "privacy.data.deleted",

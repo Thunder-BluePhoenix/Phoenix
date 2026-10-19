@@ -10,6 +10,8 @@ import { FawkesDropTarget } from "./Attachments";
 import { Approvals } from "./Approvals";
 import { AgentsGlance, FrappeSites } from "./Integrations";
 import { MeetingsGlance } from "./Meetings";
+import { NowPlayingGlance } from "./NowPlaying";
+import { PortfolioGlance } from "./Portfolio";
 import { CurrentTask } from "./TaskView";
 
 /** How many tasks the panel lists before "Show all": enough to see what is happening, few enough
@@ -68,6 +70,8 @@ export function Overview({ state, tasks }: { state: PetState; tasks: ActiveTask[
       </section>
       <AgentsGlance />
       <FrappeSites />
+      <NowPlayingGlance />
+      <PortfolioGlance />
       <MeetingsGlance />
       <QuickActions state={state} />
     </div>

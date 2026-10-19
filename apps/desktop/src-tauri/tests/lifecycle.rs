@@ -76,6 +76,7 @@ fn starts_with_window_tray_and_full_menu() {
         [
             "toggle",
             "open",
+            "wardrobe",
             "mode_floating",
             "mode_island",
             "mode_navbar",
@@ -83,6 +84,8 @@ fn starts_with_window_tray_and_full_menu() {
             "dictation_hotkey",
             "dictation_key",
             "dictation_pill",
+            "shortcuts_enabled",
+            "mute",
             "on_top",
             "login",
             "quit"
@@ -101,6 +104,10 @@ fn starts_with_window_tray_and_full_menu() {
     );
     assert_eq!(item(&s.app, "dictation_hotkey").1, Some(false));
     assert_eq!(item(&s.app, "dictation_pill").1, Some(false));
+    // Global shortcuts and mute are opt-in too.
+    assert_eq!(item(&s.app, "shortcuts_enabled").1, Some(false));
+    assert_eq!(item(&s.app, "mute").1, Some(false));
+    assert_eq!(item(&s.app, "wardrobe").0, "Wardrobe");
     // Nothing is written until the user changes something.
     assert!(!dir.path().join(SETTINGS_FILE).exists());
 }
@@ -222,13 +229,68 @@ fn unknown_mode_ids_are_ignored() {
     assert!(!dir.path().join(SETTINGS_FILE).exists());
 }
 
+fn wardrobe_opens_the_pet_panel_wardrobe_tab() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = start(dir.path());
+    handle_menu(s.app.handle(), "wardrobe");
+    assert_eq!(
+        *s.opened.lock().unwrap(),
+        ["http://127.0.0.1:4999/#/panel/wardrobe"]
+    );
+    assert!(!dir.path().join(SETTINGS_FILE).exists());
+}
+
+fn shortcuts_stay_off_and_registration_failure_never_stops_startup() {
+    let dir = tempfile::tempdir().unwrap();
+    // Saved as on, with one valid default, one duplicate pair and one bare letter: the mock
+    // runtime has no hotkey API, so every registration is refused, and the app still starts.
+    std::fs::write(
+        dir.path().join(SETTINGS_FILE),
+        r#"{"shortcuts_enabled":true,"shortcuts":{"mute":"m","open_chat":"ctrl+alt+shift+k","wardrobe":"ctrl+alt+shift+k"}}"#,
+    )
+    .unwrap();
+    let s = start(dir.path());
+    assert!(s.app.get_webview_window(WINDOW_LABEL).is_some());
+    assert_eq!(
+        item(&s.app, "shortcuts_enabled"),
+        ("Global shortcuts (7 not active)".into(), Some(true))
+    );
+    // Turning them off is remembered and relabels the entry.
+    handle_menu(s.app.handle(), "shortcuts_enabled");
+    assert_eq!(saved(dir.path())["shortcuts_enabled"], false);
+    assert_eq!(
+        item(&s.app, "shortcuts_enabled"),
+        ("Enable global shortcuts".into(), Some(false))
+    );
+    // The user's own accelerators were not rewritten by the failed registrations.
+    assert_eq!(saved(dir.path())["shortcuts"]["mute"], "m");
+}
+
+fn mute_toggles_and_is_remembered() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let s = start(dir.path());
+        handle_menu(s.app.handle(), "mute");
+        assert_eq!(saved(dir.path())["muted"], true);
+        assert_eq!(item(&s.app, "mute").1, Some(true));
+    }
+    let s = start(dir.path());
+    assert_eq!(
+        item(&s.app, "mute").1,
+        Some(true),
+        "still muted after restart"
+    );
+    handle_menu(s.app.handle(), "mute");
+    assert_eq!(saved(dir.path())["muted"], false);
+}
+
 fn main() {
     // Tauri's Linux runtime builds GTK menus, which need GTK initialised (and a display; CI
     // runs this under xvfb). Without this the mock runtime panics in gtk::Menu::new.
     #[cfg(target_os = "linux")]
     gtk::init().expect("GTK failed to initialise: is a display available (xvfb-run)?");
 
-    let tests: [(&str, fn()); 11] = [
+    let tests: [(&str, fn()); 14] = [
         (
             "starts with window, tray and full menu",
             starts_with_window_tray_and_full_menu,
@@ -258,6 +320,18 @@ fn main() {
             hide_applies_to_whichever_mode_is_active,
         ),
         ("unknown mode ids are ignored", unknown_mode_ids_are_ignored),
+        (
+            "Wardrobe opens the pet panel tab",
+            wardrobe_opens_the_pet_panel_wardrobe_tab,
+        ),
+        (
+            "shortcut registration failure never stops startup",
+            shortcuts_stay_off_and_registration_failure_never_stops_startup,
+        ),
+        (
+            "mute toggles and is remembered",
+            mute_toggles_and_is_remembered,
+        ),
     ];
     for (name, test) in tests {
         test();

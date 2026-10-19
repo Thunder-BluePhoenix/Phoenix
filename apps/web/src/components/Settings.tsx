@@ -19,6 +19,8 @@ import { AutomationSettings } from "./AutomationSettings";
 import { AiSettings, MemorySettingsSection } from "./MemorySettings";
 import { Feedback } from "./Feedback";
 import { DictationSettingsSection } from "./Dictation";
+import { DemoSettingsSection } from "./Demo";
+import { VoiceSettingsSection } from "./Voice";
 import { NotetakerSettingsSection } from "./Notetaker";
 import { Multimodal } from "./Multimodal";
 import { QuickActions } from "./Overview";
@@ -43,6 +45,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <Multimodal />
       <DictationSettingsSection />
       <NotetakerSettingsSection />
+      <VoiceSettingsSection />
       <RetrievalSettingsSection />
       <AutomationSettings />
       <ApprovalRulesSection />
@@ -51,6 +54,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <RegistrySettingsSection />
       <SyncSettingsSection />
       <SupportSettings />
+      <DemoSettingsSection />
       <div className="card">
         <QuickActions state={state} />
       </div>

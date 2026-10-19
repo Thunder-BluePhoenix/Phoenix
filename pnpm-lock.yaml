@@ -476,6 +476,38 @@ importers:
         specifier: workspace:*
         version: link:../../core/state-engine
 
+  capabilities/apple-music:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+      '@phoenix/service-kit':
+        specifier: workspace:*
+        version: link:../../sdk/service-kit
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
+  capabilities/calcom:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+      '@phoenix/service-kit':
+        specifier: workspace:*
+        version: link:../../sdk/service-kit
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
   capabilities/docker:
     dependencies:
       '@phoenix/logging':
@@ -567,6 +599,38 @@ importers:
         specifier: workspace:*
         version: link:../../sdk/testing
 
+  capabilities/n8n:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+      '@phoenix/service-kit':
+        specifier: workspace:*
+        version: link:../../sdk/service-kit
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
+  capabilities/notion:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+      '@phoenix/service-kit':
+        specifier: workspace:*
+        version: link:../../sdk/service-kit
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
   capabilities/planning:
     dependencies:
       '@phoenix/protocol':
@@ -576,6 +640,70 @@ importers:
         specifier: workspace:*
         version: link:../../sdk/capability
 
+  capabilities/portfolio:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+      '@phoenix/service-kit':
+        specifier: workspace:*
+        version: link:../../sdk/service-kit
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
+  capabilities/resend:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+      '@phoenix/service-kit':
+        specifier: workspace:*
+        version: link:../../sdk/service-kit
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
+  capabilities/spotify:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+      '@phoenix/service-kit':
+        specifier: workspace:*
+        version: link:../../sdk/service-kit
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
+  capabilities/stripe:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+      '@phoenix/service-kit':
+        specifier: workspace:*
+        version: link:../../sdk/service-kit
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
   capabilities/terminal:
     dependencies:
       '@phoenix/logging':
@@ -584,6 +712,22 @@ importers:
       '@phoenix/sdk':
         specifier: workspace:*
         version: link:../../sdk/capability
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
+  capabilities/vercel:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+      '@phoenix/service-kit':
+        specifier: workspace:*
+        version: link:../../sdk/service-kit
     devDependencies:
       '@phoenix/sdk-testing':
         specifier: workspace:*
@@ -762,6 +906,12 @@ importers:
       '@phoenix/capability-agents':
         specifier: workspace:*
         version: link:../../capabilities/agents
+      '@phoenix/capability-apple-music':
+        specifier: workspace:*
+        version: link:../../capabilities/apple-music
+      '@phoenix/capability-calcom':
+        specifier: workspace:*
+        version: link:../../capabilities/calcom
       '@phoenix/capability-docker':
         specifier: workspace:*
         version: link:../../capabilities/docker
@@ -786,12 +936,33 @@ importers:
       '@phoenix/capability-mock':
         specifier: workspace:*
         version: link:../../capabilities/mock
+      '@phoenix/capability-n8n':
+        specifier: workspace:*
+        version: link:../../capabilities/n8n
+      '@phoenix/capability-notion':
+        specifier: workspace:*
+        version: link:../../capabilities/notion
       '@phoenix/capability-planning':
         specifier: workspace:*
         version: link:../../capabilities/planning
+      '@phoenix/capability-portfolio':
+        specifier: workspace:*
+        version: link:../../capabilities/portfolio
+      '@phoenix/capability-resend':
+        specifier: workspace:*
+        version: link:../../capabilities/resend
+      '@phoenix/capability-spotify':
+        specifier: workspace:*
+        version: link:../../capabilities/spotify
+      '@phoenix/capability-stripe':
+        specifier: workspace:*
+        version: link:../../capabilities/stripe
       '@phoenix/capability-terminal':
         specifier: workspace:*
         version: link:../../capabilities/terminal
+      '@phoenix/capability-vercel':
+        specifier: workspace:*
+        version: link:../../capabilities/vercel
       '@phoenix/config':
         specifier: workspace:*
         version: link:../config
@@ -953,6 +1124,22 @@ importers:
 
   sdk/events:
     dependencies:
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+
+  sdk/service-kit:
+    dependencies:
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../capability
+    devDependencies:
+      '@phoenix/capability-manager':
+        specifier: workspace:*
+        version: link:../../core/capability-manager
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
       '@phoenix/protocol':
         specifier: workspace:*
         version: link:../../protocol
