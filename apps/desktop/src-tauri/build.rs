@@ -23,6 +23,8 @@ fn main() {
             "shortcuts_list",
             "shortcuts_set",
             "shortcuts_reset",
+            "shortcuts_set_enabled",
+            "shortcuts_set_muted",
         ]),
     ))
     .expect("Tauri build failed");

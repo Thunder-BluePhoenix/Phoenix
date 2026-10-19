@@ -50,6 +50,27 @@ describe("web app serving", () => {
     expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
   });
 
+  it("limits connect-src to this origin and loopback: no bare ws:/wss:, no wildcard host", async () => {
+    const core = await startCore({ webRoot: site() });
+    stop = () => core.runtime.stop();
+    const csp = (await fetch(`${core.base}/`)).headers.get("content-security-policy") ?? "";
+    const connect = csp
+      .split(";")
+      .map((d) => d.trim())
+      .find((d) => d.startsWith("connect-src"));
+    expect(connect).toBe("connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*");
+    const sources = (connect ?? "").split(/\s+/).slice(1);
+    expect(sources).not.toContain("ws:");
+    expect(sources).not.toContain("wss:");
+    expect(sources).not.toContain("*");
+    expect(
+      sources.every(
+        (s) =>
+          s === "'self'" || s.startsWith("http://127.0.0.1:") || s.startsWith("ws://127.0.0.1:"),
+      ),
+    ).toBe(true);
+  });
+
   it("serves hashed assets with long caching and falls back to index.html for app routes", async () => {
     const core = await startCore({ webRoot: site() });
     stop = () => core.runtime.stop();

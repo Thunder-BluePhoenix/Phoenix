@@ -52,6 +52,7 @@ import {
   MAX_AGENTS_PER_DAY,
   MAX_PROJECTS_PER_DAY,
   RECAP_METRIC,
+  countableLines,
   type RecapSink,
 } from "./recap";
 
@@ -74,6 +75,13 @@ interface LiveSession {
   lastSeen: number;
   /** Time between reports that were close enough together to count as coding. */
   activeMs: number;
+  /** The RecapSink epoch these recap fields were last reconciled with. */
+  recapEpoch: number;
+  /** `activeMs` when the statistics were last deleted: only what is above it is counted. */
+  recapBaselineMs: number;
+  /** Lines this session has put into the recap so far (capped per session). */
+  recapLinesAdded: number;
+  recapLinesRemoved: number;
   steps: StepLog;
   files: FileTallies;
   pid: number | undefined;
@@ -283,6 +291,10 @@ export class AgentLive implements AgentLiveApi {
         firstSeen: at,
         lastSeen: at,
         activeMs: 0,
+        recapEpoch: 0,
+        recapBaselineMs: 0,
+        recapLinesAdded: 0,
+        recapLinesRemoved: 0,
         steps: new StepLog(),
         files: new FileTallies(),
         pid: undefined,
@@ -315,8 +327,18 @@ export class AgentLive implements AgentLiveApi {
     seen: { created: boolean; gapMs: number; newFile: boolean },
   ): void {
     if (!this.d.recap) return;
+    const { recap } = this.d;
+    // The statistics were deleted since this session last reported: what it had worked until now
+    // belongs to the deleted past, so counting starts again from here.
+    if (session.recapEpoch !== recap.epoch) {
+      session.recapEpoch = recap.epoch;
+      session.recapBaselineMs = session.activeMs;
+      session.recapLinesAdded = 0;
+      session.recapLinesRemoved = 0;
+    }
     const worked = !seen.created && seen.gapMs > 0 && seen.gapMs <= IDLE_GAP_MS ? seen.gapMs : 0;
     session.activeMs += worked;
+    const counted = session.activeMs - session.recapBaselineMs;
     const bumps: RecapBump[] = [
       { metric: RECAP_METRIC.steps, value: 1 },
       {
@@ -334,15 +356,18 @@ export class AgentLive implements AgentLiveApi {
     ];
     if (seen.created) bumps.push({ metric: RECAP_METRIC.sessions, value: 1 });
     if (worked > 0) bumps.push({ metric: RECAP_METRIC.activeMs, value: worked });
-    if (session.activeMs > 0)
-      bumps.push({ metric: RECAP_METRIC.longestSessionMs, value: session.activeMs, mode: "max" });
+    if (counted > 0)
+      bumps.push({ metric: RECAP_METRIC.longestSessionMs, value: counted, mode: "max" });
     if (step.kind === "run") bumps.push({ metric: RECAP_METRIC.commands, value: 1 });
     if (step.file) {
       if (seen.newFile) bumps.push({ metric: RECAP_METRIC.files, value: 1 });
-      if (step.file.added > 0)
-        bumps.push({ metric: RECAP_METRIC.linesAdded, value: step.file.added });
-      if (step.file.removed > 0)
-        bumps.push({ metric: RECAP_METRIC.linesRemoved, value: step.file.removed });
+      // The hook reports these numbers and Core cannot check them: bounded per step and per session.
+      const added = countableLines(step.file.added, session.recapLinesAdded);
+      const removed = countableLines(step.file.removed, session.recapLinesRemoved);
+      session.recapLinesAdded += added;
+      session.recapLinesRemoved += removed;
+      if (added > 0) bumps.push({ metric: RECAP_METRIC.linesAdded, value: added });
+      if (removed > 0) bumps.push({ metric: RECAP_METRIC.linesRemoved, value: removed });
     }
     try {
       this.d.recap.bump(this.now(), bumps);

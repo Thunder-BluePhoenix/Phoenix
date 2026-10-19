@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHarness, type Harness } from "@phoenix/sdk-testing";
 import type { ServiceStatus } from "@phoenix/service-kit";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { canonicalId, createNotionCapability, NOTION_VERSION } from "../src";
 import { Clock } from "../testing/clock";
 import {
@@ -16,6 +16,7 @@ import {
   startMockNotion,
   type MockNotion,
 } from "../testing/mock-notion";
+import { setImmediate as yieldToLoop } from "node:timers/promises";
 
 const T0 = Date.parse("2026-10-05T09:00:00Z");
 const NEW = "2026-10-05T10:00:00.000Z";
@@ -43,10 +44,11 @@ async function ready(
   clock = new Clock(T0);
   options.data?.(mock);
   h = createHarness({
-    modules: [createNotionCapability({ now: () => clock.now, sleep: clock.sleep })],
+    modules: [
+      createNotionCapability({ apiUrl: mock.url, now: () => clock.now, sleep: clock.sleep }),
+    ],
   });
   h.manager.configure("notion", {
-    base_url: mock.url,
     watch: [
       { type: "page", id: PAGE_ID },
       { type: "database", id: DB_ID },
@@ -63,7 +65,7 @@ async function ready(
 const types = () => h!.types("notion");
 const health = async () => (await h!.manager.checkHealth("notion")).health;
 const settle = async () => {
-  for (let i = 0; i < 50; i++) await new Promise<void>((r) => setImmediate(r));
+  for (let i = 0; i < 50; i++) await yieldToLoop();
   await h!.drain();
 };
 
@@ -384,24 +386,30 @@ describe("configuration and secrets", () => {
     expect(mock!.requests).toEqual([]);
   });
 
-  it("refuses plain http base_url, a token in config, and a too-fast poll; refuses credentials in the address", async () => {
+  it("the token can only go to Notion's own origin: base_url is not a setting; a token in config and a too-fast poll are refused", async () => {
     await ready({});
-    await h!.manager.disable("notion");
-    expect(() => h!.manager.configure("notion", { base_url: "http://api.example.com" })).toThrow();
-    expect(() => h!.manager.configure("notion", { integration_token: MOCK_TOKEN })).toThrow();
-    expect(() => h!.manager.configure("notion", { poll_ms: 1000 })).toThrow();
-    h!.manager.configure("notion", {
-      base_url: "https://user:pw@api.example.com",
-      watch: [{ type: "page", id: PAGE_ID }],
-    });
-    const before = mock!.requests.length;
-    await h!.enable("notion");
     await clock.first();
-    expect(await health()).toMatchObject({
-      status: "degraded",
-      message: expect.stringMatching(/base_url/),
-    });
-    expect(mock!.requests.length).toBe(before);
+    const attacker = await startMockNotion();
+    try {
+      await h!.manager.disable("notion");
+      for (const base_url of [attacker.url, "https://attacker.example", "http://127.0.0.1:1"]) {
+        expect(() => h!.manager.configure("notion", { base_url }), base_url).toThrow();
+      }
+      expect(h!.manager.get("notion").config_schema).not.toHaveProperty("properties.base_url");
+      expect(() => h!.manager.configure("notion", { integration_token: MOCK_TOKEN })).toThrow();
+      expect(() => h!.manager.configure("notion", { poll_ms: 1000 })).toThrow();
+      const before = mock!.requests.length;
+      await h!.enable("notion");
+      await vi.waitFor(() => expect(mock!.requests.length).toBeGreaterThan(before));
+      expect(attacker.requests).toEqual([]);
+    } finally {
+      await attacker.close();
+    }
+  });
+
+  it("the code-only apiUrl option refuses plain http to a non-loopback host or credentials", () => {
+    expect(() => createNotionCapability({ apiUrl: "http://api.example.com" })).toThrow();
+    expect(() => createNotionCapability({ apiUrl: "https://user:pw@api.example.com" })).toThrow();
   });
 
   it("status lists watched items without the token", async () => {

@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import { formatNumber } from "../core/format";
 import { useAction, useAgentSettings } from "../core/hooks";
+import { useT } from "../i18n";
 import { Feedback } from "./Feedback";
 
 /** Settings: whether Fawkes may run agent tasks at all (`agents.enabled`, off by default). */
 export function AutomationSettings() {
+  const t = useT();
   const { data, error, reload } = useAgentSettings();
   const { run, busy, error: saveError } = useAction();
   const toggle = async (enabled: boolean) => {
@@ -14,15 +17,9 @@ export function AutomationSettings() {
   return (
     <section aria-labelledby="automation-h" className="card">
       <h2 id="automation-h" className="h3">
-        Automation
+        {t("automation.settings.title")}
       </h2>
-      <p className="small">
-        Automation is off until you turn it on. While it is off, Fawkes starts no tasks and runs
-        nothing by itself. When it is on, Fawkes can only start a task when you ask for one, such as
-        “Diagnose a CI failure” in the Chat tab. It reads data and proposes; anything that changes
-        something waits for your approval, and you can cancel a task at any time. Turning automation
-        off cancels every task that is running.
-      </p>
+      <p className="small">{t("automation.settings.intro")}</p>
       {data ? (
         <>
           <label className="choice">
@@ -32,20 +29,17 @@ export function AutomationSettings() {
               disabled={busy}
               onChange={(e) => void toggle(e.target.checked)}
             />
-            Allow Fawkes to run tasks I start
+            {t("automation.settings.allow")}
           </label>
           <p className="muted small" role="status">
-            Automation is {data.enabled ? "on" : "off"}. {data.active_runs}{" "}
-            {data.active_runs === 1 ? "task is" : "tasks are"} running (at most{" "}
-            {data.limits.max_active_runs} at once).
+            {t(data.enabled ? "automation.settings.statusOn" : "automation.settings.statusOff", {
+              active: data.active_runs,
+              max: formatNumber(data.limits.max_active_runs),
+            })}
           </p>
         </>
       ) : (
-        error && (
-          <p className="muted small">
-            Automation settings are not available from Phoenix Core ({error}).
-          </p>
-        )
+        error && <p className="muted small">{t("automation.settings.unavailable", { error })}</p>
       )}
       <Feedback error={saveError} />
     </section>

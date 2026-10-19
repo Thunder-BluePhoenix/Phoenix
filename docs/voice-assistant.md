@@ -36,6 +36,12 @@ so in a room where people talk, a recogniser pass runs per utterance. Consequenc
   (five letters or more). It rejects "ok", "fawkes" alone, "ok google", "ok folks", "ok fake".
 - It can miss the phrase or mishear a similar one; it was never run with a real voice here.
 - Only the start of the utterance counts (at most two lead words, e.g. "hey OK Fawkes").
+- There is **no speaker verification**: any audio source in the room (a person, a video, a hostile
+  speaker) that says the wake phrase can trigger the read-only requests below (and "deny"). It can
+  never approve anything or run a write.
+- Fawkes's own spoken replies must not wake it: the page drops microphone frames while its speech
+  synthesis is speaking and for about one second after, and wake-phrase-like text in third-party
+  fields (repository, branch, track title, artist, container names) is removed before it is spoken.
 - "OK Fawkes, what is my git status" in one breath works; "OK Fawkes" alone opens an 8-second awake
   window in which the next utterance is the request.
 
@@ -69,8 +75,9 @@ call. Tools with writes, execution or external effects are unreachable by any ph
   method to call. Spoken "yes", "approve", "confirm", "go ahead", "allow", … are refused as actions.
   Tests spy on `resolveConfirmation` and assert no call with `approved === true` ever comes from
   voice, including after spoken approvals while a real policy-escalated confirmation is pending.
-- If a call waits for a person's approval longer than 60 s, voice stops waiting, aborts its own call
-  and denies only the confirmations that call created.
+- If a call waits for a person's approval longer than 60 s, voice stops waiting and aborts its own
+  call; the gateway withdraws that call's own confirmation. Voice denies nothing else on a timeout,
+  so a confirmation another actor raised during the wait is left for the person.
 
 ## Audit
 

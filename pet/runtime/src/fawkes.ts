@@ -52,6 +52,14 @@ export interface MountOptions {
   draggable?: boolean;
   /** Suffix for the accessible name, e.g. "Open Pet Panel". */
   actionHint?: string;
+  /**
+   * Writes the accessible name's text (the part before the action hint), tooltip and live-region
+   * text in the host's language. `parts` holds the English defaults. Omit for the English text.
+   */
+  describe?: (
+    view: FawkesView,
+    parts: { label: string; explanation: string; recording: boolean },
+  ) => string;
   /** Phase 61: an outfit drawn over Fawkes (validated again here). Never changes state or its text. */
   outfit?: OutfitPack | null;
   /** Opt in to Phase 59 interactions: greeting, gaze, hover, poke, dizzy, completion jump. */
@@ -273,7 +281,9 @@ export function mountFawkes(container: HTMLElement, options: MountOptions = {}):
     const parts = [`Fawkes — ${visual.label}`];
     if (explanation !== visual.label) parts.push(explanation);
     if (recording && view.state !== "RECORDING") parts.push("Recording active");
-    const text = parts.join(". ");
+    const text = options.describe
+      ? options.describe(view, { label: visual.label, explanation, recording })
+      : parts.join(". ");
     el.setAttribute("aria-label", options.actionHint ? `${text}. ${options.actionHint}` : text);
     el.title = text;
 

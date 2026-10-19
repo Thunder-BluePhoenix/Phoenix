@@ -79,7 +79,7 @@ import { ProactiveRuntime } from "./proactive";
 import { RetrievalRuntime } from "./retrieval";
 import { ImprovementRuntime } from "./improvement";
 import { LocalRegistryRuntime, type LocalRegistryConfig } from "./registry";
-import { SyncRuntime } from "./sync";
+import { SyncRuntime, type SyncTransportFactory } from "./sync";
 import { DemoRuntime, type DemoTuning } from "./demo";
 import { WorkflowsRuntime } from "./workflows";
 
@@ -163,6 +163,8 @@ export interface RuntimeOptions {
   demo?: DemoTuning | false;
   /** Start the owner-only agent relay socket (default true). The demo runtime never opens one. */
   startAgentRelay?: boolean;
+  /** Builds the sync relay transport (tests and the demo inject one; default: HTTPS with global fetch). */
+  syncTransport?: SyncTransportFactory;
 }
 
 /**
@@ -624,7 +626,7 @@ export class PhoenixRuntime implements CoreServices {
       known: () => this.knownSources(),
     });
     this.uiSettings = new UiSettingsRuntime(this.settings, this.bus);
-    this.sync = new SyncRuntime(this.settings, options.secrets);
+    this.sync = new SyncRuntime(this.settings, options.secrets, options.syncTransport);
     this.demo =
       options.demo === false
         ? undefined

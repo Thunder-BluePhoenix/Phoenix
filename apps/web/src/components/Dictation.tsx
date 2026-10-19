@@ -5,7 +5,9 @@ import { ApiError } from "../core/client";
 import { useClient, useConnection } from "../core/context";
 import {
   CLEANUP_MODES,
-  CLEANUP_MODE_LABELS,
+  CLEANUP_MODE_KEYS,
+  dictationBlocked,
+  dictationStopped,
   formatDuration,
   type CleanupMode,
   type DictationResult,
@@ -16,11 +18,18 @@ import {
   type DictationVocabulary,
 } from "../core/dictation";
 import { createBrowserMicrophone, type DictationMicrophone } from "../core/dictation-mic";
+import { formatNumber } from "../core/format";
 import { useAction } from "../core/hooks";
+import { useT } from "../i18n";
+import { translate } from "../i18n/store";
 import { Feedback } from "./Feedback";
 
 const failure = (err: unknown) =>
-  err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Request failed";
+  err instanceof ApiError
+    ? err.message
+    : err instanceof Error
+      ? err.message
+      : translate("common.error.requestFailed");
 
 // ── The "Dictate" button of the chat box ────────────────────────────────────────────────────────
 
@@ -46,6 +55,7 @@ export function DictateButton({
   /** Test seam: a fake microphone. Production uses getUserMedia through the browser. */
   createMicrophone?: () => DictationMicrophone;
 }) {
+  const t = useT();
   const client = useClient();
   const connection = useConnection();
   const [status, setStatus] = useState<DictationStatus | null>(null);
@@ -88,7 +98,8 @@ export function DictateButton({
   );
   useEffect(() => () => abandon(null, true), [abandon]);
   useEffect(() => {
-    if (connection !== "online" && live.current) abandon("Phoenix Core is not connected.", false);
+    if (connection !== "online" && live.current)
+      abandon(translate("capture.audio.coreNotConnected"), false);
   }, [connection, abandon]);
 
   const start = async () => {
@@ -122,7 +133,7 @@ export function DictateButton({
       try {
         message = JSON.parse(event.data) as typeof message;
       } catch {
-        return abandon("Invalid reply from Core.", true);
+        return abandon(translate("capture.audio.invalidReply"), true);
       }
       if (message.type === "ready") {
         mic
@@ -134,22 +145,24 @@ export function DictateButton({
             () => {
               if (live.current === session) setPhase("listening");
             },
-            (err: unknown) => abandon(`Microphone unavailable: ${failure(err)}`, true),
+            (err: unknown) =>
+              abandon(translate("capture.audio.micUnavailable", { reason: failure(err) }), true),
           );
       } else if (message.type === "ended" || message.type === "error") {
         const why =
           typeof message.reason === "string" ? message.reason : String(message.error ?? "");
-        abandon(`Dictation stopped${why ? `: ${why.replaceAll("_", " ")}` : ""}.`, false);
+        abandon(dictationStopped(why), false);
         void refresh();
       } else if (message.type === "audio_ended") {
         void finish(session);
       }
     };
     socket.onerror = () => {
-      if (live.current === session) abandon("The audio connection failed.", true);
+      if (live.current === session) abandon(translate("capture.audio.connectionFailed"), true);
     };
     socket.onclose = () => {
-      if (live.current === session && !session.done) abandon("The audio connection closed.", true);
+      if (live.current === session && !session.done)
+        abandon(translate("capture.audio.connectionClosed"), true);
     };
   };
 
@@ -166,7 +179,7 @@ export function DictateButton({
       session.socket.close();
       setPhase("idle");
       if (result.text) onTextRef.current(result.text);
-      else setError("Nothing was recognised.");
+      else setError(translate("capture.dictation.nothingRecognised"));
     } catch (err) {
       if (live.current === session) abandon(failure(err), false);
     } finally {
@@ -183,17 +196,7 @@ export function DictateButton({
     else void finish(session);
   };
 
-  const blocked = !status
-    ? "Dictation status is not available."
-    : !status.enabled
-      ? "Dictation is off. Turn it on in Settings, under Dictation."
-      : status.kill_switch_engaged
-        ? "The emergency stop is engaged."
-        : !status.recognizer.available
-          ? status.recognizer.detail
-          : connection !== "online"
-            ? "Phoenix Core is not connected."
-            : null;
+  const blocked = dictationBlocked(status, connection);
 
   return (
     <>
@@ -205,7 +208,9 @@ export function DictateButton({
           aria-describedby={hint}
           onClick={() => void start()}
         >
-          {phase === "starting" ? "Starting…" : "Dictate"}
+          {phase === "starting"
+            ? t("capture.dictation.button.starting")
+            : t("capture.dictation.button.start")}
         </button>
       ) : (
         <>
@@ -215,22 +220,24 @@ export function DictateButton({
             disabled={phase !== "listening"}
             onClick={stop}
           >
-            {phase === "processing" ? "Recognising…" : "Stop dictating"}
+            {phase === "processing"
+              ? t("capture.dictation.button.recognising")
+              : t("capture.dictation.button.stop")}
           </button>
           <button type="button" className="btn" onClick={() => abandon(null, true)}>
-            Cancel dictation
+            {t("capture.dictation.button.cancel")}
           </button>
         </>
       )}
       <span id={hint} className="muted small">
-        {blocked ?? "Uses your microphone only while you dictate; audio is not stored."}
+        {blocked ?? t("capture.dictation.hint")}
       </span>
       {(phase === "listening" || phase === "starting") && (
         <p className="dictation-live small" role="status" data-testid="dictation-indicator">
           <span className="dictation-dot" aria-hidden="true" />
           {phase === "listening"
-            ? "Listening: your microphone is on."
-            : "Waiting for the microphone permission…"}
+            ? t("capture.dictation.indicator.listening")
+            : t("capture.audio.waitingForPermission")}
         </p>
       )}
       <Feedback error={error} />
@@ -244,6 +251,7 @@ const emptyVocabulary: DictationVocabulary = { dictionary: [], replacements: [],
 
 /** Settings > Dictation: consent, clean-up modes, vocabulary and statistics. Off by default. */
 export function DictationSettingsSection() {
+  const t = useT();
   const client = useClient();
   const { run, busy, error } = useAction();
   const [status, setStatus] = useState<DictationStatus | null>(null);
@@ -267,7 +275,7 @@ export function DictationSettingsSection() {
       setVocabulary(se.vocabulary);
       setLoadError(null);
     } catch {
-      setLoadError("Dictation settings are unavailable from Phoenix Core.");
+      setLoadError(translate("capture.dictation.settings.unavailable"));
     }
   }, [client]);
   useEffect(() => {
@@ -289,7 +297,7 @@ export function DictationSettingsSection() {
     return (
       <section className="card" aria-labelledby="dictation-h">
         <h2 id="dictation-h" className="h3">
-          Dictation
+          {t("capture.dictation.settings.title")}
         </h2>
         <p role="status">{loadError}</p>
       </section>
@@ -298,9 +306,9 @@ export function DictationSettingsSection() {
     return (
       <section className="card" aria-labelledby="dictation-h">
         <h2 id="dictation-h" className="h3">
-          Dictation
+          {t("capture.dictation.settings.title")}
         </h2>
-        <p className="muted small">Loading…</p>
+        <p className="muted small">{t("common.status.loading")}</p>
       </section>
     );
 
@@ -308,31 +316,29 @@ export function DictationSettingsSection() {
   return (
     <section className="card dictation-settings" aria-labelledby="dictation-h">
       <h2 id="dictation-h" className="h3">
-        Dictation
+        {t("capture.dictation.settings.title")}
       </h2>
       <p className="small">
-        Dictation turns your speech into text on this device. It is <strong>off</strong> until you
-        turn it on here, and turning it on is your consent for dictation only.
+        {t.rich("capture.dictation.settings.intro", {
+          off: <strong>{t("capture.dictation.settings.intro.off")}</strong>,
+        })}
       </p>
       <ul className="small">
         <li>
-          <strong>What leaves this device:</strong> nothing. Speech is recognised on this device;
-          optional clean-up uses a model on this device only and is never sent to a cloud provider,
-          even if you allowed cloud AI for other things.
+          <strong>{t("capture.dictation.privacy.leaves.lead")}</strong>{" "}
+          {t("capture.dictation.privacy.leaves.body")}
         </li>
         <li>
-          <strong>What stays in memory:</strong> the audio, for the length of one dictation (at most{" "}
-          {status.limits.max_seconds} seconds). It is never written to disk and is erased when the
-          dictation ends, is cancelled, or the emergency stop is used.
+          <strong>{t("capture.dictation.privacy.memory.lead")}</strong>{" "}
+          {t("capture.dictation.privacy.memory.body", {
+            seconds: status.limits.max_seconds,
+          })}
         </li>
         <li>
-          <strong>What is stored:</strong> your settings and word lists below, and counts per day
-          and app (words, speaking time, number of dictations). Never the text you dictate and never
-          audio.
+          <strong>{t("capture.dictation.privacy.stored.lead")}</strong>{" "}
+          {t("capture.dictation.privacy.stored.body")}
         </li>
-        <li>
-          The microphone is on only while you dictate, and Fawkes shows “Listening” the whole time.
-        </li>
+        <li>{t("capture.dictation.privacy.microphone")}</li>
       </ul>
       <label className="choice">
         <input
@@ -342,34 +348,38 @@ export function DictationSettingsSection() {
           onChange={(e) =>
             void save(
               { enabled: e.target.checked },
-              e.target.checked ? "Dictation is on." : "Dictation is off.",
+              e.target.checked ? t("capture.dictation.saved.on") : t("capture.dictation.saved.off"),
             )
           }
         />
-        Turn on dictation
+        {t("capture.dictation.settings.enable")}
       </label>
       <p className="small" role="status">
-        Speech recogniser: {status.recognizer.available ? "available" : "unavailable"}.{" "}
-        {status.recognizer.detail}
+        {t(
+          status.recognizer.available
+            ? "capture.audio.recognizerAvailable"
+            : "capture.audio.recognizerUnavailable",
+          { detail: status.recognizer.detail },
+        )}
       </p>
-      {status.kill_switch_engaged && (
-        <p role="status">The emergency stop is engaged: dictation is blocked.</p>
-      )}
+      {status.kill_switch_engaged && <p role="status">{t("capture.dictation.killSwitch")}</p>}
       <Feedback error={error} saved={saved} />
 
-      <h3 className="h4">Clean-up</h3>
+      <h3 className="h4">{t("capture.dictation.cleanup.heading")}</h3>
       <p className="muted small">{status.cleanup.detail}</p>
       <div className="field">
-        <label htmlFor="dictation-default-mode">Default clean-up</label>
+        <label htmlFor="dictation-default-mode">{t("capture.dictation.cleanup.default")}</label>
         <select
           id="dictation-default-mode"
           value={settings.default_mode}
           disabled={busy}
-          onChange={(e) => void save({ default_mode: e.target.value }, "Default clean-up saved.")}
+          onChange={(e) =>
+            void save({ default_mode: e.target.value }, t("capture.dictation.saved.defaultMode"))
+          }
         >
           {CLEANUP_MODES.map((m) => (
             <option key={m} value={m}>
-              {CLEANUP_MODE_LABELS[m]}
+              {t(CLEANUP_MODE_KEYS[m])}
             </option>
           ))}
         </select>
@@ -378,14 +388,14 @@ export function DictationSettingsSection() {
         modes={settings.app_modes}
         max={limits.app_modes}
         busy={busy}
-        onSave={(app_modes) => save({ app_modes }, "App clean-up modes saved.")}
+        onSave={(app_modes) => save({ app_modes }, t("capture.dictation.saved.appModes"))}
       />
 
-      <h3 className="h4">Typing speed</h3>
+      <h3 className="h4">{t("capture.dictation.typing.heading")}</h3>
       <TypingSpeed
         value={settings.typing_wpm}
         busy={busy}
-        onSave={(typing_wpm) => save({ typing_wpm }, "Typing speed saved.")}
+        onSave={(typing_wpm) => save({ typing_wpm }, t("capture.dictation.saved.typing"))}
       />
 
       <VocabularyEditor
@@ -393,10 +403,10 @@ export function DictationSettingsSection() {
         onChange={setVocabulary}
         limits={limits}
         busy={busy}
-        onSave={() => save({ vocabulary }, "Word lists saved.")}
+        onSave={() => save({ vocabulary }, t("capture.dictation.saved.vocabulary"))}
       />
 
-      <h3 className="h4">Statistics</h3>
+      <h3 className="h4">{t("capture.dictation.stats.heading")}</h3>
       <Statistics
         stats={stats}
         busy={busy}
@@ -406,7 +416,7 @@ export function DictationSettingsSection() {
         onDelete={async () => {
           setConfirmDelete(false);
           if (await run("DELETE", "/api/dictation/stats")) {
-            setSaved("All dictation statistics were deleted.");
+            setSaved(t("capture.dictation.saved.statsDeleted"));
             void reload();
           }
         }}
@@ -424,6 +434,7 @@ function TypingSpeed({
   busy: boolean;
   onSave: (wpm: number) => void;
 }) {
+  const t = useT();
   const [text, setText] = useState(String(value));
   useEffect(() => setText(String(value)), [value]);
   const wpm = Number(text);
@@ -436,7 +447,7 @@ function TypingSpeed({
         if (valid) onSave(wpm);
       }}
     >
-      <label htmlFor="dictation-wpm">How fast do you type? (words per minute)</label>
+      <label htmlFor="dictation-wpm">{t("capture.dictation.typing.label")}</label>
       <input
         id="dictation-wpm"
         inputMode="numeric"
@@ -444,9 +455,16 @@ function TypingSpeed({
         onChange={(e) => setText(e.target.value)}
       />
       <button type="submit" className="btn" disabled={busy || !valid || wpm === value}>
-        Save typing speed
+        {t("capture.dictation.typing.save")}
       </button>
-      {!valid && <span className="error-text small">Enter a whole number from 10 to 200.</span>}
+      {!valid && (
+        <span className="error-text small">
+          {t("capture.dictation.typing.invalid", {
+            min: formatNumber(10),
+            max: formatNumber(200),
+          })}
+        </span>
+      )}
     </form>
   );
 }
@@ -464,6 +482,7 @@ function AppModes({
   busy: boolean;
   onSave: (modes: Record<string, CleanupMode>) => void;
 }) {
+  const t = useT();
   const [app, setApp] = useState("");
   const [mode, setMode] = useState<CleanupMode>("natural");
   const entries = Object.entries(modes);
@@ -471,22 +490,28 @@ function AppModes({
   return (
     <div className="ai-subsection">
       <p className="small">
-        Clean-up per app ({entries.length} of {max}). An app not listed uses the default.
+        {t("capture.dictation.appModes.summary", {
+          count: formatNumber(entries.length),
+          max: formatNumber(max),
+        })}
       </p>
       <ul className="card-list">
         {entries.map(([name, m]) => (
           <li key={name} className="button-row wrap">
             <span className="small">
-              <code>{name}</code>: {CLEANUP_MODE_LABELS[m]}
+              {t.rich("capture.dictation.appModes.entry", {
+                app: <code>{name}</code>,
+                mode: t(CLEANUP_MODE_KEYS[m]),
+              })}
             </span>
             <button
               type="button"
               className="btn"
-              aria-label={`Remove ${name}`}
+              aria-label={t("capture.dictation.appModes.remove", { app: name })}
               disabled={busy}
               onClick={() => onSave(Object.fromEntries(entries.filter(([n]) => n !== name)))}
             >
-              Remove
+              {t("common.button.remove")}
             </button>
           </li>
         ))}
@@ -502,7 +527,7 @@ function AppModes({
         }}
       >
         <label className="small" htmlFor="dictation-app-id">
-          App identifier (for example a bundle id)
+          {t("capture.dictation.appModes.idLabel")}
         </label>
         <input
           id="dictation-app-id"
@@ -511,7 +536,7 @@ function AppModes({
           onChange={(e) => setApp(e.target.value)}
         />
         <label className="small" htmlFor="dictation-app-mode">
-          Clean-up for this app
+          {t("capture.dictation.appModes.modeLabel")}
         </label>
         <select
           id="dictation-app-mode"
@@ -520,17 +545,17 @@ function AppModes({
         >
           {CLEANUP_MODES.map((m) => (
             <option key={m} value={m}>
-              {CLEANUP_MODE_LABELS[m]}
+              {t(CLEANUP_MODE_KEYS[m])}
             </option>
           ))}
         </select>
         <button type="submit" className="btn" disabled={busy || !valid}>
-          Set app clean-up
+          {t("capture.dictation.appModes.set")}
         </button>
       </form>
       {app !== "" && !APP_ID.test(app) && (
         <p className="error-text small">
-          Use letters, digits, dot, dash or underscore (at most 100).
+          {t("capture.dictation.appModes.invalid", { max: formatNumber(100) })}
         </p>
       )}
     </div>
@@ -544,9 +569,11 @@ const HIDDEN = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060\u206
 const PHRASE = /^[\p{L}\p{N}\p{M}_'\u2019-]+(?: [\p{L}\p{N}\p{M}_'\u2019-]+)*$/u;
 
 function phraseProblem(value: string, limits: Limits): string | null {
-  if (!PHRASE.test(value)) return "Use plain words separated by single spaces (no punctuation).";
-  if (value.length > limits.phrase_chars) return `At most ${limits.phrase_chars} characters.`;
-  if (value.split(" ").length > limits.phrase_words) return `At most ${limits.phrase_words} words.`;
+  if (!PHRASE.test(value)) return translate("capture.dictation.problem.plainWords");
+  if (value.length > limits.phrase_chars)
+    return translate("capture.dictation.problem.maxChars", { n: limits.phrase_chars });
+  if (value.split(" ").length > limits.phrase_words)
+    return translate("capture.dictation.problem.maxWords", { n: limits.phrase_words });
   return null;
 }
 
@@ -563,6 +590,7 @@ function VocabularyEditor({
   busy: boolean;
   onSave: () => void;
 }) {
+  const t = useT();
   const [term, setTerm] = useState("");
   const [sounds, setSounds] = useState("");
   const [from, setFrom] = useState("");
@@ -570,18 +598,19 @@ function VocabularyEditor({
   const [trigger, setTrigger] = useState("");
   const [snippet, setSnippet] = useState("");
 
+  const termSoundsProblem = term === "" ? null : phraseProblem(sounds || term, limits);
   const termProblem =
     term === ""
       ? null
       : HIDDEN.test(term) || term.length > limits.term_chars || term !== term.trim()
-        ? `Up to ${limits.term_chars} visible characters, no spaces at the ends.`
-        : phraseProblem(sounds || term, limits)
-          ? `“Sounds like” is needed when the term is not plain words: ${phraseProblem(sounds || term, limits)}`
+        ? t("capture.dictation.problem.term", { n: limits.term_chars })
+        : termSoundsProblem
+          ? t("capture.dictation.problem.soundsLike", { problem: termSoundsProblem })
           : null;
   const fromProblem = from === "" ? null : phraseProblem(from, limits);
   const toProblem =
     HIDDEN.test(to) || to.length > limits.replacement_chars
-      ? `Up to ${limits.replacement_chars} visible characters.`
+      ? t("capture.dictation.problem.replacement", { n: limits.replacement_chars })
       : null;
   const triggerProblem = trigger === "" ? null : phraseProblem(trigger, limits);
   // eslint-disable-next-line no-control-regex
@@ -589,44 +618,48 @@ function VocabularyEditor({
     /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/u.test(
       snippet,
     ) || snippet.length > limits.snippet_chars
-      ? `Up to ${limits.snippet_chars} characters; no control or hidden characters.`
+      ? t("capture.dictation.problem.snippet", { n: limits.snippet_chars })
       : null;
 
   return (
     <div className="dictation-vocabulary">
-      <h3 className="h4">Dictionary, replacements and snippets</h3>
-      <p className="muted small">
-        Everything here is literal text: there are no patterns. Matching ignores upper and lower
-        case and works on whole words.
-      </p>
+      <h3 className="h4">{t("capture.dictation.vocabulary.heading")}</h3>
+      <p className="muted small">{t("capture.dictation.vocabulary.intro")}</p>
 
       <h4 className="h5">
-        Dictionary ({value.dictionary.length} of {limits.dictionary})
+        {t("capture.dictation.dictionary.heading", {
+          count: formatNumber(value.dictionary.length),
+          max: formatNumber(limits.dictionary),
+        })}
       </h4>
-      <p className="muted small">Spell a name or term the way you want it.</p>
+      <p className="muted small">{t("capture.dictation.dictionary.intro")}</p>
       <ul className="card-list">
         {value.dictionary.map((e, i) => (
           <li key={`${e.term}-${i}`} className="button-row wrap">
             <span className="small">
-              {e.sounds_like ? `“${e.sounds_like}” → ` : ""}
-              {e.term}
+              {e.sounds_like
+                ? t("capture.dictation.dictionary.entry", {
+                    soundsLike: e.sounds_like,
+                    term: e.term,
+                  })
+                : e.term}
             </span>
             <button
               type="button"
               className="btn"
-              aria-label={`Remove dictionary entry ${e.term}`}
+              aria-label={t("capture.dictation.dictionary.remove", { term: e.term })}
               onClick={() =>
                 onChange({ ...value, dictionary: value.dictionary.filter((_, n) => n !== i) })
               }
             >
-              Remove
+              {t("common.button.remove")}
             </button>
           </li>
         ))}
       </ul>
       <div className="button-row wrap">
         <label className="small" htmlFor="dict-term">
-          Term
+          {t("capture.dictation.dictionary.term")}
         </label>
         <input
           id="dict-term"
@@ -635,7 +668,7 @@ function VocabularyEditor({
           onChange={(e) => setTerm(e.target.value)}
         />
         <label className="small" htmlFor="dict-sounds">
-          Sounds like (optional)
+          {t("capture.dictation.dictionary.soundsLike")}
         </label>
         <input
           id="dict-sounds"
@@ -656,36 +689,41 @@ function VocabularyEditor({
             setSounds("");
           }}
         >
-          Add dictionary entry
+          {t("capture.dictation.dictionary.add")}
         </button>
       </div>
       {termProblem && <p className="error-text small">{termProblem}</p>}
 
       <h4 className="h5">
-        Replacements ({value.replacements.length} of {limits.replacements})
+        {t("capture.dictation.replacements.heading", {
+          count: formatNumber(value.replacements.length),
+          max: formatNumber(limits.replacements),
+        })}
       </h4>
       <ul className="card-list">
         {value.replacements.map((e, i) => (
           <li key={`${e.from}-${i}`} className="button-row wrap">
             <span className="small">
-              “{e.from}” → {e.to === "" ? "(removed)" : `“${e.to}”`}
+              {e.to === ""
+                ? t("capture.dictation.replacements.entryRemoved", { from: e.from })
+                : t("capture.dictation.replacements.entry", { from: e.from, to: e.to })}
             </span>
             <button
               type="button"
               className="btn"
-              aria-label={`Remove replacement ${e.from}`}
+              aria-label={t("capture.dictation.replacements.remove", { from: e.from })}
               onClick={() =>
                 onChange({ ...value, replacements: value.replacements.filter((_, n) => n !== i) })
               }
             >
-              Remove
+              {t("common.button.remove")}
             </button>
           </li>
         ))}
       </ul>
       <div className="button-row wrap">
         <label className="small" htmlFor="repl-from">
-          Replace the words
+          {t("capture.dictation.replacements.from")}
         </label>
         <input
           id="repl-from"
@@ -694,7 +732,7 @@ function VocabularyEditor({
           onChange={(e) => setFrom(e.target.value)}
         />
         <label className="small" htmlFor="repl-to">
-          With (empty removes them)
+          {t("capture.dictation.replacements.to")}
         </label>
         <input
           id="repl-to"
@@ -717,39 +755,43 @@ function VocabularyEditor({
             setTo("");
           }}
         >
-          Add replacement
+          {t("capture.dictation.replacements.add")}
         </button>
       </div>
       {(fromProblem || toProblem) && <p className="error-text small">{fromProblem ?? toProblem}</p>}
 
       <h4 className="h5">
-        Snippets ({value.snippets.length} of {limits.snippets})
+        {t("capture.dictation.snippets.heading", {
+          count: formatNumber(value.snippets.length),
+          max: formatNumber(limits.snippets),
+        })}
       </h4>
-      <p className="muted small">
-        A snippet expands only when the whole dictation is exactly its trigger.
-      </p>
+      <p className="muted small">{t("capture.dictation.snippets.intro")}</p>
       <ul className="card-list">
         {value.snippets.map((e, i) => (
           <li key={`${e.trigger}-${i}`} className="button-row wrap">
             <span className="small">
-              “{e.trigger}” → <span className="memory-text">{e.text}</span>
+              {t.rich("capture.dictation.snippets.entry", {
+                trigger: e.trigger,
+                text: <span className="memory-text">{e.text}</span>,
+              })}
             </span>
             <button
               type="button"
               className="btn"
-              aria-label={`Remove snippet ${e.trigger}`}
+              aria-label={t("capture.dictation.snippets.remove", { trigger: e.trigger })}
               onClick={() =>
                 onChange({ ...value, snippets: value.snippets.filter((_, n) => n !== i) })
               }
             >
-              Remove
+              {t("common.button.remove")}
             </button>
           </li>
         ))}
       </ul>
       <div className="button-row wrap">
         <label className="small" htmlFor="snip-trigger">
-          When I say
+          {t("capture.dictation.snippets.trigger")}
         </label>
         <input
           id="snip-trigger"
@@ -758,7 +800,7 @@ function VocabularyEditor({
           onChange={(e) => setTrigger(e.target.value)}
         />
         <label className="small" htmlFor="snip-text">
-          Insert this text
+          {t("capture.dictation.snippets.text")}
         </label>
         <textarea
           id="snip-text"
@@ -783,7 +825,7 @@ function VocabularyEditor({
             setSnippet("");
           }}
         >
-          Add snippet
+          {t("capture.dictation.snippets.add")}
         </button>
       </div>
       {(triggerProblem || snippetProblem) && (
@@ -792,7 +834,7 @@ function VocabularyEditor({
 
       <div className="button-row">
         <button type="button" className="btn btn-primary" disabled={busy} onClick={onSave}>
-          Save word lists
+          {t("capture.dictation.vocabulary.save")}
         </button>
       </div>
     </div>
@@ -814,54 +856,62 @@ function Statistics({
   onCancel: () => void;
   onDelete: () => void;
 }) {
+  const t = useT();
   if (!stats) return null;
   return (
     <div>
       {stats.sessions === 0 ? (
-        <p className="muted small">No dictations yet.</p>
+        <p className="muted small">{t("capture.dictation.stats.none")}</p>
       ) : (
         <dl className="small dictation-stats">
-          <dt>Words dictated</dt>
-          <dd>{stats.words}</dd>
-          <dt>Dictations</dt>
-          <dd>{stats.sessions}</dd>
-          <dt>Time saved</dt>
+          <dt>{t("capture.dictation.stats.words")}</dt>
+          <dd>{formatNumber(stats.words)}</dd>
+          <dt>{t("capture.dictation.stats.sessions")}</dt>
+          <dd>{formatNumber(stats.sessions)}</dd>
+          <dt>{t("capture.dictation.stats.saved")}</dt>
           <dd>
-            {formatDuration(stats.saved_ms)} (typing at {stats.typing_wpm} words per minute)
+            {t("capture.dictation.stats.savedValue", {
+              duration: formatDuration(stats.saved_ms),
+              wpm: stats.typing_wpm,
+            })}
           </dd>
-          <dt>Average speaking speed</dt>
-          <dd>{stats.average_wpm} words per minute</dd>
-          <dt>Streak</dt>
-          <dd>
-            {stats.streak_days} {stats.streak_days === 1 ? "day" : "days"}
-          </dd>
-          <dt>Top apps</dt>
+          <dt>{t("capture.dictation.stats.average")}</dt>
+          <dd>{t("capture.dictation.stats.wordsPerMinute", { n: stats.average_wpm })}</dd>
+          <dt>{t("capture.dictation.stats.streak")}</dt>
+          <dd>{t("capture.dictation.stats.days", { n: stats.streak_days })}</dd>
+          <dt>{t("capture.dictation.stats.topApps")}</dt>
           <dd>
             {stats.top_apps.length === 0
-              ? "none"
+              ? t("capture.dictation.stats.noApps")
               : stats.top_apps
-                  .map((a) => `${a.app || "unknown app"} (${a.words} words)`)
+                  .map((a) =>
+                    t("capture.dictation.stats.appWords", {
+                      app: a.app || t("capture.dictation.stats.unknownApp"),
+                      n: a.words,
+                    }),
+                  )
                   .join(", ")}
           </dd>
         </dl>
       )}
-      <p className="muted small">
-        These are counts only. App names are private to you and are not sent anywhere. Core keeps
-        them until you delete them.
-      </p>
+      <p className="muted small">{t("capture.dictation.stats.note")}</p>
       {confirm ? (
-        <div className="button-row wrap" role="group" aria-label="Confirm deleting statistics">
-          <span className="small">Delete every dictation statistic? This cannot be undone.</span>
+        <div
+          className="button-row wrap"
+          role="group"
+          aria-label={t("capture.dictation.stats.confirmGroup")}
+        >
+          <span className="small">{t("capture.dictation.stats.confirmText")}</span>
           <button type="button" className="btn btn-danger" disabled={busy} onClick={onDelete}>
-            Yes, delete all
+            {t("capture.dictation.stats.confirmYes")}
           </button>
           <button type="button" className="btn" onClick={onCancel}>
-            Keep them
+            {t("capture.dictation.stats.confirmKeep")}
           </button>
         </div>
       ) : (
         <button type="button" className="btn btn-danger-outline" disabled={busy} onClick={onAsk}>
-          Delete all dictation statistics
+          {t("capture.dictation.stats.delete")}
         </button>
       )}
     </div>

@@ -262,6 +262,39 @@ describe("demo mode: isolation and tokens", () => {
     expect(status.json.enabled).toBe(false);
   });
 
+  it("the demo Core cannot reach a sync relay: the transport is refused, the failure is reported and nothing leaves the machine", async () => {
+    const started = await startDemo();
+    const outbound: string[] = [];
+    const realFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (!url.startsWith("http://127.0.0.1:")) {
+        outbound.push(url);
+        return Promise.reject(new Error("test: no real network"));
+      }
+      return realFetch(input, init);
+    });
+    cleanups.push(() => void vi.restoreAllMocks());
+    const configured = await started.ask("POST", "/api/sync/configure", {
+      endpoint: "https://relay.example",
+      relay_token: "demo-relay-token",
+    });
+    expect(configured.status).toBe(200);
+    const run = await started.ask<{ message?: string }>("POST", "/api/sync/run", {});
+    expect(run.status).toBeGreaterThanOrEqual(400);
+    expect(outbound).toEqual([]);
+    // The real Core's sync stays untouched.
+    expect(started.core.runtime.sync.status().enabled).toBe(false);
+  });
+
+  it("the demo Core's data folder is not the real one and is never created", async () => {
+    const started = await startDemo();
+    const inventory = await started.ask<{ location: string }>("GET", "/api/privacy");
+    expect(inventory.status).toBe(200);
+    expect(inventory.json.location).not.toBe(started.core.dataDir);
+    expect(existsSync(inventory.json.location)).toBe(false);
+  });
+
   it("accepts the browser origin that asked, and no other", async () => {
     const started = await startDemo();
     const origin = "http://127.0.0.1:5199";

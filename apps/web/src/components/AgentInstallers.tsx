@@ -10,13 +10,14 @@ import type {
   InstallApplied,
   InstallPreview,
 } from "../core/types";
+import { useT, type MessageKey, type Translate } from "../i18n";
 import { Feedback } from "./Feedback";
 
-const STATE_TEXT: Record<AgentInstallView["state"], string> = {
-  installed: "Installed",
-  not_installed: "Not installed",
-  needs_repair: "Needs repair",
-  unsupported: "Unsupported",
+const STATE_TEXT: Record<AgentInstallView["state"], MessageKey> = {
+  installed: "agents.installers.state.installed",
+  not_installed: "agents.installers.state.notInstalled",
+  needs_repair: "agents.installers.state.needsRepair",
+  unsupported: "agents.installers.state.unsupported",
 };
 
 /** The action a state offers, in the order the buttons are shown. */
@@ -28,10 +29,28 @@ function actionsFor(agent: AgentInstallView): AgentInstallAction[] {
   return [];
 }
 
-const ACTION_LABEL: Record<AgentInstallAction, string> = {
-  install: "Install",
-  repair: "Repair",
-  uninstall: "Uninstall",
+const ACTION_LABEL: Record<AgentInstallAction, MessageKey> = {
+  install: "agents.installers.action.install",
+  repair: "agents.installers.action.repair",
+  uninstall: "agents.installers.action.uninstall",
+};
+
+const ACTION_ARIA: Record<AgentInstallAction, MessageKey> = {
+  install: "agents.installers.actionLabel.install",
+  repair: "agents.installers.actionLabel.repair",
+  uninstall: "agents.installers.actionLabel.uninstall",
+};
+
+const PREVIEW_ARIA: Record<AgentInstallAction, MessageKey> = {
+  install: "agents.installers.previewLabel.install",
+  repair: "agents.installers.previewLabel.repair",
+  uninstall: "agents.installers.previewLabel.uninstall",
+};
+
+const CONFIRM_LABEL: Record<AgentInstallAction, MessageKey> = {
+  install: "agents.installers.confirm.install",
+  repair: "agents.installers.confirm.repair",
+  uninstall: "agents.installers.confirm.uninstall",
 };
 
 /** Only web links are rendered as links. */
@@ -44,12 +63,16 @@ function safeUrl(raw: string): string | null {
   }
 }
 
-function stateText(agent: AgentInstallView): string {
+function stateText(t: Translate, agent: AgentInstallView): string {
   if (agent.support === "unsupported" || agent.state === "unsupported")
-    return `Unsupported${agent.reason ? `: ${agent.reason}` : ""}`;
+    return agent.reason
+      ? t("agents.installers.unsupportedReason", { reason: agent.reason })
+      : t("agents.installers.state.unsupported");
   if (agent.state === "needs_repair")
-    return `Needs repair${agent.missing.length ? ` — missing: ${agent.missing.join(", ")}` : ""}`;
-  return STATE_TEXT[agent.state];
+    return agent.missing.length
+      ? t("agents.installers.needsRepairMissing", { missing: agent.missing.join(", ") })
+      : t("agents.installers.state.needsRepair");
+  return t(STATE_TEXT[agent.state]);
 }
 
 interface OpenPreview {
@@ -61,6 +84,7 @@ interface OpenPreview {
 
 /** Settings section: install, repair or remove Phoenix's hooks in each coding agent, previewed first. */
 export function AgentInstallersSection() {
+  const t = useT();
   const client = useClient();
   const { data, error: loadError, reload } = useAgentInstallers();
   const [busy, setBusy] = useState(false);
@@ -84,7 +108,7 @@ export function AgentInstallersSection() {
           setError(err.message);
           if (err.status === 409) onConflict?.();
         } else {
-          setError("Request failed");
+          setError(t("common.error.requestFailed"));
         }
         return undefined;
       } finally {
@@ -92,7 +116,7 @@ export function AgentInstallersSection() {
         setBusy(false);
       }
     },
-    [client],
+    [client, t],
   );
 
   const startPreview = async (agent: AgentInstallView, action: AgentInstallAction) => {
@@ -110,7 +134,7 @@ export function AgentInstallersSection() {
     if (!res) return;
     setPreview(null);
     setApplied(
-      `${res.summary}${res.kept_user_edits ? " Your own edits to the file were kept." : ""}`,
+      res.kept_user_edits ? `${res.summary} ${t("agents.installers.keptEdits")}` : res.summary,
     );
     void reload();
   };
@@ -125,23 +149,22 @@ export function AgentInstallersSection() {
   return (
     <section aria-labelledby="agent-installers-h" className="card">
       <h2 id="agent-installers-h" className="h3">
-        Coding agents
+        {t("agents.installers.title")}
       </h2>
-      <p className="muted small">
-        Let coding agents on this computer report to Phoenix by adding its hooks to their settings.
-        Every change is shown first as a diff; nothing is written until you confirm.
-      </p>
+      <p className="muted small">{t("agents.installers.intro")}</p>
       {relay && (
         <p className="small">
-          Relay: {relay.running ? "running" : "not running"} · version {relay.version}
+          {t(relay.running ? "agents.installers.relayRunning" : "agents.installers.relayStopped", {
+            version: relay.version,
+          })}
           {relay.error ? ` · ${relay.error}` : ""}
         </p>
       )}
       <Feedback error={loadError ?? error} saved={applied} />
       {data.agents.length === 0 ? (
-        <p className="muted small">No coding agents are known to Phoenix.</p>
+        <p className="muted small">{t("agents.installers.none")}</p>
       ) : (
-        <ul className="card-list" aria-label="Coding agents">
+        <ul className="card-list" aria-label={t("agents.installers.listLabel")}>
           {data.agents.map((a) => {
             const url = safeUrl(a.doc_url);
             const open = preview && preview.agent.id === a.id ? preview : null;
@@ -152,16 +175,18 @@ export function AgentInstallersSection() {
                   <strong>{a.label}</strong>
                 </p>
                 <p className="small">
-                  {a.detected ? "Detected" : "Not detected"}
+                  {a.detected
+                    ? t("agents.installers.detected")
+                    : t("agents.installers.notDetected")}
                   {a.detected && a.detected_via ? ` (${a.detected_via})` : ""}
                 </p>
                 <p className="small">
-                  {stateText(a)}
+                  {stateText(t, a)}
                   {unsupported && url && (
                     <>
                       {" "}
                       <a href={url} target="_blank" rel="noreferrer">
-                        Documentation
+                        {t("agents.installers.documentation")}
                       </a>
                     </>
                   )}
@@ -169,11 +194,13 @@ export function AgentInstallersSection() {
                 {!unsupported && a.reason && <p className="muted small">{a.reason}</p>}
                 {a.note && <p className="muted small">{a.note}</p>}
                 {!unsupported && !a.detected && (
-                  <p className="muted small">Not found on this computer.</p>
+                  <p className="muted small">{t("agents.installers.notFound")}</p>
                 )}
                 {a.config_path && (
                   <p className="small">
-                    Config file: <code className="memory-text">{a.config_path}</code>
+                    {t.rich("agents.installers.configFile", {
+                      path: <code className="memory-text">{a.config_path}</code>,
+                    })}
                   </p>
                 )}
                 <div className="button-row">
@@ -183,17 +210,22 @@ export function AgentInstallersSection() {
                       type="button"
                       className="btn"
                       disabled={busy}
-                      aria-label={`${ACTION_LABEL[action]} Phoenix hooks for ${a.label}`}
+                      aria-label={t(ACTION_ARIA[action], { agent: a.label })}
                       onClick={() => void startPreview(a, action)}
                     >
-                      {ACTION_LABEL[action]}
+                      {t(ACTION_LABEL[action])}
                     </button>
                   ))}
                 </div>
                 {open && (
-                  <div role="region" aria-label={`Preview: ${open.data.action} ${a.label}`}>
+                  <div
+                    role="region"
+                    aria-label={t(PREVIEW_ARIA[open.data.action], { agent: a.label })}
+                  >
                     <p className="small">
-                      Changes to <code className="memory-text">{open.data.path}</code>
+                      {t.rich("agents.installers.changesTo", {
+                        path: <code className="memory-text">{open.data.path}</code>,
+                      })}
                     </p>
                     {open.data.changed ? (
                       open.data.diff && (
@@ -202,7 +234,7 @@ export function AgentInstallersSection() {
                         </pre>
                       )
                     ) : (
-                      <p className="small">No changes needed</p>
+                      <p className="small">{t("agents.installers.noChanges")}</p>
                     )}
                     {open.data.notes.length > 0 && (
                       <ul className="small">
@@ -219,7 +251,7 @@ export function AgentInstallersSection() {
                           disabled={busy}
                           onClick={() => void startPreview(a, open.data.action)}
                         >
-                          Preview again
+                          {t("agents.installers.previewAgain")}
                         </button>
                       ) : (
                         <button
@@ -228,11 +260,11 @@ export function AgentInstallersSection() {
                           disabled={busy}
                           onClick={() => void confirm(open)}
                         >
-                          Confirm {open.data.action}
+                          {t(CONFIRM_LABEL[open.data.action])}
                         </button>
                       )}
                       <button type="button" className="btn" disabled={busy} onClick={cancel}>
-                        Cancel
+                        {t("common.button.cancel")}
                       </button>
                     </div>
                   </div>

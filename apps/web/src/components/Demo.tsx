@@ -10,13 +10,15 @@ import {
 } from "react";
 import type { PhoenixClient } from "../core/client";
 import { CoreProvider } from "../core/context";
-import { DEMO_UI_TEXT } from "../core/demo";
+import { demoCaption } from "../core/demo";
 import {
   DemoController,
   type DemoClientFactory,
   type DemoRouter,
   type DemoSnapshot,
 } from "../core/demo-controller";
+import { formatNumber } from "../core/format";
+import { useLocale, useT } from "../i18n";
 import { Feedback } from "./Feedback";
 import "./demo.css";
 
@@ -61,31 +63,37 @@ export function DemoHost({
 }
 
 function DemoBanner() {
+  const t = useT();
   return (
     <div className="demo-banner" role="status">
-      <strong>{DEMO_UI_TEXT.banner}</strong>
-      <span className="demo-banner-detail">{DEMO_UI_TEXT.bannerDetail}</span>
+      <strong>{t("services.demo.banner")}</strong>
+      <span className="demo-banner-detail">{t("services.demo.bannerDetail")}</span>
     </div>
   );
 }
 
 function DemoWalkthrough() {
+  const t = useT();
+  const { locale } = useLocale();
   const { controller, state } = useDemo();
   const steps = state.session?.steps ?? [];
   const current = state.step >= 0 ? steps[state.step] : undefined;
   const next = state.step + 1;
   const last = state.step >= steps.length - 1 && state.step >= 0;
   return (
-    <section className="demo-walkthrough card" aria-label={DEMO_UI_TEXT.settingsTitle}>
+    <section className="demo-walkthrough card" aria-label={t("services.demo.settingsTitle")}>
       <p className="small muted">
         {current
-          ? `${DEMO_UI_TEXT.stepOf} ${state.step + 1} / ${steps.length}`
-          : `${steps.length} ${DEMO_UI_TEXT.stepOf.toLowerCase()}s`}
+          ? t("services.demo.stepOf", {
+              n: formatNumber(state.step + 1),
+              total: formatNumber(steps.length),
+            })
+          : t("services.demo.stepCount", { count: steps.length })}
       </p>
       <p className="demo-caption" aria-live="polite">
-        {current ? current.caption : DEMO_UI_TEXT.settingsIntro}
+        {current ? demoCaption(current, t, locale) : t("services.demo.settingsIntro")}
       </p>
-      {last && !state.playing && <p className="small">{DEMO_UI_TEXT.finished}</p>}
+      {last && !state.playing && <p className="small">{t("services.demo.finished")}</p>}
       <div className="button-row wrap">
         <button
           type="button"
@@ -93,7 +101,7 @@ function DemoWalkthrough() {
           disabled={state.playing || state.step <= 0}
           onClick={() => void controller.play(state.step - 1)}
         >
-          {DEMO_UI_TEXT.previous}
+          {t("services.demo.previous")}
         </button>
         {current && (
           <button
@@ -102,7 +110,7 @@ function DemoWalkthrough() {
             disabled={state.playing}
             onClick={() => void controller.play(state.step)}
           >
-            {state.playing ? DEMO_UI_TEXT.playing : DEMO_UI_TEXT.play}
+            {state.playing ? t("services.demo.playing") : t("services.demo.play")}
           </button>
         )}
         <button
@@ -111,7 +119,7 @@ function DemoWalkthrough() {
           disabled={state.playing || next >= steps.length}
           onClick={() => void controller.play(next)}
         >
-          {DEMO_UI_TEXT.next}
+          {t("services.demo.next")}
         </button>
         <button
           type="button"
@@ -119,10 +127,10 @@ function DemoWalkthrough() {
           disabled={state.phase !== "on"}
           onClick={() => void controller.stop()}
         >
-          {DEMO_UI_TEXT.stop}
+          {t("services.demo.stop")}
         </button>
       </div>
-      <Feedback error={state.error} />
+      <Feedback error={state.error} saved={state.notice} />
     </section>
   );
 }
@@ -136,14 +144,15 @@ export function DemoSettingsSection() {
 }
 
 function DemoStart() {
+  const t = useT();
   const { controller, state } = useDemo();
   const busy = state.phase === "starting" || state.phase === "stopping";
   return (
     <section aria-labelledby="demo-h" className="card">
       <h2 id="demo-h" className="h3">
-        {DEMO_UI_TEXT.settingsTitle}
+        {t("services.demo.settingsTitle")}
       </h2>
-      <p className="small">{DEMO_UI_TEXT.settingsIntro}</p>
+      <p className="small">{t("services.demo.settingsIntro")}</p>
       <div className="button-row wrap">
         <button
           type="button"
@@ -151,7 +160,7 @@ function DemoStart() {
           disabled={busy || state.phase === "on"}
           onClick={() => void controller.start()}
         >
-          {state.phase === "starting" ? DEMO_UI_TEXT.starting : DEMO_UI_TEXT.start}
+          {state.phase === "starting" ? t("services.demo.starting") : t("services.demo.start")}
         </button>
       </div>
       <Feedback error={state.error} />

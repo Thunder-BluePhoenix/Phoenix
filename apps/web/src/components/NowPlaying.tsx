@@ -10,6 +10,13 @@ import {
   type MediaRepeat,
   type MediaServiceId,
 } from "../core/media";
+import { useT, type MessageKey } from "../i18n";
+
+const REPEAT_TEXT: Record<MediaRepeat, MessageKey> = {
+  off: "services.media.repeatMode.off",
+  one: "services.media.repeatMode.one",
+  all: "services.media.repeatMode.all",
+};
 
 type ControlCommand =
   "play_pause" | "next" | "previous" | "seek" | "set_volume" | "set_shuffle" | "set_repeat";
@@ -59,8 +66,9 @@ function Range({ label, value, max, disabled, busy, onCommit }: RangeProps) {
 }
 
 function MediaSection({ id, name }: { id: MediaServiceId; name: string }) {
-  const { data, error, reload } = useCommandResult<unknown>(id, "now_playing", true, (t) =>
-    t.startsWith(`${id.replaceAll("-", "_")}.track.`),
+  const t = useT();
+  const { data, error, reload } = useCommandResult<unknown>(id, "now_playing", true, (type) =>
+    type.startsWith(`${id.replaceAll("-", "_")}.track.`),
   );
   const controls = {
     play_pause: useCommandAction(id, "play_pause"),
@@ -93,10 +101,10 @@ function MediaSection({ id, name }: { id: MediaServiceId; name: string }) {
   const headingId = `now-playing-${id}-h`;
   return (
     <section aria-labelledby={headingId} className="now-playing">
-      <h3 id={headingId}>Now playing · {name}</h3>
+      <h3 id={headingId}>{t("services.media.heading", { name })}</h3>
       {error && <p className="error-text small">{error}</p>}
-      {now === null && !error && <p className="muted small">Not yet loaded.</p>}
-      {notRunning && <p className="muted small">{name} is not running.</p>}
+      {now === null && !error && <p className="muted small">{t("services.common.notYetLoaded")}</p>}
+      {notRunning && <p className="muted small">{t("services.media.notRunning", { name })}</p>}
       {now && !notRunning && (
         <div className="media-track">
           {now.cover && <img className="media-cover" src={now.cover} alt="" />}
@@ -104,7 +112,7 @@ function MediaSection({ id, name }: { id: MediaServiceId; name: string }) {
             {now.title ? (
               <strong>{now.title}</strong>
             ) : (
-              <span className="muted">Nothing playing</span>
+              <span className="muted">{t("services.media.nothingPlaying")}</span>
             )}
             {now.artist && <div>{now.artist}</div>}
             {now.album && <div className="muted small">{now.album}</div>}
@@ -120,7 +128,7 @@ function MediaSection({ id, name }: { id: MediaServiceId; name: string }) {
         <button
           type="button"
           className="btn"
-          aria-label="Previous"
+          aria-label={t("services.media.previous")}
           disabled={off}
           onClick={() => send("previous", {})}
         >
@@ -129,7 +137,7 @@ function MediaSection({ id, name }: { id: MediaServiceId; name: string }) {
         <button
           type="button"
           className="btn"
-          aria-label={now?.state === "playing" ? "Pause" : "Play"}
+          aria-label={t(now?.state === "playing" ? "services.media.pause" : "services.media.play")}
           disabled={off}
           onClick={() => send("play_pause", {})}
         >
@@ -138,7 +146,7 @@ function MediaSection({ id, name }: { id: MediaServiceId; name: string }) {
         <button
           type="button"
           className="btn"
-          aria-label="Next"
+          aria-label={t("services.media.next")}
           disabled={off}
           onClick={() => send("next", {})}
         >
@@ -147,7 +155,7 @@ function MediaSection({ id, name }: { id: MediaServiceId; name: string }) {
         <button
           type="button"
           className="btn"
-          aria-label={now?.shuffle ? "Shuffle on" : "Shuffle off"}
+          aria-label={t(now?.shuffle ? "services.media.shuffleOn" : "services.media.shuffleOff")}
           aria-pressed={now?.shuffle === true}
           disabled={off}
           onClick={() => send("set_shuffle", { enabled: now?.shuffle !== true })}
@@ -157,7 +165,7 @@ function MediaSection({ id, name }: { id: MediaServiceId; name: string }) {
         <button
           type="button"
           className="btn"
-          aria-label={`Repeat: ${repeat}`}
+          aria-label={t("services.media.repeat", { mode: t(REPEAT_TEXT[repeat]) })}
           aria-pressed={repeat !== "off"}
           disabled={off}
           onClick={() => send("set_repeat", { mode: nextRepeat(repeat, id) })}
@@ -168,10 +176,10 @@ function MediaSection({ id, name }: { id: MediaServiceId; name: string }) {
       <div className="media-sliders">
         <div className="media-slider">
           <span className="muted small" aria-hidden="true">
-            Seek
+            {t("services.media.seek")}
           </span>
           <Range
-            label="Seek"
+            label={t("services.media.seek")}
             value={now?.position_s ?? 0}
             max={Math.floor(now?.duration_s ?? 0)}
             disabled={off || !now?.duration_s}
@@ -181,10 +189,10 @@ function MediaSection({ id, name }: { id: MediaServiceId; name: string }) {
         </div>
         <div className="media-slider">
           <span className="muted small" aria-hidden="true">
-            Volume
+            {t("services.media.volume")}
           </span>
           <Range
-            label="Volume"
+            label={t("services.media.volume")}
             value={now?.volume ?? 0}
             max={100}
             disabled={off || now?.volume === undefined}
@@ -195,7 +203,7 @@ function MediaSection({ id, name }: { id: MediaServiceId; name: string }) {
       </div>
       {waiting && (
         <p role="status" className="muted small">
-          Waiting for your approval…
+          {t("services.media.waitingApproval")}
         </p>
       )}
       {controlError && (

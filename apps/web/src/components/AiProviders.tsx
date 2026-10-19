@@ -11,11 +11,12 @@ import type {
   AiRouteCategory,
   AiStatus,
 } from "../core/types";
+import { useT, type MessageKey, type Translate } from "../i18n";
 import { Feedback } from "./Feedback";
 
-const LOCALITY_TEXT: Record<AiLocality, string> = {
-  local: "On this device",
-  cloud: "Cloud (leaves this device)",
+const LOCALITY_TEXT: Record<AiLocality, MessageKey> = {
+  local: "services.ai.locality.local",
+  cloud: "services.ai.locality.cloud",
 };
 
 const MAX_ENDPOINTS = 8;
@@ -25,15 +26,39 @@ const LOOPBACK_HOST = /^(localhost|127(\.\d{1,3}){3}|\[::1\])$/;
 
 const PRESETS: AiPreset[] = ["openai", "deepseek", "qwen", "moonshot", "lmstudio"];
 
-const ROUTE_LABEL: Record<AiRouteCategory, string> = {
-  chat: "Chat",
-  summaries: "Summaries",
-  cleanup: "Cleanup",
-};
-const ROUTE_HELP: Record<AiRouteCategory, string> = {
-  chat: "Answers to your questions in the chat and in Ask Fawkes.",
-  summaries: "Meeting summaries, plans, extraction and CI diagnosis.",
-  cleanup: "Tidying dictated text.",
+interface RouteText {
+  name: MessageKey;
+  help: MessageKey;
+  provider: MessageKey;
+  model: MessageKey;
+  save: MessageKey;
+  saved: MessageKey;
+}
+const ROUTE_TEXT: Record<AiRouteCategory, RouteText> = {
+  chat: {
+    name: "services.ai.routing.chat.name",
+    help: "services.ai.routing.chat.help",
+    provider: "services.ai.routing.chat.provider",
+    model: "services.ai.routing.chat.model",
+    save: "services.ai.routing.chat.save",
+    saved: "services.ai.routing.chat.saved",
+  },
+  summaries: {
+    name: "services.ai.routing.summaries.name",
+    help: "services.ai.routing.summaries.help",
+    provider: "services.ai.routing.summaries.provider",
+    model: "services.ai.routing.summaries.model",
+    save: "services.ai.routing.summaries.save",
+    saved: "services.ai.routing.summaries.saved",
+  },
+  cleanup: {
+    name: "services.ai.routing.cleanup.name",
+    help: "services.ai.routing.cleanup.help",
+    provider: "services.ai.routing.cleanup.provider",
+    model: "services.ai.routing.cleanup.model",
+    save: "services.ai.routing.cleanup.save",
+    saved: "services.ai.routing.cleanup.saved",
+  },
 };
 
 interface BaseUrlCheck {
@@ -42,21 +67,21 @@ interface BaseUrlCheck {
 }
 
 /** Core derives the real locality from the address; this is the same rule, so the user sees it before saving. */
-function checkBaseUrl(raw: string): BaseUrlCheck {
+function checkBaseUrl(raw: string, t: Translate): BaseUrlCheck {
   let url: URL;
   try {
     url = new URL(raw.trim());
   } catch {
-    return { locality: null, problem: "Enter a full address such as https://api.example.com/v1." };
+    return { locality: null, problem: t("services.ai.endpoints.urlInvalid") };
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    return { locality: null, problem: "The address must start with https:// or http://." };
+    return { locality: null, problem: t("services.ai.endpoints.urlScheme") };
   }
   if (LOOPBACK_HOST.test(url.hostname)) return { locality: "local", problem: null };
   if (url.protocol === "http:") {
     return {
       locality: null,
-      problem: "Use https; plain http is only allowed for this computer.",
+      problem: t("services.ai.endpoints.urlInsecure"),
     };
   }
   return { locality: "cloud", problem: null };
@@ -78,9 +103,9 @@ function useSettingsSave(reload: () => Promise<void>) {
   return { save, busy, error: problem ?? error, saved, setSaved, setProblem };
 }
 
-function keyState(p: AiProviderStatus): string {
-  if (p.key_policy === "none") return "No key needed";
-  return p.key_set ? "Key set" : "Key missing";
+function keyState(p: AiProviderStatus, t: Translate): string {
+  if (p.key_policy === "none") return t("services.ai.provider.keyNotNeeded");
+  return p.key_set ? t("services.ai.provider.keySet") : t("services.ai.provider.keyMissing");
 }
 
 /** The key goes to Core and into the OS keychain; this component never holds it after saving. */
@@ -91,6 +116,7 @@ function ProviderRow({
   provider: AiProviderStatus;
   reload: () => Promise<void>;
 }) {
+  const t = useT();
   const { run, busy, error } = useAction();
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
@@ -102,36 +128,40 @@ function ProviderRow({
     setSaved(null);
     if ((await run("POST", path, { value })) === undefined) return;
     setValue("");
-    setSaved("Key set. It is stored in your OS keychain and is never shown again.");
+    setSaved(t("services.ai.provider.keySaved"));
     await reload();
   };
   const remove = async () => {
     setSaved(null);
     if ((await run("DELETE", path)) === undefined) return;
     setValue("");
-    setSaved("Key removed from your keychain.");
+    setSaved(t("services.ai.provider.keyRemoved"));
     await reload();
   };
 
   return (
     <li>
       <strong>{provider.label}</strong>{" "}
-      <span className="small">{LOCALITY_TEXT[provider.locality]}</span>{" "}
+      <span className="small">{t(LOCALITY_TEXT[provider.locality])}</span>{" "}
       <span className="small">
         {provider.available
-          ? "Available"
-          : `Not available${provider.reason ? `: ${provider.reason}` : ""}`}
+          ? t("services.ai.provider.available")
+          : provider.reason
+            ? t("services.ai.provider.unavailableReason", { reason: provider.reason })
+            : t("services.ai.provider.unavailable")}
       </span>{" "}
-      <span className="small">{keyState(provider)}</span>
+      <span className="small">{keyState(provider, t)}</span>
       {provider.key_policy !== "none" && (
         <button type="button" className="btn" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {provider.key_set ? "Replace key" : "Set key"}
+          {provider.key_set
+            ? t("services.ai.provider.replaceKey")
+            : t("services.ai.provider.setKey")}
         </button>
       )}
       {open && (
         <form className="settings-form ai-key-form" onSubmit={(e) => void submit(e)}>
           <label className="field">
-            {provider.label} API key
+            {t("services.ai.provider.apiKey", { provider: provider.label })}
             <input
               type="password"
               autoComplete="off"
@@ -140,16 +170,13 @@ function ProviderRow({
               onChange={(e) => setValue(e.target.value)}
             />
           </label>
-          <p className="muted small">
-            Write-only: it is stored in your OS keychain and never shown again. Only used if you
-            allow external AI.
-          </p>
+          <p className="muted small">{t("services.ai.provider.keyNote")}</p>
           <div className="button-row wrap">
             <button type="submit" className="btn" disabled={busy || !value}>
-              Save {provider.label} key
+              {t("services.ai.provider.saveKey", { provider: provider.label })}
             </button>
             <button type="button" className="btn" disabled={busy} onClick={() => void remove()}>
-              Remove {provider.label} key
+              {t("services.ai.provider.removeKey", { provider: provider.label })}
             </button>
           </div>
         </form>
@@ -166,30 +193,28 @@ function endpointBody(e: AiEndpoint) {
 }
 
 function Endpoints({ status, reload }: { status: AiStatus; reload: () => Promise<void> }) {
+  const t = useT();
   const { save, busy, error, saved, setProblem } = useSettingsSave(reload);
   const [id, setId] = useState("");
   const [label, setLabel] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [preset, setPreset] = useState("");
-  const check = baseUrl.trim() === "" ? null : checkBaseUrl(baseUrl);
+  const check = baseUrl.trim() === "" ? null : checkBaseUrl(baseUrl, t);
 
   const add = async (e: FormEvent) => {
     e.preventDefault();
     const name = label.trim();
-    const verdict = checkBaseUrl(baseUrl);
+    const verdict = checkBaseUrl(baseUrl, t);
     if (status.endpoints.length >= MAX_ENDPOINTS) {
-      return setProblem(`You can add at most ${MAX_ENDPOINTS} endpoints.`);
+      return setProblem(t("services.ai.endpoints.tooMany", { max: MAX_ENDPOINTS }));
     }
     if (!ENDPOINT_ID.test(id)) {
-      return setProblem(
-        "The id needs 2 to 24 characters: lowercase letters, digits and hyphens, starting with a letter.",
-      );
+      return setProblem(t("services.ai.endpoints.badId"));
     }
     if (status.providers.some((p) => p.id === id)) {
-      return setProblem("That id is already used by another provider.");
+      return setProblem(t("services.ai.endpoints.idTaken"));
     }
-    if (name.length < 1 || name.length > 40)
-      return setProblem("The name needs 1 to 40 characters.");
+    if (name.length < 1 || name.length > 40) return setProblem(t("services.ai.endpoints.badName"));
     if (verdict.problem) return setProblem(verdict.problem);
     const entry: AiEndpoint = {
       id,
@@ -200,7 +225,7 @@ function Endpoints({ status, reload }: { status: AiStatus; reload: () => Promise
     };
     const ok = await save(
       { endpoints: [...status.endpoints, entry].map(endpointBody) },
-      `Endpoint ${name} added.`,
+      t("services.ai.endpoints.added", { name }),
     );
     if (ok) {
       setId("");
@@ -212,26 +237,23 @@ function Endpoints({ status, reload }: { status: AiStatus; reload: () => Promise
   const remove = (target: AiEndpoint) =>
     save(
       { endpoints: status.endpoints.filter((x) => x.id !== target.id).map(endpointBody) },
-      `Endpoint ${target.label} removed.`,
+      t("services.ai.endpoints.removed", { name: target.label }),
     );
 
   return (
     <fieldset className="ai-subsection">
-      <legend className="small">Custom endpoints (OpenAI-compatible servers)</legend>
-      <p className="muted small">
-        Phoenix works out whether an address is on this computer or in the cloud; you cannot claim
-        it. Anything that is not this computer must use https.
-      </p>
+      <legend className="small">{t("services.ai.endpoints.legend")}</legend>
+      <p className="muted small">{t("services.ai.endpoints.note")}</p>
       {status.endpoints.length === 0 ? (
-        <p className="muted small">No custom endpoints.</p>
+        <p className="muted small">{t("services.ai.endpoints.empty")}</p>
       ) : (
-        <ul className="privacy-list ai-providers" aria-label="Custom endpoints">
+        <ul className="privacy-list ai-providers" aria-label={t("services.ai.endpoints.list")}>
           {status.endpoints.map((ep) => (
             <li key={ep.id}>
               <strong>{ep.label}</strong> <span className="small">{ep.base_url}</span>{" "}
-              <span className="small">{LOCALITY_TEXT[ep.locality]}</span>
+              <span className="small">{t(LOCALITY_TEXT[ep.locality])}</span>
               <button type="button" className="btn" disabled={busy} onClick={() => void remove(ep)}>
-                Remove endpoint {ep.label}
+                {t("services.ai.endpoints.remove", { label: ep.label })}
               </button>
             </li>
           ))}
@@ -240,7 +262,7 @@ function Endpoints({ status, reload }: { status: AiStatus; reload: () => Promise
       {status.endpoints.length < MAX_ENDPOINTS && (
         <form className="settings-form" onSubmit={(e) => void add(e)}>
           <label className="field">
-            Id
+            {t("services.ai.endpoints.id")}
             <input
               type="text"
               value={id}
@@ -251,7 +273,7 @@ function Endpoints({ status, reload }: { status: AiStatus; reload: () => Promise
             />
           </label>
           <label className="field">
-            Name
+            {t("common.label.name")}
             <input
               type="text"
               value={label}
@@ -260,7 +282,7 @@ function Endpoints({ status, reload }: { status: AiStatus; reload: () => Promise
             />
           </label>
           <label className="field">
-            Base URL
+            {t("services.ai.endpoints.baseUrl")}
             <input
               type="text"
               value={baseUrl}
@@ -271,15 +293,16 @@ function Endpoints({ status, reload }: { status: AiStatus; reload: () => Promise
           </label>
           {check?.locality && (
             <p className="muted small">
-              This address is{" "}
-              {check.locality === "local" ? "on this device" : "in the cloud (leaves this device)"}.
+              {check.locality === "local"
+                ? t("services.ai.endpoints.addressLocal")
+                : t("services.ai.endpoints.addressCloud")}
             </p>
           )}
           {check?.problem && <p className="error-text small">{check.problem}</p>}
           <label className="field">
-            Preset (optional)
+            {t("services.ai.endpoints.preset")}
             <select value={preset} onChange={(e) => setPreset(e.target.value)}>
-              <option value="">None</option>
+              <option value="">{t("common.status.none")}</option>
               {PRESETS.map((p) => (
                 <option key={p} value={p}>
                   {p}
@@ -288,7 +311,7 @@ function Endpoints({ status, reload }: { status: AiStatus; reload: () => Promise
             </select>
           </label>
           <button type="submit" className="btn" disabled={busy}>
-            Add endpoint
+            {t("services.ai.endpoints.add")}
           </button>
         </form>
       )}
@@ -306,11 +329,12 @@ function RouteRow({
   status: AiStatus;
   reload: () => Promise<void>;
 }) {
+  const t = useT();
   const route = status.routing[category];
   const { save, busy, error, saved } = useSettingsSave(reload);
   const [provider, setProvider] = useState(route?.provider ?? "");
   const [model, setModel] = useState(route?.model ?? "");
-  const name = ROUTE_LABEL[category];
+  const text = ROUTE_TEXT[category];
   const chosen = status.providers.find((p) => p.id === provider);
 
   const submit = (e: FormEvent) => {
@@ -318,16 +342,16 @@ function RouteRow({
     const trimmed = model.trim();
     const next =
       provider === "" ? null : trimmed === "" ? { provider } : { provider, model: trimmed };
-    void save({ routing: { [category]: next } }, `${name} route saved.`);
+    void save({ routing: { [category]: next } }, t(text.saved));
   };
 
   return (
     <form className="settings-form ai-route" onSubmit={submit}>
       <p className="small">
-        <strong>{name}</strong>: {ROUTE_HELP[category]}
+        <strong>{t(text.name)}</strong>: {t(text.help)}
       </p>
       <label className="field">
-        {name} provider
+        {t(text.provider)}
         <select
           value={provider}
           onChange={(e) => {
@@ -335,29 +359,34 @@ function RouteRow({
             setModel("");
           }}
         >
-          <option value="">Automatic (on this device first)</option>
+          <option value="">{t("services.ai.automatic")}</option>
           {status.providers.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.label} ({p.locality === "local" ? "on this device" : "cloud"})
+              {t(
+                p.locality === "local"
+                  ? "services.ai.routing.providerLocal"
+                  : "services.ai.routing.providerCloud",
+                { label: p.label },
+              )}
             </option>
           ))}
         </select>
       </label>
       {provider !== "" && (
         <label className="field">
-          {name} model (optional)
+          {t(text.model)}
           <input
             type="text"
             value={model}
             autoComplete="off"
             spellCheck={false}
-            placeholder={chosen?.default_model ?? "default model"}
+            placeholder={chosen?.default_model ?? t("services.ai.defaultModel")}
             onChange={(e) => setModel(e.target.value)}
           />
         </label>
       )}
       <button type="submit" className="btn" disabled={busy}>
-        Save {name.toLowerCase()} route
+        {t(text.save)}
       </button>
       <Feedback error={error} saved={saved} />
     </form>
@@ -365,13 +394,11 @@ function RouteRow({
 }
 
 function Routing({ status, reload }: { status: AiStatus; reload: () => Promise<void> }) {
+  const t = useT();
   return (
     <fieldset className="ai-subsection">
-      <legend className="small">Which model does what</legend>
-      <p className="muted small">
-        A cloud route still needs the permission to send data to external AI and the opt-in for the
-        type of memory, both below. Without them nothing is sent, and the reason is shown instead.
-      </p>
+      <legend className="small">{t("services.ai.routing.legend")}</legend>
+      <p className="muted small">{t("services.ai.routing.note")}</p>
       {(["chat", "summaries", "cleanup"] as const).map((category) => (
         <RouteRow key={category} category={category} status={status} reload={reload} />
       ))}
@@ -385,20 +412,20 @@ interface PriceRow {
   output: string;
 }
 
-function parsePrices(rows: PriceRow[]): Record<string, AiPrice> | string {
+function parsePrices(rows: PriceRow[], t: Translate): Record<string, AiPrice> | string {
   const out: Record<string, AiPrice> = {};
   for (const row of rows) {
     const key = row.key.trim();
     if (key === "" && row.input.trim() === "" && row.output.trim() === "") continue;
     const colon = key.indexOf(":");
     if (colon < 1 || colon === key.length - 1) {
-      return `Use the form provider:model for the model key, for example "openai:gpt-4o".`;
+      return t("services.ai.prices.badKey");
     }
-    if (key in out) return `The model key ${key} appears twice.`;
+    if (key in out) return t("services.ai.prices.duplicateKey", { key });
     const input = row.input.trim() === "" ? Number.NaN : Number(row.input);
     const output = row.output.trim() === "" ? Number.NaN : Number(row.output);
     if (!Number.isFinite(input) || !Number.isFinite(output) || input < 0 || output < 0) {
-      return `Prices for ${key} must be numbers that are zero or more.`;
+      return t("services.ai.prices.badNumber", { key });
     }
     out[key] = { input_per_mtok: input, output_per_mtok: output };
   }
@@ -406,6 +433,7 @@ function parsePrices(rows: PriceRow[]): Record<string, AiPrice> | string {
 }
 
 function Prices({ status, reload }: { status: AiStatus; reload: () => Promise<void> }) {
+  const t = useT();
   const { save, busy, error, saved, setProblem } = useSettingsSave(reload);
   const [rows, setRows] = useState<PriceRow[]>(() =>
     Object.entries(status.prices).map(([key, p]) => ({
@@ -419,23 +447,21 @@ function Prices({ status, reload }: { status: AiStatus; reload: () => Promise<vo
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    const parsed = parsePrices(rows);
+    const parsed = parsePrices(rows, t);
     if (typeof parsed === "string") return setProblem(parsed);
-    void save({ prices: parsed }, "Prices saved.");
+    void save({ prices: parsed }, t("services.ai.prices.saved"));
   };
 
   return (
     <fieldset className="ai-subsection">
-      <legend className="small">Prices (optional)</legend>
-      <p className="muted small">
-        Phoenix has no built-in prices. Costs are shown only from the numbers you enter.
-      </p>
+      <legend className="small">{t("services.ai.prices.legend")}</legend>
+      <p className="muted small">{t("services.ai.prices.note")}</p>
       <form className="settings-form" onSubmit={submit}>
         {rows.map((row, i) => (
           // Rows have no stable identity before they are saved, so the index is the key.
           <div key={i} className="memory-row">
             <label className="field">
-              Model key, row {i + 1}
+              {t("services.ai.prices.modelKey", { n: i + 1 })}
               <input
                 type="text"
                 value={row.key}
@@ -446,7 +472,7 @@ function Prices({ status, reload }: { status: AiStatus; reload: () => Promise<vo
               />
             </label>
             <label className="field">
-              Input $ per 1M tokens, row {i + 1}
+              {t("services.ai.prices.input", { n: i + 1 })}
               <input
                 type="text"
                 inputMode="decimal"
@@ -455,7 +481,7 @@ function Prices({ status, reload }: { status: AiStatus; reload: () => Promise<vo
               />
             </label>
             <label className="field">
-              Output $ per 1M tokens, row {i + 1}
+              {t("services.ai.prices.output", { n: i + 1 })}
               <input
                 type="text"
                 inputMode="decimal"
@@ -468,7 +494,7 @@ function Prices({ status, reload }: { status: AiStatus; reload: () => Promise<vo
               className="btn"
               onClick={() => setRows(rows.filter((_, j) => j !== i))}
             >
-              Remove price row {i + 1}
+              {t("services.ai.prices.removeRow", { n: i + 1 })}
             </button>
           </div>
         ))}
@@ -478,10 +504,10 @@ function Prices({ status, reload }: { status: AiStatus; reload: () => Promise<vo
             className="btn"
             onClick={() => setRows([...rows, { key: "", input: "", output: "" }])}
           >
-            Add price
+            {t("services.ai.prices.add")}
           </button>
           <button type="submit" className="btn" disabled={busy}>
-            Save prices
+            {t("services.ai.prices.save")}
           </button>
         </div>
       </form>
@@ -492,13 +518,14 @@ function Prices({ status, reload }: { status: AiStatus; reload: () => Promise<vo
 
 /** AI providers: what is available, their keys, custom endpoints, routing and optional prices. */
 export function AiProviders({ status, reload }: { status: AiStatus; reload: () => Promise<void> }) {
+  const t = useT();
   return (
     <div className="ai-providers-section">
-      <h3 className="h3">AI providers</h3>
+      <h3 className="h3">{t("services.ai.title")}</h3>
       {status.providers.length === 0 ? (
-        <p className="muted small">No AI providers found.</p>
+        <p className="muted small">{t("services.ai.empty")}</p>
       ) : (
-        <ul className="privacy-list ai-providers" aria-label="AI providers">
+        <ul className="privacy-list ai-providers" aria-label={t("services.ai.title")}>
           {status.providers.map((p) => (
             <ProviderRow key={p.id} provider={p} reload={reload} />
           ))}

@@ -56,6 +56,22 @@ export const RECAP_METRIC = {
 /** Where AgentLive reports what it saw; `atMs` is Core's clock, never the sender's. */
 export interface RecapSink {
   bump(atMs: number, bumps: readonly RecapBump[]): void;
+  /**
+   * Goes up each time the statistics are deleted. A live session that last reported under an
+   * earlier epoch must not carry its time from before the delete into the new counts.
+   */
+  readonly epoch: number;
+}
+
+/** Most lines one step may add (or remove) in the recap; a hook reports the number, Core cannot check it. */
+export const MAX_STEP_LINES = 100_000;
+/** Most lines of each kind one live session may add to the recap in total. */
+export const MAX_SESSION_LINES = 1_000_000;
+
+/** How many of `reported` lines the recap counts, given what this session already put in. */
+export function countableLines(reported: number, alreadyCounted: number): number {
+  const room = Math.max(0, MAX_SESSION_LINES - alreadyCounted);
+  return Math.max(0, Math.min(reported, MAX_STEP_LINES, room));
 }
 
 /** A gap longer than this between two reports from one session is not counted as coding time. */
@@ -126,14 +142,29 @@ export class RecapRuntime implements RecapApi, RecapSink {
 
   // ── Recording ─────────────────────────────────────────────────────────────
 
+  /** See RecapSink.epoch. */
+  epoch = 0;
+
   bump(atMs: number, bumps: readonly RecapBump[]): void {
     this.store.bump(dayKeyOf(atMs, this.timeZone), bumps);
   }
 
+  /**
+   * Only the capability that owns the event family counts. This is NOT a defence against a forged
+   * event: anyone holding the session token can publish an event with source `github` or `git`
+   * (the simulator does exactly that), so a forged `github.ci.failed` IS counted. The recap is a
+   * personal tally on this computer, not evidence; what is enforced is only that the counts stay
+   * bounded: events older than RECAP_KEEP_DAYS are dropped (they would be pruned at once anyway)
+   * and a timestamp more than a day ahead is replaced by Core's clock.
+   */
   private metricOf(event: PhoenixEvent): string | undefined {
     if (event.event_type === GIT_COMMIT && event.source === "git") return RECAP_METRIC.commits;
-    // Only the capability that owns the event family: a forged `github.ci.failed` is not CI.
     return event.source === "github" ? CI_EVENTS[event.event_type] : undefined;
+  }
+
+  /** The first day still kept, as a day key; anything earlier is not counted. */
+  private oldestKeptDay(now: number): string {
+    return addDays(dayKeyOf(now, this.timeZone), -RECAP_KEEP_DAYS);
   }
 
   private onEvent(event: PhoenixEvent): void {
@@ -143,6 +174,7 @@ export class RecapRuntime implements RecapApi, RecapSink {
     const stamped = Date.parse(event.timestamp);
     // A clock more than a day ahead is not trusted.
     const at = Number.isFinite(stamped) && stamped <= now + 86_400_000 ? stamped : now;
+    if (dayKeyOf(at, this.timeZone) < this.oldestKeptDay(now)) return;
     try {
       this.bump(at, [{ metric, value: 1 }]);
     } catch (err) {
@@ -161,23 +193,27 @@ export class RecapRuntime implements RecapApi, RecapSink {
       )
       .all(...COUNTED_EVENTS) as unknown as ClockRow[];
     const now = this.now();
+    const oldest = this.oldestKeptDay(now);
     for (const row of rows) {
       const metric =
         row.event_type === GIT_COMMIT ? RECAP_METRIC.commits : CI_EVENTS[row.event_type];
       const stamped = Date.parse(row.timestamp);
       if (!metric || !Number.isFinite(stamped)) continue;
-      this.bump(Math.min(stamped, now), [{ metric, value: 1 }]);
+      const at = Math.min(stamped, now);
+      if (dayKeyOf(at, this.timeZone) < oldest) continue;
+      this.bump(at, [{ metric, value: 1 }]);
     }
     this.d.settings.set(BACKFILLED_KEY, true);
   }
 
   /** Drops rows older than RECAP_KEEP_DAYS. */
   maintain(): number {
-    return this.store.deleteBefore(addDays(dayKeyOf(this.now(), this.timeZone), -RECAP_KEEP_DAYS));
+    return this.store.deleteBefore(this.oldestKeptDay(this.now()));
   }
 
   deleteAll(): { deleted: number } {
     const deleted = this.store.deleteAll();
+    this.epoch++;
     void this.d.audit.record({
       actor: "user",
       action: "recap.stats.delete",

@@ -8,9 +8,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../core/client";
 import { useClient, useConnection } from "../core/context";
-import type { DictationResult, DictationStarted, DictationStatus } from "../core/dictation";
+import {
+  dictationStopped,
+  type DictationResult,
+  type DictationStarted,
+  type DictationStatus,
+} from "../core/dictation";
 import type { DictationMicrophone } from "../core/dictation-mic";
-import type { ConnectionStatus } from "../core/types";
+import { translate } from "../i18n/store";
 import type { PillAnalyser } from "./analyser";
 import type { PillShell } from "./shell";
 
@@ -57,27 +62,18 @@ interface Attempt {
 }
 
 const failure = (err: unknown) =>
-  err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Request failed";
+  err instanceof ApiError
+    ? err.message
+    : err instanceof Error
+      ? err.message
+      : translate("common.error.requestFailed");
 
 /** The shell's paste errors are plain `{ code, message }` objects whose message is for humans. */
 function pasteFailure(err: unknown): string {
   if (typeof err === "object" && err !== null && "message" in err) {
     if (typeof err.message === "string" && err.message) return err.message.slice(0, 300);
   }
-  return "The text could not be pasted.";
-}
-
-/** Why dictation cannot start now, in the words of the Dictate button; null when it can. */
-export function dictationBlocked(
-  status: DictationStatus | null,
-  connection: ConnectionStatus,
-): string | null {
-  if (!status) return "Dictation status is not available.";
-  if (!status.enabled) return "Dictation is off. Turn it on in Settings, under Dictation.";
-  if (status.kill_switch_engaged) return "The emergency stop is engaged.";
-  if (!status.recognizer.available) return status.recognizer.detail;
-  if (connection !== "online") return "Phoenix Core is not connected.";
-  return null;
+  return translate("capture.pill.pasteFailed");
 }
 
 /** Core's dictation status, refreshed when the connection changes and whenever `refreshKey` does. */
@@ -130,7 +126,7 @@ export function useDictationSession(options: DictationSessionOptions): Dictation
   );
   useEffect(() => () => abandon(null, true), [abandon]);
   useEffect(() => {
-    if (connection !== "online") abandon("Phoenix Core is not connected.", false);
+    if (connection !== "online") abandon(translate("capture.audio.coreNotConnected"), false);
   }, [connection, abandon]);
 
   const finish = useCallback(
@@ -155,7 +151,7 @@ export function useDictationSession(options: DictationSessionOptions): Dictation
       if (!recognised) {
         attempt.current = null;
         setPhase("idle");
-        setOutcome({ tone: "info", text: "Nothing was recognised." });
+        setOutcome({ tone: "info", text: translate("capture.dictation.nothingRecognised") });
         shell?.ended();
         return;
       }
@@ -170,7 +166,14 @@ export function useDictationSession(options: DictationSessionOptions): Dictation
       current.stage = "pasting";
       try {
         const pasted = await shell.paste(recognised);
-        setOutcome({ tone: "success", text: pasted.pasted === "typed" ? "Typed" : "Pasted" });
+        setOutcome({
+          tone: "success",
+          text: translate(
+            pasted.pasted === "typed"
+              ? "capture.pill.outcome.typed"
+              : "capture.pill.outcome.pasted",
+          ),
+        });
       } catch (err) {
         setOutcome({ tone: "error", text: pasteFailure(err) });
       }
@@ -224,7 +227,7 @@ export function useDictationSession(options: DictationSessionOptions): Dictation
       try {
         message = JSON.parse(event.data) as typeof message;
       } catch {
-        return abandon("Invalid reply from Core.", true);
+        return abandon(translate("capture.audio.invalidReply"), true);
       }
       if (message.type === "ready") {
         if (current.micRequested) return;
@@ -245,22 +248,23 @@ export function useDictationSession(options: DictationSessionOptions): Dictation
               current.stage = "listening";
               setPhase("listening");
             },
-            (err: unknown) => abandon(`Microphone unavailable: ${failure(err)}`, true),
+            (err: unknown) =>
+              abandon(translate("capture.audio.micUnavailable", { reason: failure(err) }), true),
           );
       } else if (message.type === "ended" || message.type === "error") {
         const why =
           typeof message.reason === "string" ? message.reason : String(message.error ?? "");
-        abandon(`Dictation stopped${why ? `: ${why.replaceAll("_", " ")}` : ""}.`, false);
+        abandon(dictationStopped(why), false);
       } else if (message.type === "audio_ended") {
         void finish(current);
       }
     };
     socket.onerror = () => {
-      if (attempt.current === current) abandon("The audio connection failed.", true);
+      if (attempt.current === current) abandon(translate("capture.audio.connectionFailed"), true);
     };
     socket.onclose = () => {
       if (attempt.current === current && !current.done)
-        abandon("The audio connection closed.", true);
+        abandon(translate("capture.audio.connectionClosed"), true);
     };
   }, [client, abandon, finish]);
 

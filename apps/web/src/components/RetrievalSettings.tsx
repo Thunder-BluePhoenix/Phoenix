@@ -1,65 +1,80 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { useState } from "react";
-import { formatAgo } from "../core/format";
+import { formatAgo, formatNumber } from "../core/format";
 import { useAction, useRetrievalSettings, useRetrievalStatus } from "../core/hooks";
 import type { RetrievalSettings as Settings, RetrievalStatus } from "../core/types";
+import { useT, type MessageKey, type Translate } from "../i18n";
 import { Feedback } from "./Feedback";
 
-const INACTIVE_TEXT: Record<string, string> = {
-  retrieval_disabled: "Smart search is off.",
-  ai_disabled: "Smart search is on, but AI is off, so it is not used. Turn AI on below.",
-  kill_switch: "Smart search is paused by the emergency stop. Disengage it before rebuilding.",
+const INACTIVE_KEY: Record<string, MessageKey> = {
+  retrieval_disabled: "memory.retrieval.inactive.retrieval_disabled",
+  ai_disabled: "memory.retrieval.inactive.ai_disabled",
+  kill_switch: "memory.retrieval.inactive.kill_switch",
 };
 
-const bytes = (n: number) =>
-  n < 1024 * 1024
-    ? `${Math.max(1, Math.round(n / 1024))} KB`
-    : `${(n / 1024 / 1024).toFixed(1)} MB`;
+const MB = 1024 * 1024;
+
+/** The size of the index in KB (at least 1) or MB (one decimal), in the digits of the language. */
+function bytes(n: number, t: Translate): string {
+  if (n < MB)
+    return t("memory.retrieval.kb", { n: formatNumber(Math.max(1, Math.round(n / 1024))) });
+  const mb = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
+  return t("memory.retrieval.mb", { n: formatNumber(n / MB, undefined, mb) });
+}
 
 function StatusLines({ status }: { status: RetrievalStatus }) {
+  const t = useT();
+  const inactive = INACTIVE_KEY[status.inactive_reason ?? ""];
+  const run = status.last_run;
   return (
-    <dl className="approval-facts small" aria-label="Smart search status">
-      <dt>State</dt>
+    <dl className="approval-facts small" aria-label={t("memory.retrieval.statusLabel")}>
+      <dt>{t("memory.retrieval.state")}</dt>
       <dd>
         {status.active
-          ? "Working: searches use keywords and meaning."
-          : (INACTIVE_TEXT[status.inactive_reason ?? ""] ?? "Not in use.")}
+          ? t("memory.retrieval.working")
+          : t(inactive ?? "memory.retrieval.inactive.other")}
       </dd>
-      <dt>Index size</dt>
+      <dt>{t("memory.retrieval.indexSize")}</dt>
       <dd>
-        {status.embedded} of {status.total} memories indexed ({status.unembedded} waiting,{" "}
-        {status.failures} failed) · {bytes(status.payload_bytes)}
+        {t("memory.retrieval.indexLine", {
+          embedded: formatNumber(status.embedded),
+          total: status.total,
+          unembedded: formatNumber(status.unembedded),
+          failures: formatNumber(status.failures),
+          size: bytes(status.payload_bytes, t),
+        })}
       </dd>
-      <dt>Model</dt>
+      <dt>{t("memory.retrieval.model")}</dt>
       <dd className="memory-text">
-        {status.provider} / {status.model}
+        {t("memory.retrieval.modelLine", { provider: status.provider, model: status.model })}
       </dd>
-      <dt>Last build</dt>
+      <dt>{t("memory.retrieval.lastBuild")}</dt>
       <dd>
-        {status.last_run ? (
-          <>
-            {formatAgo(status.last_run.at)}: {status.last_run.embedded} added,{" "}
-            {status.last_run.failed} failed, {status.last_run.remaining} left
-            {status.last_run.capped &&
-              " (stopped at its limit; more can be indexed on a later run)"}
-          </>
-        ) : (
-          "Not built since Phoenix started."
-        )}
+        {run
+          ? t(run.capped ? "memory.retrieval.lastRunCapped" : "memory.retrieval.lastRun", {
+              ago: formatAgo(run.at),
+              embedded: formatNumber(run.embedded),
+              failed: formatNumber(run.failed),
+              remaining: formatNumber(run.remaining),
+            })
+          : t("memory.retrieval.neverBuilt")}
       </dd>
-      <dt>Fallback</dt>
+      <dt>{t("memory.retrieval.fallback")}</dt>
       <dd>
-        {status.last_run && status.last_run.degraded.length > 0
-          ? `Keywords only for some of it: ${status.last_run.degraded.join("; ")}`
-          : "None: no fallback reason was reported."}
+        {run && run.degraded.length > 0
+          ? t("memory.retrieval.degraded", { reasons: run.degraded.join("; ") })
+          : t("memory.retrieval.noFallback")}
       </dd>
       {status.other_models.length > 0 && (
         <>
-          <dt>Old vectors</dt>
+          <dt>{t("memory.retrieval.oldVectors")}</dt>
           <dd className="memory-text">
-            Kept but never used:{" "}
-            {status.other_models.map((m) => `${m.model} (${m.vectors})`).join(", ")}
+            {t("memory.retrieval.oldVectorsLine", {
+              models: status.other_models
+                .map((m) => `${m.model} (${formatNumber(m.vectors)})`)
+                .join(", "),
+            })}
           </dd>
         </>
       )}
@@ -68,6 +83,7 @@ function StatusLines({ status }: { status: RetrievalStatus }) {
 }
 
 function RetrievalForm({ settings, reload }: { settings: Settings; reload: () => Promise<void> }) {
+  const t = useT();
   const { data: status, error: statusError, reload: reloadStatus } = useRetrievalStatus();
   const { run, busy, error } = useAction();
   const [saved, setSaved] = useState<string | null>(null);
@@ -85,11 +101,7 @@ function RetrievalForm({ settings, reload }: { settings: Settings; reload: () =>
     const on = !settings.enabled;
     const res = await run<Settings>("POST", "/api/retrieval/settings", { enabled: on });
     if (res) {
-      setSaved(
-        on
-          ? "Smart search is on. It builds its index on this computer whenever AI is also on."
-          : "Smart search is off. Searches use keywords only.",
-      );
+      setSaved(t(on ? "memory.retrieval.savedOn" : "memory.retrieval.savedOff"));
     }
     await refresh();
   };
@@ -103,8 +115,15 @@ function RetrievalForm({ settings, reload }: { settings: Settings; reload: () =>
       const report = result.last_run;
       setSaved(
         report
-          ? `Full rebuild finished this bounded run: ${report.embedded} indexed, ${report.failed} failed, ${report.remaining} waiting${report.capped ? "; stopped at its limit" : ""}.${report.degraded.length ? ` Keywords only for some of it: ${report.degraded.join("; ")}` : ""}`
-          : "Full rebuild returned without an indexing report. Check the index status for remaining memories and failures.",
+          ? t("memory.retrieval.rebuilt", {
+              embedded: formatNumber(report.embedded),
+              failed: formatNumber(report.failed),
+              remaining: formatNumber(report.remaining),
+              capped: report.capped ? 1 : 0,
+              degraded: report.degraded.length > 0 ? 1 : 0,
+              reasons: report.degraded.join("; "),
+            })
+          : t("memory.retrieval.rebuiltNoReport"),
       );
       await reloadStatus();
     }
@@ -119,14 +138,13 @@ function RetrievalForm({ settings, reload }: { settings: Settings; reload: () =>
           disabled={busy}
           onChange={() => void toggle()}
         />
-        Smart search (keywords and meaning)
+        {t("memory.retrieval.toggle")}
       </label>
       <p className="muted small">
-        Off by default. When on, Phoenix turns your memories into number lists (embeddings) with{" "}
-        <code>{settings.model}</code> through <strong>{settings.provider}</strong> to find things
-        you word differently. Your search questions are embedded too, and they are treated as
-        sensitive: they stay on this computer and are never sent to a cloud service unless you
-        yourself chose that for sensitive data in the AI settings below. It also needs AI turned on.
+        {t.rich("memory.retrieval.toggleNote", {
+          model: <code>{settings.model}</code>,
+          provider: <strong>{settings.provider}</strong>,
+        })}
       </p>
       {status && <StatusLines status={status} />}
       {statusError && !status && <Feedback error={statusError} />}
@@ -139,10 +157,14 @@ function RetrievalForm({ settings, reload }: { settings: Settings; reload: () =>
             aria-describedby="retrieval-rebuild-note"
             onClick={() => setConfirmRebuild(true)}
           >
-            Rebuild entire index
+            {t("memory.retrieval.rebuild")}
           </button>
         ) : (
-          <div className="button-row wrap" role="group" aria-label="Confirm full index rebuild">
+          <div
+            className="button-row wrap"
+            role="group"
+            aria-label={t("memory.retrieval.confirmGroup")}
+          >
             <button
               type="button"
               className="btn btn-danger"
@@ -150,7 +172,7 @@ function RetrievalForm({ settings, reload }: { settings: Settings; reload: () =>
               aria-describedby="retrieval-rebuild-note"
               onClick={() => void rebuild()}
             >
-              Confirm full rebuild
+              {t("memory.retrieval.confirmRebuild")}
             </button>
             <button
               type="button"
@@ -158,20 +180,18 @@ function RetrievalForm({ settings, reload }: { settings: Settings; reload: () =>
               disabled={busy}
               onClick={() => setConfirmRebuild(false)}
             >
-              Cancel
+              {t("common.button.cancel")}
             </button>
           </div>
         )}
         <button type="button" className="btn" disabled={busy} onClick={() => void refresh()}>
-          Refresh status
+          {t("memory.retrieval.refresh")}
         </button>
       </div>
       <p id="retrieval-rebuild-note" className="muted small">
-        {!status?.active &&
-          "Rebuild is available only when smart search and AI are on and the emergency stop is disengaged. "}
-        Rebuild replaces every vector for the current model, including memories already indexed.
-        Other models’ vectors are kept. A single rebuild is bounded; remaining memories may need
-        another run. Searches may use keywords while rebuilding.
+        {status?.active
+          ? t("memory.retrieval.rebuildNote")
+          : t("memory.retrieval.rebuildNoteInactive")}
       </p>
       <Feedback error={error} saved={saved} />
     </>
@@ -180,11 +200,12 @@ function RetrievalForm({ settings, reload }: { settings: Settings; reload: () =>
 
 /** Retrieval settings and status (Phase 37), on the Settings page. */
 export function RetrievalSettingsSection() {
+  const t = useT();
   const { data, error, reload } = useRetrievalSettings();
   return (
     <section aria-labelledby="retrieval-h" className="card">
       <h2 id="retrieval-h" className="h3">
-        Smart search
+        {t("memory.retrieval.title")}
       </h2>
       {data ? (
         <RetrievalForm settings={data} reload={reload} />

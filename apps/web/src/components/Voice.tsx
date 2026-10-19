@@ -11,6 +11,7 @@ import {
   type SpeechDeps,
 } from "../core/voice-assistant";
 import { isMailtoDraft, voiceBlocked, type VoiceSettings, type VoiceStatus } from "../core/voice";
+import { useT, type MessageKey } from "../i18n";
 import { Feedback } from "./Feedback";
 
 /** Test seams: a fake microphone and fake speech synthesis. Production uses the browser's own. */
@@ -19,12 +20,12 @@ export interface VoiceSeams {
   speech?: SpeechDeps;
 }
 
-const PHASE_TEXT: Record<AssistantPhase, string> = {
-  idle: "Voice is off",
-  starting: "Starting the microphone…",
-  waiting: "Listening for “OK Fawkes”",
-  awake: "Fawkes is listening to your request",
-  thinking: "Working on your request…",
+const PHASE_TEXT: Record<AssistantPhase, MessageKey> = {
+  idle: "capture.voice.phase.idle",
+  starting: "capture.voice.phase.starting",
+  waiting: "capture.voice.phase.waiting",
+  awake: "capture.voice.phase.awake",
+  thinking: "capture.voice.phase.thinking",
 };
 
 function useVoiceStatus(refreshKey: unknown) {
@@ -52,6 +53,7 @@ export function VoiceBanner({
   createMicrophone = createBrowserMicrophone,
   speech = browserSpeech,
 }: VoiceSeams) {
+  const t = useT();
   const client = useClient();
   const assistant = assistantFor(client, createMicrophone, speech);
   const local = useSyncExternalStore(assistant.subscribe, assistant.getState);
@@ -59,13 +61,13 @@ export function VoiceBanner({
   const listening = local.phase !== "idle";
   const draft = local.reply?.action?.type === "mailto" ? local.reply.action.url : null;
   return (
-    <section className="voice-banner" aria-label="Voice assistant">
+    <section className="voice-banner" aria-label={t("capture.voice.banner.label")}>
       {listening && (
         <p className="voice-live" role="status">
-          <span className="voice-dot" aria-hidden="true" /> Microphone on. {PHASE_TEXT[local.phase]}
-          .{" "}
+          <span className="voice-dot" aria-hidden="true" />{" "}
+          {t("capture.voice.banner.live", { phase: t(PHASE_TEXT[local.phase]) })}{" "}
           <button type="button" className="link-button" onClick={() => void assistant.stop()}>
-            Stop listening
+            {t("capture.voice.banner.stop")}
           </button>
         </p>
       )}
@@ -76,11 +78,11 @@ export function VoiceBanner({
       )}
       {local.reply && (
         <p className="small" role="status">
-          <strong>Fawkes:</strong> {local.reply.text}
+          <strong>{t("capture.voice.banner.fawkes")}</strong> {local.reply.text}
           {draft && isMailtoDraft(draft) && (
             <>
               {" "}
-              <a href={draft}>Open the email draft</a>
+              <a href={draft}>{t("capture.voice.banner.openDraft")}</a>
             </>
           )}
         </p>
@@ -94,6 +96,7 @@ export function VoiceSettingsSection({
   createMicrophone = createBrowserMicrophone,
   speech = browserSpeech,
 }: VoiceSeams) {
+  const t = useT();
   const client = useClient();
   const connection = useConnection();
   const assistant = assistantFor(client, createMicrophone, speech);
@@ -106,9 +109,9 @@ export function VoiceSettingsSection({
     return (
       <section className="card" aria-labelledby="voice-h">
         <h2 id="voice-h" className="h3">
-          Voice
+          {t("capture.voice.settings.titleShort")}
         </h2>
-        <p className="muted small">Voice settings are unavailable from Phoenix Core.</p>
+        <p className="muted small">{t("capture.voice.settings.unavailable")}</p>
       </section>
     );
 
@@ -118,7 +121,7 @@ export function VoiceSettingsSection({
     if (!enabled) await assistant.stop();
     const next = await run<VoiceSettings>("POST", "/api/voice/settings", { enabled });
     if (!next) return;
-    setSaved(enabled ? "Voice is on." : "Voice is off. The microphone was released.");
+    setSaved(enabled ? t("capture.voice.settings.savedOn") : t("capture.voice.settings.savedOff"));
     await refresh();
     // The click that turned it on is the user's gesture for the microphone prompt.
     if (enabled) await assistant.start();
@@ -128,37 +131,33 @@ export function VoiceSettingsSection({
   return (
     <section className="card voice-settings" aria-labelledby="voice-h">
       <h2 id="voice-h" className="h3">
-        Voice (“OK Fawkes”)
+        {t("capture.voice.settings.title")}
       </h2>
       <p className="small">
-        Say “OK Fawkes” and ask about your services. It is <strong>off</strong> until you turn it on
-        here, and turning it on is your consent for voice only.
+        {t.rich("capture.voice.settings.intro", {
+          off: <strong>{t("capture.voice.settings.introOff")}</strong>,
+        })}
       </p>
       <ul className="small">
         <li>
-          <strong>While it is on:</strong> this page keeps your microphone open and shows
-          “Microphone on” the whole time. A simple loudness check runs on this device for every
-          moment of sound; only when someone speaks is a short clip given to the speech recogniser
-          on this device.
+          <strong>{t("capture.voice.settings.whileOn.lead")}</strong>{" "}
+          {t("capture.voice.settings.whileOn.body")}
         </li>
         <li>
-          <strong>What leaves this device:</strong> nothing. Recognition is local; there is no cloud
-          speech path. Phoenix produces no audio: answers are spoken by your browser, when it can.
+          <strong>{t("capture.voice.settings.leaves.lead")}</strong>{" "}
+          {t("capture.voice.settings.leaves.body")}
         </li>
         <li>
-          <strong>What is kept:</strong> audio stays in memory for seconds and is erased when it has
-          been understood, when you stop, or when the emergency stop is used. It is never written to
-          disk and no transcript is stored. The audit log records that a request happened and which
-          tool it used, never what you said.
+          <strong>{t("capture.voice.settings.kept.lead")}</strong>{" "}
+          {t("capture.voice.settings.kept.body")}
         </li>
         <li>
-          <strong>What it can do:</strong> read the status of services you have enabled, open the
-          pill, and prepare an email draft for you to review. It cannot change anything, and it can
-          never approve an action: only you can, in the Pet Panel. It can say “deny”.
+          <strong>{t("capture.voice.settings.canDo.lead")}</strong>{" "}
+          {t("capture.voice.settings.canDo.body")}
         </li>
         <li>
-          <strong>Limits:</strong> the wake phrase is found by transcribing short clips of speech
-          (it is not a dedicated keyword detector), so it can miss it or mishear similar words.
+          <strong>{t("capture.voice.settings.limits.lead")}</strong>{" "}
+          {t("capture.voice.settings.limits.body")}
         </li>
       </ul>
       <label className="choice">
@@ -168,20 +167,22 @@ export function VoiceSettingsSection({
           disabled={busy}
           onChange={(e) => void toggle(e.target.checked)}
         />
-        Turn on “OK Fawkes”
+        {t("capture.voice.settings.toggle")}
       </label>
       <p className="small" role="status">
-        Speech recogniser: {status.recognizer.available ? "available" : "unavailable"}.{" "}
-        {status.recognizer.detail}
+        {t(
+          status.recognizer.available
+            ? "capture.audio.recognizerAvailable"
+            : "capture.audio.recognizerUnavailable",
+          { detail: status.recognizer.detail },
+        )}
       </p>
-      {status.kill_switch_engaged && (
-        <p role="status">The emergency stop is engaged: voice is blocked.</p>
-      )}
+      {status.kill_switch_engaged && <p role="status">{t("capture.voice.settings.killSwitch")}</p>}
       {status.enabled && !listening && !blocked && (
         <p className="small">
-          Voice is on but this page is not listening yet (after a reload the browser asks again).{" "}
+          {t("capture.voice.settings.notListening")}{" "}
           <button type="button" onClick={() => void assistant.start()}>
-            Start listening
+            {t("capture.voice.settings.start")}
           </button>
         </p>
       )}

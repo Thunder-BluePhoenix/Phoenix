@@ -134,6 +134,8 @@ pub enum BindError {
     TooLong,
     Malformed(String),
     NeedsModifiers,
+    /// Ctrl+Alt or Alt+Shift with a letter or digit: AltGr / Option type symbols with those.
+    NeedsThirdModifier,
     Reserved,
     DictationChord,
     Conflict(Action),
@@ -144,6 +146,7 @@ impl BindError {
         match self {
             BindError::TooLong | BindError::Malformed(_) => "invalid",
             BindError::NeedsModifiers => "needs_modifiers",
+            BindError::NeedsThirdModifier => "needs_third_modifier",
             BindError::Reserved => "reserved",
             BindError::DictationChord => "dictation_chord",
             BindError::Conflict(_) => "conflict",
@@ -160,6 +163,11 @@ impl fmt::Display for BindError {
                 f,
                 "A global shortcut needs at least two modifier keys (Ctrl, Alt, Shift or Cmd) \
                  so it cannot take over normal typing."
+            ),
+            BindError::NeedsThirdModifier => write!(
+                f,
+                "Ctrl+Alt and Alt+Shift with a letter or digit type symbols on many keyboards \
+                 (AltGr / Option), so add a third modifier."
             ),
             BindError::Reserved => write!(f, "That combination is reserved by the system."),
             BindError::DictationChord => {
@@ -293,15 +301,16 @@ impl Combo {
         .count()
     }
 
-    /// Parse, then apply the rules that make a global binding safe. `paste_chord` is the
-    /// dictation paste-again chord; a shortcut equal to it would fire both.
-    pub fn vetted(text: &str, paste_chord: &Combo) -> Result<Combo, BindError> {
+    /// Parse, then apply the rules that make a global binding safe on `platform`. `paste_chord` is
+    /// the dictation paste-again chord; a shortcut equal to it would fire both.
+    pub fn vetted(text: &str, paste_chord: &Combo, platform: Platform) -> Result<Combo, BindError> {
         let combo = Combo::parse(text)?;
         if combo.modifier_count() < 2 {
             return Err(BindError::NeedsModifiers);
         }
-        if RESERVED
-            .iter()
+        // Before the AltGr rule, so a chord the system owns says so.
+        if platform
+            .reserved()
             .filter_map(|r| Combo::parse(r).ok())
             .any(|r| r == combo)
         {
@@ -310,7 +319,21 @@ impl Combo {
         if combo == *paste_chord {
             return Err(BindError::DictationChord);
         }
+        if combo.types_symbols() {
+            return Err(BindError::NeedsThirdModifier);
+        }
         Ok(combo)
+    }
+
+    /// Ctrl+Alt and Alt+Shift with a letter or digit are how AltGr / Option type symbols and
+    /// accented letters on common layouts (Ctrl+Alt is AltGr on Windows and Linux): a global
+    /// binding would swallow typing. A third modifier avoids it. F-keys and navigation keys do not
+    /// type anything, so those pairs are fine. (The grammar has no punctuation main keys; if one is
+    /// ever added it has a single-character key and falls under this rule too.)
+    fn types_symbols(&self) -> bool {
+        let pair = self.mods == (Modifiers::CTRL | Modifiers::ALT)
+            || self.mods == (Modifiers::ALT | Modifiers::SHIFT);
+        pair && self.key.len() == 1
     }
 
     /// The text the global-shortcut plugin parses.
@@ -349,9 +372,45 @@ impl fmt::Display for Combo {
     }
 }
 
+/// The operating system a shortcut is vetted for. Every table below is compiled and unit-tested on
+/// every OS (a runtime `match`, never `#[cfg]` around the logic); only [`Platform::current`] asks
+/// which one this build runs on, so tests can vet for any of them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Platform {
+    MacOs,
+    Windows,
+    Linux,
+}
+
+impl Platform {
+    pub const ALL: [Platform; 3] = [Platform::MacOs, Platform::Windows, Platform::Linux];
+
+    /// The platform this build runs on (anything that is not macOS or Windows is treated as Linux).
+    pub const fn current() -> Platform {
+        if cfg!(target_os = "macos") {
+            Platform::MacOs
+        } else if cfg!(target_os = "windows") {
+            Platform::Windows
+        } else {
+            Platform::Linux
+        }
+    }
+
+    /// Chords the operating system owns on this platform: the shared table plus its own.
+    fn reserved(self) -> impl Iterator<Item = &'static str> {
+        let own: &'static [&'static str] = match self {
+            Platform::MacOs => &[],
+            Platform::Windows => WINDOWS_RESERVED,
+            Platform::Linux => LINUX_RESERVED,
+        };
+        RESERVED.iter().chain(own).copied()
+    }
+}
+
 /// Chords the operating system owns (task switching, logout, screenshots, workspace switching).
-/// Binding one globally would break something the person relies on. All of these parse and none
-/// is a default (both checked by tests).
+/// Binding one globally would break something the person relies on. This is the macOS table and
+/// applies on every platform; Windows and Linux add their own below. All of these parse and none is
+/// a default (both checked by tests).
 const RESERVED: &[&str] = &[
     "Alt+Shift+Tab",
     "Ctrl+Alt+Tab",
@@ -368,6 +427,47 @@ const RESERVED: &[&str] = &[
     "Ctrl+Alt+ArrowRight",
     "Ctrl+Alt+ArrowUp",
     "Ctrl+Alt+ArrowDown",
+];
+
+/// Windows: `Cmd` is the Windows key. Win+L, Win+D etc. have one modifier and are already refused
+/// for that; they are listed anyway so the table says what the system owns. Ctrl+Alt+Delete has no
+/// main key in the accelerator grammar (no Delete key), so it cannot be bound at all.
+const WINDOWS_RESERVED: &[&str] = &[
+    "Cmd+Shift+S",
+    "Cmd+L",
+    "Cmd+D",
+    "Cmd+E",
+    "Cmd+R",
+    "Cmd+Tab",
+    "Cmd+Shift+M",
+    "Cmd+Ctrl+D",
+    "Cmd+Ctrl+F4",
+    "Cmd+Ctrl+ArrowLeft",
+    "Cmd+Ctrl+ArrowRight",
+    "Cmd+Shift+ArrowLeft",
+    "Cmd+Shift+ArrowRight",
+];
+
+/// Linux: Ctrl+Alt+F1..F12 switch virtual terminals, Ctrl+Alt+L locks the screen on many desktops,
+/// Ctrl+Alt+T opens a terminal on GNOME. Ctrl+Alt+Delete / Backspace have no main key in the
+/// grammar, so they cannot be bound at all.
+const LINUX_RESERVED: &[&str] = &[
+    "Ctrl+Alt+F1",
+    "Ctrl+Alt+F2",
+    "Ctrl+Alt+F3",
+    "Ctrl+Alt+F4",
+    "Ctrl+Alt+F5",
+    "Ctrl+Alt+F6",
+    "Ctrl+Alt+F7",
+    "Ctrl+Alt+F8",
+    "Ctrl+Alt+F9",
+    "Ctrl+Alt+F10",
+    "Ctrl+Alt+F11",
+    "Ctrl+Alt+F12",
+    "Ctrl+Alt+L",
+    "Ctrl+Alt+T",
+    "Cmd+L",
+    "Cmd+D",
 ];
 
 /// What the settings say about one action.
@@ -394,9 +494,18 @@ fn paste_combo(paste_chord: &str) -> Combo {
     })
 }
 
+/// [`resolve_on`] for the platform this build runs on.
+pub fn resolve(user: &BTreeMap<String, String>, paste_chord: &str) -> Vec<Entry> {
+    resolve_on(Platform::current(), user, paste_chord)
+}
+
 /// The effective binding of every action: the user's text if present, else the default. Two
 /// actions with the same combination are both rejected (neither wins arbitrarily).
-pub fn resolve(user: &BTreeMap<String, String>, paste_chord: &str) -> Vec<Entry> {
+pub fn resolve_on(
+    platform: Platform,
+    user: &BTreeMap<String, String>,
+    paste_chord: &str,
+) -> Vec<Entry> {
     let paste = paste_combo(paste_chord);
     let mut entries: Vec<Entry> = Action::ALL
         .into_iter()
@@ -407,7 +516,7 @@ pub fn resolve(user: &BTreeMap<String, String>, paste_chord: &str) -> Vec<Entry>
             let outcome = if text.trim().is_empty() {
                 Outcome::Unbound
             } else {
-                match Combo::vetted(text, &paste) {
+                match Combo::vetted(text, &paste, platform) {
                     Ok(combo) => Outcome::Bound(combo),
                     Err(e) => Outcome::Rejected(e),
                 }
@@ -433,9 +542,20 @@ pub fn resolve(user: &BTreeMap<String, String>, paste_chord: &str) -> Vec<Entry>
     entries
 }
 
+/// [`validate_set_on`] for the platform this build runs on.
+pub fn validate_set(
+    action: Action,
+    text: &str,
+    user: &BTreeMap<String, String>,
+    paste_chord: &str,
+) -> Result<Option<String>, BindError> {
+    validate_set_on(Platform::current(), action, text, user, paste_chord)
+}
+
 /// Checks a new binding for `action` against everything else, for the `set` command. `Ok(None)`
 /// is an explicit unbind; `Ok(Some(text))` is the canonical text to store.
-pub fn validate_set(
+pub fn validate_set_on(
+    platform: Platform,
     action: Action,
     text: &str,
     user: &BTreeMap<String, String>,
@@ -444,11 +564,11 @@ pub fn validate_set(
     if text.trim().is_empty() {
         return Ok(None);
     }
-    let combo = Combo::vetted(text, &paste_combo(paste_chord))?;
+    let combo = Combo::vetted(text, &paste_combo(paste_chord), platform)?;
     let canonical = combo.to_string();
     let mut candidate = user.clone();
     candidate.insert(action.as_str().to_string(), canonical.clone());
-    match resolve(&candidate, paste_chord)
+    match resolve_on(platform, &candidate, paste_chord)
         .into_iter()
         .find(|e| e.action == action)
     {
@@ -749,8 +869,13 @@ mod tests {
             .clone()
     }
 
+    /// Vetted for macOS: the shared table only, so the result does not depend on the build OS.
     fn vetted(text: &str) -> Result<Combo, BindError> {
-        Combo::vetted(text, &paste_combo(PASTE))
+        vetted_on(Platform::MacOs, text)
+    }
+
+    fn vetted_on(platform: Platform, text: &str) -> Result<Combo, BindError> {
+        Combo::vetted(text, &paste_combo(PASTE), platform)
     }
 
     #[test]
@@ -822,21 +947,120 @@ mod tests {
 
     #[test]
     fn reserved_system_chords_are_refused_and_no_default_is_one() {
-        for text in RESERVED {
-            assert!(
-                Combo::parse(text).is_ok(),
-                "{text} is in the table but invalid"
-            );
+        for platform in Platform::ALL {
+            for text in platform.reserved() {
+                assert!(
+                    Combo::parse(text).is_ok(),
+                    "{text} is in the {platform:?} table but invalid"
+                );
+            }
         }
         assert_eq!(vetted("alt+shift+tab"), Err(BindError::Reserved));
         assert_eq!(vetted("Cmd+Shift+4"), Err(BindError::Reserved));
         assert_eq!(vetted("ctrl+alt+left"), Err(BindError::Reserved));
-        for action in Action::ALL {
+        for platform in Platform::ALL {
+            for action in Action::ALL {
+                assert!(
+                    vetted_on(platform, action.default_accelerator()).is_ok(),
+                    "default of {action:?} is refused on {platform:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn each_platform_reserves_its_own_chords_and_only_those() {
+        // Linux: the virtual terminals and the screen lock.
+        for key in 1..=12 {
+            let text = format!("ctrl+alt+f{key}");
+            assert_eq!(vetted_on(Platform::Linux, &text), Err(BindError::Reserved));
+            assert!(vetted_on(Platform::MacOs, &text).is_ok(), "{text} on macOS");
             assert!(
-                vetted(action.default_accelerator()).is_ok(),
-                "default of {action:?} is refused"
+                vetted_on(Platform::Windows, &text).is_ok(),
+                "{text} on Windows"
             );
         }
+        assert_eq!(
+            vetted_on(Platform::Linux, "ctrl+alt+f13"),
+            Ok(Combo::parse("ctrl+alt+f13").unwrap())
+        );
+        assert_eq!(
+            vetted_on(Platform::Linux, "ctrl+alt+shift+f1").map(|_| ()),
+            Ok(())
+        );
+        // Windows: screenshot snip, show desktop with a second modifier, virtual desktops.
+        for text in ["cmd+shift+s", "cmd+ctrl+d", "cmd+ctrl+left", "cmd+shift+m"] {
+            assert_eq!(
+                vetted_on(Platform::Windows, text),
+                Err(BindError::Reserved),
+                "{text}"
+            );
+            assert!(vetted_on(Platform::MacOs, text).is_ok(), "{text} on macOS");
+            assert!(vetted_on(Platform::Linux, text).is_ok(), "{text} on Linux");
+        }
+        // The shared (macOS) table applies everywhere.
+        for platform in Platform::ALL {
+            assert_eq!(vetted_on(platform, "cmd+shift+q"), Err(BindError::Reserved));
+        }
+        // The build's own platform is one of the three.
+        assert!(Platform::ALL.contains(&Platform::current()));
+    }
+
+    #[test]
+    fn ctrl_alt_and_alt_shift_need_a_third_modifier_for_a_letter_or_digit() {
+        // Ctrl+Alt is AltGr on Windows and Linux, Alt+Shift (and Option) type symbols on macOS.
+        for platform in Platform::ALL {
+            for text in [
+                "ctrl+alt+a",
+                "alt+ctrl+7",
+                "alt+shift+q",
+                "shift+option+4",
+                "ctrl+alt+z",
+            ] {
+                assert_eq!(
+                    vetted_on(platform, text),
+                    Err(BindError::NeedsThirdModifier),
+                    "{text} on {platform:?} would swallow AltGr typing"
+                );
+            }
+            // A third modifier, or keys that type nothing, are fine.
+            for text in [
+                "ctrl+alt+shift+a",
+                "ctrl+alt+cmd+a",
+                "alt+shift+cmd+7",
+                "ctrl+shift+a",
+                "cmd+alt+a",
+                "alt+shift+f9",
+                "alt+shift+space",
+                "ctrl+alt+home",
+            ] {
+                assert!(vetted_on(platform, text).is_ok(), "{text} on {platform:?}");
+            }
+        }
+        assert_eq!(BindError::NeedsThirdModifier.code(), "needs_third_modifier");
+        // A chord the system owns keeps saying so, and the paste chord keeps its own error.
+        assert_eq!(
+            vetted_on(Platform::Linux, "ctrl+alt+l"),
+            Err(BindError::Reserved)
+        );
+        assert_eq!(vetted("ctrl+alt+v"), Err(BindError::DictationChord));
+        // `set` reports the new error rather than storing the text.
+        assert_eq!(
+            validate_set_on(
+                Platform::Linux,
+                Action::Mute,
+                "ctrl+alt+m",
+                &BTreeMap::new(),
+                PASTE
+            ),
+            Err(BindError::NeedsThirdModifier)
+        );
+        // `resolve` leaves the action unbound and rejected instead of falling back to the default.
+        let entries = resolve_on(Platform::Windows, &user(&[("mute", "alt+shift+m")]), PASTE);
+        assert_eq!(
+            outcome(&entries, Action::Mute),
+            Outcome::Rejected(BindError::NeedsThirdModifier)
+        );
     }
 
     #[test]
@@ -918,7 +1142,7 @@ mod tests {
         assert_eq!(vetted("ctrl+alt+v"), Err(BindError::DictationChord));
         let custom = paste_combo("ctrl+shift+9");
         assert_eq!(
-            Combo::vetted("Shift+Ctrl+9", &custom),
+            Combo::vetted("Shift+Ctrl+9", &custom, Platform::MacOs),
             Err(BindError::DictationChord)
         );
         // An unparsable chord setting falls back to the default chord, as the dictation code does.

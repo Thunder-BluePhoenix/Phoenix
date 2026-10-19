@@ -19,6 +19,7 @@ import type { Logger } from "@phoenix/logging";
 import { MemorySecretStore } from "@phoenix/persistence";
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
 import type { PhoenixRuntime, RuntimeOptions } from "./runtime";
+import type { SyncTransportFactory } from "./sync";
 
 /**
  * Every caption the walkthrough shows, keyed by a stable id. The i18n pass translates this one
@@ -130,6 +131,12 @@ export interface DemoDeps extends DemoTuning {
 const refuseNetwork: FetchLike = () =>
   Promise.reject(new Error("Demo mode makes no network requests"));
 
+/** Sync would send (encrypted) data to a relay over the network; the demo has none. */
+const refuseSyncTransport: SyncTransportFactory = () => ({
+  list: () => Promise.reject(new Error("Demo mode makes no network requests")),
+  put: () => Promise.reject(new Error("Demo mode makes no network requests")),
+});
+
 const refuseGit: GitExec = () => Promise.reject(new Error("Demo mode does not run git"));
 
 const refuseTerminal: TerminalFocuser = {
@@ -234,6 +241,8 @@ export class DemoRuntime implements DemoApi {
             ? [...allowedOrigins, origin]
             : [...allowedOrigins],
         webRoot: undefined,
+        // A path that is never created: nothing in the demo can read or write the real data folder.
+        dataDir: join(tmpdir(), `phoenix-demo-${randomUUID()}`, "data"),
       },
       logger: this.d.logger,
       databasePath: ":memory:",
@@ -242,6 +251,7 @@ export class DemoRuntime implements DemoApi {
       secrets: new MemorySecretStore(),
       capabilities: [mockCapability],
       fetch: refuseNetwork,
+      syncTransport: refuseSyncTransport,
       gitExec: refuseGit,
       terminalFocuser: refuseTerminal,
       installer: inertInstaller(),

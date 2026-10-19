@@ -8,18 +8,19 @@ import {
   RUN_STATE_TEXT,
   STEP_STATUS_TEXT,
 } from "../core/agent";
-import { formatSince } from "../core/format";
+import { formatNumber, formatSince, translated } from "../core/format";
 import { useAction, useAgentTask, useAgentTasks } from "../core/hooks";
 import type { AgentEvidence, AgentStep, AgentTaskDetail, AgentTaskSummary } from "../core/types";
+import { useT } from "../i18n";
 import { Feedback } from "./Feedback";
 
-const EVIDENCE_KIND_TEXT: Record<string, string> = {
-  tool_output: "Tool output",
-  memory: "Stored memory",
-  commit: "Git commit",
-  log: "Log",
-  model: "AI model output (cannot back a claim)",
-};
+const EVIDENCE_KIND_TEXT = translated({
+  tool_output: "agents.task.evidenceKind.tool_output",
+  memory: "agents.task.evidenceKind.memory",
+  commit: "agents.task.evidenceKind.commit",
+  log: "agents.task.evidenceKind.log",
+  model: "agents.task.evidenceKind.model",
+});
 
 /** Evidence ids as links that open and highlight the evidence; unknown ids stay plain text. */
 function EvidenceLinks({
@@ -31,7 +32,8 @@ function EvidenceLinks({
   known: Record<string, boolean>;
   onShow: (id: string) => void;
 }) {
-  if (ids.length === 0) return <span className="muted">no evidence cited</span>;
+  const t = useT();
+  if (ids.length === 0) return <span className="muted">{t("agents.task.noEvidenceCited")}</span>;
   return (
     <>
       {ids.map((id, i) => (
@@ -41,13 +43,13 @@ function EvidenceLinks({
             <button
               type="button"
               className="link-button small"
-              aria-label={`Show evidence ${id}`}
+              aria-label={t("agents.task.showEvidenceLabel", { id })}
               onClick={() => onShow(id)}
             >
               {id}
             </button>
           ) : (
-            <span title="This run holds no evidence with this id">{id}</span>
+            <span title={t("agents.task.unknownEvidence")}>{id}</span>
           )}
         </span>
       ))}
@@ -56,20 +58,37 @@ function EvidenceLinks({
 }
 
 function StepRow({ step }: { step: AgentStep }) {
+  const t = useT();
   const status = STEP_STATUS_TEXT[step.status] ?? step.status;
   return (
     <li className="task-step">
       <strong>{step.name}</strong>
       <span className="muted">
         {" "}
-        · {step.kind === "tool_call" ? "tool call" : "stage"} · {status}
+        ·{" "}
+        {step.kind === "tool_call"
+          ? t("agents.task.stepKind.toolCall")
+          : t("agents.task.stepKind.stage")}{" "}
+        · {status}
       </span>
       {step.kind === "tool_call" && (
         <span className="small">
           {" "}
-          · Risk: {step.risk ? RISK_LABEL[step.risk] : "not recorded"} · Policy:{" "}
-          {step.decision ? DECISION_TEXT[step.decision] : "no decision recorded"}
-          {step.policy_audit_id !== null ? ` (audit record ${step.policy_audit_id})` : ""}
+          ·{" "}
+          {t(
+            step.policy_audit_id !== null
+              ? "agents.task.step.toolDetailAudit"
+              : "agents.task.step.toolDetail",
+            {
+              risk: step.risk
+                ? (RISK_LABEL[step.risk] ?? step.risk)
+                : t("agents.task.step.riskNotRecorded"),
+              policy: step.decision
+                ? (DECISION_TEXT[step.decision] ?? step.decision)
+                : t("agents.task.step.noDecision"),
+              id: step.policy_audit_id ?? "",
+            },
+          )}
         </span>
       )}
     </li>
@@ -89,25 +108,22 @@ function EvidenceItem({
   onToggle: (open: boolean) => void;
   register: (el: HTMLElement | null) => void;
 }) {
+  const t = useT();
   return (
     <li
       ref={register}
       tabIndex={-1}
       className={highlighted ? "task-evidence is-cited" : "task-evidence"}
-      aria-label={`Evidence ${e.id}`}
+      aria-label={t("agents.task.evidenceLabel", { id: e.id })}
     >
       <details open={open} onToggle={(ev) => onToggle(ev.currentTarget.open)}>
         <summary>
           <strong>{e.id}</strong> · {EVIDENCE_KIND_TEXT[e.kind] ?? e.kind} · {e.source}
-          {highlighted && <span className="task-cited"> · selected</span>}
+          {highlighted && <span className="task-cited"> · {t("agents.task.selected")}</span>}
         </summary>
         <pre className="task-excerpt">{e.excerpt}</pre>
-        {e.truncated && (
-          <p className="small warning-text">
-            Truncated: this is only the start of the original text.
-          </p>
-        )}
-        <p className="muted small task-hash">SHA-256 of the full text: {e.excerpt_hash}</p>
+        {e.truncated && <p className="small warning-text">{t("agents.task.truncated")}</p>}
+        <p className="muted small task-hash">{t("agents.task.hash", { hash: e.excerpt_hash })}</p>
       </details>
     </li>
   );
@@ -115,6 +131,7 @@ function EvidenceItem({
 
 /** A finished or running agent task, in words. Nothing here is computed by the page. */
 function TaskBody({ detail, onChanged }: { detail: AgentTaskDetail; onChanged: () => void }) {
+  const t = useT();
   const { run, busy, error } = useAction();
   const [note, setNote] = useState<string | null>(null);
   const [openEvidence, setOpenEvidence] = useState<Record<string, boolean>>({});
@@ -144,8 +161,8 @@ function TaskBody({ detail, onChanged }: { detail: AgentTaskDetail; onChanged: (
     if (res) {
       setNote(
         res.cancelled
-          ? "The task was cancelled."
-          : `The task had already finished (${res.state.toLowerCase()}), so nothing was cancelled.`,
+          ? t("agents.task.cancelled")
+          : t("agents.task.alreadyFinished", { state: res.state.toLowerCase() }),
       );
     }
     onChanged();
@@ -155,11 +172,16 @@ function TaskBody({ detail, onChanged }: { detail: AgentTaskDetail; onChanged: (
   return (
     <div className="task-body">
       <p className="task-state">
-        <strong>State:</strong> {RUN_STATE_TEXT[state]}
-        <span className="muted small"> · updated {formatSince(detail.run.updated_at)}</span>
+        <strong>{t("agents.task.state")}</strong> {RUN_STATE_TEXT[state]}
+        <span className="muted small">
+          {" "}
+          · {t("agents.task.updated", { since: formatSince(detail.run.updated_at) })}
+        </span>
       </p>
       {detail.run.failure_reason && (
-        <p className="error-text small">Why it failed: {detail.run.failure_reason}</p>
+        <p className="error-text small">
+          {t("agents.task.whyFailed", { reason: detail.run.failure_reason })}
+        </p>
       )}
       {!isTerminalRun(state) && (
         <div className="button-row">
@@ -167,10 +189,10 @@ function TaskBody({ detail, onChanged }: { detail: AgentTaskDetail; onChanged: (
             type="button"
             className="btn btn-danger-outline"
             disabled={busy}
-            aria-label={`Cancel task: ${detail.task.title}`}
+            aria-label={t("agents.task.cancelLabel", { title: detail.task.title })}
             onClick={() => void cancel()}
           >
-            Cancel task
+            {t("agents.task.cancel")}
           </button>
         </div>
       )}
@@ -178,18 +200,20 @@ function TaskBody({ detail, onChanged }: { detail: AgentTaskDetail; onChanged: (
 
       {detail.summary && (
         <p className="task-summary">
-          <strong>Summary</strong> (
+          <strong>{t("agents.task.summary")}</strong> (
           {detail.ai_used
-            ? `written with AI: ${detail.processed_by ?? "model not named"}`
-            : "rule-based, no AI was used"}
+            ? t("agents.task.summaryAi", {
+                model: detail.processed_by ?? t("agents.task.modelNotNamed"),
+              })
+            : t("agents.task.summaryRule")}
           ): {detail.summary}
         </p>
       )}
 
       <details open={!isTerminalRun(state)} className="task-section">
-        <summary>Steps ({detail.steps.length})</summary>
+        <summary>{t("agents.task.steps", { count: formatNumber(detail.steps.length) })}</summary>
         {detail.steps.length === 0 ? (
-          <p className="muted small">No steps have run yet.</p>
+          <p className="muted small">{t("agents.task.noSteps")}</p>
         ) : (
           <ol className="task-steps">
             {detail.steps.map((s) => (
@@ -202,45 +226,55 @@ function TaskBody({ detail, onChanged }: { detail: AgentTaskDetail; onChanged: (
       {(detail.parent ||
         (detail.delegations?.length ?? 0) > 0 ||
         (detail.conflicts?.length ?? 0) > 0) && (
-        <section className="task-section" aria-label="Specialist delegation">
-          <h5>Specialist delegation</h5>
+        <section className="task-section" aria-label={t("agents.task.delegation")}>
+          <h5>{t("agents.task.delegation")}</h5>
           {detail.parent && (
             <p>
-              Delegated by task <code>{detail.parent.task_id}</code>; no inherited access beyond the
-              parent's grant.
+              {t.rich("agents.task.delegatedBy", {
+                parent: <code>{detail.parent.task_id}</code>,
+              })}
             </p>
           )}
           {(detail.delegations?.length ?? 0) > 0 && (
             <ul className="task-claims">
               {detail.delegations?.map((link) => (
                 <li key={link.child_task_id}>
-                  <strong>{link.kind}</strong> — {link.status}. Child task{" "}
-                  <code>{link.child_task_id}</code>.
+                  {t.rich("agents.task.delegationLink", {
+                    kind: <strong>{link.kind}</strong>,
+                    status: link.status,
+                    child: <code>{link.child_task_id}</code>,
+                  })}
                   <p className="muted small">
-                    Granted tools: {link.grant.tools.join(", ") || "none"}; scopes:{" "}
-                    {link.grant.context.scopes.join(", ") || "none"}; sensitivity ceiling:{" "}
-                    {link.grant.context.max_sensitivity}.
+                    {t("agents.task.grant", {
+                      tools: link.grant.tools.join(", ") || t("agents.task.none"),
+                      scopes: link.grant.context.scopes.join(", ") || t("agents.task.none"),
+                      ceiling: link.grant.context.max_sensitivity,
+                    })}
                   </p>
                 </li>
               ))}
             </ul>
           )}
           {(detail.conflicts?.length ?? 0) > 0 && (
-            <div role="status" aria-label="Unresolved specialist conflicts">
-              <strong>
-                Human review required: specialist conclusions disagree. No automatic reconciliation.
-              </strong>
+            <div role="status" aria-label={t("agents.task.conflictsLabel")}>
+              <strong>{t("agents.task.conflictsTitle")}</strong>
               <ul className="task-claims">
                 {detail.conflicts?.map((conflict, i) => (
                   <li key={`${conflict.subject}-${i}`}>
-                    <p>Subject: {conflict.subject}</p>
+                    <p>{t("agents.task.conflictSubject", { subject: conflict.subject })}</p>
                     <p>
-                      {conflict.children[0]}: {conflict.conclusions[0]} (evidence{" "}
-                      {conflict.evidence[0].join(", ") || "none"})
+                      {t("agents.task.conflictConclusion", {
+                        child: conflict.children[0],
+                        conclusion: conflict.conclusions[0],
+                        evidence: conflict.evidence[0].join(", ") || t("agents.task.none"),
+                      })}
                     </p>
                     <p>
-                      {conflict.children[1]}: {conflict.conclusions[1]} (evidence{" "}
-                      {conflict.evidence[1].join(", ") || "none"})
+                      {t("agents.task.conflictConclusion", {
+                        child: conflict.children[1],
+                        conclusion: conflict.conclusions[1],
+                        evidence: conflict.evidence[1].join(", ") || t("agents.task.none"),
+                      })}
                     </p>
                   </li>
                 ))}
@@ -250,10 +284,10 @@ function TaskBody({ detail, onChanged }: { detail: AgentTaskDetail; onChanged: (
         </section>
       )}
 
-      <section className="task-section" aria-label="Evidence">
-        <h5>Evidence ({detail.evidence.length})</h5>
+      <section className="task-section" aria-label={t("agents.task.evidence")}>
+        <h5>{t("agents.task.evidenceHeading", { count: formatNumber(detail.evidence.length) })}</h5>
         {detail.evidence.length === 0 ? (
-          <p className="muted small">No evidence has been collected yet.</p>
+          <p className="muted small">{t("agents.task.noEvidence")}</p>
         ) : (
           <ul className="task-evidence-list">
             {detail.evidence.map((e) => (
@@ -273,8 +307,8 @@ function TaskBody({ detail, onChanged }: { detail: AgentTaskDetail; onChanged: (
       </section>
 
       {diagnosis && (
-        <section className="task-section" aria-label="Diagnosis">
-          <h5>Diagnosis</h5>
+        <section className="task-section" aria-label={t("agents.task.diagnosis")}>
+          <h5>{t("agents.task.diagnosis")}</h5>
           <p>{diagnosis.summary}</p>
           <ul className="task-claims">
             {diagnosis.claims.map((c, i) => (
@@ -282,45 +316,54 @@ function TaskBody({ detail, onChanged }: { detail: AgentTaskDetail; onChanged: (
                 <p className="memory-text">{c.text}</p>
                 <p className="small">
                   <span className={c.grounded ? "mem-badge" : "mem-badge badge-warn"}>
-                    {c.grounded ? "Grounded in evidence" : "Not grounded: no valid evidence"}
+                    {c.grounded
+                      ? t("agents.task.grounded")
+                      : t("agents.task.notGroundedNoEvidence")}
                   </span>
                   <span className="mem-badge">
-                    {c.origin === "model" ? "Written by an AI model" : "Written by a rule"}
+                    {c.origin === "model"
+                      ? t("agents.task.originModel")
+                      : t("agents.task.originRule")}
                   </span>{" "}
-                  Evidence: <EvidenceLinks ids={c.evidence_ids} known={known} onShow={show} />
+                  {t("agents.task.evidenceColon")}{" "}
+                  <EvidenceLinks ids={c.evidence_ids} known={known} onShow={show} />
                 </p>
                 {c.note && <p className="muted small">{c.note}</p>}
               </li>
             ))}
           </ul>
           <p className="muted small">
-            Evidence coverage: {Math.round(diagnosis.evidence_coverage * 100)}% of claims are
-            grounded (computed by Phoenix from the claims above).
+            {t("agents.task.coverage", {
+              percent: formatNumber(Math.round(diagnosis.evidence_coverage * 100)),
+            })}
             {diagnosis.model_reported_confidence
-              ? ` The model said its own confidence was “${diagnosis.model_reported_confidence}”; Phoenix did not verify or use that.`
+              ? ` ${t("agents.task.modelConfidence", { confidence: diagnosis.model_reported_confidence })}`
               : ""}
           </p>
         </section>
       )}
 
       {detail.proposals.length > 0 && (
-        <section className="task-section" aria-label="Proposals">
-          <h5>Proposals</h5>
+        <section className="task-section" aria-label={t("agents.task.proposals")}>
+          <h5>{t("agents.task.proposals")}</h5>
           <ul className="task-claims">
             {detail.proposals.map((p, i) => (
               <li key={i}>
                 <p className="small">
                   <span className="mem-badge">
-                    {p.advisory ? "Advisory: nothing was changed" : "Proposal"}
+                    {p.advisory ? t("agents.task.advisory") : t("agents.task.proposal")}
                   </span>
                   <span className={p.grounded ? "mem-badge" : "mem-badge badge-warn"}>
-                    {p.grounded ? "Grounded in evidence" : "Not grounded"}
+                    {p.grounded ? t("agents.task.grounded") : t("agents.task.notGrounded")}
                   </span>
                 </p>
                 <p className="memory-text">{p.text}</p>
-                <p className="muted small memory-text">Why: {p.rationale}</p>
+                <p className="muted small memory-text">
+                  {t("agents.task.why", { rationale: p.rationale })}
+                </p>
                 <p className="small">
-                  Evidence: <EvidenceLinks ids={p.evidence_ids} known={known} onShow={show} />
+                  {t("agents.task.evidenceColon")}{" "}
+                  <EvidenceLinks ids={p.evidence_ids} known={known} onShow={show} />
                 </p>
               </li>
             ))}
@@ -329,18 +372,26 @@ function TaskBody({ detail, onChanged }: { detail: AgentTaskDetail; onChanged: (
       )}
 
       {detail.verification && (
-        <section className="task-section" aria-label="Verification">
-          <h5>Verification</h5>
+        <section className="task-section" aria-label={t("agents.task.verification")}>
+          <h5>{t("agents.task.verification")}</h5>
           <p>
             <strong>
-              {detail.verification.passed ? "Checks passed." : "Checks did not pass."}
+              {detail.verification.passed
+                ? t("agents.task.checksPassed")
+                : t("agents.task.checksFailed")}
             </strong>
           </p>
           <ul className="task-claims">
             {detail.verification.checks.map((c, i) => (
               <li key={i}>
-                <span className="mem-badge">{c.passed ? "Passed" : "Failed"}</span>
-                <span className="mem-badge">{c.required ? "Required" : "Informational"}</span>{" "}
+                <span className="mem-badge">
+                  {c.passed ? t("agents.task.checkPassed") : t("common.status.failed")}
+                </span>
+                <span className="mem-badge">
+                  {c.required
+                    ? t("agents.task.checkRequired")
+                    : t("agents.task.checkInformational")}
+                </span>{" "}
                 {c.name}
                 {c.detail ? <span className="muted small"> · {c.detail}</span> : null}
               </li>
@@ -349,8 +400,7 @@ function TaskBody({ detail, onChanged }: { detail: AgentTaskDetail; onChanged: (
         </section>
       )}
       <p className="muted small">
-        {detail.audit_ids.length} audit {detail.audit_ids.length === 1 ? "record" : "records"} for
-        this task.
+        {t("agents.task.auditRecords", { count: detail.audit_ids.length })}
       </p>
     </div>
   );
@@ -358,20 +408,21 @@ function TaskBody({ detail, onChanged }: { detail: AgentTaskDetail; onChanged: (
 
 /** One agent task, loaded by id and kept live by `agent_run.*` and approval events. */
 export function TaskCard({ taskId, title }: { taskId: string; title?: string }) {
+  const t = useT();
   const { data, error, reload } = useAgentTask(taskId);
-  const heading = data?.task.title ?? title ?? "Agent task";
+  const heading = data?.task.title ?? title ?? t("agents.task.defaultTitle");
   return (
-    <article className="card task-card" aria-label={`Agent task: ${heading}`}>
+    <article className="card task-card" aria-label={t("agents.task.cardLabel", { title: heading })}>
       <h4 className="task-title">{heading}</h4>
       {data ? (
         <TaskBody detail={data} onChanged={() => void reload()} />
       ) : error ? (
         <p className="error-text small" role="alert">
-          Could not load this task: {error}
+          {t("agents.task.loadFailed", { error })}
         </p>
       ) : (
         <p className="muted small" role="status">
-          Loading the task…
+          {t("agents.task.loading")}
         </p>
       )}
     </article>
@@ -379,15 +430,16 @@ export function TaskCard({ taskId, title }: { taskId: string; title?: string }) 
 }
 
 function LastTask({ task }: { task: AgentTaskSummary }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   return (
     <div>
       <p>
-        Last task: <strong>{task.title}</strong>
+        {t.rich("agents.task.lastTask", { title: <strong>{task.title}</strong> })}
         <span className="muted"> · {RUN_STATE_TEXT[task.state]}</span>
       </p>
       <button type="button" className="btn" aria-expanded={open} onClick={() => setOpen(!open)}>
-        {open ? "Hide details" : "Show details"}
+        {open ? t("agents.task.hideDetails") : t("agents.task.showDetails")}
       </button>
       {open && <TaskCard taskId={task.id} title={task.title} />}
     </div>
@@ -399,22 +451,23 @@ function LastTask({ task }: { task: AgentTaskSummary }) {
  * is never shown twice. Hidden while Core has no agent routes.
  */
 export function CurrentTask({ exclude = [] }: { exclude?: readonly string[] }) {
+  const t = useT();
   const { data: tasks } = useAgentTasks(5);
   if (tasks === null) return null;
-  const active = tasks.filter((t) => !isTerminalRun(t.state) && !exclude.includes(t.id));
-  const last = tasks.find((t) => isTerminalRun(t.state) && !exclude.includes(t.id));
-  const anyActiveElsewhere = tasks.some((t) => !isTerminalRun(t.state) && exclude.includes(t.id));
+  const active = tasks.filter((x) => !isTerminalRun(x.state) && !exclude.includes(x.id));
+  const last = tasks.find((x) => isTerminalRun(x.state) && !exclude.includes(x.id));
+  const anyActiveElsewhere = tasks.some((x) => !isTerminalRun(x.state) && exclude.includes(x.id));
   return (
     <section aria-labelledby="current-task-h" className="current-task">
-      <h3 id="current-task-h">Current task</h3>
+      <h3 id="current-task-h">{t("agents.task.current")}</h3>
       {active.length === 0 ? (
         <p className="muted small">
           {anyActiveElsewhere
-            ? "The running task is in the conversation."
-            : "No agent task is running."}
+            ? t("agents.task.runningInConversation")
+            : t("agents.task.noneRunning")}
         </p>
       ) : (
-        active.map((t) => <TaskCard key={t.id} taskId={t.id} title={t.title} />)
+        active.map((x) => <TaskCard key={x.id} taskId={x.id} title={x.title} />)
       )}
       {active.length === 0 && last && <LastTask task={last} />}
     </section>

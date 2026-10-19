@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-// Wire types and fixed wording of the notetaker routes (see core/api/src/notetaker-routes.ts).
+// Wire types of the notetaker routes (see core/api/src/notetaker-routes.ts).
+import { formatNumber } from "./format";
 
 export interface NotetakerStatus {
   enabled: boolean;
@@ -26,24 +27,15 @@ export interface NotetakerStarted {
   window_seconds: number;
 }
 
-/** Shown, and acknowledged with a required checkbox, before EVERY recording. */
-export const CONSENT_NOTICE =
-  "Tell everyone on the call that it is being recorded. Recording without consent can be illegal where you or they live.";
-
-export const CONSENT_CHECKBOX = "I have told everyone on the call that it is being recorded";
-
-/** The browser captures the microphone only; system audio needs the desktop app. */
-export const MIC_ONLY_NOTICE =
-  "Only your microphone is being recorded; other participants are not captured.";
-
 /** The label of a meeting Phoenix recorded itself. */
 export const RECORDED_HERE = "Recorded on this computer";
 
-/** 1:05, 12:00, 1:02:03 */
+/** 1:05, 12:00, 1:02:03, with the digits of the language on screen. */
 export function formatElapsed(totalSeconds: number): string {
   const s = Math.max(0, Math.floor(totalSeconds));
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
-  const ss = String(s % 60).padStart(2, "0");
-  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
+  const ss = formatNumber(s % 60, undefined, { minimumIntegerDigits: 2 });
+  if (h === 0) return `${formatNumber(m)}:${ss}`;
+  return `${formatNumber(h)}:${formatNumber(m, undefined, { minimumIntegerDigits: 2 })}:${ss}`;
 }

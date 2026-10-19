@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import { formatNumber } from "./format";
 
 export interface PortfolioHolding {
   source: string;
@@ -35,36 +36,38 @@ export interface PortfolioSnapshot {
 }
 
 const NO_VALUE = "\u2014";
-const USD = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-const AMOUNT = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 8,
-});
 const SMALLEST_AMOUNT = 1e-8;
 
-/** "$1,234.50"; a missing or non-finite value reads "—". */
+/** "$1,234.50" in the digits and grouping of the language on screen; a missing or non-finite value reads "—". */
 export function formatUsd(value: number | undefined): string {
-  return value === undefined || !Number.isFinite(value) ? NO_VALUE : USD.format(value);
+  return value === undefined || !Number.isFinite(value)
+    ? NO_VALUE
+    : formatNumber(value, undefined, {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
 }
 
 /** "+1.23%", "-0.50%", "0.00%" (a change that rounds to nothing carries no sign). */
 export function formatPct(value: number | undefined): string {
   if (value === undefined || !Number.isFinite(value)) return NO_VALUE;
-  const fixed = value.toFixed(2);
-  if (Number(fixed) === 0) return "0.00%";
-  return `${value > 0 ? "+" : ""}${fixed}%`;
+  return formatNumber(value / 100, undefined, {
+    style: "percent",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    signDisplay: Number(value.toFixed(2)) === 0 ? "never" : "exceptZero",
+  });
 }
 
 /** Up to 8 decimals without trailing zeros: "0.5", "1,234.12345678". */
 export function formatAmount(value: number | undefined): string {
   if (value === undefined || !Number.isFinite(value)) return NO_VALUE;
-  if (value > 0 && value < SMALLEST_AMOUNT) return `<${AMOUNT.format(SMALLEST_AMOUNT)}`;
-  return AMOUNT.format(value);
+  const amount = (n: number) =>
+    formatNumber(n, undefined, { minimumFractionDigits: 0, maximumFractionDigits: 8 });
+  if (value > 0 && value < SMALLEST_AMOUNT) return `<${amount(SMALLEST_AMOUNT)}`;
+  return amount(value);
 }
 
 /** The sign a change is announced with, so colour is never the only cue. */

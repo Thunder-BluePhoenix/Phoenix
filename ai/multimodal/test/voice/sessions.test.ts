@@ -339,14 +339,22 @@ describe("wake and request", () => {
     expect(reply.outcome).toBe("refused");
   });
 
-  it("gives up waiting for an approval it cannot give, and denies only what its own call asked", async () => {
+  it("gives up waiting for an approval it cannot give, aborts its own call, and denies nothing itself, not even a confirmation another actor raised during the wait", async () => {
     const waiting = Promise.withResolvers<{ output: unknown }>();
+    let callAborted = false;
     const r = rig({
       call: (_tool, signal) => {
-        r.pending.push({ id: "conf_new" });
-        signal.addEventListener("abort", () => waiting.reject(new Error("aborted")), {
-          once: true,
-        });
+        r.pending.push({ id: "conf_own" });
+        signal.addEventListener(
+          "abort",
+          () => {
+            callAborted = true;
+            // The gateway withdraws the call's own confirmation when its signal aborts.
+            r.pending.splice(0, r.pending.length, ...r.pending.filter((p) => p.id !== "conf_own"));
+            waiting.reject(new Error("aborted"));
+          },
+          { once: true },
+        );
         return waiting.promise;
       },
     });
@@ -355,10 +363,14 @@ describe("wake and request", () => {
     const stream = await r.start();
     r.speak(stream);
     await vi.waitFor(() => expect(r.pending).toHaveLength(2));
+    // Another actor asks for something while voice is still waiting.
+    r.pending.push({ id: "conf_foreign_during_wait" });
     r.c.advance(61_000);
     const reply = await r.reply();
     expect(reply.text).toMatch(/needs your approval/);
-    expect(r.denied).toEqual(["conf_new"]);
+    expect(callAborted).toBe(true);
+    expect(r.denied).toEqual([]);
+    expect(r.pending.map((p) => p.id)).toEqual(["conf_older", "conf_foreign_during_wait"]);
   });
 });
 

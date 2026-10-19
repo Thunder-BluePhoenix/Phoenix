@@ -5,8 +5,13 @@
 // required) and turns finished ones into n8n.execution.* events. Read-only by default: the poller
 // only GETs and pauses while nothing is watching. Two commands change things, both external and
 // both asking the user first: `run_again` (retry an execution) and `pause_workflow` (deactivate).
+//
+// Open owner decision: n8n has no default origin, so `base_url` is a config setting and whoever can
+// change config can point the stored API key at another host. The host in use is shown in `status`
+// and in the health message, but nothing here prevents the change.
 import { defineCapability, type CapabilityContext, type HealthResult } from "@phoenix/sdk";
 import {
+  emitAll,
   nextDelay,
   realSleep,
   safeBaseUrl,
@@ -66,6 +71,11 @@ function settings(ctx: CapabilityContext): Settings {
   };
 }
 
+/** The host (and port) the API key is sent to, for showing to the user. */
+function hostOf(baseUrl: string): string {
+  return new URL(baseUrl).host;
+}
+
 interface ActionInput {
   idempotency_key: string;
 }
@@ -104,6 +114,10 @@ export interface N8nStatus {
   workflows: { id: string; name: string; active: boolean }[];
   items: ServiceItem[];
   note?: string;
+  /** Host (and port) the stored API key is sent to; absent until base_url is usable. */
+  sends_key_to?: string;
+  /** Events Core refused since the capability started (a refused event is a lost signal). */
+  events_refused?: number;
 }
 
 function asServiceError(err: unknown): ServiceError {
@@ -135,8 +149,12 @@ export function createN8nCapability(options: N8nCapabilityOptions = {}) {
   let hasSecret = false;
   let failure: ServiceError | undefined;
   let failures = 0;
-  /** idempotency_key → outcome of the action it started (null: sent, outcome unknown). */
-  const actions = new Map<string, Promise<unknown | null>>();
+  let refused = 0;
+  /**
+   * `<command>:<idempotency_key>` → the target it acted on and the outcome it started (null: sent,
+   * outcome unknown). Kept in memory only: forgotten on restart or when disabled.
+   */
+  const actions = new Map<string, { target: string; attempt: Promise<unknown | null> }>();
 
   async function cycle(ctx: CapabilityContext): Promise<number> {
     const s = settings(ctx);
@@ -150,9 +168,7 @@ export function createN8nCapability(options: N8nCapabilityOptions = {}) {
         // Workflow names are a nicety: events still go out, named by id, if this call fails.
         workflows = await listWorkflows(client, WORKFLOWS_PER_POLL).catch(() => workflows);
         latest = executions;
-        for (const event of diffExecutions(tracker, executions, workflows, s.baseUrl)) {
-          void ctx.emit(event);
-        }
+        refused += emitAll(ctx, diffExecutions(tracker, executions, workflows, s.baseUrl));
       } catch (err) {
         failure = asServiceError(err);
       }
@@ -176,35 +192,46 @@ export function createN8nCapability(options: N8nCapabilityOptions = {}) {
   }
 
   /**
-   * Runs `start` at most once per idempotency key. A definite refusal frees the key; a send whose
-   * outcome is unknown keeps it, so a repeat is told so instead of firing the action again.
+   * Runs `start` at most once per command + idempotency key. A definite refusal frees the key; a
+   * send whose outcome is unknown keeps it, so a repeat is told so instead of firing the action
+   * again. A key reused for a different target is refused.
    */
   async function once<T>(
+    command: string,
     key: string,
+    target: string,
     start: () => Promise<T>,
   ): Promise<{ value: T; repeated: boolean }> {
-    const known = actions.get(key) as Promise<T | null> | undefined;
+    const id = `${command}:${key}`;
+    const known = actions.get(id);
+    if (known && known.target !== target) {
+      throw new ServiceError(
+        SERVICE,
+        "invalid",
+        "This idempotency_key was already used for a different target; use a new key",
+      );
+    }
     const attempt =
-      known ??
+      known?.attempt ??
       start().catch((err: unknown) => {
         const e = asServiceError(err);
         if (DEFINITE.has(e.kind)) throw e;
         return null;
       });
     if (!known) {
-      actions.set(key, attempt);
+      actions.set(id, { target, attempt });
       while (actions.size > MAX_REMEMBERED_KEYS)
         actions.delete(actions.keys().next().value as string);
     }
-    let value: T | null;
+    let value: unknown;
     try {
       value = await attempt;
     } catch (err) {
-      actions.delete(key);
+      actions.delete(id);
       throw err;
     }
     if (value === null) throw new ServiceError(SERVICE, "network", UNKNOWN_OUTCOME);
-    return { value, repeated: known !== undefined };
+    return { value: value as T, repeated: known !== undefined };
   }
 
   return defineCapability({
@@ -213,7 +240,7 @@ export function createN8nCapability(options: N8nCapabilityOptions = {}) {
       name: "n8n",
       version: "0.1.0",
       description:
-        "Workflow executions of your own n8n: Fawkes shows ERROR when a workflow fails and SUCCESS when one finishes. Watching is read-only (GET only) and pauses while nothing is watching Phoenix. Two commands change things, only after you approve: run_again retries an execution, pause_workflow switches a workflow off. Needs your n8n address (base_url) and an n8n API key.",
+        "Workflow executions of your own n8n: Fawkes shows ERROR when a workflow fails and SUCCESS when one finishes. Watching is read-only (GET only) and pauses while nothing is watching Phoenix. Two commands change things, only after you approve: run_again retries an execution, pause_workflow switches a workflow off. Needs your n8n address (base_url) and API key. Changing base_url sends the stored key to the new host; Phoenix cannot prevent that, but shows the host in status and health.",
       license: "GPL-3.0-or-later",
       homepage: "https://github.com/Thunder-BluePhoenix/Phoenix",
       events: ["n8n.execution.*"],
@@ -224,20 +251,21 @@ export function createN8nCapability(options: N8nCapabilityOptions = {}) {
         {
           name: "api_key",
           description:
-            "n8n API key (Settings, n8n API, Create an API key). Sent only to your base_url in the X-N8N-API-KEY header; never logged.",
+            "n8n API key (Settings, n8n API, Create an API key). Sent in the X-N8N-API-KEY header only to the host in base_url (shown in status and health); never logged. Changing base_url sends it to the new host.",
         },
       ],
       commands: [
         {
           name: "status",
-          description: "Your workflows and the latest executions. Read-only.",
+          description:
+            "Your workflows and the latest executions, and the host the API key is sent to. Read-only.",
           side_effect: "read",
           permissions: ["network", "external_api"],
         },
         {
           name: "run_again",
           description:
-            "Retries a past n8n execution (it runs the workflow again, which may have effects of its own). Always asks for your confirmation. Safe to repeat with the same idempotency_key: a second call does not retry again.",
+            "Retries a past n8n execution (it runs the workflow again, which may have effects of its own). Always asks for your confirmation. Safe to repeat with the same idempotency_key for the same execution: a second call does not retry again; a key reused for a different execution is refused. Keys are remembered in memory only, until Phoenix restarts or the capability is disabled.",
           side_effect: "external",
           permissions: ["network", "external_api"],
           timeout_ms: 60_000,
@@ -254,7 +282,7 @@ export function createN8nCapability(options: N8nCapabilityOptions = {}) {
         {
           name: "pause_workflow",
           description:
-            "Deactivates an n8n workflow so its triggers stop firing. Always asks for your confirmation. Safe to repeat with the same idempotency_key.",
+            "Deactivates an n8n workflow so its triggers stop firing. Always asks for your confirmation. Safe to repeat with the same idempotency_key for the same workflow; a key reused for a different workflow is refused. Keys are remembered in memory only, until Phoenix restarts or the capability is disabled.",
           side_effect: "external",
           permissions: ["network", "external_api"],
           timeout_ms: 60_000,
@@ -277,7 +305,7 @@ export function createN8nCapability(options: N8nCapabilityOptions = {}) {
             type: "string",
             pattern: URL_PATTERN,
             description:
-              "Address of your n8n, for example https://n8n.example.com (required). Plain http is only accepted for localhost.",
+              "Address of your n8n, for example https://n8n.example.com (required). Plain http is only accepted for localhost. WARNING: your stored API key is sent to whatever host this names, and Phoenix cannot stop someone who can change this setting from pointing it elsewhere.",
           },
           poll_ms: {
             type: "integer",
@@ -304,6 +332,7 @@ export function createN8nCapability(options: N8nCapabilityOptions = {}) {
       polled = false;
       failure = undefined;
       failures = 0;
+      refused = 0;
       actions.clear();
       // History rule: anything that began before this moment is background, not news.
       tracker = executionTracker(now());
@@ -319,6 +348,7 @@ export function createN8nCapability(options: N8nCapabilityOptions = {}) {
             workflows: [],
             items: [],
             note: baseUrl ? "Add an n8n API key in Settings" : "Set base_url to your n8n address",
+            ...(baseUrl ? { sends_key_to: hostOf(baseUrl) } : {}),
           };
         }
         try {
@@ -331,6 +361,8 @@ export function createN8nCapability(options: N8nCapabilityOptions = {}) {
           for (const w of list) names[w.id] = w.name;
           return {
             configured: true,
+            sends_key_to: hostOf(baseUrl),
+            events_refused: refused,
             workflows: list.map((w) => ({ id: w.id, name: w.name, active: w.active })),
             items: executions.map((e) => ({
               id: e.id,
@@ -352,8 +384,11 @@ export function createN8nCapability(options: N8nCapabilityOptions = {}) {
         }
         // Configuration problems are reported before anything is sent (and before a key is spent).
         const client = await clientFor(ctx);
-        const { value, repeated } = await once(`run_again:${input.idempotency_key}`, () =>
-          retryExecution(client, executionId),
+        const { value, repeated } = await once(
+          "run_again",
+          input.idempotency_key,
+          executionId,
+          () => retryExecution(client, executionId),
         );
         return {
           status: repeated ? "already_requested" : "started",
@@ -368,11 +403,19 @@ export function createN8nCapability(options: N8nCapabilityOptions = {}) {
           throw new ServiceError(SERVICE, "invalid", "workflow_id is not a valid id");
         }
         const client = await clientFor(ctx);
-        const key = `pause:${input.idempotency_key}`;
-        const { value, repeated } = await once(key, () => deactivateWorkflow(client, workflowId));
+        const { value, repeated } = await once(
+          "pause_workflow",
+          input.idempotency_key,
+          workflowId,
+          () => deactivateWorkflow(client, workflowId),
+        );
+        if (value.id !== workflowId) {
+          // The request was sent, but the answer is about some other workflow: claim nothing.
+          throw new ServiceError(SERVICE, "invalid", "n8n answered about a different workflow");
+        }
         if (value.active) {
           // Only a workflow n8n reports as inactive counts as paused; the key may be tried again.
-          actions.delete(key);
+          actions.delete(`pause_workflow:${input.idempotency_key}`);
           throw new ServiceError(SERVICE, "http", "n8n still reports the workflow as active");
         }
         return {
@@ -390,17 +433,25 @@ export function createN8nCapability(options: N8nCapabilityOptions = {}) {
       }
       if (!s.baseUrl)
         return { status: "degraded", message: "Set base_url to your n8n address in Settings" };
-      if (!polled) return { status: "healthy", message: "Reading n8n…" };
+      const host = hostOf(s.baseUrl);
+      if (!polled) return { status: "healthy", message: `Reading n8n at ${host}…` };
       if (!hasSecret) return { status: "degraded", message: "Add an n8n API key in Settings" };
       if (
         failure?.kind === "auth" ||
         failure?.kind === "rate_limit" ||
         failure?.kind === "forbidden"
       ) {
-        return { status: "degraded", message: failure.message };
+        return { status: "degraded", message: `${failure.message} (API key sent to ${host})` };
       }
-      if (failure) return { status: "unhealthy", message: failure.message };
-      return { status: "healthy", message: `Watching ${latest.length} recent executions` };
+      if (failure) {
+        return { status: "unhealthy", message: `${failure.message} (API key sent to ${host})` };
+      }
+      return {
+        status: "healthy",
+        message: `Watching ${latest.length} recent executions; the API key is sent to ${host}${
+          refused > 0 ? ` (${refused} events refused by Core)` : ""
+        }`,
+      };
     },
   });
 }

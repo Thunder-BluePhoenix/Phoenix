@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 // Wire types of the voice routes (see core/api/src/voice-routes.ts for the protocol).
+import { translate } from "../i18n/store";
 
 export interface VoiceSettings {
   enabled: boolean;
@@ -32,11 +33,11 @@ export interface VoiceReply {
 
 /** Why voice cannot start now, in plain words; null when it can. */
 export function voiceBlocked(status: VoiceStatus | null, online: boolean): string | null {
-  if (!status) return "The voice assistant status is not available.";
-  if (!status.enabled) return "The voice assistant is off. Turn it on in Settings, under Voice.";
-  if (status.kill_switch_engaged) return "The emergency stop is engaged.";
+  if (!status) return translate("capture.voice.blocked.unavailable");
+  if (!status.enabled) return translate("capture.voice.blocked.off");
+  if (status.kill_switch_engaged) return translate("capture.audio.emergencyStop");
   if (!status.recognizer.available) return status.recognizer.detail;
-  if (!online) return "Phoenix Core is not connected.";
+  if (!online) return translate("capture.audio.coreNotConnected");
   return null;
 }
 

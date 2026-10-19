@@ -6,6 +6,7 @@
 // and the client is a `ReadOnlyClient` (GET only). Use a restricted API key with read access only.
 import { defineCapability, type CapabilityContext, type HealthResult } from "@phoenix/sdk";
 import {
+  emitAll,
   nextDelay,
   realSleep,
   safeBaseUrl,
@@ -27,26 +28,26 @@ export const DEFAULT_POLL_MS = 60_000;
 export const MIN_POLL_MS = 15_000;
 export const CHARGES_PER_POLL = 25;
 const MAX_STATUS_ITEMS = 10;
-/** Pattern for a URL value in config: https, or http to loopback; no credentials/query/fragment. */
-const URL_PATTERN =
-  "^(https://[^\\s@?#]+|http://(127\\.0\\.0\\.1|localhost)(:[0-9]+)?(/[^\\s@?#]*)?)$";
 
 export interface StripeCapabilityOptions {
   /** Epoch ms clock; tests pin it. */
   now?: () => number;
   /** Waits between polls; resolves early when `signal` aborts. Tests control time with it. */
   sleep?: Sleep;
+  /**
+   * Address of the Stripe API. Code only, deliberately NOT a config setting: the key may only ever
+   * be sent to Stripe's own origin. Tests pass a loopback mock here.
+   */
+  apiUrl?: string;
 }
 
 interface Settings {
-  baseUrl: string | undefined;
   pollMs: number;
 }
 
 function settings(ctx: CapabilityContext): Settings {
-  const { base_url, poll_ms } = ctx.config;
+  const { poll_ms } = ctx.config;
   return {
-    baseUrl: typeof base_url === "string" ? safeBaseUrl(base_url) : STRIPE_API,
     pollMs: typeof poll_ms === "number" ? Math.max(poll_ms, MIN_POLL_MS) : DEFAULT_POLL_MS,
   };
 }
@@ -126,12 +127,16 @@ function asServiceError(err: unknown): ServiceError {
 export function createStripeCapability(options: StripeCapabilityOptions = {}) {
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? realSleep;
+  const checkedUrl = safeBaseUrl(options.apiUrl ?? STRIPE_API);
+  if (checkedUrl === undefined) throw new TypeError("apiUrl must be https, or http to loopback");
+  const apiUrl: string = checkedUrl;
 
   let tracker = chargeTracker(0);
   let polled = false;
   let hasSecret = false;
   let failure: ServiceError | undefined;
   let failures = 0;
+  let refused = 0;
   let lastCount = 0;
 
   async function cycle(ctx: CapabilityContext): Promise<number> {
@@ -139,12 +144,12 @@ export function createStripeCapability(options: StripeCapabilityOptions = {}) {
     const secret = await ctx.secret("restricted_key");
     hasSecret = !!secret;
     failure = undefined;
-    if (secret && s.baseUrl) {
+    if (secret) {
       try {
-        const client = createStripeClient({ baseUrl: s.baseUrl, secret, signal: ctx.signal });
+        const client = createStripeClient({ baseUrl: apiUrl, secret, signal: ctx.signal });
         const charges = await listCharges(client, CHARGES_PER_POLL);
         lastCount = charges.length;
-        for (const event of diffCharges(tracker, charges)) void ctx.emit(event);
+        refused += emitAll(ctx, diffCharges(tracker, charges));
       } catch (err) {
         failure = asServiceError(err);
       }
@@ -188,11 +193,6 @@ export function createStripeCapability(options: StripeCapabilityOptions = {}) {
         type: "object",
         additionalProperties: false,
         properties: {
-          base_url: {
-            type: "string",
-            pattern: URL_PATTERN,
-            description: `API base URL (default ${STRIPE_API}). Plain http is only accepted for localhost.`,
-          },
           poll_ms: {
             type: "integer",
             minimum: MIN_POLL_MS,
@@ -216,6 +216,7 @@ export function createStripeCapability(options: StripeCapabilityOptions = {}) {
       polled = false;
       failure = undefined;
       failures = 0;
+      refused = 0;
       lastCount = 0;
       // History rule: anything created before this moment is background, not news.
       tracker = chargeTracker(now());
@@ -231,11 +232,8 @@ export function createStripeCapability(options: StripeCapabilityOptions = {}) {
             note: "Add a restricted read-only Stripe key in Settings",
           };
         }
-        const { baseUrl } = settings(ctx);
-        if (!baseUrl)
-          throw new ServiceError(SERVICE, "invalid", "base_url must be https or loopback");
         try {
-          const client = createStripeClient({ baseUrl, secret, signal: ctx.signal });
+          const client = createStripeClient({ baseUrl: apiUrl, secret, signal: ctx.signal });
           const [charges, balance] = await Promise.all([
             listCharges(client, CHARGES_PER_POLL),
             getBalance(client),
@@ -245,16 +243,14 @@ export function createStripeCapability(options: StripeCapabilityOptions = {}) {
             items: charges.slice(0, MAX_STATUS_ITEMS).map(item),
             summary: summarise(charges),
             balance: balanceView(balance),
+            events_refused: refused,
           };
         } catch (err) {
           throw asServiceError(err);
         }
       },
     },
-    health(ctx): HealthResult {
-      if (!settings(ctx).baseUrl) {
-        return { status: "unhealthy", message: "base_url must be https or loopback" };
-      }
+    health(): HealthResult {
       if (!polled) return { status: "healthy", message: "Reading Stripe…" };
       if (!hasSecret)
         return { status: "degraded", message: "Add a restricted read-only Stripe key in Settings" };
@@ -266,7 +262,13 @@ export function createStripeCapability(options: StripeCapabilityOptions = {}) {
         return { status: "degraded", message: failure.message };
       }
       if (failure) return { status: "unhealthy", message: failure.message };
-      return { status: "healthy", message: `Watching ${lastCount} recent payments (read-only)` };
+      return {
+        status: "healthy",
+        message:
+          refused > 0
+            ? `Watching ${lastCount} recent payments (read-only; ${refused} events refused by Core)`
+            : `Watching ${lastCount} recent payments (read-only)`,
+      };
     },
   });
 }

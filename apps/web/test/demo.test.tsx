@@ -2,11 +2,15 @@
 // Copyright (C) 2026 Phoenix contributors
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { DemoHost } from "../src/components/Demo";
 import { PhoenixClient, type ClientOptions } from "../src/core/client";
 import { DEMO_UI_TEXT, parseDemoSession, type DemoSession } from "../src/core/demo";
+import type { DictationMicrophone } from "../src/core/dictation-mic";
+import { recorderFor } from "../src/core/notetaker-recorder";
+import { assistantFor } from "../src/core/voice-assistant";
+import { en } from "../src/i18n/en";
 import { fakeApi, type FakeApi } from "./fake-api";
 import { FakeWebSocket } from "./fake-ws";
 
@@ -49,30 +53,42 @@ interface Mounted {
   realClient: PhoenixClient;
   /** What the app built the demo client from. */
   built: ClientOptions[];
+  /** The demo clients the app built, in order. */
+  clients: PhoenixClient[];
   realSocket: FakeWebSocket;
 }
 
-function mount(realRoutes: Parameters<typeof fakeApi>[0] = {}): Mounted {
+/** `prepare` runs on the real client before the app renders (it makes the per-client assistant/recorder with a fake mic first: the first caller's microphone wins). */
+function mount(
+  realRoutes: Parameters<typeof fakeApi>[0] = {},
+  prepare: (client: PhoenixClient) => void = () => {},
+  prepareDemo: (client: PhoenixClient) => void = () => {},
+): Mounted {
   window.location.hash = "#/settings";
   const real = fakeApi({ "POST /api/demo/start": () => session(), ...realRoutes });
   const demo = fakeApi();
   const built: ClientOptions[] = [];
+  const clients: PhoenixClient[] = [];
   const realClient = new PhoenixClient({
     token: "real-token",
     baseUrl: REAL_URL,
     WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
     fetchImpl: real.fetchImpl,
   });
+  prepare(realClient);
   render(
     <DemoHost
       client={realClient}
       makeClient={(o) => {
         built.push(o);
-        return new PhoenixClient({
+        const client = new PhoenixClient({
           ...o,
           WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
           fetchImpl: demo.fetchImpl,
         });
+        clients.push(client);
+        prepareDemo(client);
+        return client;
       }}
     >
       <App />
@@ -80,7 +96,7 @@ function mount(realRoutes: Parameters<typeof fakeApi>[0] = {}): Mounted {
   );
   const realSocket = FakeWebSocket.last;
   act(() => realSocket.open());
-  return { real, demo, realClient, built, realSocket };
+  return { real, demo, realClient, built, clients, realSocket };
 }
 
 const start = async () =>
@@ -207,6 +223,171 @@ describe("demo mode in the web app", () => {
     expect(m.real.posts("/api/demo/stop")).toHaveLength(1);
     expect(FakeWebSocket.last.url).toBe("ws://127.0.0.1:4870/api/ws");
     expect(await screen.findByText(new RegExp(DEMO_UI_TEXT.stopFailed.slice(0, 30)))).toBeTruthy();
+  });
+});
+
+/** A microphone that counts how often it was started and released. */
+function countingMic() {
+  const mic = { started: 0, stopped: 0, instance: null as unknown as DictationMicrophone };
+  mic.instance = {
+    async start() {
+      mic.started++;
+    },
+    stop() {
+      mic.stopped++;
+    },
+  };
+  return mic;
+}
+
+const sessionCalls = (m: Mounted, method: string, prefix: string) =>
+  m.real.calls.filter((c) => c.method === method && c.path.startsWith(prefix));
+
+describe("the real microphone features do not outlive the switch to the demo", () => {
+  it("stops a listening voice assistant (mic released, real session ended) before the demo takes over, and says so", async () => {
+    const voiceId = `voi_${"c".repeat(32)}`;
+    const mic = countingMic();
+    const voiceSocket = new FakeWebSocket("ws://real/voice", []);
+    const m = mount(
+      {
+        "POST /api/voice/sessions": () => ({ id: voiceId }),
+        "DELETE /api/voice/sessions/*": () => ({ stopped: true }),
+      },
+      (client) => {
+        assistantFor(client, () => mic.instance);
+        vi.spyOn(client, "openVoiceSocket").mockReturnValue(voiceSocket as unknown as WebSocket);
+      },
+    );
+    const assistant = assistantFor(m.realClient);
+    await assistant.start();
+    voiceSocket.onmessage?.({ data: JSON.stringify({ type: "ready" }) });
+    await waitFor(() => expect(mic.started).toBe(1));
+    expect(assistant.getState().phase).toBe("waiting");
+
+    await start();
+    await screen.findByText(DEMO_UI_TEXT.banner);
+
+    expect(mic.stopped).toBe(1);
+    expect(voiceSocket.closed).toBe(true);
+    expect(assistant.getState().phase).toBe("idle");
+    await waitFor(() =>
+      expect(sessionCalls(m, "DELETE", `/api/voice/sessions/${voiceId}`)).toHaveLength(1),
+    );
+    expect(await screen.findByText(en["services.demo.voiceStopped"])).toBeTruthy();
+  });
+
+  it("cancels a voice session that Core was still opening when the demo started", async () => {
+    const voiceId = `voi_${"d".repeat(32)}`;
+    const answer = Promise.withResolvers<{ id: string }>();
+    const mic = countingMic();
+    let openSocket = vi.fn();
+    const m = mount(
+      {
+        "POST /api/voice/sessions": () => answer.promise,
+        "DELETE /api/voice/sessions/*": () => ({ stopped: true }),
+      },
+      (client) => {
+        assistantFor(client, () => mic.instance);
+        openSocket = vi.spyOn(client, "openVoiceSocket") as unknown as typeof openSocket;
+      },
+    );
+    const assistant = assistantFor(m.realClient);
+    const starting = assistant.start();
+    expect(assistant.getState().phase).toBe("starting");
+
+    await start();
+    await screen.findByText(DEMO_UI_TEXT.banner);
+    answer.resolve({ id: voiceId });
+    await starting;
+
+    // The late session is never given a socket or a microphone, and is ended on the real Core.
+    expect(openSocket).not.toHaveBeenCalled();
+    expect(mic.started).toBe(0);
+    expect(assistant.getState().phase).toBe("idle");
+    await waitFor(() =>
+      expect(sessionCalls(m, "DELETE", `/api/voice/sessions/${voiceId}`)).toHaveLength(1),
+    );
+  });
+
+  it("stops the demo's own voice assistant when the demo ends, so its microphone is not left on", async () => {
+    const voiceId = `voi_${"9".repeat(32)}`;
+    const mic = countingMic();
+    const voiceSocket = new FakeWebSocket("ws://demo/voice", []);
+    const m = mount({}, undefined, (client) => {
+      assistantFor(client, () => mic.instance);
+      vi.spyOn(client, "openVoiceSocket").mockReturnValue(voiceSocket as unknown as WebSocket);
+    });
+    m.demo.set("POST /api/voice/sessions", () => ({ id: voiceId }));
+    m.demo.set("DELETE /api/voice/sessions/*", () => ({ stopped: true }));
+    await start();
+    await screen.findByText(DEMO_UI_TEXT.banner);
+    const assistant = assistantFor(m.clients[0]!);
+    await assistant.start();
+    voiceSocket.onmessage?.({ data: JSON.stringify({ type: "ready" }) });
+    await waitFor(() => expect(mic.started).toBe(1));
+
+    fireEvent.click(screen.getByRole("button", { name: DEMO_UI_TEXT.stop }));
+    await waitFor(() => expect(screen.queryByText(DEMO_UI_TEXT.banner)).toBeNull());
+
+    expect(mic.stopped).toBe(1);
+    expect(assistant.getState().phase).toBe("idle");
+    expect(voiceSocket.closed).toBe(true);
+  });
+
+  it("refuses to start the demo while a call is being recorded, and leaves the recording running", async () => {
+    const callId = `ntk_${"e".repeat(32)}`;
+    const mic = countingMic();
+    const callSocket = new FakeWebSocket("ws://real/call", []);
+    const m = mount({ "POST /api/notetaker/sessions": () => ({ id: callId }) }, (client) => {
+      recorderFor(client, () => mic.instance);
+      vi.spyOn(client, "openNotetakerSocket").mockReturnValue(callSocket as unknown as WebSocket);
+    });
+    const recorder = recorderFor(m.realClient);
+    await recorder.start("standup");
+    callSocket.onmessage?.({ data: JSON.stringify({ type: "ready" }) });
+    await waitFor(() => expect(recorder.getState().phase).toBe("recording"));
+
+    await start();
+
+    expect(await screen.findByText(en["services.demo.recordingActive"])).toBeTruthy();
+    expect(screen.queryByText(DEMO_UI_TEXT.banner)).toBeNull();
+    // The real Core was not even asked for a demo; nothing of the call was ended or switched.
+    expect(m.real.posts("/api/demo/start")).toHaveLength(0);
+    expect(m.built).toEqual([]);
+    expect(mic.stopped).toBe(0);
+    expect(callSocket.closed).toBe(false);
+    expect(recorder.getState().phase).toBe("recording");
+    expect(sessionCalls(m, "DELETE", "/api/notetaker/sessions")).toHaveLength(0);
+    expect(m.realSocket.closed).toBe(false);
+  });
+
+  it("ends the just-started demo when a recording began while Core was starting it", async () => {
+    const callId = `ntk_${"f".repeat(32)}`;
+    const demoAnswer = Promise.withResolvers<DemoSession>();
+    const mic = countingMic();
+    const m = mount(
+      {
+        "POST /api/demo/start": () => demoAnswer.promise,
+        "POST /api/notetaker/sessions": () => ({ id: callId }),
+      },
+      (client) => {
+        recorderFor(client, () => mic.instance);
+        vi.spyOn(client, "openNotetakerSocket").mockReturnValue(
+          new FakeWebSocket("ws://real/call", []) as unknown as WebSocket,
+        );
+      },
+    );
+    const recorder = recorderFor(m.realClient);
+    await start();
+    await waitFor(() => expect(m.real.posts("/api/demo/start")).toHaveLength(1));
+    await recorder.start();
+    demoAnswer.resolve(session());
+
+    expect(await screen.findByText(en["services.demo.recordingActive"])).toBeTruthy();
+    expect(screen.queryByText(DEMO_UI_TEXT.banner)).toBeNull();
+    await waitFor(() => expect(m.real.posts("/api/demo/stop")).toHaveLength(1));
+    expect(m.built).toEqual([]);
+    expect(recorder.getState().phase).not.toBe("idle");
   });
 });
 

@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import type { SoundPlayer } from "@phoenix/pet-runtime";
 import { visualFor } from "@phoenix/pet-states";
 import { useEffect, useState, type CSSProperties } from "react";
+import { tauriShortcuts, type ShortcutsShell } from "../commands/shortcuts-shell";
 import { FawkesAvatar } from "../components/FawkesAvatar";
 import { ActiveSourcePills } from "../components/SourcePills";
 import { useWornOutfit } from "../core/appearance";
 import { useDisplayedState } from "../core/context";
+import { useMute } from "../core/mute";
 import { usePetSettings } from "../core/hooks";
 import type { PetState } from "../core/types";
+import { isMessageKey, useT } from "../i18n";
 import { routeFor, useBubble } from "../floating/FloatingApp";
 import type { IslandFrame, IslandShell } from "./shell";
 
@@ -62,7 +66,21 @@ export function useFrame(shell: IslandShell | null): IslandFrame {
  * only draws the frame it is given and reports the hover (where only the page can see the
  * pointer), clicks, Escape and what Fawkes is doing.
  */
-export function IslandApp({ shell }: { shell: IslandShell | null }) {
+export function IslandApp({
+  shell,
+  shortcuts,
+  sounds,
+}: {
+  shell: IslandShell | null;
+  /** The desktop's mute flag (null in a browser, where nothing is muted). */
+  shortcuts?: ShortcutsShell | null;
+  /** The pet's sound player, when the host has one; silenced while the desktop is muted. */
+  sounds?: SoundPlayer;
+}) {
+  const t = useT();
+  // Looked up once: a new shell object on every render would resubscribe to the mute event.
+  const [own] = useState(() => tauriShortcuts());
+  const mute = useMute(shortcuts === undefined ? own : shortcuts, sounds);
   const state = useDisplayedState();
   const { data: settings } = usePetSettings();
   const bubble = useBubble(state);
@@ -83,6 +101,8 @@ export function IslandApp({ shell }: { shell: IslandShell | null }) {
   }, [shell]);
 
   const visual = visualFor(state.state);
+  const stateKey = `common.petState.${state.state}`;
+  const stateText = isMessageKey(stateKey) ? t(stateKey) : visual.label;
   const expanded = frame.state === "expanded";
   const hidden = frame.state === "hidden";
   const style = { "--notch-width": `${frame.layout.notch_width}px` } as CSSProperties;
@@ -111,14 +131,15 @@ export function IslandApp({ shell }: { shell: IslandShell | null }) {
                 expanded={expanded}
                 reducedMotion={settings.reduced_motion}
                 outfit={outfit}
-                actionHint={expanded ? "Collapse the island" : "Expand the island"}
+                {...(mute.sounds ? { sounds: mute.sounds } : {})}
+                actionHint={expanded ? t("pet.island.collapse") : t("pet.island.expand")}
                 onActivate={() => shell?.send({ kind: "toggle" })}
               />
             </div>
             {frame.layout.has_notch && <div className="island-notch" aria-hidden="true" />}
             <div className="island-ear island-ear-right">
               <span className="island-label" data-tone={visual.tone}>
-                {state.recording ? "Recording" : visual.label}
+                {state.recording ? t("common.petState.RECORDING") : stateText}
               </span>
             </div>
           </div>
@@ -132,7 +153,7 @@ export function IslandApp({ shell }: { shell: IslandShell | null }) {
               <ActiveSourcePills />
               {state.recording && (
                 <span className="rec-pill" role="status">
-                  <span className="rec-dot" aria-hidden="true" /> Recording
+                  <span className="rec-dot" aria-hidden="true" /> {t("common.petState.RECORDING")}
                 </span>
               )}
               <button
@@ -140,7 +161,7 @@ export function IslandApp({ shell }: { shell: IslandShell | null }) {
                 className="island-open"
                 onClick={() => shell?.openInPhoenix(routeFor(state))}
               >
-                Open in Phoenix
+                {t("pet.desktop.openInPhoenix")}
               </button>
             </div>
           )}

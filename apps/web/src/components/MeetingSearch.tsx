@@ -1,24 +1,25 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { useId, useState, type FormEvent } from "react";
+import { formatDate } from "../core/format";
 import { useAction, useAiStatus, useMemorySettings } from "../core/hooks";
 import { MAX_QUESTION } from "../core/review";
 import type { MeetingAnswer, MeetingSearchHit, MeetingSearchResult } from "../core/types";
-import { formatDate } from "../core/format";
+import { isMessageKey, useT, type MessageKey } from "../i18n";
 import { Feedback } from "./Feedback";
-import { RECORDED_HERE } from "../core/notetaker";
 import { RetrievalNote } from "./RetrievalNote";
 
 const meetingLink = (id: string) => `#/meetings/${encodeURIComponent(id)}`;
 
-const ORIGIN_TEXT: Record<MeetingSearchHit["origin"], string> = {
-  reviewed: "Reviewed by you",
-  kage: "From Kage's summary, not reviewed here",
-  notetaker: `${RECORDED_HERE}: from the call summary, not reviewed here`,
+const ORIGIN_KEY: Record<MeetingSearchHit["origin"], MessageKey> = {
+  reviewed: "memory.msearch.origin.reviewed",
+  kage: "memory.msearch.origin.kage",
+  notetaker: "memory.msearch.origin.notetaker",
 };
 
 /** Search and questions over the meetings Phoenix may read (Phase 35). Results are stored text. */
 export function MeetingSearch() {
+  const t = useT();
   const { data: ai } = useAiStatus();
   const { data: memorySettings } = useMemorySettings();
   const search = useAction();
@@ -53,21 +54,29 @@ export function MeetingSearch() {
     if (res) setAnswer(res);
   };
 
+  /** The kind of text that matched, in words; a kind this version does not know is shown as sent. */
+  const partText = (part: string) => {
+    const key = `memory.msearch.part.${part}`;
+    return isMessageKey(key) ? t(key) : part.replace("_", " ");
+  };
+
   return (
     <section aria-labelledby="msearch-h" className="card">
       <h2 id="msearch-h" className="h3">
-        Search and ask across meetings
+        {t("memory.msearch.title")}
       </h2>
       {blocked && (
         <p className="review-notice small" role="note">
-          <strong>Meeting content is not allowed in memory,</strong> so there is nothing to search.
-          To allow it, turn on “Include meeting summaries marked sensitive” in{" "}
-          <a href="#/settings">Settings</a>.
+          {t.rich("memory.msearch.blocked.body", {
+            lead: <strong>{t("memory.msearch.blocked.lead")}</strong>,
+            setting: t("memory.common.includeSensitive"),
+            settings: <a href="#/settings">{t("memory.common.settings")}</a>,
+          })}
         </p>
       )}
       <form className="memory-form" onSubmit={(e) => void doSearch(e)} role="search">
         <label htmlFor={searchId} className="small">
-          Search meetings
+          {t("memory.msearch.searchLabel")}
         </label>
         <div className="memory-row">
           <input
@@ -78,7 +87,7 @@ export function MeetingSearch() {
             onChange={(e) => setQuery(e.target.value)}
           />
           <button type="submit" className="btn btn-primary" disabled={search.busy || !query.trim()}>
-            Search
+            {t("memory.common.search")}
           </button>
         </div>
         <Feedback error={search.error} />
@@ -88,23 +97,34 @@ export function MeetingSearch() {
           {found.hits.length === 0 ? (
             <p className="muted small">
               {blocked
-                ? "No results: meeting content is not allowed in memory."
-                : `No meeting matched “${found.query}”. Only reviewed items and call summaries (Kage's and ones recorded on this computer) are searched.`}
+                ? t("memory.msearch.noneBlocked")
+                : t("memory.msearch.noneFound", { query: found.query })}
             </p>
           ) : (
             <>
               <p className="small">
-                {found.total} result(s) for “{found.query}”.
+                {t("memory.msearch.total", { count: found.total, query: found.query })}
               </p>
-              <ul className="memory-facts" aria-label="Search results">
+              <ul className="memory-facts" aria-label={t("memory.common.searchResults")}>
                 {found.hits.map((h) => (
                   <li key={h.memory_id}>
                     <p className="memory-text">{h.text}</p>
                     <p className="muted small">
-                      {h.part.replace("_", " ")} · {ORIGIN_TEXT[h.origin]} ·{" "}
-                      <a href={meetingLink(h.meeting_id)}>Meeting {h.meeting_id}</a> ·{" "}
-                      <time dateTime={h.observed_at}>{formatDate(h.observed_at)}</time>
-                      {h.freshness === "stale" && " · may be out of date"}
+                      {t.rich(
+                        h.freshness === "stale"
+                          ? "memory.msearch.hitMetaStale"
+                          : "memory.msearch.hitMeta",
+                        {
+                          part: partText(h.part),
+                          origin: t(ORIGIN_KEY[h.origin]),
+                          meeting: (
+                            <a href={meetingLink(h.meeting_id)}>
+                              {t("memory.msearch.meetingLink", { id: h.meeting_id })}
+                            </a>
+                          ),
+                          date: <time dateTime={h.observed_at}>{formatDate(h.observed_at)}</time>,
+                        },
+                      )}
                     </p>
                   </li>
                 ))}
@@ -116,7 +136,7 @@ export function MeetingSearch() {
       )}
       <form className="memory-form" onSubmit={(e) => void doAsk(e)}>
         <label htmlFor={askId} className="small">
-          Ask about your meetings
+          {t("memory.msearch.askLabel")}
         </label>
         <div className="memory-row">
           <input
@@ -127,53 +147,59 @@ export function MeetingSearch() {
             onChange={(e) => setQuestion(e.target.value)}
           />
           <button type="submit" className="btn btn-primary" disabled={ask.busy || !question.trim()}>
-            Ask
+            {t("memory.common.ask")}
           </button>
         </div>
         <p className="muted small">
-          {aiOn
-            ? "Stored facts come first. Anything AI adds is labelled as generated."
-            : "AI is off, so you get matching stored facts only."}
+          {aiOn ? t("memory.msearch.aiOn") : t("memory.common.aiOffFactsOnly")}
         </p>
         <Feedback error={ask.error} />
       </form>
       {answer && (
         <div className="memory-answer" aria-live="polite">
-          <h3 className="h4">Stored facts</h3>
+          <h3 className="h4">{t("memory.common.storedFacts")}</h3>
           {answer.facts.length === 0 ? (
             <p className="muted small">
-              {blocked
-                ? "Meeting content is not allowed in memory, so no facts could be used."
-                : "No stored meeting fact matched your question."}
+              {blocked ? t("memory.msearch.factsNoneBlocked") : t("memory.msearch.factsNone")}
             </p>
           ) : (
-            <ul className="memory-facts" aria-label="Facts from meetings">
+            <ul className="memory-facts" aria-label={t("memory.msearch.facts.title")}>
               {answer.facts.map((f) => (
                 <li key={f.ref}>
                   <p className="memory-text">
                     <span className="mem-badge">{f.ref}</span> {f.text}
                   </p>
                   <p className="muted small">
-                    {ORIGIN_TEXT[f.origin]} ·{" "}
-                    <a href={meetingLink(f.meeting_id)}>Meeting {f.meeting_id}</a>
+                    {t.rich("memory.msearch.factMeta", {
+                      origin: t(ORIGIN_KEY[f.origin]),
+                      meeting: (
+                        <a href={meetingLink(f.meeting_id)}>
+                          {t("memory.msearch.meetingLink", { id: f.meeting_id })}
+                        </a>
+                      ),
+                    })}
                   </p>
                 </li>
               ))}
             </ul>
           )}
-          <h3 className="h4">Interpretation</h3>
+          <h3 className="h4">{t("memory.msearch.interpretation")}</h3>
           {answer.ai_used && answer.interpretation ? (
             <div className="memory-interpretation">
               <p className="small">
                 <strong>
-                  Generated by {answer.processed_by ?? "an AI model"}, not a stored fact.
+                  {t("memory.msearch.generatedBy", {
+                    model: answer.processed_by ?? t("memory.msearch.anAiModel"),
+                  })}
                 </strong>
               </p>
               <p className="memory-text">{answer.interpretation}</p>
             </div>
           ) : (
             <p className="small">
-              {answer.ai_used ? "AI gave no interpretation." : "No AI was used."}
+              {answer.ai_used
+                ? t("memory.msearch.aiNoInterpretation")
+                : t("memory.msearch.noAiUsed")}
             </p>
           )}
           {answer.note && <p className="muted small">{answer.note}</p>}

@@ -402,11 +402,26 @@ describe("github events", () => {
     r.ingest.handle(
       event("vercel.deploy.failed", { deployment_id: "dpl_x", project: "web", sha: SHA_A }),
     );
-    const dep = "Deployment:vercel/web/deploy/dpl_x";
+    const dep = "Deployment:vercel:web:dpl_x";
     expect(r.graph.node(OWNER, dep)?.detail.state).toBe("failed");
     expect(r.graph.edge(OWNER, `${dep}|DEPLOYED_TO|Service:vercel:web`)).not.toBeNull();
     expect(r.graph.listByType(OWNER, "Commit", 10)).toEqual([]);
     expect(r.graph.listByType(OWNER, "Repository", 10)).toEqual([]);
+  });
+
+  it("a project-less vercel.deploy never collides with a GitHub deployment of a repository", () => {
+    const r = rig(R);
+    r.ingest.handle(
+      event("github.deploy.succeeded", {
+        repository: "vercel/web",
+        deployment_id: 7,
+        environment: "production",
+      }),
+    );
+    r.ingest.handle(event("vercel.deploy.failed", { deployment_id: "7", project: "web" }));
+    const github = r.graph.node(OWNER, "Deployment:vercel/web/deploy/7");
+    expect(github?.detail.state).toBe("succeeded");
+    expect(r.graph.node(OWNER, "Deployment:vercel:web:7")?.detail.state).toBe("failed");
   });
 
   it("hostile vercel.deploy payloads are skipped or linked to nothing", () => {
@@ -418,6 +433,8 @@ describe("github events", () => {
       { deployment_id: "../x", project: "web" },
       { deployment_id: 7, project: "web" },
       { deployment_id: "dpl_1", project: "we|b" },
+      { deployment_id: "dpl_1", project: "a/b" },
+      { deployment_id: "dpl_1", project: "a b" },
     ]) {
       expect(
         r.ingest.handle(event("vercel.deploy.started", payload)).skipped,

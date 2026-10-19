@@ -27,8 +27,6 @@ export * from "./parse";
 export const DEFAULT_POLL_MS = 60_000;
 export const MIN_POLL_MS = 10_000;
 const MAX_ITEMS = 25;
-const BASE_URL_PATTERN =
-  "^(https://[^\\s]+|http://(127\\.0\\.0\\.1|localhost)(:[0-9]+)?(/[^\\s]*)?)$";
 const NO_KEY_NOTE = "Add a Resend API key in the capability's secrets";
 
 export interface ResendCapabilityOptions {
@@ -36,18 +34,20 @@ export interface ResendCapabilityOptions {
   now?: () => number;
   /** Waits between polls; resolves early when `signal` aborts. Tests control time with it. */
   sleep?: Sleep;
+  /**
+   * Address of the Resend API. Code only, deliberately NOT a config setting: the key may only ever
+   * be sent to Resend's own origin. Tests pass a loopback mock here.
+   */
+  apiUrl?: string;
 }
 
 interface Settings {
-  /** Undefined when `base_url` is set to something safeBaseUrl refuses. */
-  baseUrl: string | undefined;
   pollMs: number;
 }
 
 function settings(ctx: CapabilityContext): Settings {
-  const { base_url, poll_ms } = ctx.config;
+  const { poll_ms } = ctx.config;
   return {
-    baseUrl: typeof base_url === "string" ? safeBaseUrl(base_url) : DEFAULT_BASE_URL,
     pollMs: typeof poll_ms === "number" ? Math.max(poll_ms, MIN_POLL_MS) : DEFAULT_POLL_MS,
   };
 }
@@ -71,6 +71,9 @@ function toItem(email: ResendEmail): ServiceItem {
 export function createResendCapability(options: ResendCapabilityOptions = {}) {
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? realSleep;
+  const checkedUrl = safeBaseUrl(options.apiUrl ?? DEFAULT_BASE_URL);
+  if (checkedUrl === undefined) throw new TypeError("apiUrl must be https, or http to loopback");
+  const apiUrl: string = checkedUrl;
 
   let client: ReadOnlyClient | undefined;
   /** The capability's own lifetime: a command's short-lived signal must not end the shared client. */
@@ -85,17 +88,16 @@ export function createResendCapability(options: ResendCapabilityOptions = {}) {
 
   async function poll(ctx: CapabilityContext): Promise<void> {
     failure = undefined;
-    const { baseUrl } = settings(ctx);
     const key = await ctx.secret(SECRET_NAME);
-    // Without a key or a usable address nothing is sent anywhere.
-    if (!key || !baseUrl) {
+    // Without a key nothing is sent anywhere.
+    if (!key) {
       items = [];
       polled = true;
       return;
     }
-    if (!client || clientKey !== `${baseUrl}\n${key}`) {
-      client = resendClient(baseUrl, key, lifetime ?? ctx.signal);
-      clientKey = `${baseUrl}\n${key}`;
+    if (!client || clientKey !== key) {
+      client = resendClient(apiUrl, key, lifetime ?? ctx.signal);
+      clientKey = key;
     }
     try {
       const emails = await client.get(EMAILS_PATH, parseEmails);
@@ -150,11 +152,6 @@ export function createResendCapability(options: ResendCapabilityOptions = {}) {
         type: "object",
         additionalProperties: false,
         properties: {
-          base_url: {
-            type: "string",
-            pattern: BASE_URL_PATTERN,
-            description: `API address (default ${DEFAULT_BASE_URL}). Plain http is only accepted for localhost.`,
-          },
           poll_ms: {
             type: "integer",
             minimum: MIN_POLL_MS,
@@ -209,9 +206,6 @@ export function createResendCapability(options: ResendCapabilityOptions = {}) {
       },
     },
     async health(ctx): Promise<HealthResult> {
-      if (settings(ctx).baseUrl === undefined) {
-        return { status: "degraded", message: "base_url is not allowed (use https)" };
-      }
       if (!(await ctx.secret(SECRET_NAME))) return { status: "degraded", message: NO_KEY_NOTE };
       if (!polled) return { status: "healthy", message: "Reading Resend…" };
       if (failure?.kind === "auth" || failure?.kind === "rate_limit") {

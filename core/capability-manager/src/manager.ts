@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { EventBus, PublishResult } from "@phoenix/event-bus";
-import { silentLogger, type Logger } from "@phoenix/logging";
+import { redact, silentLogger, type Logger } from "@phoenix/logging";
 import type { PermissionGateway } from "@phoenix/permissions";
 import type { Database, EventStore, SecretStore } from "@phoenix/persistence";
 import {
@@ -550,6 +550,7 @@ export class CapabilityManager {
     if (signal?.aborted || entry.abort?.signal.aborted) controller.abort();
     let dispatched = false;
     void (async () => {
+      const targets = commandTargets(input);
       let action;
       try {
         if (controller.signal.aborted)
@@ -560,8 +561,8 @@ export class CapabilityManager {
             command,
             permissions: spec.permissions ?? [],
             sideEffect: spec.side_effect,
-            summary: `${entry.manifest.name}: ${spec.description}`,
-            details: { actor, operation_id: op.id },
+            summary: `${entry.manifest.name}: ${spec.description}${targetSuffix(targets)}`,
+            details: { actor, operation_id: op.id, ...targets },
           },
           controller.signal,
         );
@@ -931,3 +932,29 @@ export class CapabilityManager {
 }
 
 const secretRef = (id: string, name: string) => `capability.${id}.${name}`;
+
+const TARGET_PROPERTY = /(_id|^id|^project|^target)$/;
+const MAX_TARGET_CHARS = 80;
+
+/**
+ * The string/number values of a command input that name what is acted on (`*_id`, `id`, `project`,
+ * `target`), redacted and clipped, so an approval request can say which deployment, execution or
+ * workflow a command is about. Nothing else of the input is included.
+ */
+export function commandTargets(input: unknown): Record<string, string> {
+  const targets: Record<string, string> = {};
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return targets;
+  for (const [name, value] of Object.entries(input)) {
+    if (!TARGET_PROPERTY.test(name)) continue;
+    if (typeof value !== "string" && typeof value !== "number") continue;
+    // Redact the whole value first: clipping first could leave the start of a secret unmasked.
+    targets[name] = String(redact(String(value))).slice(0, MAX_TARGET_CHARS);
+  }
+  return targets;
+}
+
+/** " [deployment_id: dpl_1]" for the approval prompt; empty when the input names no target. */
+function targetSuffix(targets: Record<string, string>): string {
+  const parts = Object.entries(targets).map(([name, value]) => `${name}: ${value}`);
+  return parts.length ? ` [${parts.join(", ")}]` : "";
+}

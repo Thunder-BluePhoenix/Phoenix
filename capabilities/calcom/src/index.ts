@@ -36,8 +36,6 @@ export const MIN_POLL_MS = 15_000;
 export const DEFAULT_REMIND_MINUTES = 10;
 export const MAX_REMIND_MINUTES = 120;
 const MAX_ITEMS = 25;
-const BASE_URL_PATTERN =
-  "^(https://[^\\s]+|http://(127\\.0\\.0\\.1|localhost)(:[0-9]+)?(/[^\\s]*)?)$";
 const NO_KEY_NOTE = "Add a Cal.com API key in the capability's secrets";
 
 export interface CalcomCapabilityOptions {
@@ -45,18 +43,21 @@ export interface CalcomCapabilityOptions {
   now?: () => number;
   /** Waits between polls; resolves early when `signal` aborts. Tests control time with it. */
   sleep?: Sleep;
+  /**
+   * Address of the Cal.com API. Code only, deliberately NOT a config setting: the key may only
+   * ever be sent to Cal.com's own origin. Tests pass a loopback mock here.
+   */
+  apiUrl?: string;
 }
 
 interface Settings {
-  baseUrl: string | undefined;
   pollMs: number;
   remindMinutes: number;
 }
 
 function settings(ctx: CapabilityContext): Settings {
-  const { base_url, poll_ms, remind_minutes } = ctx.config;
+  const { poll_ms, remind_minutes } = ctx.config;
   return {
-    baseUrl: typeof base_url === "string" ? safeBaseUrl(base_url) : DEFAULT_BASE_URL,
     pollMs: typeof poll_ms === "number" ? Math.max(poll_ms, MIN_POLL_MS) : DEFAULT_POLL_MS,
     remindMinutes:
       typeof remind_minutes === "number"
@@ -82,6 +83,9 @@ function toItem(booking: Booking): ServiceItem {
 export function createCalcomCapability(options: CalcomCapabilityOptions = {}) {
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? realSleep;
+  const checkedUrl = safeBaseUrl(options.apiUrl ?? DEFAULT_BASE_URL);
+  if (checkedUrl === undefined) throw new TypeError("apiUrl must be https, or http to loopback");
+  const apiUrl: string = checkedUrl;
 
   let client: ReadOnlyClient | undefined;
   let clientKey = "";
@@ -102,16 +106,16 @@ export function createCalcomCapability(options: CalcomCapabilityOptions = {}) {
 
   async function poll(ctx: CapabilityContext): Promise<void> {
     failure = undefined;
-    const { baseUrl, remindMinutes } = settings(ctx);
+    const { remindMinutes } = settings(ctx);
     const key = await ctx.secret(SECRET_NAME);
-    if (!key || !baseUrl) {
+    if (!key) {
       items = [];
       polled = true;
       return;
     }
-    if (!client || clientKey !== `${baseUrl}\n${key}`) {
-      client = calClient(baseUrl, key, lifetime ?? ctx.signal);
-      clientKey = `${baseUrl}\n${key}`;
+    if (!client || clientKey !== key) {
+      client = calClient(apiUrl, key, lifetime ?? ctx.signal);
+      clientKey = key;
     }
     try {
       const at = now();
@@ -172,11 +176,6 @@ export function createCalcomCapability(options: CalcomCapabilityOptions = {}) {
         type: "object",
         additionalProperties: false,
         properties: {
-          base_url: {
-            type: "string",
-            pattern: BASE_URL_PATTERN,
-            description: `API address (default ${DEFAULT_BASE_URL}). Plain http is only accepted for localhost.`,
-          },
           poll_ms: {
             type: "integer",
             minimum: MIN_POLL_MS,
@@ -229,9 +228,6 @@ export function createCalcomCapability(options: CalcomCapabilityOptions = {}) {
       },
     },
     async health(ctx): Promise<HealthResult> {
-      if (settings(ctx).baseUrl === undefined) {
-        return { status: "degraded", message: "base_url is not allowed (use https)" };
-      }
       if (!(await ctx.secret(SECRET_NAME))) return { status: "degraded", message: NO_KEY_NOTE };
       if (!polled) return { status: "healthy", message: "Reading Cal.com…" };
       if (failure?.kind === "auth" || failure?.kind === "rate_limit") {

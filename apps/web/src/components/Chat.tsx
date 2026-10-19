@@ -7,6 +7,10 @@ import { useChat } from "../core/chat";
 import { useDisplayedState } from "../core/context";
 import { useAgentSettings } from "../core/hooks";
 import { useAttachments } from "../core/attachments";
+import { formatNumber } from "../core/format";
+import { isMessageKey, useLocale, useT } from "../i18n";
+import { translate } from "../i18n/store";
+import { intlLocale } from "../i18n/supported";
 import { AnswerView } from "./AnswerView";
 import { AttachmentAnswerView, AttachmentsTray, DropZone } from "./Attachments";
 import { DictateButton } from "./Dictation";
@@ -18,12 +22,11 @@ const REPOSITORY = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/(?!\.{1,2}$)[A-Za-z0-9._-]{1
 /** Returns the parsed task input, or what is wrong with the two fields in plain words. */
 export function parseCiForm(repository: string, runId: string): CiTaskInput | string {
   const repo = repository.trim();
-  if (!REPOSITORY.test(repo))
-    return 'Enter the repository as "owner/name", for example "acme/app".';
+  if (!REPOSITORY.test(repo)) return translate("capture.chat.ciForm.badRepository");
   const id = runId.trim();
   if (id === "") return { repository: repo };
   if (!/^[0-9]{1,15}$/.test(id) || Number(id) < 1) {
-    return "The run id must be a positive whole number, or left empty for the latest failed run.";
+    return translate("capture.chat.ciForm.badRunId");
   }
   return { repository: repo, runId: Number(id) };
 }
@@ -35,6 +38,7 @@ function CiTaskForm({
   onStart: (input: CiTaskInput) => Promise<string | null>;
   onClose: () => void;
 }) {
+  const t = useT();
   const [repository, setRepository] = useState("");
   const [runId, setRunId] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -58,16 +62,13 @@ function CiTaskForm({
   return (
     <form
       className="memory-form card"
-      aria-label="Diagnose a CI failure"
+      aria-label={t("capture.chat.ciForm.label")}
       onSubmit={(e) => void submit(e)}
       onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), onClose())}
     >
-      <p className="small">
-        Fawkes will read the failed GitHub Actions run and your local git history. It changes
-        nothing.
-      </p>
+      <p className="small">{t("capture.chat.ciForm.intro")}</p>
       <label htmlFor={repoId} className="small">
-        Repository (owner/name)
+        {t("capture.chat.ciForm.repository")}
       </label>
       <input
         id={repoId}
@@ -81,7 +82,7 @@ function CiTaskForm({
         onChange={(e) => setRepository(e.target.value)}
       />
       <label htmlFor={runIdId} className="small">
-        Run id (optional; empty means the latest failed run)
+        {t("capture.chat.ciForm.runId")}
       </label>
       <input
         id={runIdId}
@@ -99,10 +100,10 @@ function CiTaskForm({
       )}
       <div className="button-row wrap">
         <button type="submit" className="btn btn-primary" disabled={busy}>
-          Start diagnosis
+          {t("capture.chat.ciForm.start")}
         </button>
         <button type="button" className="btn" onClick={onClose}>
-          Cancel
+          {t("common.button.cancel")}
         </button>
       </div>
     </form>
@@ -110,11 +111,12 @@ function CiTaskForm({
 }
 
 function Message({ item }: { item: ChatItem }) {
+  const t = useT();
   switch (item.kind) {
     case "user":
       return (
         <li className="chat-msg chat-user">
-          <p className="chat-who small">You</p>
+          <p className="chat-who small">{t("capture.chat.who.you")}</p>
           <p className="memory-text">{item.text}</p>
         </li>
       );
@@ -153,6 +155,8 @@ function Message({ item }: { item: ChatItem }) {
 
 /** Pet Panel "Chat" tab (Phase 32): ask Fawkes about what it remembers, and start a CI diagnosis. */
 export function Chat() {
+  const t = useT();
+  const { locale } = useLocale();
   const { chat, store } = useChat();
   const state = useDisplayedState();
   const { data: agents } = useAgentSettings();
@@ -163,6 +167,8 @@ export function Chat() {
   const log = useRef<HTMLUListElement>(null);
   const id = useId();
   const visual = visualFor(state.state);
+  const stateKey = `common.petState.${state.state}`;
+  const stateText = isMessageKey(stateKey) ? t(stateKey) : visual.label;
 
   // Unmounting a focused box fires no blur, and LISTENING must not outlive the box.
   useEffect(() => () => store.setFocused(false), [store]);
@@ -201,17 +207,16 @@ export function Chat() {
   return (
     <div className="chat">
       <p className="small">
-        <strong>Fawkes is {visual.label.toLowerCase()}.</strong> {state.explanation}
+        <strong>
+          {t("capture.chat.status", { state: stateText.toLocaleLowerCase(intlLocale(locale)) })}
+        </strong>{" "}
+        {state.explanation}
       </p>
-      <p className="muted small">
-        Ask what Fawkes remembers. Answers list stored facts with their sources first; anything
-        generated is labelled. This conversation is kept in this page only and is gone when you
-        reload.
-      </p>
+      <p className="muted small">{t("capture.chat.intro")}</p>
       {chat.items.length === 0 ? (
-        <p className="muted small">No messages yet.</p>
+        <p className="muted small">{t("capture.chat.empty")}</p>
       ) : (
-        <ul className="chat-log" aria-label="Conversation" ref={log} tabIndex={0}>
+        <ul className="chat-log" aria-label={t("capture.chat.conversation")} ref={log} tabIndex={0}>
           {chat.items.map((item) => (
             <Message key={item.id} item={item} />
           ))}
@@ -219,12 +224,12 @@ export function Chat() {
       )}
       {chat.asking && (
         <p className="small" role="status">
-          Waiting for Phoenix Core to answer…
+          {t("capture.chat.waiting")}
         </p>
       )}
       <ModelSwitcher />
       <AttachmentsTray att={att} excluded={excluded} onToggle={toggle} />
-      <DropZone label="the chat box" onDone={() => void att.reload()}>
+      <DropZone label={t("capture.chat.dropLabel")} onDone={() => void att.reload()}>
         <form
           className="memory-form"
           onSubmit={(e) => {
@@ -233,7 +238,7 @@ export function Chat() {
           }}
         >
           <label htmlFor={`${id}-msg`} className="small">
-            Message to Fawkes
+            {t("capture.chat.message")}
           </label>
           <textarea
             id={`${id}-msg`}
@@ -247,8 +252,10 @@ export function Chat() {
             onKeyDown={onKey}
           />
           <p id={`${id}-count`} className="muted small">
-            {chat.draft.length} / {CHAT_MAX_CHARS} characters · Enter sends, Shift+Enter starts a
-            new line
+            {t("capture.chat.count", {
+              n: formatNumber(chat.draft.length),
+              max: formatNumber(CHAT_MAX_CHARS),
+            })}
           </p>
           <div className="button-row wrap">
             <button
@@ -257,7 +264,7 @@ export function Chat() {
               disabled={chat.asking || empty}
               aria-disabled={chat.asking || empty}
             >
-              {chat.asking ? "Sending…" : "Send"}
+              {chat.asking ? t("capture.chat.sending") : t("capture.chat.send")}
             </button>
             <button
               type="button"
@@ -266,12 +273,12 @@ export function Chat() {
               aria-disabled={chat.asking || empty || !canAskAttached}
               title={
                 chosen.length === 0
-                  ? "Attach something first, or tick an attachment"
-                  : "Sends your question and the ticked attachments to a model on this device"
+                  ? t("capture.chat.askAttachmentsNone")
+                  : t("capture.chat.askAttachmentsTitle")
               }
               onClick={askAttached}
             >
-              Ask about attachments
+              {t("capture.chat.askAttachments")}
             </button>
             <DictateButton
               onText={(text) => {
@@ -287,14 +294,14 @@ export function Chat() {
                 setFormOpen(!formOpen);
               }}
             >
-              Diagnose a CI failure
+              {t("capture.chat.diagnose")}
             </button>
           </div>
         </form>
       </DropZone>
       {agents && !agents.enabled && (
         <p className="warning-text small" role="note">
-          Automation is off, so Fawkes cannot start tasks. Turn it on in Settings, under Automation.
+          {t("capture.chat.automationOff")}
         </p>
       )}
       {formOpen && (

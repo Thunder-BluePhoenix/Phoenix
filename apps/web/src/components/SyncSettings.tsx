@@ -2,8 +2,11 @@
 // Copyright (C) 2026 Phoenix contributors
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useClient } from "../core/context";
+import { formatNumber } from "../core/format";
 import { useAction } from "../core/hooks";
 import type { SyncDataClass, SyncStatus } from "../core/types";
+import { useT } from "../i18n";
+import type { Translate } from "../i18n/store";
 import { Feedback } from "./Feedback";
 
 type ConfigureResult = SyncStatus & { recovery_key?: string };
@@ -23,18 +26,19 @@ type AdapterStatus = SyncStatus & {
   adapter_sources?: AdapterSource[];
 };
 
-function relayDisplay(endpoint: string | null): string {
-  if (!endpoint) return "not configured";
+function relayDisplay(endpoint: string | null, t: Translate): string {
+  if (!endpoint) return t("automation.sync.relayNone");
   try {
     const url = new URL(endpoint);
     return url.origin;
   } catch {
-    return "configured relay (URL unavailable)";
+    return t("automation.sync.relayUnknown");
   }
 }
 
 /** Explicit opt-in only. Reading status cannot connect to a relay or send sync records. */
 export function SyncSettingsSection() {
+  const t = useT();
   const client = useClient();
   const { run, busy, error: actionError } = useAction();
   const [status, setStatus] = useState<AdapterStatus | null>(null);
@@ -58,11 +62,9 @@ export function SyncSettingsSection() {
     } catch {
       setStatus(null);
       setApplySource(null);
-      setLoadError(
-        "Sync settings are unavailable from Phoenix Core. This status request did not contact the relay.",
-      );
+      setLoadError(t("automation.sync.unavailable"));
     }
-  }, [client]);
+  }, [client, t]);
   useEffect(() => {
     void reload();
   }, [reload]);
@@ -84,9 +86,7 @@ export function SyncSettingsSection() {
       await reload();
       setEndpoint("");
       setRecoveryKey(recovery_key ?? null);
-      setMessage(
-        "Sync is configured. Queued records sync automatically while online; Sync now starts an immediate attempt.",
-      );
+      setMessage(t("automation.sync.configured"));
     }
   };
   const change = async (path: string, body: object, success: string) => {
@@ -102,7 +102,7 @@ export function SyncSettingsSection() {
     change(
       "/api/sync/exclusions",
       { excluded_projects: projects, excluded_classes: classes },
-      "Exclusions saved.",
+      t("automation.sync.exclusionsSaved"),
     );
   const selectAdapter = async (keys: AdapterKey[]) => {
     setMessage(null);
@@ -110,9 +110,7 @@ export function SyncSettingsSection() {
     const result = await run("POST", "/api/sync/adapter", { keys });
     if (result) {
       await reload();
-      setMessage(
-        "Adapter selection saved. Newly selected current settings are staged; no other sources are included.",
-      );
+      setMessage(t("automation.sync.adapterSaved"));
     }
   };
   const applyAdapter = async () => {
@@ -125,7 +123,7 @@ export function SyncSettingsSection() {
     if (result) {
       await reload();
       setApplySource(null);
-      setMessage("Selected synced setting applied locally.");
+      setMessage(t("automation.sync.adapterApplied"));
     }
   };
   const publishAdapter = async (key: AdapterKey) => {
@@ -137,7 +135,7 @@ export function SyncSettingsSection() {
     });
     if (result) {
       await reload();
-      setMessage("Current local setting staged for encrypted sync.");
+      setMessage(t("automation.sync.adapterPublished"));
     }
   };
   const sync = async () => {
@@ -148,8 +146,8 @@ export function SyncSettingsSection() {
       await reload();
       setMessage(
         next.pending
-          ? `${next.pending} item(s) still queued. Review status and conflicts below.`
-          : "Sync finished. Review items and conflicts below.",
+          ? t("automation.sync.syncedPending", { pending: formatNumber(next.pending) })
+          : t("automation.sync.syncedDone"),
       );
     }
   };
@@ -165,8 +163,8 @@ export function SyncSettingsSection() {
       setChoice(null);
       setMessage(
         choice.remoteMissing && choice.choice === "remote"
-          ? "Remote deletion accepted. Local staged sync record is now deleted; nothing is queued for upload."
-          : "Conflict choice saved. Pending changes sync automatically while online; Sync now starts an immediate attempt.",
+          ? t("automation.sync.resolvedDeletion")
+          : t("automation.sync.resolvedChoice"),
       );
       await reload();
     }
@@ -176,7 +174,7 @@ export function SyncSettingsSection() {
     const result = await run("POST", "/api/sync/items/delete", { ...deletion, confirm: true });
     if (result) {
       setDeletion(null);
-      setMessage("Deletion queued. The remote copy is not deleted until a successful sync.");
+      setMessage(t("automation.sync.deletionQueued"));
       await reload();
     }
   };
@@ -184,28 +182,21 @@ export function SyncSettingsSection() {
   return (
     <section aria-labelledby="sync-h" className="card">
       <h2 id="sync-h" className="h3">
-        Encrypted sync
+        {t("automation.sync.title")}
       </h2>
-      <p className="muted small">
-        Optional and off by default. Sync requires your own available HTTPS relay and relay
-        authentication; Phoenix does not provide a hosted relay. Configuring is explicit opt-in: it
-        sends nothing during setup, but queued records sync automatically while online afterward.
-        Sync now starts an immediate attempt. The adapter stages only the two explicitly selected
-        non-content settings; later local changes require Publish current. Meeting, person and
-        memory text is never included by this adapter.
-      </p>
+      <p className="muted small">{t("automation.sync.intro")}</p>
       {loadError && <Feedback error={loadError} />}
       {status && (
         <>
           <p role="status">
-            Sync is {status.enabled ? "on" : "off"}. {status.pending} queued; {status.conflicts}{" "}
-            conflict(s).
+            {t(status.enabled ? "automation.sync.statusOn" : "automation.sync.statusOff", {
+              pending: formatNumber(status.pending),
+              conflicts: status.conflicts,
+            })}
           </p>
-          <p className="muted small">
-            Choose exclusions before opting in; excluded classes and projects are not uploaded.
-          </p>
+          <p className="muted small">{t("automation.sync.chooseExclusions")}</p>
           <fieldset disabled={busy}>
-            <legend>Exclude data classes</legend>
+            <legend>{t("automation.sync.excludeClasses")}</legend>
             {CLASSES.map((dataClass) => (
               <label className="choice" key={dataClass}>
                 <input
@@ -220,7 +211,7 @@ export function SyncSettingsSection() {
                     )
                   }
                 />
-                {dataClass.replaceAll("_", " ")}
+                {t(`automation.sync.class.${dataClass}`)}
               </label>
             ))}
           </fieldset>
@@ -235,11 +226,11 @@ export function SyncSettingsSection() {
             }}
           >
             <label className="field">
-              Exclude project by name
+              {t("automation.sync.excludeProject")}
               <input value={project} onChange={(e) => setProject(e.target.value)} />
             </label>
             <button className="btn" type="submit" disabled={busy || !project.trim()}>
-              Exclude project
+              {t("automation.sync.excludeProjectButton")}
             </button>
           </form>
           {status.excluded_projects.length > 0 && (
@@ -258,23 +249,15 @@ export function SyncSettingsSection() {
                       )
                     }
                   >
-                    Remove exclusion for {name}
+                    {t("automation.sync.removeExclusion", { name })}
                   </button>
                 </li>
               ))}
             </ul>
           )}
           <fieldset disabled={busy || !status.enabled}>
-            <legend>Opt in existing settings individually</legend>
-            <p className="muted small">
-              Only account-owner-scoped reduced motion (preference) and search result count (context
-              configuration) are eligible; there are no project-scoped sources. Selecting stages the
-              current value. Publish a later local change explicitly. Incoming values remain staged
-              until you review and confirm applying them locally. Excluding a class also removes its
-              adapter selection when allowed; already published records must first be deleted and
-              synced. Deselecting does not erase uploaded ciphertext; delete its synced item
-              separately if needed.
-            </p>
+            <legend>{t("automation.sync.adapterLegend")}</legend>
+            <p className="muted small">{t("automation.sync.adapterNote")}</p>
             {(["pet.settings.reduced_motion", "retrieval.settings.k"] as const).map((key) => (
               <label className="choice" key={key}>
                 <input
@@ -289,8 +272,8 @@ export function SyncSettingsSection() {
                   }
                 />
                 {key === "pet.settings.reduced_motion"
-                  ? "Reduced motion preference"
-                  : "Search result count metadata"}
+                  ? t("automation.sync.adapter.reducedMotion")
+                  : t("automation.sync.adapter.searchCount")}
               </label>
             ))}
           </fieldset>
@@ -303,7 +286,7 @@ export function SyncSettingsSection() {
                 disabled={busy}
                 onClick={() => void publishAdapter(key)}
               >
-                Publish current {key}
+                {t("automation.sync.publish", { key })}
               </button>
             ))}
           {status.enabled &&
@@ -317,18 +300,17 @@ export function SyncSettingsSection() {
                     disabled={busy}
                     onClick={() => setApplySource(source)}
                   >
-                    Review applying {source.key}
+                    {t("automation.sync.reviewApply", { key: source.key })}
                   </button>
                 </div>
               ))}
           {applySource && (
-            <div role="group" aria-label="Setting apply preview">
+            <div role="group" aria-label={t("automation.sync.applyPreview")}>
               <p>
-                Apply decrypted staged {applySource.key} revision {applySource.revision} to the
-                existing local setting? It will replace the current value only after confirmation.
-                Current and incoming values are hidden; identify the versions by source and
-                revision, or cancel. A changed local value or staged revision invalidates this
-                preview.
+                {t("automation.sync.applyText", {
+                  key: applySource.key,
+                  revision: applySource.revision ?? "",
+                })}
               </p>
               <button
                 className="btn"
@@ -336,74 +318,72 @@ export function SyncSettingsSection() {
                 disabled={busy}
                 onClick={() => void applyAdapter()}
               >
-                Confirm apply setting
+                {t("automation.sync.confirmApply")}
               </button>{" "}
               <button className="btn" type="button" onClick={() => setApplySource(null)}>
-                Cancel apply
+                {t("automation.sync.cancelApply")}
               </button>
             </div>
           )}
           {status.enabled ? (
             <>
               <p className="small">
-                Relay: {relayDisplay(status.endpoint)}. Identity:{" "}
-                {status.identity ?? "not available"}. A reachable relay is required; this status
-                does not prove the relay is available.
+                {t("automation.sync.relayLine", {
+                  relay: relayDisplay(status.endpoint, t),
+                  identity: status.identity ?? t("automation.sync.identityNone"),
+                })}
               </p>
-              <p className="muted small">
-                This identity represents the shared recovery-key account, not a distinct device.
-                Devices with the same key and relay token cannot be individually revoked, and relay
-                replay protection is not established.
-              </p>
+              <p className="muted small">{t("automation.sync.identityNote")}</p>
               <div className="button-row wrap">
                 <button className="btn" type="button" disabled={busy} onClick={() => void sync()}>
-                  Sync now
+                  {t("automation.sync.syncNow")}
                 </button>
                 <button
                   className="btn"
                   type="button"
                   disabled={busy}
                   onClick={() =>
-                    void change(
-                      "/api/sync/disable",
-                      {},
-                      "Sync is off. Queued records remain local.",
-                    )
+                    void change("/api/sync/disable", {}, t("automation.sync.turnedOff"))
                   }
                 >
-                  Turn sync off
+                  {t("automation.sync.turnOff")}
                 </button>
               </div>
-              <p className="muted small">
-                If the relay is offline, a manual sync reports an error and pending items remain
-                queued for later retry. No silent overwrite occurs on conflicts.
-              </p>
-              <h3 className="h3">Synced items</h3>
-              <p className="muted small">
-                Metadata only; item contents and conflicting values are not displayed.
-              </p>
+              <p className="muted small">{t("automation.sync.offlineNote")}</p>
+              <h3 className="h3">{t("automation.sync.items")}</h3>
+              <p className="muted small">{t("automation.sync.itemsNote")}</p>
               {status.items.length === 0 ? (
-                <p>No sync records staged.</p>
+                <p>{t("automation.sync.noItems")}</p>
               ) : (
                 <ul>
                   {status.items.map((item) => (
                     <li key={`${item.scope}:${item.id}`}>
-                      <strong>{item.id}</strong> · {item.data_class} · owner {item.owner} · scope{" "}
-                      {item.scope} · project {item.project ?? "none"} · revision {item.revision} ·
-                      updated {item.updated_at || "unknown"} ·{" "}
-                      {item.deleted
-                        ? item.pending
-                          ? "deletion queued"
-                          : "deleted"
-                        : item.pending
-                          ? "queued"
-                          : "synced"}
+                      {t.rich("automation.sync.itemLine", {
+                        id: <strong>{item.id}</strong>,
+                        dataClass: item.data_class,
+                        owner: item.owner,
+                        scope: item.scope,
+                        project: item.project ?? t("automation.sync.projectNone"),
+                        revision: item.revision,
+                        updated: item.updated_at || t("automation.sync.updatedUnknown"),
+                        state: item.deleted
+                          ? item.pending
+                            ? t("automation.sync.state.deletionQueued")
+                            : t("automation.sync.state.deleted")
+                          : item.pending
+                            ? t("automation.sync.state.queued")
+                            : t("automation.sync.state.synced"),
+                      })}
                       {item.conflict && (
                         <div>
                           <p role="alert">
                             {item.conflict === "remote_missing"
-                              ? "Conflict: this record is missing on the relay. Keep local to restore it on the relay, or accept remote deletion to delete the local staged sync record. Nothing is overwritten automatically."
-                              : `Conflict: remote revision ${item.conflict.revision}, updated ${item.conflict.updated_at || "unknown"}. Nothing is overwritten until you choose a side.`}
+                              ? t("automation.sync.conflictMissing")
+                              : t("automation.sync.conflictRemote", {
+                                  revision: item.conflict.revision,
+                                  updated:
+                                    item.conflict.updated_at || t("automation.sync.updatedUnknown"),
+                                })}
                           </p>
                           <button
                             className="btn"
@@ -418,7 +398,7 @@ export function SyncSettingsSection() {
                               })
                             }
                           >
-                            Review keeping local for {item.id}
+                            {t("automation.sync.reviewKeepLocal", { id: item.id })}
                           </button>{" "}
                           <button
                             className="btn"
@@ -434,8 +414,8 @@ export function SyncSettingsSection() {
                             }
                           >
                             {item.conflict === "remote_missing"
-                              ? `Review accepting remote deletion for ${item.id}`
-                              : `Review keeping remote for ${item.id}`}
+                              ? t("automation.sync.reviewAcceptDeletion", { id: item.id })
+                              : t("automation.sync.reviewKeepRemote", { id: item.id })}
                           </button>
                         </div>
                       )}
@@ -447,7 +427,7 @@ export function SyncSettingsSection() {
                             disabled={busy}
                             onClick={() => setDeletion({ id: item.id, scope: item.scope })}
                           >
-                            Review remote deletion for {item.id}
+                            {t("automation.sync.reviewDeletion", { id: item.id })}
                           </button>
                         </div>
                       )}
@@ -456,18 +436,17 @@ export function SyncSettingsSection() {
                 </ul>
               )}
               {choice && (
-                <div role="group" aria-label="Conflict resolution preview">
+                <div role="group" aria-label={t("automation.sync.resolutionPreview")}>
                   <p>
-                    Preview for {choice.id} ({choice.scope}):{" "}
+                    {t("automation.sync.previewFor", { id: choice.id, scope: choice.scope })}{" "}
                     {choice.remoteMissing
                       ? choice.choice === "remote"
-                        ? "Accept remote deletion: delete the local staged sync record now; nothing is uploaded."
-                        : "Restore missing remote: queue the local version for upload on the next successful sync."
+                        ? t("automation.sync.previewAcceptDeletion")
+                        : t("automation.sync.previewRestore")
                       : choice.choice === "remote"
-                        ? "Keep remote: replace the local staged sync record with the remote version now."
-                        : "Keep local: queue this version for upload on the next successful sync. A newer remote change will still require resolution."}{" "}
-                    Item contents are hidden here; if you cannot identify the versions from
-                    metadata, cancel. This cannot be undone here.
+                        ? t("automation.sync.previewKeepRemote")
+                        : t("automation.sync.previewKeepLocal")}{" "}
+                    {t("automation.sync.previewTail")}
                   </p>
                   <button
                     className="btn"
@@ -476,22 +455,22 @@ export function SyncSettingsSection() {
                     onClick={() => void resolve()}
                   >
                     {choice.remoteMissing && choice.choice === "remote"
-                      ? "Confirm accept remote deletion"
+                      ? t("automation.sync.confirmAcceptDeletion")
                       : choice.remoteMissing
-                        ? "Confirm restore missing remote"
-                        : `Confirm keep ${choice.choice}`}
+                        ? t("automation.sync.confirmRestore")
+                        : choice.choice === "remote"
+                          ? t("automation.sync.confirmKeepRemote")
+                          : t("automation.sync.confirmKeepLocal")}
                   </button>{" "}
                   <button className="btn" type="button" onClick={() => setChoice(null)}>
-                    Cancel resolution
+                    {t("automation.sync.cancelResolution")}
                   </button>
                 </div>
               )}
               {deletion && (
-                <div role="group" aria-label="Remote deletion confirmation">
+                <div role="group" aria-label={t("automation.sync.deletionConfirmation")}>
                   <p>
-                    Delete {deletion.id} ({deletion.scope}) from the relay? This queues a tombstone
-                    locally; the remote copy is removed only after successful sync. This cannot be
-                    undone here.
+                    {t("automation.sync.deletionText", { id: deletion.id, scope: deletion.scope })}
                   </p>
                   <button
                     className="btn"
@@ -499,10 +478,10 @@ export function SyncSettingsSection() {
                     disabled={busy}
                     onClick={() => void remove()}
                   >
-                    Confirm remote deletion
+                    {t("automation.sync.confirmDeletion")}
                   </button>{" "}
                   <button className="btn" type="button" onClick={() => setDeletion(null)}>
-                    Cancel deletion
+                    {t("automation.sync.cancelDeletion")}
                   </button>
                 </div>
               )}
@@ -510,7 +489,7 @@ export function SyncSettingsSection() {
           ) : (
             <form className="settings-form" onSubmit={(e) => void configure(e)}>
               <label className="field">
-                Relay HTTPS URL
+                {t("automation.sync.relayUrl")}
                 <input
                   type="url"
                   required
@@ -521,7 +500,7 @@ export function SyncSettingsSection() {
                 />
               </label>
               <label className="field">
-                Relay authentication token
+                {t("automation.sync.relayToken")}
                 <input
                   type="password"
                   required
@@ -531,7 +510,7 @@ export function SyncSettingsSection() {
                 />
               </label>
               <label className="field">
-                Existing recovery key (optional, for restoring an identity)
+                {t("automation.sync.restoreKey")}
                 <input
                   type="password"
                   autoComplete="off"
@@ -539,24 +518,15 @@ export function SyncSettingsSection() {
                   onChange={(e) => setRestoreKey(e.target.value)}
                 />
               </label>
-              <p className="warning-text small">
-                Explicit opt-in: configuring stores relay credentials locally and enables automatic
-                sync of queued records while online. A new identity shows a recovery key once: save
-                it immediately; it cannot be retrieved later. Reconfiguring after turning sync off
-                reuses the locally stored identity when available. Never share your key with the
-                relay operator.
-              </p>
+              <p className="warning-text small">{t("automation.sync.optInNote")}</p>
               <button className="btn" type="submit" disabled={busy}>
-                Configure encrypted sync
+                {t("automation.sync.configure")}
               </button>
             </form>
           )}
           {recoveryKey && (
-            <div role="group" aria-label="One-time recovery key">
-              <p className="warning-text">
-                Copy and store this recovery key in a safe place now. It is shown only once and
-                cannot be retrieved later. Do not share it.
-              </p>
+            <div role="group" aria-label={t("automation.sync.recoveryGroup")}>
+              <p className="warning-text">{t("automation.sync.recoveryText")}</p>
               <code>{recoveryKey}</code>{" "}
               <button
                 className="btn"
@@ -565,15 +535,15 @@ export function SyncSettingsSection() {
                   void navigator.clipboard?.writeText(recoveryKey);
                 }}
               >
-                Copy recovery key
+                {t("automation.sync.copyKey")}
               </button>{" "}
               <button className="btn" type="button" onClick={() => setRecoveryKey(null)}>
-                I saved the key — dismiss
+                {t("automation.sync.savedKey")}
               </button>
             </div>
           )}
           <button className="btn" type="button" disabled={busy} onClick={() => void reload()}>
-            Refresh sync status
+            {t("automation.sync.refresh")}
           </button>
         </>
       )}

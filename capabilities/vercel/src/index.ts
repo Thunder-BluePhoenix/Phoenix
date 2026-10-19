@@ -7,6 +7,7 @@
 // watching. The one write is `redeploy`, an external command that always asks the user first.
 import { defineCapability, type CapabilityContext, type HealthResult } from "@phoenix/sdk";
 import {
+  emitAll,
   nextDelay,
   realSleep,
   safeBaseUrl,
@@ -40,29 +41,29 @@ const MAX_REMEMBERED_KEYS = 200;
 export const ID_PATTERN = "^[A-Za-z0-9_-]{1,100}$";
 export const IDEMPOTENCY_KEY_PATTERN = "^[A-Za-z0-9_-]{16,80}$";
 const ID_RE = new RegExp(ID_PATTERN);
-/** https, or http to loopback; no credentials, query or fragment (safeBaseUrl re-checks at use). */
-const URL_PATTERN =
-  "^(https://[^\\s@?#]+|http://(127\\.0\\.0\\.1|localhost)(:[0-9]+)?(/[^\\s@?#]*)?)$";
 
 export interface VercelCapabilityOptions {
   /** Epoch ms clock; tests pin it. */
   now?: () => number;
   /** Waits between polls; resolves early when `signal` aborts. Tests control time with it. */
   sleep?: Sleep;
+  /**
+   * Address of the Vercel API. Code only, deliberately NOT a config setting: the token may only
+   * ever be sent to Vercel's own origin, so nothing reachable through the config API can move it.
+   * Tests pass a loopback mock here.
+   */
+  apiUrl?: string;
 }
 
 interface Settings {
-  baseUrl: string | undefined;
   teamId: string | undefined;
   project: string | undefined;
   pollMs: number;
 }
 
 function settings(ctx: CapabilityContext): Settings {
-  const { base_url, team_id, project, poll_ms } = ctx.config;
-  const baseUrl = typeof base_url === "string" ? safeBaseUrl(base_url) : VERCEL_API;
+  const { team_id, project, poll_ms } = ctx.config;
   return {
-    baseUrl,
     teamId: typeof team_id === "string" && ID_RE.test(team_id) ? team_id : undefined,
     project:
       typeof project === "string" && /^[A-Za-z0-9._-]{1,100}$/.test(project) ? project : undefined,
@@ -124,6 +125,9 @@ function asServiceError(err: unknown): ServiceError {
 export function createVercelCapability(options: VercelCapabilityOptions = {}) {
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? realSleep;
+  const checkedUrl = safeBaseUrl(options.apiUrl ?? VERCEL_API);
+  if (checkedUrl === undefined) throw new TypeError("apiUrl must be https, or http to loopback");
+  const apiUrl: string = checkedUrl;
 
   let tracker = deploymentTracker(0);
   let liveSince = 0;
@@ -132,23 +136,30 @@ export function createVercelCapability(options: VercelCapabilityOptions = {}) {
   let hasSecret = false;
   let failure: ServiceError | undefined;
   let failures = 0;
-  /** idempotency_key → outcome of the redeploy it started (or null: sent, outcome unknown). */
-  const redeploys = new Map<string, Promise<CreatedDeployment | null>>();
+  let refused = 0;
+  /**
+   * `redeploy:<idempotency_key>` → the deployment it targeted and the outcome it started (null:
+   * sent, outcome unknown). Kept in memory only: forgotten on restart or when disabled.
+   */
+  const redeploys = new Map<
+    string,
+    { target: string; attempt: Promise<CreatedDeployment | null> }
+  >();
 
   async function cycle(ctx: CapabilityContext): Promise<number> {
     const s = settings(ctx);
     const secret = await ctx.secret("token");
     hasSecret = !!secret;
     failure = undefined;
-    if (secret && s.baseUrl) {
+    if (secret) {
       try {
-        const client = createVercelClient({ baseUrl: s.baseUrl, secret, signal: ctx.signal });
+        const client = createVercelClient({ baseUrl: apiUrl, secret, signal: ctx.signal });
         latest = await listDeployments(client, {
           teamId: s.teamId,
           project: s.project,
           limit: DEPLOYMENTS_PER_POLL,
         });
-        for (const event of diffDeployments(tracker, latest)) void ctx.emit(event);
+        refused += emitAll(ctx, diffDeployments(tracker, latest));
       } catch (err) {
         failure = asServiceError(err);
       }
@@ -159,11 +170,9 @@ export function createVercelCapability(options: VercelCapabilityOptions = {}) {
   }
 
   async function clientFor(ctx: CapabilityContext) {
-    const { baseUrl } = settings(ctx);
     const secret = await ctx.secret("token");
     if (!secret) throw new ServiceError(SERVICE, "auth", "Add a Vercel token in Settings first");
-    if (!baseUrl) throw new ServiceError(SERVICE, "invalid", "base_url must be https or loopback");
-    return createVercelClient({ baseUrl, secret, signal: ctx.signal });
+    return createVercelClient({ baseUrl: apiUrl, secret, signal: ctx.signal });
   }
 
   async function startRedeploy(
@@ -174,6 +183,10 @@ export function createVercelCapability(options: VercelCapabilityOptions = {}) {
     const { teamId } = settings(ctx);
     // A failed lookup is definite: nothing has been sent that could start a deployment.
     const source = await getDeployment(client, input.deployment_id, teamId);
+    // The POST body is built from this response, so it must describe the deployment asked for.
+    if (source.id !== input.deployment_id) {
+      throw new ServiceError(SERVICE, "invalid", "Vercel answered with a different deployment");
+    }
     try {
       return await redeploy(client, source, teamId);
     } catch (err) {
@@ -189,7 +202,7 @@ export function createVercelCapability(options: VercelCapabilityOptions = {}) {
       name: "Vercel",
       version: "0.1.0",
       description:
-        "Vercel deployments from your account or team: Fawkes shows DEPLOYING, SUCCESS and ERROR, and deployments reach the knowledge graph. Watching is read-only (GET only) and pauses while nothing is watching Phoenix. The one command that changes anything, redeploy, rebuilds an existing deployment only after you approve it. Needs a Vercel access token.",
+        "Vercel deployments from your account or team: Fawkes shows DEPLOYING, SUCCESS and ERROR, and deployments reach the knowledge graph. Watching is read-only (GET only) and pauses while nothing is watching Phoenix. The one command that changes anything, redeploy, rebuilds an existing deployment only after you approve it. Your token is only ever sent to Vercel's own API address (api.vercel.com); there is no setting to change it. Needs a Vercel access token.",
       license: "GPL-3.0-or-later",
       homepage: "https://github.com/Thunder-BluePhoenix/Phoenix",
       events: ["vercel.deploy.*"],
@@ -217,7 +230,7 @@ export function createVercelCapability(options: VercelCapabilityOptions = {}) {
         {
           name: "redeploy",
           description:
-            "Rebuilds an existing Vercel deployment as a new deployment. Changes your Vercel project and always asks for your confirmation. Safe to repeat with the same idempotency_key: a second call does not start a second deployment.",
+            "Rebuilds an existing Vercel deployment as a new deployment. Changes your Vercel project and always asks for your confirmation. Safe to repeat with the same idempotency_key for the same deployment: a second call does not start a second deployment. Keys are remembered in memory only, until Phoenix restarts or the capability is disabled; a key reused for a different deployment is refused.",
           side_effect: "external",
           permissions: ["network", "external_api"],
           timeout_ms: 60_000,
@@ -236,11 +249,6 @@ export function createVercelCapability(options: VercelCapabilityOptions = {}) {
         type: "object",
         additionalProperties: false,
         properties: {
-          base_url: {
-            type: "string",
-            pattern: URL_PATTERN,
-            description: `API base URL (default ${VERCEL_API}). Plain http is only accepted for localhost.`,
-          },
           team_id: {
             type: "string",
             pattern: ID_PATTERN,
@@ -284,6 +292,7 @@ export function createVercelCapability(options: VercelCapabilityOptions = {}) {
       polled = false;
       failure = undefined;
       failures = 0;
+      refused = 0;
       redeploys.clear();
       // History rule: anything that began before this moment is background, not news.
       liveSince = now();
@@ -302,7 +311,11 @@ export function createVercelCapability(options: VercelCapabilityOptions = {}) {
             project,
             limit: MAX_STATUS_ITEMS,
           });
-          return { configured: true, items: list.slice(0, MAX_STATUS_ITEMS).map(item) };
+          return {
+            configured: true,
+            items: list.slice(0, MAX_STATUS_ITEMS).map(item),
+            events_refused: refused,
+          };
         } catch (err) {
           throw asServiceError(err);
         }
@@ -312,11 +325,18 @@ export function createVercelCapability(options: VercelCapabilityOptions = {}) {
           throw new ServiceError(SERVICE, "invalid", "deployment_id is not a valid id");
         }
         const known = redeploys.get(input.idempotency_key);
+        if (known && known.target !== input.deployment_id) {
+          throw new ServiceError(
+            SERVICE,
+            "invalid",
+            "This idempotency_key was already used for a different deployment; use a new key",
+          );
+        }
         const repeated = known !== undefined;
-        let attempt = known;
+        let attempt = known?.attempt;
         if (!attempt) {
           attempt = startRedeploy(ctx, input);
-          redeploys.set(input.idempotency_key, attempt);
+          redeploys.set(input.idempotency_key, { target: input.deployment_id, attempt });
           while (redeploys.size > MAX_REMEMBERED_KEYS) {
             redeploys.delete(redeploys.keys().next().value as string);
           }
@@ -345,9 +365,7 @@ export function createVercelCapability(options: VercelCapabilityOptions = {}) {
         };
       },
     },
-    health(ctx): HealthResult {
-      if (!settings(ctx).baseUrl)
-        return { status: "unhealthy", message: "base_url must be https or loopback" };
+    health(): HealthResult {
       if (polled && !hasSecret)
         return { status: "degraded", message: "Add a Vercel token in Settings" };
       if (!polled) return { status: "healthy", message: "Reading Vercel…" };
@@ -355,7 +373,13 @@ export function createVercelCapability(options: VercelCapabilityOptions = {}) {
         return { status: "degraded", message: failure.message };
       }
       if (failure) return { status: "unhealthy", message: failure.message };
-      return { status: "healthy", message: `Watching ${latest.length} recent deployments` };
+      return {
+        status: "healthy",
+        message:
+          refused > 0
+            ? `Watching ${latest.length} recent deployments (${refused} events refused by Core)`
+            : `Watching ${latest.length} recent deployments`,
+      };
     },
   });
 }

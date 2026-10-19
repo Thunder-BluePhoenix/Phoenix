@@ -68,13 +68,14 @@ async function ready(setup: Setup = {}) {
   setup.state?.(state);
   mock = await startMockPortfolio(state);
   clock = new Clock();
-  h = createHarness({
-    modules: [createPortfolioCapability({ now: () => clock.now, sleep: clock.sleep })],
-  });
   const m = mock;
-  const endpoints = Object.fromEntries(
-    [...NETWORKS.map((n) => n.id), ...EXCHANGES.map((e) => e.id)].map((id) => [id, m.endpoint(id)]),
-  );
+  const exchangeUrls = Object.fromEntries(EXCHANGES.map((e) => [e.id, m.endpoint(e.id)]));
+  h = createHarness({
+    modules: [
+      createPortfolioCapability({ now: () => clock.now, sleep: clock.sleep, exchangeUrls }),
+    ],
+  });
+  const endpoints = Object.fromEntries(NETWORKS.map((n) => [n.id, m.endpoint(n.id)]));
   h.manager.configure("portfolio", {
     price_url: m.url,
     endpoints,
@@ -490,7 +491,9 @@ describe("configuration", () => {
       { networks: { dogecoin: [ADDRESSES.btc] } },
       { networks: { btc: [ADDRESSES.btc, ADDRESSES.btc] } },
       { price_url: "http://evil.example.com" },
-      { endpoints: { binance: "http://evil.example.com" } },
+      // Exchanges cannot be redirected through config at all (the key would follow).
+      { endpoints: { binance: mock!.endpoint("binance") } },
+      { endpoints: { binance: "https://attacker.example" } },
       { poll_ms: 59_999 },
     ];
     for (const config of bad)

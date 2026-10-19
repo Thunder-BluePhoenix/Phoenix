@@ -13,6 +13,8 @@ import {
   type PetSettings,
 } from "../core/hooks";
 import type { CapabilityView, JsonSchema, OrchestratedSessionList, PetState } from "../core/types";
+import { formatNumber } from "../core/format";
+import { isMessageKey, useT, type MessageKey, type Translate } from "../i18n";
 import { AgentInstallersSection } from "./AgentInstallers";
 import { ApprovalRulesSection } from "./ApprovalRules";
 import { AutomationSettings } from "./AutomationSettings";
@@ -20,6 +22,7 @@ import { AiSettings, MemorySettingsSection } from "./MemorySettings";
 import { Feedback } from "./Feedback";
 import { DictationSettingsSection } from "./Dictation";
 import { DemoSettingsSection } from "./Demo";
+import { LanguageSection } from "./Language";
 import { VoiceSettingsSection } from "./Voice";
 import { NotetakerSettingsSection } from "./Notetaker";
 import { Multimodal } from "./Multimodal";
@@ -32,9 +35,11 @@ import { FawkesAppearanceSection } from "./Wardrobe";
 
 /** Settings (PRD v2.0 §16, FR-014): Fawkes, notifications, capabilities, privacy, memory, AI. */
 export function SettingsPage({ state }: { state: PetState }) {
+  const t = useT();
   return (
     <div className="settings">
-      <h1>Settings</h1>
+      <h1>{t("settings.title")}</h1>
+      <LanguageSection />
       <FawkesSettings />
       <FawkesAppearanceSection />
       <NotificationSettings />
@@ -63,15 +68,16 @@ export function SettingsPage({ state }: { state: PetState }) {
 }
 
 function FawkesSettings() {
+  const t = useT();
   const { data } = usePetSettings();
   const { run, error } = useAction();
   const set = async (reduced_motion: PetSettings["reduced_motion"]) => {
     if (await run("POST", "/api/pet/settings", { reduced_motion })) announcePetSettings();
   };
   const options: [PetSettings["reduced_motion"], string][] = [
-    ["auto", "Follow my system setting"],
-    ["on", "Always reduce motion (Fawkes stays still)"],
-    ["off", "Always animate"],
+    ["auto", t("settings.fawkes.motionAuto")],
+    ["on", t("settings.fawkes.motionOn")],
+    ["off", t("settings.fawkes.motionOff")],
   ];
   return (
     <section aria-labelledby="fawkes-h" className="card">
@@ -79,7 +85,7 @@ function FawkesSettings() {
         Fawkes
       </h2>
       <fieldset>
-        <legend className="small">Motion</legend>
+        <legend className="small">{t("settings.fawkes.motion")}</legend>
         {options.map(([value, label]) => (
           <label key={value} className="choice">
             <input
@@ -92,16 +98,14 @@ function FawkesSettings() {
           </label>
         ))}
       </fieldset>
-      <p className="muted small">
-        Fawkes' state is always written out in text as well; animation never carries information on
-        its own.
-      </p>
+      <p className="muted small">{t("settings.fawkes.note")}</p>
       <Feedback error={error} />
     </section>
   );
 }
 
 function NotificationSettings() {
+  const t = useT();
   const { data: prefs, reload } = useNotificationPreferences();
   const { data: caps } = useCapabilities();
   const { run, error } = useAction();
@@ -119,7 +123,7 @@ function NotificationSettings() {
   return (
     <section aria-labelledby="notify-h" className="card">
       <h2 id="notify-h" className="h3">
-        Notifications
+        {t("settings.notifications.title")}
       </h2>
       <label className="choice">
         <input
@@ -127,23 +131,23 @@ function NotificationSettings() {
           checked={!prefs.enabled}
           onChange={() => void save({ enabled: !prefs.enabled })}
         />
-        Quiet mode (no notifications; activity is still recorded)
+        {t("settings.notifications.quiet")}
       </label>
       <label className="field">
-        Notify me about
+        {t("settings.notifications.minSeverity")}
         <select
           value={prefs.min_severity}
           disabled={!prefs.enabled}
           onChange={(e) => void save({ min_severity: e.target.value })}
         >
-          <option value="warning">Warnings and errors</option>
-          <option value="error">Errors only</option>
+          <option value="warning">{t("settings.notifications.severityWarning")}</option>
+          <option value="error">{t("settings.notifications.severityError")}</option>
         </select>
       </label>
-      <p className="muted small">Requests for your approval always notify.</p>
+      <p className="muted small">{t("settings.notifications.approvalsNote")}</p>
       {caps.length > 0 && (
         <fieldset disabled={!prefs.enabled}>
-          <legend className="small">Mute a capability</legend>
+          <legend className="small">{t("settings.notifications.muteLegend")}</legend>
           {caps.map((c) => (
             <label key={c.id} className="choice">
               <input
@@ -162,11 +166,12 @@ function NotificationSettings() {
 }
 
 function CapabilitySettings({ recording }: { recording: boolean }) {
+  const t = useT();
   const { data: caps, error, reload } = useCapabilities();
   return (
     <section aria-labelledby="caps-h" className="card">
       <h2 id="caps-h" className="h3">
-        Capabilities
+        {t("settings.capabilities.title")}
       </h2>
       {error && <p className="error-text">{error}</p>}
       <div className="settings-caps">
@@ -223,15 +228,28 @@ export function fromForm(schema: JsonSchema | undefined, form: Record<string, Fi
   return out;
 }
 
-const LABELS: Record<string, string> = {
-  base_url: "Server address",
-  poll_ms: "Check every (ms)",
-  bot_path: "Kage bot path",
-  bot_name: "Bot display name",
-  max_duration_min: "Maximum capture length (min)",
-  repositories: "Repositories (one absolute path per line)",
-  speed: "Playback speed",
+/** Display names of the capability config fields Phoenix knows; any other field shows its key. */
+const LABELS: Record<string, MessageKey> = {
+  base_url: "settings.field.baseUrl",
+  poll_ms: "settings.field.pollMs",
+  bot_path: "settings.field.botPath",
+  bot_name: "settings.field.botName",
+  max_duration_min: "settings.field.maxDurationMin",
+  repositories: "settings.field.repositories",
+  speed: "settings.field.speed",
 };
+
+/** How a capability's state reads next to its name; an unknown state shows as Core sent it. */
+const STATUS_TEXT: Readonly<Partial<Record<string, MessageKey>>> = {
+  enabled: "common.status.enabled",
+  installed: "settings.capability.status.notEnabled",
+  disabled: "settings.capability.status.disabled",
+  failed: "settings.capability.status.failed",
+  disconnected: "settings.capability.status.disconnected",
+};
+
+const joinList = (t: Translate, items: readonly string[]) =>
+  items.join(t("settings.listSeparator"));
 
 type AgentOperation = {
   status: string;
@@ -239,8 +257,8 @@ type AgentOperation = {
   error?: { message: string };
 };
 
-const activeSessions = (list: OrchestratedSessionList) => {
-  if (!Array.isArray(list.sessions)) throw new Error("Could not check agent sessions");
+const activeSessions = (list: OrchestratedSessionList, unreadable: string) => {
+  if (!Array.isArray(list.sessions)) throw new Error(unreadable);
   return list.sessions
     .filter((session) => session.state === "running" || session.state === "waiting")
     .map((session) => `${session.id}:${session.state}`)
@@ -256,6 +274,7 @@ function CapabilityEditor({
   recording: boolean;
   onChanged: () => void;
 }) {
+  const t = useT();
   const { run, busy, error } = useAction();
   const client = useClient();
   const guardInFlight = useRef(false);
@@ -313,14 +332,17 @@ function CapabilityEditor({
       "POST",
       `${base}/config`,
       { config: fromForm(c.config_schema, form) },
-      enabled ? `Saved. Restart ${c.name} to apply.` : "Saved.",
+      enabled
+        ? t("settings.capability.done.savedRestart", { name: c.name })
+        : t("settings.capability.done.saved"),
     );
   };
   const restart = async (body: unknown = {}) => {
     if (await act("POST", `${base}/disable`, {}, ""))
-      await act("POST", `${base}/enable`, body, "Restarted.");
+      await act("POST", `${base}/enable`, body, t("settings.capability.done.restarted"));
   };
   const loadAgentSessions = async () => {
+    const unreadable = t("settings.guard.checkFailed");
     const started = await client.request<{ id: string }>(
       "POST",
       "/api/capabilities/agents/commands/session.list",
@@ -332,16 +354,16 @@ function CapabilityEditor({
         `/api/operations/${encodeURIComponent(started.id)}`,
       );
       if (operation.status === "succeeded") {
-        if (!operation.result) throw new Error("Could not check agent sessions");
-        return activeSessions(operation.result);
+        if (!operation.result) throw new Error(unreadable);
+        return activeSessions(operation.result, unreadable);
       }
       if (operation.status === "failed" || operation.status === "cancelled")
-        throw new Error(operation.error?.message ?? "Could not check agent sessions");
+        throw new Error(operation.error?.message ?? unreadable);
       const { promise, resolve } = Promise.withResolvers<void>();
       setTimeout(resolve, 150);
       await promise;
     }
-    throw new Error("Checking agent sessions took too long");
+    throw new Error(t("settings.guard.checkTimeout"));
   };
   const guardOperation = async (
     action: "disable" | "restart",
@@ -361,7 +383,7 @@ function CapabilityEditor({
       ) {
         setStopReview(null);
         setStopAcknowledged(false);
-        setGuardError("Capability changed. Review the current state before trying again.");
+        setGuardError(t("settings.guard.capabilityChanged"));
         return;
       }
       if (review) {
@@ -372,7 +394,7 @@ function CapabilityEditor({
         ) {
           setStopReview({ action, version, sessions, body });
           setStopAcknowledged(false);
-          setGuardError("Agent sessions changed. Review and acknowledge the current sessions.");
+          setGuardError(t("settings.guard.sessionsChanged"));
           return;
         }
       } else if (sessions.length) {
@@ -383,9 +405,9 @@ function CapabilityEditor({
       setStopReview(null);
       setStopAcknowledged(false);
       if (action === "restart") await restart(body);
-      else await act("POST", `${base}/disable`, {}, "Disabled.");
+      else await act("POST", `${base}/disable`, {}, t("settings.capability.done.disabled"));
     } catch (err) {
-      setGuardError(err instanceof Error ? err.message : "Could not check agent sessions");
+      setGuardError(err instanceof Error ? err.message : t("settings.guard.checkFailed"));
     } finally {
       guardInFlight.current = false;
       setGuardBusy(false);
@@ -403,15 +425,17 @@ function CapabilityEditor({
     if (currentDisclosure.action === "restart") {
       if (c.id === "agents") void guardOperation("restart", body, null);
       else void restart(body);
-    } else void act("POST", `${base}/enable`, body, "Enabled.");
+    } else void act("POST", `${base}/enable`, body, t("settings.capability.done.enabled"));
   };
+  const noneDeclared = t("settings.disclosure.noneDeclared");
+  const statusKey = STATUS_TEXT[c.status];
 
   return (
     <details className="settings-cap">
       <summary>
         <strong>{c.name}</strong>{" "}
         <span className={`small status status-${c.status}`}>
-          {enabled ? "Enabled" : c.status === "installed" ? "Not enabled" : c.status}
+          {statusKey ? t(statusKey) : c.status}
         </span>
       </summary>
       <p className="muted small">{c.description}</p>
@@ -427,12 +451,14 @@ function CapabilityEditor({
               setDisclosure(null);
               setAcknowledgedVersion(null);
               if (c.id === "agents") void guardOperation("disable", {}, null);
-              else void act("POST", `${base}/disable`, {}, "Disabled.");
+              else void act("POST", `${base}/disable`, {}, t("settings.capability.done.disabled"));
             } else if (hasAiDeclarations) beginActivation("enable");
-            else void act("POST", `${base}/enable`, {}, "Enabled.");
+            else void act("POST", `${base}/enable`, {}, t("settings.capability.done.enabled"));
           }}
         >
-          {enabled ? `Disable ${c.name}` : `Enable ${c.name}`}
+          {enabled
+            ? t("settings.capability.disable", { name: c.name })
+            : t("settings.capability.enable", { name: c.name })}
         </button>
         {enabled && (
           <button
@@ -440,9 +466,7 @@ function CapabilityEditor({
             className="btn"
             disabled={busy || guardBusy || (c.id === "kage" && recording)}
             title={
-              c.id === "kage" && recording
-                ? "Restarting Kage now would lose the recording"
-                : undefined
+              c.id === "kage" && recording ? t("settings.capability.restartBlocked") : undefined
             }
             onClick={() => {
               if (hasAiDeclarations) beginActivation("restart");
@@ -450,16 +474,20 @@ function CapabilityEditor({
               else void restart();
             }}
           >
-            Restart
+            {t("settings.capability.restart")}
           </button>
         )}
       </div>
       {stopReview && stopReview.version === c.version && c.status === "enabled" && (
-        <section aria-label="Agent session stop acknowledgement" className="settings-form">
-          <h3>Stopping active agent sessions</h3>
+        <section aria-label={t("settings.guard.region")} className="settings-form">
+          <h3>{t("settings.guard.title")}</h3>
           <p>
-            {stopReview.action === "restart" ? "Restarting" : "Disabling"} {c.name} will stop these
-            running or waiting sessions: {stopReview.sessions.join(", ")}.
+            {t(
+              stopReview.action === "restart"
+                ? "settings.guard.bodyRestart"
+                : "settings.guard.bodyDisable",
+              { name: c.name, sessions: joinList(t, stopReview.sessions) },
+            )}
           </p>
           <label className="choice">
             <input
@@ -467,7 +495,7 @@ function CapabilityEditor({
               checked={stopAcknowledged}
               onChange={(e) => setStopAcknowledged(e.target.checked)}
             />
-            I acknowledge that these agent sessions will be stopped.
+            {t("settings.guard.acknowledge")}
           </label>
           <div className="button-row wrap">
             <button
@@ -476,7 +504,11 @@ function CapabilityEditor({
               disabled={busy || guardBusy || !stopAcknowledged}
               onClick={() => void guardOperation(stopReview.action, stopReview.body)}
             >
-              Confirm {stopReview.action}
+              {t(
+                stopReview.action === "restart"
+                  ? "settings.guard.confirmRestart"
+                  : "settings.guard.confirmDisable",
+              )}
             </button>
             <button
               type="button"
@@ -487,7 +519,7 @@ function CapabilityEditor({
                 setStopAcknowledged(false);
               }}
             >
-              Cancel
+              {t("common.button.cancel")}
             </button>
           </div>
         </section>
@@ -498,45 +530,63 @@ function CapabilityEditor({
         </p>
       )}
       {hasAiDeclarations && currentDisclosure && (
-        <section aria-label={`AI activation disclosure for ${c.name}`} className="settings-form">
+        <section
+          aria-label={t("settings.disclosure.region", { name: c.name })}
+          className="settings-form"
+        >
           <h3>
-            Review AI access before{" "}
-            {currentDisclosure.action === "restart" ? "restarting" : "enabling"}
+            {t(
+              currentDisclosure.action === "restart"
+                ? "settings.disclosure.titleRestart"
+                : "settings.disclosure.titleEnable",
+            )}
           </h3>
+          <p>{t("settings.disclosure.manifest", { version: c.version })}</p>
           <p>
-            Manifest version: {c.version}. Review the declared access and provider locality before
-            activation.
+            {t("settings.disclosure.summary", {
+              name: c.name,
+              description: c.description,
+              kind: c.kind,
+            })}
           </p>
           <p>
-            Capability: {c.name} — {c.description} ({c.kind})
+            {t("settings.disclosure.dataCategories", {
+              list: c.data_categories.length ? joinList(t, c.data_categories) : noneDeclared,
+            })}
           </p>
-          <p>
-            Data categories:{" "}
-            {c.data_categories.length ? c.data_categories.join(", ") : "None declared"}
-          </p>
-          <h4>Capability permissions</h4>
+          <h4>{t("settings.disclosure.permissionsHeading")}</h4>
           <ul>
             {c.permissions.map((p) => (
               <li key={p.permission}>
-                {p.permission}: {p.description} ({p.granted ? "granted" : "not granted"})
+                {t(
+                  p.granted
+                    ? "settings.disclosure.permissionGranted"
+                    : "settings.disclosure.permissionDenied",
+                  { permission: p.permission, description: p.description },
+                )}
               </li>
             ))}
           </ul>
-          <h4>Context sources</h4>
-          {contextSources.length === 0 && <p>None declared</p>}
+          <h4>{t("settings.disclosure.contextHeading")}</h4>
+          {contextSources.length === 0 && <p>{noneDeclared}</p>}
           {contextSources.map((source, index) => (
             <div key={index}>
               <h5>{source.name}</h5>
               <p>{source.description}</p>
               <p>
-                Provider: {source.provider.provider}; locality:{" "}
-                {source.provider.locality === "cloud" ? "external/cloud" : "local"}
+                {t(
+                  source.provider.locality === "cloud"
+                    ? "settings.disclosure.providerCloud"
+                    : "settings.disclosure.providerLocal",
+                  { provider: source.provider.provider },
+                )}
               </p>
               <p>
-                Permissions:{" "}
-                {source.permissions.length ? source.permissions.join(", ") : "None declared"}
+                {t("settings.disclosure.permissions", {
+                  list: source.permissions.length ? joinList(t, source.permissions) : noneDeclared,
+                })}
               </p>
-              <p>Data access:</p>
+              <p>{t("settings.disclosure.dataAccess")}</p>
               <ul>
                 {source.data_access.map((item, itemIndex) => (
                   <li key={itemIndex}>
@@ -546,24 +596,27 @@ function CapabilityEditor({
               </ul>
             </div>
           ))}
-          <h4>AI tools and providers</h4>
-          {aiTools.length === 0 && <p>None declared</p>}
+          <h4>{t("settings.disclosure.toolsHeading")}</h4>
+          {aiTools.length === 0 && <p>{noneDeclared}</p>}
           {aiTools.map((tool, index) => (
             <div key={index}>
               <h5>{tool.name}</h5>
               <p>{tool.description}</p>
+              <p>{t("settings.disclosure.toolKind", { kind: tool.kind, command: tool.command })}</p>
               <p>
-                Kind: {tool.kind}; command: {tool.command}
+                {t(
+                  tool.provider.locality === "cloud"
+                    ? "settings.disclosure.providerCloud"
+                    : "settings.disclosure.providerLocal",
+                  { provider: tool.provider.provider },
+                )}
               </p>
               <p>
-                Provider: {tool.provider.provider}; locality:{" "}
-                {tool.provider.locality === "cloud" ? "external/cloud" : "local"}
+                {t("settings.disclosure.permissions", {
+                  list: tool.permissions.length ? joinList(t, tool.permissions) : noneDeclared,
+                })}
               </p>
-              <p>
-                Permissions:{" "}
-                {tool.permissions.length ? tool.permissions.join(", ") : "None declared"}
-              </p>
-              <p>Data access:</p>
+              <p>{t("settings.disclosure.dataAccess")}</p>
               <ul>
                 {tool.data_access.map((item, itemIndex) => (
                   <li key={itemIndex}>
@@ -579,8 +632,7 @@ function CapabilityEditor({
               checked={acknowledged}
               onChange={(e) => setAcknowledgedVersion(e.target.checked ? c.version : null)}
             />
-            I have reviewed AI access for manifest version {c.version} and acknowledge this
-            activation.
+            {t("settings.disclosure.acknowledge", { version: c.version })}
           </label>
           <div className="button-row wrap">
             <button
@@ -589,8 +641,12 @@ function CapabilityEditor({
               disabled={busy || !acknowledged}
               onClick={confirmActivation}
             >
-              Confirm {currentDisclosure.action === "restart" ? "restart" : "enable"} for version{" "}
-              {c.version}
+              {t(
+                currentDisclosure.action === "restart"
+                  ? "settings.disclosure.confirmRestart"
+                  : "settings.disclosure.confirmEnable",
+                { version: c.version },
+              )}
             </button>
             <button
               type="button"
@@ -600,7 +656,7 @@ function CapabilityEditor({
                 setAcknowledgedVersion(null);
               }}
             >
-              Cancel
+              {t("common.button.cancel")}
             </button>
           </div>
         </section>
@@ -609,7 +665,8 @@ function CapabilityEditor({
       {fields.length > 0 && (
         <form onSubmit={saveConfig} className="settings-form">
           {fields.map(([key, p]) => {
-            const label = LABELS[key] ?? key;
+            const labelKey = LABELS[key];
+            const label = labelKey ? t(labelKey) : key;
             const set = (v: FieldValue) => setForm((f) => ({ ...f, [key]: v }));
             if (p.type === "boolean") {
               return (
@@ -646,67 +703,70 @@ function CapabilityEditor({
             );
           })}
           <button type="submit" className="btn" disabled={busy}>
-            Save configuration
+            {t("settings.capability.saveConfig")}
           </button>
         </form>
       )}
 
-      {(c.secrets ?? []).map((s) => (
-        <form
-          key={s.name}
-          className="settings-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void act(
-              "POST",
-              `${base}/secrets/${s.name}`,
-              { value: secretValues[s.name] ?? "" },
-              "Saved to your OS keychain.",
-            ).then((ok) => ok && setSecretValues((v) => ({ ...v, [s.name]: "" })));
-          }}
-        >
-          <label className="field">
-            {s.name === "api_key" ? "API key" : s.name}{" "}
-            <span className="muted small">
-              {s.set ? "(stored in your OS keychain)" : "(not set)"}
-            </span>
-            <input
-              type="password"
-              autoComplete="off"
-              value={secretValues[s.name] ?? ""}
-              placeholder={s.set ? "Enter a new value to replace it" : ""}
-              onChange={(e) => setSecretValues((v) => ({ ...v, [s.name]: e.target.value }))}
-            />
-            {s.description && <span className="muted small">{s.description}</span>}
-          </label>
-          <div className="button-row wrap">
-            <button type="submit" className="btn" disabled={busy || !secretValues[s.name]}>
-              Save {s.name === "api_key" ? "API key" : s.name}
-            </button>
-            {s.set && (
-              <button
-                type="button"
-                className="btn"
-                disabled={busy}
-                onClick={() =>
-                  void act(
-                    "DELETE",
-                    `${base}/secrets/${s.name}`,
-                    undefined,
-                    "Removed from your keychain.",
-                  )
-                }
-              >
-                Remove
+      {(c.secrets ?? []).map((s) => {
+        const secretLabel = s.name === "api_key" ? t("settings.secret.apiKey") : s.name;
+        return (
+          <form
+            key={s.name}
+            className="settings-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void act(
+                "POST",
+                `${base}/secrets/${s.name}`,
+                { value: secretValues[s.name] ?? "" },
+                t("settings.capability.done.secretSaved"),
+              ).then((ok) => ok && setSecretValues((v) => ({ ...v, [s.name]: "" })));
+            }}
+          >
+            <label className="field">
+              {secretLabel}{" "}
+              <span className="muted small">
+                {s.set ? t("settings.secret.stored") : t("settings.secret.notSet")}
+              </span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={secretValues[s.name] ?? ""}
+                placeholder={s.set ? t("settings.secret.placeholder") : ""}
+                onChange={(e) => setSecretValues((v) => ({ ...v, [s.name]: e.target.value }))}
+              />
+              {s.description && <span className="muted small">{s.description}</span>}
+            </label>
+            <div className="button-row wrap">
+              <button type="submit" className="btn" disabled={busy || !secretValues[s.name]}>
+                {t("settings.secret.save", { name: secretLabel })}
               </button>
-            )}
-          </div>
-        </form>
-      ))}
+              {s.set && (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={busy}
+                  onClick={() =>
+                    void act(
+                      "DELETE",
+                      `${base}/secrets/${s.name}`,
+                      undefined,
+                      t("settings.capability.done.secretRemoved"),
+                    )
+                  }
+                >
+                  {t("common.button.remove")}
+                </button>
+              )}
+            </div>
+          </form>
+        );
+      })}
 
       {c.permissions.length > 0 && (
         <div>
-          <p className="small">Permissions</p>
+          <p className="small">{t("settings.capability.permissions")}</p>
           <ul className="perm-list">
             {c.permissions.map((p) => (
               <li key={p.permission} className="small">
@@ -721,14 +781,16 @@ function CapabilityEditor({
                         "POST",
                         `/api/permissions/${encodeURIComponent(c.id)}/revoke`,
                         { permissions: [p.permission] },
-                        "Permission revoked. Enabling again asks for it again.",
+                        t("settings.capability.done.revoked"),
                       )
                     }
                   >
-                    Revoke<span className="sr-only"> {p.description}</span>
+                    {t.rich("settings.capability.revoke", {
+                      detail: <span className="sr-only">{p.description}</span>,
+                    })}
                   </button>
                 ) : (
-                  <span className="muted">(not granted)</span>
+                  <span className="muted">{t("settings.capability.notGranted")}</span>
                 )}
               </li>
             ))}
@@ -736,34 +798,24 @@ function CapabilityEditor({
         </div>
       )}
       {c.data_categories.length > 0 && (
-        <p className="muted small">Accesses: {c.data_categories.join(", ")}</p>
+        <p className="muted small">
+          {t("settings.capability.accesses", { list: joinList(t, c.data_categories) })}
+        </p>
       )}
       <Feedback error={error} saved={saved} />
     </details>
   );
 }
 
-const RETENTION_CHOICES: [string, string][] = [
-  ["", "Until I delete it"],
-  ["1", "1 day"],
-  ["7", "7 days"],
-  ["30", "30 days"],
-  ["90", "90 days"],
-  ["365", "1 year"],
-];
-
-const DATA_LABELS: Record<string, string> = {
-  events: "Activity history",
-  notifications: "Notifications",
-  meetings: "Meetings",
-  memory: "Memory",
-};
+/** Retention choices in days; the empty value keeps data until the user deletes it. */
+const RETENTION_DAYS = [1, 7, 30, 90] as const;
 
 /**
  * A report a user can paste into a bug report (PRD v2.0 §21). Core builds it from an allow-list, so
  * it is shown in full before anyone copies it: nothing here is hidden from the person sharing it.
  */
 function SupportSettings() {
+  const t = useT();
   const client = useClient();
   const [report, setReport] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -777,7 +829,7 @@ function SupportSettings() {
     try {
       setReport(JSON.stringify(await client.request("GET", "/api/diagnostics"), null, 2));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Phoenix Core is unreachable");
+      setError(err instanceof ApiError ? err.message : t("common.error.coreUnreachable"));
     } finally {
       setBusy(false);
     }
@@ -785,35 +837,31 @@ function SupportSettings() {
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(report ?? "");
-      setCopied("Copied.");
+      setCopied(t("settings.support.copied"));
     } catch {
-      setCopied("Could not copy automatically. Select the text above and copy it.");
+      setCopied(t("settings.support.copyFailed"));
     }
   };
 
   return (
     <section aria-labelledby="support-h" className="card">
       <h2 id="support-h" className="h3">
-        Support
+        {t("settings.support.title")}
       </h2>
-      <p className="small">
-        If something is wrong, attach a diagnostics report to your bug report. It says how Phoenix
-        is behaving (versions, capability health, counts, recent event names). It has no event
-        contents, meeting titles, transcripts, settings values, secrets or file paths.
-      </p>
+      <p className="small">{t("settings.support.intro")}</p>
       <div className="button-row wrap">
         <button type="button" className="btn" disabled={busy} onClick={() => void show()}>
-          {report === null ? "Show diagnostics report" : "Refresh report"}
+          {report === null ? t("settings.support.show") : t("settings.support.refresh")}
         </button>
         {report !== null && (
           <button type="button" className="btn" onClick={() => void copy()}>
-            Copy report
+            {t("settings.support.copy")}
           </button>
         )}
       </div>
       {report !== null && (
         <label className="field">
-          Diagnostics report
+          {t("settings.support.reportLabel")}
           <textarea className="report" readOnly rows={12} value={report} />
         </label>
       )}
@@ -823,6 +871,7 @@ function SupportSettings() {
 }
 
 function PrivacySettings() {
+  const t = useT();
   const { data: inv, error: loadError, reload } = usePrivacy();
   const { run, busy, error } = useAction();
   const [confirm, setConfirm] = useState<string | null>(null);
@@ -830,9 +879,23 @@ function PrivacySettings() {
   if (loadError) return <p className="error-text">{loadError}</p>;
   if (!inv) return null;
 
+  /** A kind of data as a heading ("Activity history") or inside a sentence ("activity history"). */
+  const dataName = (id: string, form: "data" | "what") => {
+    const key = `settings.privacy.${form}.${id}`;
+    return isMessageKey(key) ? t(key) : id;
+  };
+  const retentionChoices: [string, string][] = [
+    ["", t("settings.privacy.retention.forever")],
+    ...RETENTION_DAYS.map((days): [string, string] => [
+      String(days),
+      t("settings.privacy.retention.days", { days }),
+    ]),
+    ["365", t("settings.privacy.retention.year")],
+  ];
+
   const setRetention = async (id: string, value: string) => {
     if (await run("POST", "/api/privacy/retention", { [id]: value ? Number(value) : null })) {
-      setSaved(`${DATA_LABELS[id] ?? id}: retention updated.`);
+      setSaved(t("settings.privacy.retentionUpdated", { label: dataName(id, "data") }));
     }
     await reload();
   };
@@ -840,35 +903,41 @@ function PrivacySettings() {
     const r = (await run("POST", "/api/privacy/delete", { data: id, confirm: true })) as
       { deleted: number } | undefined;
     setConfirm(null);
-    if (r) setSaved(`Deleted ${r.deleted} ${(DATA_LABELS[id] ?? id).toLowerCase()} records.`);
+    if (r) {
+      const key = `settings.privacy.deleted.${id}`;
+      setSaved(t(isMessageKey(key) ? key : "settings.privacy.deleted.other", { count: r.deleted }));
+    }
     await reload();
   };
 
   return (
     <section aria-labelledby="privacy-h" className="card">
       <h2 id="privacy-h" className="h3">
-        Privacy and data
+        {t("settings.privacy.title")}
       </h2>
       <p className="small">
-        Everything stays on this computer, in <code className="break">{inv.location}</code>.
-        Credentials are kept in your OS keychain, never in that folder.
+        {t.rich("settings.privacy.location", {
+          location: <code className="break">{inv.location}</code>,
+        })}
       </p>
       <ul className="privacy-list">
         {inv.data.map((d) => (
           <li key={d.id}>
             <div>
-              <strong>{DATA_LABELS[d.id] ?? d.id}</strong>{" "}
-              <span className="muted small">({d.count} stored)</span>
+              <strong>{dataName(d.id, "data")}</strong>{" "}
+              <span className="muted small">
+                {t("settings.privacy.stored", { count: formatNumber(d.count) })}
+              </span>
               <p className="muted small">{d.description}</p>
             </div>
             <label className="field">
-              Keep
+              {t("settings.privacy.keep")}
               <select
                 value={d.retention_days === null ? "" : String(d.retention_days)}
                 disabled={busy}
                 onChange={(e) => void setRetention(d.id, e.target.value)}
               >
-                {RETENTION_CHOICES.map(([v, label]) => (
+                {retentionChoices.map(([v, label]) => (
                   <option key={v} value={v}>
                     {label}
                   </option>
@@ -883,10 +952,10 @@ function PrivacySettings() {
                   disabled={busy}
                   onClick={() => void remove(d.id)}
                 >
-                  Confirm: delete all {(DATA_LABELS[d.id] ?? d.id).toLowerCase()}
+                  {t("settings.privacy.confirmDelete", { what: dataName(d.id, "what") })}
                 </button>
                 <button type="button" className="btn" onClick={() => setConfirm(null)}>
-                  Cancel
+                  {t("common.button.cancel")}
                 </button>
               </div>
             ) : (
@@ -896,27 +965,34 @@ function PrivacySettings() {
                 disabled={d.count === 0}
                 onClick={() => setConfirm(d.id)}
               >
-                Delete all…
+                {t("settings.privacy.deleteAll")}
               </button>
             )}
           </li>
         ))}
       </ul>
       <p className="muted small">
-        <strong>Audit log</strong> ({inv.audit_log.count} entries): {inv.audit_log.description}
+        {t.rich("settings.privacy.audit", {
+          label: <strong>{t("settings.privacy.auditLog")}</strong>,
+          count: inv.audit_log.count,
+          description: inv.audit_log.description,
+        })}
       </p>
       <p className="small">
-        <strong>Credentials:</strong>{" "}
+        <strong>{t("settings.privacy.credentialsLabel")}</strong>{" "}
         {inv.credentials.length === 0
-          ? "none stored."
-          : inv.credentials.map((c) => `${c.capability} ${c.name} (${c.stored_in})`).join(", ")}
+          ? t("settings.privacy.credentialsNone")
+          : joinList(
+              t,
+              inv.credentials.map((c) => `${c.capability} ${c.name} (${c.stored_in})`),
+            )}
       </p>
       <p className="small">
-        <strong>Telemetry:</strong>{" "}
-        {inv.telemetry === "none" ? "Phoenix sends no telemetry." : inv.telemetry}
+        <strong>{t("settings.privacy.telemetryLabel")}</strong>{" "}
+        {inv.telemetry === "none" ? t("settings.privacy.telemetryNone") : inv.telemetry}
       </p>
       <p className="small">
-        <strong>External AI:</strong> {inv.external_ai}
+        <strong>{t("settings.privacy.externalAiLabel")}</strong> {inv.external_ai}
       </p>
       <Feedback error={error} saved={saved} />
     </section>

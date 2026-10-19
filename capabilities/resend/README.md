@@ -13,7 +13,7 @@ Events carry `email_id`, `subject` (clipped), `status`, `to_count`, `to_domains`
 ## Setup
 
 - Secret `api_key`: a Resend API key. Resend only lets a full-access key list emails, and that key could also send mail; Phoenix never does, but use a key you can revoke.
-- Config: `base_url` (default `https://api.resend.com`; https, or http to localhost), `poll_ms` (10 000 or more, default 60 000).
+- Config: `poll_ms` (10 000 or more, default 60 000). There is deliberately **no `base_url` setting**: anyone holding the API token could otherwise point the stored key at a host of their choosing, so the key only ever goes to `https://api.resend.com`. Tests inject a local mock through the code-only `apiUrl` creation option.
 - Enabling grants `network` and `external_api`. It is installed, never auto-enabled.
 - `status` command (read): the newest 25 emails with their state.
 
@@ -22,7 +22,7 @@ Events carry `email_id`, `subject` (clipped), `status`, `to_count`, `to_domains`
 - **History rule.** An email first seen that was created before you enabled the capability is recorded silently; later changes of any email (e.g. `sent` → `bounced`) are announced once.
 - **Pauses when unwatched.** Polling waits while no window or client is connected to Core.
 - **Failures.** 401 → degraded, wait 5 min; 429 → degraded, wait for `Retry-After` (an hour at most); other errors back off exponentially to 5 min. Redirects are refused, responses over 2 MiB are refused. Without a key the capability is degraded and calls nothing.
-- **Untrusted text.** Subjects are clipped to 200 characters, control characters removed, credential-shaped text redacted; ids that could change a URL are dropped. Nothing from Resend is ever treated as an instruction. The key is sent only to `base_url` in the `Authorization` header and appears in no log, event or error.
+- **Untrusted text.** Subjects are clipped to 200 characters, control characters removed, credential-shaped text redacted; ids that could change a URL are dropped. Nothing from Resend is ever treated as an instruction. The key is sent only to Resend's own API origin in the `Authorization` header and appears in no log, event or error.
 
 ## Not verified
 

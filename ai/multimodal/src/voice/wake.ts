@@ -61,8 +61,8 @@ function isFawkes(word: string): boolean {
 }
 
 /** Separates "o k" / "o.k." into one word so "O.K. Fawkes" wakes like "ok Fawkes". */
-function wordsOf(text: string): { word: string; end: number }[] {
-  const out: { word: string; end: number }[] = [];
+function wordsOf(text: string): { word: string; start: number; end: number }[] {
+  const out: { word: string; start: number; end: number }[] = [];
   for (const m of text.matchAll(WORD)) {
     const word = normaliseWord(m[0]);
     if (word.length === 0) continue;
@@ -71,10 +71,39 @@ function wordsOf(text: string): { word: string; end: number }[] {
       previous.word = "ok";
       previous.end = m.index + m[0].length;
     } else {
-      out.push({ word, end: m.index + m[0].length });
+      out.push({ word, start: m.index, end: m.index + m[0].length });
     }
   }
   return out;
+}
+
+/** Words that, before the name, make a greeting the assistant (or a person) would answer to. */
+const GREETING_WORDS: Record<string, true> = { ...OK_WORDS, hey: true, hi: true };
+
+/**
+ * `text` with every wake-phrase-like run ("ok Fawkes", "okay, fawkes", "O.K. Fawkes", "okfawkes",
+ * and the same with "hey"/"hi", each as the matcher above would hear it, anywhere in the text)
+ * replaced by a space. Text from a third party that Fawkes reads aloud goes through this, so the
+ * assistant's own speech cannot wake it (or any other listener) with someone else's words.
+ */
+export function neutraliseWake(text: string): string {
+  let current = text;
+  for (;;) {
+    const words = wordsOf(current);
+    let hit: { start: number; end: number } | null = null;
+    for (let i = 0; i < words.length && !hit; i++) {
+      const first = words[i]!.word;
+      const second = words[i + 1]?.word;
+      const joined = Object.keys(GREETING_WORDS).some(
+        (g) => first.startsWith(g) && isFawkes(first.slice(g.length)),
+      );
+      if (joined) hit = { start: words[i]!.start, end: words[i]!.end };
+      else if (Object.hasOwn(GREETING_WORDS, first) && second !== undefined && isFawkes(second))
+        hit = { start: words[i]!.start, end: words[i + 1]!.end };
+    }
+    if (!hit) return current;
+    current = `${current.slice(0, hit.start)} ${current.slice(hit.end)}`;
+  }
 }
 
 export function matchWake(text: string): WakeMatch {

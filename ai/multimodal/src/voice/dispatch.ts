@@ -123,8 +123,8 @@ async function runTool(
     deps.audit("voice.action", { session, tool, outcome: "refused" });
     return { ...base, text: "That tool is not available to voice.", outcome: "refused" };
   }
-  // Only confirmations this call causes may be withdrawn on a timeout, never someone else's.
-  const before = new Set(deps.approvals.pending().map((c) => c.id));
+  // The call's own confirmation (if any) is withdrawn by the gateway when `own` aborts; voice
+  // never denies a confirmation it did not cause, so nothing else is touched on a timeout.
   const own = new AbortController();
   const onAbort = () => own.abort();
   signal.addEventListener("abort", onAbort, { once: true });
@@ -135,8 +135,6 @@ async function runTool(
     return { ...base, text: summariseToolOutput(tool, result.output), outcome: "ok" };
   } catch {
     const timedOut = own.signal.aborted && !signal.aborted;
-    if (timedOut)
-      for (const { id } of deps.approvals.pending()) if (!before.has(id)) deps.approvals.deny(id);
     deps.audit("voice.action", { session, tool, outcome: timedOut ? "timed_out" : "failed" });
     return {
       ...base,

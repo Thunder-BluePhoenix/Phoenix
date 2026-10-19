@@ -43,8 +43,6 @@ export * from "./parse";
 export const DEFAULT_POLL_MS = 60_000;
 export const MIN_POLL_MS = 15_000;
 export const MAX_WATCH = 20;
-const BASE_URL_PATTERN =
-  "^(https://[^\\s]+|http://(127\\.0\\.0\\.1|localhost)(:[0-9]+)?(/[^\\s]*)?)$";
 const ID_PATTERN =
   "^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$";
 const NO_TOKEN_NOTE = "Add a Notion integration token in the capability's secrets";
@@ -56,6 +54,11 @@ export interface NotionCapabilityOptions {
   now?: () => number;
   /** Waits between polls; resolves early when `signal` aborts. Tests control time with it. */
   sleep?: Sleep;
+  /**
+   * Address of the Notion API. Code only, deliberately NOT a config setting: the token may only
+   * ever be sent to Notion's own origin. Tests pass a loopback mock here.
+   */
+  apiUrl?: string;
 }
 
 interface Target {
@@ -65,7 +68,6 @@ interface Target {
 }
 
 interface Settings {
-  baseUrl: string | undefined;
   pollMs: number;
   watch: Target[];
 }
@@ -88,9 +90,8 @@ function targets(value: unknown): Target[] {
 }
 
 function settings(ctx: CapabilityContext): Settings {
-  const { base_url, poll_ms, watch } = ctx.config;
+  const { poll_ms, watch } = ctx.config;
   return {
-    baseUrl: typeof base_url === "string" ? safeBaseUrl(base_url) : DEFAULT_BASE_URL,
     pollMs: typeof poll_ms === "number" ? Math.max(poll_ms, MIN_POLL_MS) : DEFAULT_POLL_MS,
     watch: targets(watch),
   };
@@ -113,6 +114,9 @@ function toItem(object: NotionObject): ServiceItem {
 
 /** A fresh capability instance (its own watcher state); Phoenix Core uses `createNotionCapability()`. */
 export function createNotionCapability(options: NotionCapabilityOptions = {}) {
+  const checkedUrl = safeBaseUrl(options.apiUrl ?? DEFAULT_BASE_URL);
+  if (checkedUrl === undefined) throw new TypeError("apiUrl must be https, or http to loopback");
+  const apiUrl: string = checkedUrl;
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? realSleep;
 
@@ -153,18 +157,18 @@ export function createNotionCapability(options: NotionCapabilityOptions = {}) {
 
   async function poll(ctx: CapabilityContext): Promise<void> {
     failure = undefined;
-    const { baseUrl, watch } = settings(ctx);
+    const { watch } = settings(ctx);
     const token = await ctx.secret(SECRET_NAME);
-    // Nothing to read, no key or no usable address: nothing is sent anywhere.
-    if (!token || !baseUrl || watch.length === 0) {
+    // Nothing to read, or no key: nothing is sent anywhere.
+    if (!token || watch.length === 0) {
       items = new Map();
       problems = new Map();
       polled = true;
       return;
     }
-    if (!client || clientKey !== `${baseUrl}\n${token}`) {
-      client = notionClient(baseUrl, token, lifetime ?? ctx.signal);
-      clientKey = `${baseUrl}\n${token}`;
+    if (!client || clientKey !== token) {
+      client = notionClient(apiUrl, token, lifetime ?? ctx.signal);
+      clientKey = token;
       bot = undefined;
     }
     const names = new Set(watch.map((t) => `${t.kind}:${t.id}`));
@@ -241,11 +245,6 @@ export function createNotionCapability(options: NotionCapabilityOptions = {}) {
               },
             },
           },
-          base_url: {
-            type: "string",
-            pattern: BASE_URL_PATTERN,
-            description: `API address (default ${DEFAULT_BASE_URL}). Plain http is only accepted for localhost.`,
-          },
           poll_ms: {
             type: "integer",
             minimum: MIN_POLL_MS,
@@ -295,10 +294,7 @@ export function createNotionCapability(options: NotionCapabilityOptions = {}) {
       },
     },
     async health(ctx): Promise<HealthResult> {
-      const { baseUrl, watch } = settings(ctx);
-      if (baseUrl === undefined) {
-        return { status: "degraded", message: "base_url is not allowed (use https)" };
-      }
+      const { watch } = settings(ctx);
       if (!(await ctx.secret(SECRET_NAME))) return { status: "degraded", message: NO_TOKEN_NOTE };
       if (watch.length === 0) return { status: "degraded", message: NO_WATCH_NOTE };
       if (!polled) return { status: "healthy", message: "Reading Notion…" };

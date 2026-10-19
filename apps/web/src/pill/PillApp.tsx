@@ -2,9 +2,11 @@
 // Copyright (C) 2026 Phoenix contributors
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { useConnection } from "../core/context";
+import { dictationBlocked } from "../core/dictation";
 import { createBrowserMicrophone, type DictationMicrophone } from "../core/dictation-mic";
+import { useT } from "../i18n";
 import { createPcmAnalyser, type PillAnalyser } from "./analyser";
-import { dictationBlocked, useDictationSession, useDictationStatus } from "./session";
+import { useDictationSession, useDictationStatus } from "./session";
 import { browserOpener, type PillShell, type RouteOpener } from "./shell";
 
 /** Schedules `callback` for the next animation frame; returns the function that cancels it. */
@@ -76,6 +78,7 @@ export function PillApp({
 }: PillAppProps) {
   const [analyser] = useState(() => injectedAnalyser ?? createPcmAnalyser());
   const [browserOpen] = useState(() => openInBrowser ?? browserOpener());
+  const t = useT();
   const connection = useConnection();
   const session = useDictationSession({ createMicrophone, analyser, shell });
   const { phase, outcome, text } = session;
@@ -134,12 +137,12 @@ export function PillApp({
 
   const message =
     phase === "starting"
-      ? "Waiting for the microphone…"
+      ? t("capture.pill.waiting")
       : phase === "listening"
-        ? "Listening: your microphone is on"
+        ? t("capture.pill.listening")
         : phase === "recognising"
-          ? "Recognising…"
-          : (shellError ?? outcome?.text ?? blocked ?? "Ready");
+          ? t("capture.pill.recognising")
+          : (shellError ?? outcome?.text ?? blocked ?? t("capture.pill.ready"));
   const tone =
     phase === "idle"
       ? shellError
@@ -174,7 +177,7 @@ export function PillApp({
         </p>
         {phase === "listening" ? (
           <button type="button" className="pill-btn pill-primary" onClick={session.stop}>
-            Stop
+            {t("capture.pill.stop")}
           </button>
         ) : (
           <button
@@ -187,14 +190,14 @@ export function PillApp({
               session.start();
             }}
           >
-            Dictate
+            {t("capture.dictation.button.start")}
           </button>
         )}
         <button
           type="button"
           className="pill-btn pill-icon"
-          aria-label="Record a call"
-          title="Record a call: opens the call recorder in Phoenix"
+          aria-label={t("capture.pill.recordCall")}
+          title={t("capture.pill.recordCall.title")}
           onClick={() => open(NOTETAKER_ROUTE)}
         >
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
@@ -207,8 +210,8 @@ export function PillApp({
         <button
           type="button"
           className="pill-btn pill-icon"
-          aria-label="Open Phoenix"
-          title="Open Phoenix"
+          aria-label={t("capture.pill.openPhoenix")}
+          title={t("capture.pill.openPhoenix")}
           onClick={() => open("/")}
         >
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
@@ -234,7 +237,7 @@ export function PillApp({
               className="pill-btn"
               onClick={() => void copy(text).catch(() => {})}
             >
-              Copy
+              {t("common.button.copy")}
             </button>
           )}
         </div>

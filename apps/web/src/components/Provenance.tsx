@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { useId, useState, type FormEvent } from "react";
-import { formatDate } from "../core/format";
+import { formatDate, formatNumber } from "../core/format";
 import { useAction, useGraphNeighbors, useGraphNode, useGraphStatus } from "../core/hooks";
 import { MAX_QUESTION } from "../core/review";
 import type {
@@ -15,65 +15,52 @@ import type {
   GraphWorldResult,
   GraphTruncation,
 } from "../core/types";
+import { isMessageKey, useLocale, useT, type MessageKey, type Translate } from "../i18n";
+import { intlLocale } from "../i18n/supported";
+import { SENSITIVITY_LABEL } from "./AnswerView";
 import { Feedback } from "./Feedback";
 import { RetrievalNote } from "./RetrievalNote";
 
 export const provenanceHref = (nodeId: string) => `#/provenance/${encodeURIComponent(nodeId)}`;
 
-const TYPE_LABEL: Record<string, string> = {
-  Person: "Person",
-  Project: "Project",
-  Repository: "Repository",
-  Commit: "Commit",
-  Service: "Service",
-  Deployment: "Deployment",
-  Meeting: "Meeting",
-  Decision: "Decision",
-  Feature: "Feature",
-  Issue: "Issue",
-  PullRequest: "Pull request",
-  CIRun: "CI run",
-  Document: "Document",
+const SOURCE_KEY: Record<GraphProvenance["source_kind"], MessageKey> = {
+  event: "memory.prov.source.event",
+  capability: "memory.prov.source.capability",
+  memory: "memory.prov.source.memory",
+  meeting: "memory.prov.source.meeting",
+  meeting_item: "memory.prov.source.meeting_item",
+  user: "memory.prov.source.user",
 };
 
-/** Each relation read as a verb phrase, from the edge's source to its target. */
-const REL_TEXT: Record<string, string> = {
-  AUTHORED: "authored",
-  TOUCHES: "changed",
-  PART_OF: "is part of",
-  DECIDED_IN: "was decided in",
-  MENTIONS: "mentions",
-  FIXES: "fixes",
-  DEPLOYED_TO: "was deployed to",
-  TRIGGERED: "triggered",
-  ASSIGNED_TO: "is assigned to",
-  REFERENCES: "references",
-  PARTICIPATED_IN: "took part in",
+const TRUNCATION_KEY: Record<keyof GraphTruncation, MessageKey> = {
+  depth: "memory.prov.limit.depth",
+  fanout: "memory.prov.limit.fanout",
+  visited: "memory.prov.limit.visited",
+  time: "memory.prov.limit.time",
+  results: "memory.prov.limit.results",
 };
 
-const SOURCE_TEXT: Record<GraphProvenance["source_kind"], string> = {
-  event: "an event Phoenix recorded",
-  capability: "a capability",
-  memory: "a memory item",
-  meeting: "a meeting",
-  meeting_item: "a reviewed meeting item",
-  user: "you",
-};
+const percent = (confidence: number) =>
+  formatNumber(confidence, undefined, { style: "percent", maximumFractionDigits: 0 });
 
-const TRUNCATION_TEXT: Record<keyof GraphTruncation, string> = {
-  depth: "the search depth",
-  fanout: "the number of branches per entity",
-  visited: "the number of entities looked at",
-  time: "the time limit",
-  results: "the number of results",
-};
+/** The entity type in words; a type this version does not know is shown as Core sent it. */
+function typeLabel(type: string, t: Translate): string {
+  const key = `memory.prov.type.${type}`;
+  return isMessageKey(key) ? t(key) : type;
+}
 
-const percent = (confidence: number) => `${Math.round(confidence * 100)}%`;
+/** The relation read as a verb phrase, from the edge's source to its target. */
+function relText(rel: string, t: Translate): string {
+  const key = `memory.prov.rel.${rel}`;
+  return isMessageKey(key) ? t(key) : rel.toLowerCase();
+}
 
-function assertorText(asserted: string): string {
-  if (asserted.startsWith("ai:")) return `suggested by AI (${asserted.slice(3)}), not confirmed`;
-  if (asserted === "user") return "confirmed by you";
-  return `recorded by ${asserted === "rule" ? "a fixed rule" : "a capability"}`;
+function assertorText(asserted: string, t: Translate): string {
+  if (asserted.startsWith("ai:")) return t("memory.prov.assertor.ai", { model: asserted.slice(3) });
+  if (asserted === "user") return t("memory.prov.assertor.user");
+  return asserted === "rule"
+    ? t("memory.prov.assertor.rule")
+    : t("memory.prov.assertor.capability");
 }
 
 /** Stored source words are displayed only when the provenance carries an actual quote. */
@@ -91,43 +78,54 @@ function detailLines(p: GraphProvenance): string[] {
 
 /** One piece of evidence: where the claim was read, how sure, and the stored words. */
 function Evidence({ row }: { row: GraphProvenance }) {
+  const t = useT();
   const quote = storedQuote(row);
+  const idCode = (
+    <code className="break">
+      {row.source_kind}:{row.source_id}
+    </code>
+  );
   return (
     <li className="evidence">
       <p className="small">
-        <strong>Evidence id</strong>{" "}
-        <code className="break">
-          {row.source_kind}:{row.source_id}
-        </code>{" "}
-        ({SOURCE_TEXT[row.source_kind]}
-        {row.source_kind === "meeting" && (
-          <>
-            {" "}
-            · <a href={`#/meetings/${encodeURIComponent(row.source_id)}`}>open the meeting</a>
-          </>
+        {t.rich(
+          row.source_kind === "meeting"
+            ? "memory.prov.evidence.lineMeeting"
+            : "memory.prov.evidence.line",
+          {
+            label: <strong>{t("memory.prov.evidence.id")}</strong>,
+            id: idCode,
+            source: t(SOURCE_KEY[row.source_kind]),
+            link: (
+              <a href={`#/meetings/${encodeURIComponent(row.source_id)}`}>
+                {t("memory.prov.evidence.openMeeting")}
+              </a>
+            ),
+          },
         )}
-        )
       </p>
       <p className="small muted">
-        {assertorText(row.asserted_by)} · confidence {percent(row.confidence)} · capability{" "}
-        {row.capability} · seen{" "}
-        <time dateTime={row.observed_at}>{formatDate(row.observed_at)}</time> ·{" "}
-        {row.sensitivity === "sensitive"
-          ? "Sensitive"
-          : row.sensitivity === "internal"
-            ? "Internal"
-            : "Public"}
+        {t.rich("memory.prov.evidence.meta", {
+          assertor: assertorText(row.asserted_by, t),
+          confidence: percent(row.confidence),
+          capability: row.capability,
+          date: <time dateTime={row.observed_at}>{formatDate(row.observed_at)}</time>,
+          sensitivity: SENSITIVITY_LABEL[row.sensitivity],
+        })}
       </p>
       {row.source_kind === "meeting_item" ? (
         typeof row.detail.text === "string" && <p className="memory-text">{row.detail.text}</p>
       ) : quote ? (
         <blockquote className="quote">{quote}</blockquote>
       ) : (
-        <p className="muted small">No quote is stored for this evidence.</p>
+        <p className="muted small">{t("memory.prov.evidence.noQuote")}</p>
       )}
       {typeof row.detail.source_quote === "string" && row.detail.source_quote.length > 0 && (
         <p className="small">
-          <strong>Source quote</strong> <q className="memory-text">{row.detail.source_quote}</q>
+          {t.rich("memory.prov.evidence.sourceQuote", {
+            label: <strong>{t("memory.prov.evidence.sourceQuoteLabel")}</strong>,
+            quote: <q className="memory-text">{row.detail.source_quote}</q>,
+          })}
         </p>
       )}
       {detailLines(row).map((line) => (
@@ -141,6 +139,7 @@ function Evidence({ row }: { row: GraphProvenance }) {
 
 /** "Why do you think this?": the evidence behind a node or an edge, opened on request. */
 function WhyButton({ label, rows }: { label: string; rows: GraphProvenance[] }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const id = useId();
   return (
@@ -150,17 +149,17 @@ function WhyButton({ label, rows }: { label: string; rows: GraphProvenance[] }) 
         className="btn"
         aria-expanded={open}
         aria-controls={id}
-        aria-label={`Why do you think this? ${label}`}
+        aria-label={t("memory.prov.whyLabel", { label })}
         onClick={() => setOpen(!open)}
       >
-        Why do you think this?
+        {t("memory.prov.why")}
       </button>
       <div id={id} hidden={!open}>
         {open &&
           (rows.length === 0 ? (
-            <p className="muted small">No evidence is readable for this.</p>
+            <p className="muted small">{t("memory.prov.noEvidence")}</p>
           ) : (
-            <ul className="evidence-list" aria-label={`Evidence for ${label}`}>
+            <ul className="evidence-list" aria-label={t("memory.prov.evidenceFor", { label })}>
               {rows.map((row) => (
                 <Evidence
                   key={`${row.source_kind}:${row.source_id}:${row.asserted_by}`}
@@ -175,37 +174,53 @@ function WhyButton({ label, rows }: { label: string; rows: GraphProvenance[] }) 
 }
 
 function NodeLink({ node }: { node: Pick<GraphNode, "id" | "type" | "label"> }) {
+  const t = useT();
   return (
     <a href={provenanceHref(node.id)}>
-      {TYPE_LABEL[node.type] ?? node.type} “{node.label}”
+      {t("memory.prov.nodeLink", { type: typeLabel(node.type, t), label: node.label })}
     </a>
   );
 }
 
-const relText = (rel: string) => REL_TEXT[rel] ?? rel.toLowerCase();
-
-function edgeSentence(edge: GraphEdge, nodes: Record<string, GraphNode>) {
+function edgeSentence(edge: GraphEdge, nodes: Record<string, GraphNode>, t: Translate) {
   const label = (id: string) => nodes[id]?.label ?? id;
-  return `${label(edge.src)} ${relText(edge.rel)} ${label(edge.dst)}`;
+  return t("memory.prov.edgeSentence", {
+    src: label(edge.src),
+    rel: relText(edge.rel, t),
+    dst: label(edge.dst),
+  });
 }
 
-function bestConfidence(rows: GraphProvenance[]): string {
-  return rows.length === 0 ? "unknown" : percent(Math.max(...rows.map((r) => r.confidence)));
+function bestConfidence(rows: GraphProvenance[], t: Translate): string {
+  return rows.length === 0
+    ? t("memory.prov.unknown")
+    : percent(Math.max(...rows.map((r) => r.confidence)));
 }
 
 function EdgeRow({ edge, nodes }: { edge: GraphEdge; nodes: Record<string, GraphNode> }) {
-  const sentence = edgeSentence(edge, nodes);
+  const t = useT();
+  const sentence = edgeSentence(edge, nodes, t);
   const src = nodes[edge.src];
   const dst = nodes[edge.dst];
   return (
     <li className="edge-row">
       <p className="memory-text">
-        {src ? <NodeLink node={src} /> : edge.src} <strong>{relText(edge.rel)}</strong> ({edge.rel}){" "}
-        {dst ? <NodeLink node={dst} /> : edge.dst}
+        {t.rich("memory.prov.edgeRow", {
+          src: src ? <NodeLink node={src} /> : edge.src,
+          rel: <strong>{relText(edge.rel, t)}</strong>,
+          code: edge.rel,
+          dst: dst ? <NodeLink node={dst} /> : edge.dst,
+        })}
       </p>
       <p className="muted small">
-        {edge.status === "proposed" ? "Suggested, not a fact" : "Fact"} · confidence{" "}
-        {bestConfidence(edge.provenance)} · {edge.provenance.length} source(s)
+        {t("memory.prov.edge.meta", {
+          status:
+            edge.status === "proposed"
+              ? t("memory.prov.edge.proposed")
+              : t("memory.prov.edge.fact"),
+          confidence: bestConfidence(edge.provenance, t),
+          count: edge.provenance.length,
+        })}
       </p>
       <WhyButton label={sentence} rows={edge.provenance} />
     </li>
@@ -214,22 +229,27 @@ function EdgeRow({ edge, nodes }: { edge: GraphEdge; nodes: Record<string, Graph
 
 /** A path as numbered steps, each with its relation and confidence. This is the text form of the chain. */
 function PathView({ path }: { path: GraphPath }) {
+  const t = useT();
   const nodes: Record<string, GraphNode> = {};
   for (const n of path.nodes) nodes[n.id] = n;
   return (
     <div className="path">
-      <ol className="path-steps" aria-label="Chain, step by step">
+      <ol className="path-steps" aria-label={t("memory.prov.chain")}>
         {path.hops.map((hop) => (
           <li key={hop.edge.id}>
-            <span className="memory-text">{edgeSentence(hop.edge, nodes)}</span>
+            <span className="memory-text">{edgeSentence(hop.edge, nodes, t)}</span>
             <span className="muted small">
               {" "}
-              ({hop.edge.rel},{" "}
-              {hop.direction === "forward" ? "followed forward" : "followed backward"} · confidence{" "}
-              {bestConfidence(hop.edge.provenance)}
-              {hop.edge.status === "proposed" ? " · suggested, not a fact" : ""})
+              {t(hop.edge.status === "proposed" ? "memory.prov.hopProposed" : "memory.prov.hop", {
+                code: hop.edge.rel,
+                direction:
+                  hop.direction === "forward"
+                    ? t("memory.prov.forward")
+                    : t("memory.prov.backward"),
+                confidence: bestConfidence(hop.edge.provenance, t),
+              })}
             </span>
-            <WhyButton label={edgeSentence(hop.edge, nodes)} rows={hop.edge.provenance} />
+            <WhyButton label={edgeSentence(hop.edge, nodes, t)} rows={hop.edge.provenance} />
           </li>
         ))}
       </ol>
@@ -239,20 +259,26 @@ function PathView({ path }: { path: GraphPath }) {
 }
 
 function TruncationNote({ truncated }: { truncated: GraphTruncation }) {
-  const cut = (Object.keys(truncated) as (keyof GraphTruncation)[]).map((k) => TRUNCATION_TEXT[k]);
+  const t = useT();
+  const { locale } = useLocale();
+  const cut = (Object.keys(truncated) as (keyof GraphTruncation)[]).map((k) =>
+    t(TRUNCATION_KEY[k]),
+  );
+  const list = new Intl.ListFormat(intlLocale(locale), { type: "unit" }).format(cut);
   return cut.length === 0 ? null : (
-    <p className="muted small">This answer is incomplete: it stopped at {cut.join(", ")}.</p>
+    <p className="muted small">{t("memory.prov.truncated", { limits: list })}</p>
   );
 }
 
 function AnswerSection({ answer }: { answer: GraphAnswer }) {
-  const subject = answer.subject ? <NodeLink node={answer.subject} /> : "this entity";
+  const t = useT();
+  const subject = answer.subject ? <NodeLink node={answer.subject} /> : t("memory.prov.thisEntity");
   if (answer.kind === "why") {
     return (
-      <section aria-label="Why answer">
-        <h3 className="h4">Why: what led to {subject}</h3>
+      <section aria-label={t("memory.prov.answer.whyLabel")}>
+        <h3 className="h4">{t.rich("memory.prov.answer.why", { subject })}</h3>
         {answer.paths.length === 0 ? (
-          <p className="muted small">The graph has no reason on record.</p>
+          <p className="muted small">{t("memory.prov.answer.noReason")}</p>
         ) : (
           answer.paths.map((p, i) => <PathView key={i} path={p} />)
         )}
@@ -262,12 +288,12 @@ function AnswerSection({ answer }: { answer: GraphAnswer }) {
   }
   if (answer.kind === "which") {
     return (
-      <section aria-label="Which answer">
+      <section aria-label={t("memory.prov.answer.whichLabel")}>
         <h3 className="h4">
-          Which {TYPE_LABEL[answer.type] ?? answer.type} is closest to {subject}
+          {t.rich("memory.prov.answer.which", { type: typeLabel(answer.type, t), subject })}
         </h3>
         {answer.results.length === 0 ? (
-          <p className="muted small">None found in the graph.</p>
+          <p className="muted small">{t("memory.prov.answer.noneFound")}</p>
         ) : (
           <ul className="card-list">
             {answer.results.map((r) => (
@@ -285,10 +311,10 @@ function AnswerSection({ answer }: { answer: GraphAnswer }) {
     );
   }
   return (
-    <section aria-label="Who answer">
-      <h3 className="h4">Who is connected to {subject}</h3>
+    <section aria-label={t("memory.prov.answer.whoLabel")}>
+      <h3 className="h4">{t.rich("memory.prov.answer.who", { subject })}</h3>
       {answer.people.length === 0 ? (
-        <p className="muted small">No people found in the graph.</p>
+        <p className="muted small">{t("memory.prov.answer.noPeople")}</p>
       ) : (
         <ul className="card-list">
           {answer.people.map((p) => (
@@ -309,6 +335,7 @@ function AnswerSection({ answer }: { answer: GraphAnswer }) {
 }
 
 function GraphSearch() {
+  const t = useT();
   const { run, busy, error } = useAction();
   const [question, setQuestion] = useState("");
   const [result, setResult] = useState<GraphAsk | null>(null);
@@ -324,12 +351,11 @@ function GraphSearch() {
   return (
     <section aria-labelledby="graph-ask-h" className="card">
       <h2 id="graph-ask-h" className="h3">
-        Find an entity or ask why
+        {t("memory.prov.ask.title")}
       </h2>
       <form className="memory-form" onSubmit={(e) => void submit(e)} role="search">
         <label htmlFor={id} className="small">
-          Name a commit, pull request, issue, meeting, decision, file or person. For example “why
-          ADR-0020” or “which commits touched core/api/src/server.ts”.
+          {t("memory.prov.ask.label")}
         </label>
         <div className="memory-row">
           <input
@@ -340,23 +366,22 @@ function GraphSearch() {
             onChange={(e) => setQuestion(e.target.value)}
           />
           <button type="submit" className="btn btn-primary" disabled={busy || !question.trim()}>
-            Find
+            {t("memory.prov.ask.find")}
           </button>
         </div>
         <Feedback error={error} />
       </form>
       {result && (
         <div aria-live="polite">
-          <h3 className="h4">Entities found</h3>
+          <h3 className="h4">{t("memory.prov.ask.entities")}</h3>
           {result.seeds.length === 0 ? (
-            <p className="muted small">
-              {result.notes[0] ?? "Nothing in the graph matches the question exactly."}
-            </p>
+            <p className="muted small">{result.notes[0] ?? t("memory.prov.ask.noMatch")}</p>
           ) : (
-            <ul className="task-list" aria-label="Entities found">
+            <ul className="task-list" aria-label={t("memory.prov.ask.entities")}>
               {result.seeds.map((n) => (
                 <li key={n.id}>
-                  <NodeLink node={n} /> <span className="muted small">· open its origin</span>
+                  <NodeLink node={n} />{" "}
+                  <span className="muted small">{t("memory.prov.ask.openOrigin")}</span>
                 </li>
               ))}
             </ul>
@@ -366,7 +391,7 @@ function GraphSearch() {
           ))}
           {result.documents.length > 0 && (
             <>
-              <h3 className="h4">Related text (retrieved, not graph facts)</h3>
+              <h3 className="h4">{t("memory.prov.ask.related")}</h3>
               <ul className="memory-facts">
                 {result.documents.map((d) => (
                   <li key={d.id}>
@@ -387,6 +412,7 @@ function GraphSearch() {
 }
 /** An exact failure key, not a free-text guess or a causal diagnosis. */
 function FailureSearch() {
+  const t = useT();
   const { run, busy, error } = useAction();
   const [key, setKey] = useState("");
   const [asOf, setAsOf] = useState("");
@@ -407,14 +433,11 @@ function FailureSearch() {
   return (
     <section className="card" aria-labelledby="failure-search-h">
       <h2 id="failure-search-h" className="h3">
-        Failure association trails
+        {t("memory.prov.failure.title")}
       </h2>
-      <p className="muted small">
-        Search by exact failure id. These are documented associations, not an established root
-        cause.
-      </p>
+      <p className="muted small">{t("memory.prov.failure.intro")}</p>
       <form className="memory-form" onSubmit={(event) => void submit(event)} role="search">
-        <label htmlFor={id}>Exact failure id</label>
+        <label htmlFor={id}>{t("memory.prov.failure.idLabel")}</label>
         <div className="memory-row">
           <input
             id={id}
@@ -425,10 +448,10 @@ function FailureSearch() {
             onChange={(event) => setKey(event.target.value)}
           />
           <button type="submit" className="btn btn-primary" disabled={busy || !key.trim()}>
-            Find trails
+            {t("memory.prov.failure.find")}
           </button>
         </div>
-        <label htmlFor={`${id}-as-of`}>As-of timestamp (ISO with timezone, optional)</label>
+        <label htmlFor={`${id}-as-of`}>{t("memory.prov.failure.asOfLabel")}</label>
         <input
           id={`${id}-as-of`}
           type="text"
@@ -445,64 +468,96 @@ function FailureSearch() {
 }
 
 function WorldEntity({ entity, label }: { entity: GraphWorldEntity; label: string }) {
+  const t = useT();
   return (
     <div className="memory-text">
-      <p>
-        {label}: <NodeLink node={entity.node} />
-      </p>
+      <p>{t.rich("memory.prov.world.entity", { label, node: <NodeLink node={entity.node} /> })}</p>
       <p className="muted small">
-        Confidence {percent(entity.confidence)} · observed{" "}
-        <time dateTime={entity.observed_at}>{formatDate(entity.observed_at)}</time> · age{" "}
-        {entity.age_ms} ms
+        {t.rich("memory.prov.world.entityMeta", {
+          confidence: percent(entity.confidence),
+          date: <time dateTime={entity.observed_at}>{formatDate(entity.observed_at)}</time>,
+          age: entity.age_ms,
+        })}
       </p>
-      <WhyButton label={`${label} ${entity.node.label}`} rows={entity.provenance} />
+      <WhyButton
+        label={t("memory.prov.world.entityWhy", { label, node: entity.node.label })}
+        rows={entity.provenance}
+      />
     </div>
   );
 }
 
 function WorldTrails({ result }: { result: GraphWorldResult }) {
+  const t = useT();
   return (
     <div aria-live="polite">
       <p className="muted small">
-        As of <time dateTime={result.as_of}>{formatDate(result.as_of)}</time> · maximum evidence age{" "}
-        {result.max_age_ms} ms. Each shown observation is within this window; older evidence is
-        excluded.
+        {t.rich("memory.prov.world.asOf", {
+          date: <time dateTime={result.as_of}>{formatDate(result.as_of)}</time>,
+          age: result.max_age_ms,
+        })}
       </p>
       {!result.subject ? (
-        <p>No visible failure with fresh supporting evidence matches that exact id.</p>
+        <p>{t("memory.prov.world.noSubject")}</p>
       ) : (
         <>
-          <WorldEntity entity={result.subject} label="Failure" />
+          <WorldEntity entity={result.subject} label={t("memory.prov.world.failure")} />
           {result.chains.length === 0 ? (
-            <p>No complete documented association trail is available for this failure.</p>
+            <p>{t("memory.prov.world.noChains")}</p>
           ) : (
-            <ol aria-label="Failure association trails" className="card-list">
+            <ol aria-label={t("memory.prov.failure.title")} className="card-list">
               {result.chains.map((chain, index) => (
                 <li className="card" key={index}>
-                  <h3 className="h4">Association trail {index + 1}</h3>
+                  <h3 className="h4">
+                    {t("memory.prov.world.trail", { n: formatNumber(index + 1) })}
+                  </h3>
                   <p className="small">
-                    {chain.interpretation} · trail confidence {percent(chain.confidence)}
+                    {t("memory.prov.world.trailMeta", {
+                      interpretation: chain.interpretation,
+                      confidence: percent(chain.confidence),
+                    })}
                   </p>
-                  <ol aria-label={`Association trail ${index + 1} steps`} className="path-steps">
+                  <ol
+                    aria-label={t("memory.prov.world.trailSteps", { n: formatNumber(index + 1) })}
+                    className="path-steps"
+                  >
                     {chain.hops.map((hop, step) => {
                       const entity = chain.nodes[step + 1];
                       return (
                         <li key={`${hop.edge.id}:${step}`}>
                           <p className="memory-text">
-                            {hop.meaning} ({hop.edge.rel})
+                            {t("memory.prov.world.hopMeaning", {
+                              meaning: hop.meaning,
+                              code: hop.edge.rel,
+                            })}
                           </p>
                           <p className="muted small memory-text">
-                            From {hop.from} to {hop.to} · confidence {percent(hop.confidence)} ·
-                            observed{" "}
-                            <time dateTime={hop.observed_at}>{formatDate(hop.observed_at)}</time> ·
-                            age {hop.age_ms} ms
+                            {t.rich("memory.prov.world.hopMeta", {
+                              from: hop.from,
+                              to: hop.to,
+                              confidence: percent(hop.confidence),
+                              date: (
+                                <time dateTime={hop.observed_at}>
+                                  {formatDate(hop.observed_at)}
+                                </time>
+                              ),
+                              age: hop.age_ms,
+                            })}
                           </p>
                           <WhyButton
-                            label={`step ${step + 1} ${hop.meaning}`}
+                            label={t("memory.prov.world.stepLabel", {
+                              n: formatNumber(step + 1),
+                              meaning: hop.meaning,
+                            })}
                             rows={hop.provenance}
                           />
                           {entity && (
-                            <WorldEntity entity={entity} label={`Step ${step + 1} entity`} />
+                            <WorldEntity
+                              entity={entity}
+                              label={t("memory.prov.world.stepEntity", {
+                                n: formatNumber(step + 1),
+                              })}
+                            />
                           )}
                         </li>
                       );
@@ -520,20 +575,18 @@ function WorldTrails({ result }: { result: GraphWorldResult }) {
 }
 
 export function ProvenancePage() {
+  const t = useT();
   const { data: status, error } = useGraphStatus();
   const types = Object.entries(status?.visible_nodes_by_type ?? {}).filter(([, n]) => n > 0);
   return (
     <div className="meetings provenance">
-      <h1>Where things came from</h1>
-      <p className="muted">
-        Pick a commit, pull request, issue, meeting or decision to see where Phoenix learned about
-        it, how sure it is, and what it is connected to. Everything is written out as text.
-      </p>
+      <h1>{t("memory.prov.page.title")}</h1>
+      <p className="muted">{t("memory.prov.page.intro")}</p>
       <GraphSearch />
       <FailureSearch />
       <section aria-labelledby="graph-status-h" className="card">
         <h2 id="graph-status-h" className="h3">
-          What the graph knows
+          {t("memory.prov.page.knows")}
         </h2>
         {error && (
           <p className="error-text" role="alert">
@@ -541,24 +594,24 @@ export function ProvenancePage() {
           </p>
         )}
         {status && types.length === 0 && (
-          <p className="muted small">
-            The graph is empty. It fills from your commits, pull requests, issues and reviewed
-            meetings.
-          </p>
+          <p className="muted small">{t("memory.prov.page.empty")}</p>
         )}
         {types.length > 0 && (
-          <ul className="task-list" aria-label="Entities by type">
+          <ul className="task-list" aria-label={t("memory.prov.page.byType")}>
             {types.map(([type, n]) => (
               <li key={type}>
-                {TYPE_LABEL[type] ?? type}: {n}
+                {t("memory.prov.page.typeCount", { type: typeLabel(type, t), n: formatNumber(n) })}
               </li>
             ))}
           </ul>
         )}
         {status?.last_ingest && (
           <p className="muted small">
-            Last read from memory and meetings{" "}
-            <time dateTime={status.last_ingest.at}>{formatDate(status.last_ingest.at)}</time>.
+            {t.rich("memory.prov.page.lastRead", {
+              date: (
+                <time dateTime={status.last_ingest.at}>{formatDate(status.last_ingest.at)}</time>
+              ),
+            })}
           </p>
         )}
       </section>
@@ -567,6 +620,7 @@ export function ProvenancePage() {
 }
 
 export function ProvenanceNode({ nodeId }: { nodeId: string }) {
+  const t = useT();
   const { data, error } = useGraphNode(nodeId);
   const [depth, setDepth] = useState<1 | 2>(1);
   const near = useGraphNeighbors(nodeId, depth);
@@ -575,13 +629,14 @@ export function ProvenanceNode({ nodeId }: { nodeId: string }) {
     return (
       <div className="meetings">
         <p role="alert">
-          Phoenix has no readable record of this entity (it may not exist, or it may have been
-          removed). <a href="#/provenance">Back to search</a>
+          {t.rich("memory.prov.node.missing", {
+            link: <a href="#/provenance">{t("memory.prov.node.backToSearch")}</a>,
+          })}
         </p>
       </div>
     );
   }
-  if (!data) return <p className="muted">Loading…</p>;
+  if (!data) return <p className="muted">{t("common.status.loading")}</p>;
 
   const { node, origin, summary } = data;
   const nodes: Record<string, GraphNode> = {};
@@ -595,15 +650,13 @@ export function ProvenanceNode({ nodeId }: { nodeId: string }) {
   return (
     <div className="meetings provenance">
       <p>
-        <a href="#/provenance">← Search the graph</a>
+        <a href="#/provenance">{t("memory.prov.node.searchGraph")}</a>
       </p>
       <h1 className="memory-text">{node.label}</h1>
       <p className="small">
-        <span className="mem-badge">{TYPE_LABEL[node.type] ?? node.type}</span>{" "}
+        <span className="mem-badge">{typeLabel(node.type, t)}</span>{" "}
         <strong>
-          {node.status === "proposed"
-            ? "Suggested by AI, not confirmed: this is not a fact"
-            : "Recorded fact"}
+          {node.status === "proposed" ? t("memory.prov.node.proposed") : t("memory.prov.node.fact")}
         </strong>
       </p>
       <p className="muted small">
@@ -612,27 +665,30 @@ export function ProvenanceNode({ nodeId }: { nodeId: string }) {
 
       <section aria-labelledby="origin-h" className="card">
         <h2 id="origin-h" className="h3">
-          Where it came from
+          {t("memory.prov.node.originTitle")}
         </h2>
         <p className="small">
-          {summary.sources} source(s) · {summary.assertors.map(assertorText).join("; ")} ·{" "}
-          {data.visible_edges} connection(s) you can see.
+          {t("memory.prov.node.originLine", {
+            sources: summary.sources,
+            assertors: summary.assertors.map((a) => assertorText(a, t)).join("; "),
+            visible: data.visible_edges,
+          })}
         </p>
         <WhyButton label={node.label} rows={origin} />
       </section>
 
       <section aria-labelledby="chain-h" className="card">
         <h2 id="chain-h" className="h3">
-          What it is connected to
+          {t("memory.prov.node.connectedTitle")}
         </h2>
-        <div role="group" aria-label="How far to look" className="chips">
+        <div role="group" aria-label={t("memory.prov.node.depthGroup")} className="chips">
           <button
             type="button"
             className="chip"
             aria-pressed={depth === 1}
             onClick={() => setDepth(1)}
           >
-            Direct
+            {t("memory.prov.node.direct")}
           </button>
           <button
             type="button"
@@ -640,7 +696,7 @@ export function ProvenanceNode({ nodeId }: { nodeId: string }) {
             aria-pressed={depth === 2}
             onClick={() => setDepth(2)}
           >
-            Two steps out
+            {t("memory.prov.node.twoSteps")}
           </button>
         </div>
         {near.error && (
@@ -649,12 +705,12 @@ export function ProvenanceNode({ nodeId }: { nodeId: string }) {
           </p>
         )}
         {near.data && edges.length === 0 && (
-          <p className="muted small">Nothing is connected to this yet.</p>
+          <p className="muted small">{t("memory.prov.node.nothing")}</p>
         )}
         {into.length > 0 && (
           <>
-            <h3 className="h4">Connected from ({into.length})</h3>
-            <ul className="card-list" aria-label="Connections pointing at this">
+            <h3 className="h4">{t("memory.prov.node.from", { n: formatNumber(into.length) })}</h3>
+            <ul className="card-list" aria-label={t("memory.prov.node.fromList")}>
               {into.map((e) => (
                 <EdgeRow key={e.id} edge={e} nodes={nodes} />
               ))}
@@ -663,8 +719,8 @@ export function ProvenanceNode({ nodeId }: { nodeId: string }) {
         )}
         {out.length > 0 && (
           <>
-            <h3 className="h4">Connected to ({out.length})</h3>
-            <ul className="card-list" aria-label="Connections this points to">
+            <h3 className="h4">{t("memory.prov.node.to", { n: formatNumber(out.length) })}</h3>
+            <ul className="card-list" aria-label={t("memory.prov.node.toList")}>
               {out.map((e) => (
                 <EdgeRow key={e.id} edge={e} nodes={nodes} />
               ))}
@@ -673,22 +729,18 @@ export function ProvenanceNode({ nodeId }: { nodeId: string }) {
         )}
         {further.length > 0 && (
           <>
-            <h3 className="h4">Further out ({further.length})</h3>
-            <ul className="card-list" aria-label="Connections further out">
+            <h3 className="h4">
+              {t("memory.prov.node.further", { n: formatNumber(further.length) })}
+            </h3>
+            <ul className="card-list" aria-label={t("memory.prov.node.furtherList")}>
               {further.map((e) => (
                 <EdgeRow key={e.id} edge={e} nodes={nodes} />
               ))}
             </ul>
           </>
         )}
-        {near.data?.truncated && (
-          <p className="muted small">The list was cut short to stay readable.</p>
-        )}
-        <p className="muted small">
-          Each line reads in the direction Phoenix stored it: “A is part of B” starts at A.
-          “Connected from” lists lines that end at this entity, “Connected to” lines that start at
-          it.
-        </p>
+        {near.data?.truncated && <p className="muted small">{t("memory.prov.node.cut")}</p>}
+        <p className="muted small">{t("memory.prov.node.directionNote")}</p>
       </section>
     </div>
   );

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { ApiError, PhoenixClient, type ClientOptions } from "./client";
+import { translate } from "../i18n/store";
 import { DEMO_UI_TEXT, parseDemoSession, type DemoSession } from "./demo";
+import { existingRecorder } from "./notetaker-recorder";
+import { existingAssistant } from "./voice-assistant";
 
 export type DemoPhase = "off" | "starting" | "on" | "stopping";
 
@@ -14,6 +17,8 @@ export interface DemoSnapshot {
   step: number;
   playing: boolean;
   error: string | null;
+  /** Something the demo did to the real app's state when it started (not an error). */
+  notice: string | null;
 }
 
 /** Builds the client for the demo Core (tests inject one over a fake fetch and socket). */
@@ -32,7 +37,13 @@ const windowRouter: DemoRouter = {
 };
 
 const failure = (fallback: string, err: unknown) =>
-  err instanceof ApiError ? `${fallback}: ${err.message}` : fallback;
+  err instanceof ApiError
+    ? translate("services.demo.failureDetail", { message: fallback, detail: err.message })
+    : fallback;
+
+/** A call recording of the REAL Core that this page is making (or finishing). */
+const recording = (real: PhoenixClient): boolean =>
+  (existingRecorder(real)?.getState().phase ?? "idle") !== "idle";
 
 /**
  * Switches the app between the real Core and the demo Core.
@@ -42,6 +53,10 @@ const failure = (fallback: string, err: unknown) =>
  * is used while the demo runs). Stopping switches back FIRST, so the page never talks to a Core that
  * is about to disappear, then asks the real Core to end the demo. The hash route the user was on is
  * put back. The controller writes nothing itself: no storage, no cookie, no file.
+ *
+ * The real client's microphone features never outlive the switch: a call recording in progress makes
+ * the demo REFUSE to start (the call is never ended silently), and the voice assistant is stopped
+ * (microphone released, session ended on the real Core) before the page points at the demo.
  */
 export class DemoController {
   private snap: DemoSnapshot;
@@ -60,6 +75,7 @@ export class DemoController {
       step: -1,
       playing: false,
       error: null,
+      notice: null,
     };
   }
 
@@ -72,7 +88,11 @@ export class DemoController {
 
   async start(): Promise<void> {
     if (this.snap.phase !== "off") return;
-    this.set({ phase: "starting", error: null });
+    if (recording(this.real)) {
+      this.set({ error: translate("services.demo.recordingActive"), notice: null });
+      return;
+    }
+    this.set({ phase: "starting", error: null, notice: null });
     let session: DemoSession | null;
     try {
       session = parseDemoSession(await this.real.request("POST", "/api/demo/start", {}));
@@ -86,15 +106,35 @@ export class DemoController {
       this.set({ phase: "off", error: DEMO_UI_TEXT.invalidSession });
       return;
     }
+    // The user may have started a recording while Core was starting the demo.
+    if (recording(this.real)) {
+      await this.real.request("POST", "/api/demo/stop", {}).catch(() => undefined);
+      this.set({ phase: "off", error: translate("services.demo.recordingActive") });
+      return;
+    }
+    const assistant = existingAssistant(this.real);
+    const voiceWasOn = assistant !== undefined && assistant.getState().phase !== "idle";
+    // Microphone released and the real session ended BEFORE the page stops talking to the real Core.
+    await assistant?.stop();
     this.savedRoute = this.router.get();
     const demoClient = this.makeClient({ token: session.token, baseUrl: session.url });
-    this.set({ phase: "on", client: demoClient, session, step: -1, playing: false });
+    this.set({
+      phase: "on",
+      client: demoClient,
+      session,
+      step: -1,
+      playing: false,
+      notice: voiceWasOn ? translate("services.demo.voiceStopped") : null,
+    });
     this.router.set("#/");
   }
 
   async stop(): Promise<void> {
     if (this.snap.phase !== "on") return;
-    this.set({ phase: "stopping", error: null });
+    this.set({ phase: "stopping", error: null, notice: null });
+    // The demo Core's own assistant and recorder (their client is about to close) release the mic.
+    void existingAssistant(this.snap.client)?.stop();
+    existingRecorder(this.snap.client)?.cancel();
     this.snap.client.close();
     this.set({ client: this.real, session: null, step: -1, playing: false });
     this.router.set(this.savedRoute ?? "");

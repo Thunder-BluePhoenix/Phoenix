@@ -9,13 +9,14 @@ import {
   MAX_PROMPT_CHARS,
   MAX_QUESTION_CHARS,
   OUTPUT_LINES,
+  PLAIN_NUMBER,
   SESSION_STATE_TEXT,
   validateStart,
   type StartProblems,
 } from "../core/agent-sessions";
 import { ApiError } from "../core/client";
 import { useClient } from "../core/context";
-import { formatAgo, formatDate, formatTime } from "../core/format";
+import { formatAgo, formatDate, formatNumber, formatTime, translated } from "../core/format";
 import {
   useAction,
   useAgentLive,
@@ -37,15 +38,24 @@ import type {
   OrchestratedSessionList,
   UsageView,
 } from "../core/types";
+import { useT, type MessageKey, type Translate } from "../i18n";
 import { Approvals } from "./Approvals";
 import { Feedback } from "./Feedback";
 
-const STEP_KIND_TEXT: Record<string, string> = {
-  read: "Read",
-  edit: "Edit",
-  run: "Run",
-  other: "Other",
-};
+const STEP_KIND_TEXT = translated({
+  read: "agents.sessions.steps.kind.read",
+  edit: "agents.sessions.steps.kind.edit",
+  run: "agents.sessions.steps.kind.run",
+  other: "agents.sessions.steps.kind.other",
+});
+
+/** The `agents` capability's command shown in the approval note; a command identifier, not prose. */
+const START_ACTION = "agents: session.start";
+/** The capability id named in the "capability is off" notice. */
+const AGENTS_CAPABILITY = "agents";
+
+/** A limit or count written the way the commands document it: digits of the language, no grouping. */
+const plain = (n: number): string => formatNumber(n, undefined, PLAIN_NUMBER);
 /** Steps shown in the ticker, and in the orchestrated page's merged timeline. */
 const SHOWN_STEPS = 100;
 const TIMELINE_STEPS = 50;
@@ -78,12 +88,13 @@ function CommandStatus({
   waiting: string;
   done?: string;
 }) {
+  const t = useT();
   return (
     <>
       {(state === "waiting" || state === "running") && (
         <>
           <p className="small" role="status">
-            {state === "waiting" ? waiting : "Running…"}
+            {state === "waiting" ? waiting : t("agents.sessions.running")}
           </p>
           <Approvals />
         </>
@@ -108,6 +119,7 @@ function LauncherEditor({
   enabled: boolean;
   onSaved: () => void;
 }) {
+  const t = useT();
   const { run, busy, error } = useAction();
   const [name, setName] = useState("");
   const [command, setCommand] = useState("");
@@ -141,9 +153,9 @@ function LauncherEditor({
       !/[\u0000-\u001f\u007f]/.test(path);
     let message = "";
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/.test(name))
-      message = "Use a launcher name of 1–40 slug characters.";
+      message = t("agents.sessions.editor.error.name");
     else if (!Object.hasOwn(savedLaunchers, name) && names.length >= 8)
-      message = "At most eight launchers are allowed.";
+      message = t("agents.sessions.editor.error.tooMany");
     else if (
       argv.length < 1 ||
       argv.length > 32 ||
@@ -152,8 +164,7 @@ function LauncherEditor({
       argv[0]!.endsWith("/") ||
       /^(sh|bash|zsh|dash|fish|ksh|csh|tcsh)$/.test(argv[0]!.split("/").at(-1) ?? "")
     )
-      message =
-        "Enter an absolute executable (not a shell) and up to 31 fixed arguments, one per line (1000 characters each).";
+      message = t("agents.sessions.editor.error.command");
     else if (
       folders.length < 1 ||
       folders.length > 8 ||
@@ -167,17 +178,17 @@ function LauncherEditor({
           r.length > 1000,
       )
     )
-      message = "Enter 1–8 normalised absolute folders (not /), one per line.";
+      message = t("agents.sessions.editor.error.folders");
     else if (
       allowed.length > 16 ||
       allowed.some((n) => !/^[A-Z_][A-Z0-9_]{0,63}$/.test(n) || n.startsWith("PHOENIX_"))
     )
-      message = "Enter at most 16 valid environment variable names (not PHOENIX_ names).";
+      message = t("agents.sessions.editor.error.env");
     else if (
       prompts.length > 8 ||
       prompts.some((p) => !p.length || p.length > 100 || /[\u0000-\u001f\u007f]/.test(p))
     )
-      message = "Enter at most eight waiting phrases, each at most 100 characters.";
+      message = t("agents.sessions.editor.error.waiting");
     setProblem(message);
     setPreview(!message);
   };
@@ -227,21 +238,18 @@ function LauncherEditor({
     setStdin(spec.stdin === "close_after_prompt" ? "close_after_prompt" : "keep_open");
   };
   return (
-    <section className="card" aria-label="Configure coding-agent launcher">
-      <h2 className="h3">Configure a launcher</h2>
-      <p className="muted small">
-        Only configure programs you trust. Phoenix passes prompts on stdin. Never put credentials in
-        arguments; use environment variable names, never values.
-      </p>
+    <section className="card" aria-label={t("agents.sessions.editor.label")}>
+      <h2 className="h3">{t("agents.sessions.editor.title")}</h2>
+      <p className="muted small">{t("agents.sessions.editor.intro")}</p>
       <form onSubmit={review} className="settings-form">
         <label className="field" htmlFor={`${id}-existing`}>
-          Edit a saved launcher
+          {t("agents.sessions.editor.editSaved")}
           <select
             id={`${id}-existing`}
             value={Object.hasOwn(savedLaunchers, name) ? name : ""}
             onChange={(e) => select(e.target.value)}
           >
-            <option value="">New launcher</option>
+            <option value="">{t("agents.sessions.editor.newLauncher")}</option>
             {names.map((n) => (
               <option key={n} value={n}>
                 {n}
@@ -250,7 +258,7 @@ function LauncherEditor({
           </select>
         </label>
         <label className="field">
-          Launcher name
+          {t("agents.sessions.editor.name")}
           <input
             value={name}
             onChange={(e) => {
@@ -260,7 +268,7 @@ function LauncherEditor({
           />
         </label>
         <label className="field">
-          Executable absolute path, then fixed arguments (one per line)
+          {t("agents.sessions.editor.command")}
           <textarea
             rows={3}
             spellCheck={false}
@@ -272,7 +280,7 @@ function LauncherEditor({
           />
         </label>
         <label className="field">
-          Allowed absolute workspace folders (one per line)
+          {t("agents.sessions.editor.roots")}
           <textarea
             rows={2}
             spellCheck={false}
@@ -284,7 +292,7 @@ function LauncherEditor({
           />
         </label>
         <label className="field">
-          Environment variable names (optional, one per line; no values)
+          {t("agents.sessions.editor.env")}
           <textarea
             rows={2}
             spellCheck={false}
@@ -296,7 +304,7 @@ function LauncherEditor({
           />
         </label>
         <label className="field">
-          Waiting phrases (optional, one per line)
+          {t("agents.sessions.editor.waiting")}
           <textarea
             rows={2}
             value={waiting}
@@ -307,7 +315,7 @@ function LauncherEditor({
           />
         </label>
         <label className="field">
-          Input mode
+          {t("agents.sessions.editor.inputMode")}
           <select
             value={stdin}
             onChange={(e) => {
@@ -315,12 +323,12 @@ function LauncherEditor({
               setStdin(e.target.value as "keep_open" | "close_after_prompt");
             }}
           >
-            <option value="keep_open">Keep input open for messages</option>
-            <option value="close_after_prompt">Close after first prompt</option>
+            <option value="keep_open">{t("agents.sessions.editor.keepOpen")}</option>
+            <option value="close_after_prompt">{t("agents.sessions.editor.closeAfter")}</option>
           </select>
         </label>
         <button className="btn" type="submit">
-          Review launcher configuration…
+          {t("agents.sessions.editor.review")}
         </button>
       </form>
       {problem && (
@@ -329,19 +337,24 @@ function LauncherEditor({
         </p>
       )}
       {preview && (
-        <div role="group" aria-label="Launcher configuration preview">
+        <div role="group" aria-label={t("agents.sessions.editor.previewLabel")}>
           <p>
-            Save launcher <strong>{name}</strong> with executable <code>{lines(command)[0]}</code>,{" "}
-            {lines(command).length - 1} fixed arguments (not shown), and allowed folders:{" "}
-            {lines(roots).join(", ")}. Input mode:{" "}
-            {stdin === "keep_open" ? "messages allowed" : "close after prompt"}.
+            {t.rich("agents.sessions.editor.previewText", {
+              name: <strong>{name}</strong>,
+              command: <code>{lines(command)[0]}</code>,
+              count: lines(command).length - 1,
+              folders: lines(roots).join(", "),
+              mode:
+                stdin === "keep_open"
+                  ? t("agents.sessions.editor.modeMessages")
+                  : t("agents.sessions.editor.modeClose"),
+            })}
           </p>
           <p className="muted small">
-            Environment variable names, fixed arguments and waiting phrases are not shown here.
-            Saving does not start an agent.{" "}
+            {t("agents.sessions.editor.previewNote")}{" "}
             {enabled
-              ? "Saved changes require disabling and re-enabling agents in Settings. That stops running sessions; wait until they finish or explicitly approve stopping them."
-              : "Enable agents in Settings to apply saved changes."}
+              ? t("agents.sessions.editor.restartEnabled")
+              : t("agents.sessions.editor.restartDisabled")}
           </p>
           <button
             type="button"
@@ -349,19 +362,19 @@ function LauncherEditor({
             disabled={busy}
             onClick={() => void save()}
           >
-            Save launcher configuration
+            {t("agents.sessions.editor.save")}
           </button>
           <button type="button" className="btn" disabled={busy} onClick={() => setPreview(false)}>
-            Back to edit
+            {t("agents.sessions.editor.backToEdit")}
           </button>
         </div>
       )}
       {saved && (
         <p role="status">
-          Saved.{" "}
+          {t("agents.sessions.editor.saved")}{" "}
           {enabled
-            ? "This launcher is not active until agents is disabled and re-enabled; active sessions are not interrupted."
-            : "Enable agents to use this launcher."}
+            ? t("agents.sessions.editor.savedEnabled")
+            : t("agents.sessions.editor.savedDisabled")}
         </p>
       )}
       <Feedback error={error} />
@@ -370,6 +383,7 @@ function LauncherEditor({
 }
 
 function StartSession({ launchers }: { launchers: Record<string, AgentLauncher> }) {
+  const t = useT();
   const names = Object.keys(launchers);
   const start = useCommandAction<OrchestratedSession>("agents", "session.start");
   const [launcher, setLauncher] = useState(names[0] ?? "");
@@ -402,12 +416,12 @@ function StartSession({ launchers }: { launchers: Record<string, AgentLauncher> 
   return (
     <section aria-labelledby="start-h" className="card">
       <h2 id="start-h" className="h3">
-        Start a coding agent
+        {t("agents.sessions.start.title")}
       </h2>
       {!reviewing ? (
         <form className="start-meeting" onSubmit={review} noValidate>
           <div className="field">
-            <label htmlFor={`${id}-launcher`}>Launcher</label>
+            <label htmlFor={`${id}-launcher`}>{t("agents.sessions.start.launcher")}</label>
             <select
               id={`${id}-launcher`}
               value={launcher}
@@ -427,7 +441,7 @@ function StartSession({ launchers }: { launchers: Record<string, AgentLauncher> 
             )}
           </div>
           <div className="field">
-            <label htmlFor={`${id}-ws`}>Workspace (absolute folder path)</label>
+            <label htmlFor={`${id}-ws`}>{t("agents.sessions.start.workspace")}</label>
             <input
               id={`${id}-ws`}
               type="text"
@@ -445,8 +459,10 @@ function StartSession({ launchers }: { launchers: Record<string, AgentLauncher> 
           </div>
           <div className="field">
             <label htmlFor={`${id}-prompt`}>
-              What should it do?{" "}
-              <span className="muted small">(up to {MAX_PROMPT_CHARS} characters)</span>
+              {t("agents.sessions.start.prompt")}{" "}
+              <span className="muted small">
+                {t("agents.sessions.limit", { max: plain(MAX_PROMPT_CHARS) })}
+              </span>
             </label>
             <textarea
               id={`${id}-prompt`}
@@ -463,38 +479,43 @@ function StartSession({ launchers }: { launchers: Record<string, AgentLauncher> 
             )}
           </div>
           <button type="submit" className="btn btn-primary">
-            Review before starting…
+            {t("agents.sessions.start.review")}
           </button>
         </form>
       ) : (
         <div className="start-preview" role="group" aria-labelledby={`${id}-preview-h`}>
           <h3 id={`${id}-preview-h`} className="h4">
-            Check this before you start
+            {t("agents.sessions.start.checkTitle")}
           </h3>
           <dl className="approval-facts small">
-            <dt>Launcher</dt>
+            <dt>{t("agents.sessions.start.launcher")}</dt>
             <dd className="memory-text">{launcher}</dd>
-            <dt>It will run</dt>
+            <dt>{t("agents.sessions.start.itWillRun")}</dt>
             <dd className="memory-text">
-              <code>{spec?.command[0] ?? "unknown"}</code> (
-              {Math.max(0, (spec?.command.length ?? 1) - 1)} fixed arguments; values hidden)
+              {t.rich("agents.sessions.start.runLine", {
+                command: <code>{spec?.command[0] ?? t("agents.sessions.start.unknown")}</code>,
+                count: Math.max(0, (spec?.command.length ?? 1) - 1),
+              })}
             </dd>
-            <dt>Workspace</dt>
+            <dt>{t("agents.sessions.start.workspaceFact")}</dt>
             <dd className="memory-text">
               <code>{workspace.trim()}</code>
             </dd>
-            <dt>Folders this launcher may use</dt>
+            <dt>{t("agents.sessions.start.folders")}</dt>
             <dd className="memory-text">
-              {spec && spec.cwd_roots.length > 0 ? spec.cwd_roots.join(", ") : "none listed"}
+              {spec && spec.cwd_roots.length > 0
+                ? spec.cwd_roots.join(", ")
+                : t("agents.sessions.start.noneListed")}
             </dd>
-            <dt>Prompt</dt>
+            <dt>{t("agents.sessions.start.promptFact")}</dt>
             <dd className="memory-text">
-              {prompt.length} characters, sent to the agent on its input (never in its arguments).
+              {t("agents.sessions.start.promptSummary", { count: prompt.length })}
             </dd>
           </dl>
           <p className="muted small">
-            Core asks for approval of <strong>agents: session.start</strong>, which runs a program
-            on your computer. Nothing starts before you approve this named action.
+            {t.rich("agents.sessions.start.approvalNote", {
+              action: <strong>{START_ACTION}</strong>,
+            })}
           </p>
           <div className="button-row wrap">
             <button
@@ -503,21 +524,27 @@ function StartSession({ launchers }: { launchers: Record<string, AgentLauncher> 
               disabled={start.busy || start.state === "succeeded"}
               onClick={confirm}
             >
-              Start the session…
+              {t("agents.sessions.start.confirm")}
             </button>
             <button type="button" className="btn" disabled={start.busy} onClick={cancel}>
-              {start.state === "succeeded" ? "Done" : "Back"}
+              {start.state === "succeeded"
+                ? t("agents.sessions.start.done")
+                : t("common.button.back")}
             </button>
           </div>
           <CommandStatus
             state={start.state}
             error={start.error}
-            waiting="Waiting for your approval below."
-            done={start.result ? `Started session ${start.result.id}.` : "Started."}
+            waiting={t("agents.sessions.waitingApproval")}
+            done={
+              start.result
+                ? t("agents.sessions.start.startedId", { id: start.result.id })
+                : t("agents.sessions.start.started")
+            }
           />
           {start.result && (
             <p className="small">
-              <a href={sessionHref(start.result.id)}>Open the session</a>
+              <a href={sessionHref(start.result.id)}>{t("agents.sessions.start.open")}</a>
             </p>
           )}
         </div>
@@ -527,16 +554,20 @@ function StartSession({ launchers }: { launchers: Record<string, AgentLauncher> 
 }
 
 function SessionRow({ session }: { session: OrchestratedSession }) {
+  const t = useT();
   return (
     <li className="card meeting-row">
       <a href={sessionHref(session.id)}>
-        <strong>{session.launcher}</strong> in {session.repository}
+        {t.rich("agents.sessions.inRepository", {
+          agent: <strong>{session.launcher}</strong>,
+          repository: session.repository,
+        })}
       </a>
       <span className={session.state === "waiting" ? "agent-waiting" : "small"}>
         {SESSION_STATE_TEXT[session.state]}
       </span>
       <span className="muted small memory-text">
-        {session.id} · started {formatAgo(session.started_at)}
+        {t("agents.sessions.row.started", { id: session.id, ago: formatAgo(session.started_at) })}
       </span>
     </li>
   );
@@ -544,6 +575,7 @@ function SessionRow({ session }: { session: OrchestratedSession }) {
 
 /** One ambiguous link, with a button per candidate session. Resolving asks for approval. */
 function AmbiguousLink({ link, onResolved }: { link: AgentLink; onResolved: () => void }) {
+  const t = useT();
   const resolve = useCommandAction<AgentLink>("agents", "link.resolve");
   useEffect(() => {
     if (resolve.state === "succeeded") onResolved();
@@ -551,12 +583,14 @@ function AmbiguousLink({ link, onResolved }: { link: AgentLink; onResolved: () =
   return (
     <li className="card">
       <p className="memory-text">
-        {LINK_KIND_TEXT[link.kind] ?? link.kind} <code className="break">{link.ref}</code> in{" "}
-        {link.repo}: {CONFIDENCE_TEXT.ambiguous}.
+        {t.rich("agents.sessions.link.confidenceLine", {
+          kind: LINK_KIND_TEXT[link.kind] ?? link.kind,
+          ref: <code className="break">{link.ref}</code>,
+          repo: link.repo,
+          confidence: CONFIDENCE_TEXT.ambiguous,
+        })}
       </p>
-      <p className="muted small">
-        Phoenix linked it to none of them. Pick the session it belongs to, or leave it.
-      </p>
+      <p className="muted small">{t("agents.sessions.link.pickHint")}</p>
       <div className="button-row wrap">
         {(link.candidates ?? []).map((candidate) => (
           <button
@@ -564,18 +598,22 @@ function AmbiguousLink({ link, onResolved }: { link: AgentLink; onResolved: () =
             type="button"
             className="btn"
             disabled={resolve.busy}
-            aria-label={`Link ${LINK_KIND_TEXT[link.kind] ?? link.kind} ${link.ref} to session ${candidate}`}
+            aria-label={t("agents.sessions.link.pickLabel", {
+              kind: LINK_KIND_TEXT[link.kind] ?? link.kind,
+              ref: link.ref,
+              session: candidate,
+            })}
             onClick={() => void resolve.submit({ link_id: link.id, session_id: candidate })}
           >
-            It belongs to {candidate}
+            {t("agents.sessions.link.belongsTo", { session: candidate })}
           </button>
         ))}
       </div>
       <CommandStatus
         state={resolve.state}
         error={resolve.error}
-        waiting="Waiting for your approval below."
-        done="Link saved."
+        waiting={t("agents.sessions.waitingApproval")}
+        done={t("agents.sessions.link.saved")}
       />
     </li>
   );
@@ -583,25 +621,32 @@ function AmbiguousLink({ link, onResolved }: { link: AgentLink; onResolved: () =
 
 /** Coding agents Phoenix did not start, seen through their hooks. Hidden when there are none. */
 function LiveSessionsList() {
+  const t = useT();
   const { sessions, error } = useAgentLiveSessions();
   if (error || sessions.length === 0) return null;
   return (
     <section aria-labelledby="live-sessions-h">
       <h2 id="live-sessions-h" className="h3">
-        Live sessions
+        {t("agents.sessions.live.title")}
       </h2>
-      <p className="muted small">
-        Coding agents running on this computer that report to Phoenix, however they were started.
-      </p>
-      <ul className="card-list" aria-label="Live sessions">
+      <p className="muted small">{t("agents.sessions.live.intro")}</p>
+      <ul className="card-list" aria-label={t("agents.sessions.live.title")}>
         {sessions.map((s) => (
           <li key={s.id} className="card meeting-row">
             <a href={sessionHref(s.id)}>
-              <strong>{agentName(s.agent)}</strong> in {s.repository}
+              {t.rich("agents.sessions.inRepository", {
+                agent: <strong>{agentName(s.agent)}</strong>,
+                repository: s.repository,
+              })}
             </a>
-            <span className="small">{s.active ? "Active" : "Ended"}</span>
+            <span className="small">
+              {s.active ? t("agents.sessions.active") : t("agents.sessions.ended")}
+            </span>
             <span className="muted small memory-text">
-              {s.step_count} step(s) · last seen {formatAgo(s.last_seen)}
+              {t("agents.sessions.stepsSeen", {
+                count: s.step_count,
+                ago: formatAgo(s.last_seen),
+              })}
             </span>
           </li>
         ))}
@@ -611,35 +656,31 @@ function LiveSessionsList() {
 }
 
 export function AgentSessionsPage() {
+  const t = useT();
   const { agents, enabled, launchers, reload: reloadCapabilities } = useAgentsAvailability();
   const { data, error, reload } = useCommandResult<OrchestratedSessionList>(
     "agents",
     "session.list",
     enabled,
-    (t) => t.startsWith("agent."),
+    (type) => type.startsWith("agent."),
   );
   const sessions = data?.sessions ?? [];
   const ambiguous = data?.ambiguous_links ?? [];
 
   return (
     <div className="meetings agent-sessions">
-      <h1>Coding agents</h1>
-      <p className="muted">
-        Start a coding agent you set up, follow what it does and what it leads to. Every start,
-        message and stop asks for your approval first.
-      </p>
+      <h1>{t("agents.sessions.page.title")}</h1>
+      <p className="muted">{t("agents.sessions.page.intro")}</p>
       {!enabled ? (
         <p role="status">
-          The coding-agents capability is off. Turn on <strong>agents</strong> under Capabilities in
-          the Pet Panel to use this page.
+          {t.rich("agents.sessions.page.capabilityOff", {
+            capability: <strong>{AGENTS_CAPABILITY}</strong>,
+          })}
         </p>
       ) : !launchers ? (
-        <p role="status">Loading active launchers…</p>
+        <p role="status">{t("agents.sessions.page.loadingLaunchers")}</p>
       ) : Object.keys(launchers).length === 0 ? (
-        <p role="status">
-          No active launcher is set up, so Phoenix cannot start an agent. Save a launcher below,
-          then enable or restart agents in Settings after active sessions have finished.
-        </p>
+        <p role="status">{t("agents.sessions.page.noLauncher")}</p>
       ) : (
         <StartSession launchers={launchers} />
       )}
@@ -660,12 +701,12 @@ export function AgentSessionsPage() {
           )}
           <section aria-labelledby="sessions-h">
             <h2 id="sessions-h" className="h3">
-              Sessions
+              {t("agents.sessions.page.sessions")}
             </h2>
             {data && sessions.length === 0 && (
-              <p className="muted">No session has been started since Phoenix launched.</p>
+              <p className="muted">{t("agents.sessions.page.noSessions")}</p>
             )}
-            <ul className="card-list" aria-label="Sessions">
+            <ul className="card-list" aria-label={t("agents.sessions.page.sessions")}>
               {sessions.map((s) => (
                 <SessionRow key={s.id} session={s} />
               ))}
@@ -674,7 +715,7 @@ export function AgentSessionsPage() {
           {ambiguous.length > 0 && (
             <section aria-labelledby="ambiguous-h">
               <h2 id="ambiguous-h" className="h3">
-                Waiting for you to choose ({ambiguous.length})
+                {t("agents.sessions.page.choose", { count: formatNumber(ambiguous.length) })}
               </h2>
               <ul className="card-list">
                 {ambiguous.map((l) => (
@@ -698,6 +739,7 @@ function SendMessage({
   accepts: boolean;
   running: boolean;
 }) {
+  const t = useT();
   const send = useCommandAction("agents", "session.send");
   const [message, setMessage] = useState("");
   const id = useId();
@@ -709,12 +751,18 @@ function SendMessage({
     if (send.state === "succeeded") setMessage("");
   }, [send.state]);
   if (!accepts) {
-    return <p className="muted small">This session does not take messages: its input is closed.</p>;
+    return <p className="muted small">{t("agents.sessions.send.notAccepted")}</p>;
   }
   return (
     <form className="memory-form" onSubmit={submit}>
       <label htmlFor={id} className="small">
-        Message to the agent <span className="muted">(up to {MAX_MESSAGE_CHARS} characters)</span>
+        {t.rich("agents.sessions.send.label", {
+          limit: (
+            <span className="muted">
+              {t("agents.sessions.limit", { max: plain(MAX_MESSAGE_CHARS) })}
+            </span>
+          ),
+        })}
       </label>
       <textarea
         id={id}
@@ -728,13 +776,13 @@ function SendMessage({
         className="btn btn-primary"
         disabled={send.busy || !running || !message.trim()}
       >
-        Send message…
+        {t("agents.sessions.send.button")}
       </button>
       <CommandStatus
         state={send.state}
         error={send.error}
-        waiting="Waiting for your approval below."
-        done="Message sent."
+        waiting={t("agents.sessions.waitingApproval")}
+        done={t("agents.sessions.send.done")}
       />
     </form>
   );
@@ -749,6 +797,7 @@ function Handoff({
   accepts: boolean;
   running: boolean;
 }) {
+  const t = useT();
   const handoff = useCommandAction<{ sent: boolean; count: number }>("agents", "context.handoff");
   const [question, setQuestion] = useState("");
   const id = useId();
@@ -759,7 +808,7 @@ function Handoff({
   return (
     <form className="memory-form" onSubmit={submit}>
       <label htmlFor={id} className="small">
-        Give the agent notes from Phoenix memory. What do you want it to know?
+        {t("agents.sessions.handoff.label")}
       </label>
       <input
         id={id}
@@ -768,27 +817,24 @@ function Handoff({
         maxLength={MAX_QUESTION_CHARS}
         onChange={(e) => setQuestion(e.target.value)}
       />
-      <p className="muted small">
-        Only notes about this session's own repository and folder, nothing sensitive and no meeting
-        content, are sent, as quoted data.
-      </p>
+      <p className="muted small">{t("agents.sessions.handoff.note")}</p>
       <button
         type="submit"
         className="btn"
         disabled={handoff.busy || !running || !question.trim() || !accepts}
       >
-        Hand over notes…
+        {t("agents.sessions.handoff.button")}
       </button>
       <CommandStatus
         state={handoff.state}
         error={handoff.error}
-        waiting="Waiting for your approval below."
+        waiting={t("agents.sessions.waitingApproval")}
         done={
           handoff.result
             ? handoff.result.sent
-              ? `Sent ${handoff.result.count} note(s) to the agent.`
-              : "Nothing in memory was allowed or relevant, so nothing was sent."
-            : "Done."
+              ? t("agents.sessions.handoff.sent", { count: handoff.result.count })
+              : t("agents.sessions.handoff.nothing")
+            : t("agents.sessions.handoff.done")
         }
       />
     </form>
@@ -796,6 +842,7 @@ function Handoff({
 }
 
 function StopSession({ sessionId, running }: { sessionId: string; running: boolean }) {
+  const t = useT();
   const stop = useCommandAction("agents", "session.stop");
   return (
     <div>
@@ -805,43 +852,47 @@ function StopSession({ sessionId, running }: { sessionId: string; running: boole
         disabled={stop.busy || !running}
         onClick={() => void stop.submit({ session_id: sessionId })}
       >
-        Stop the session…
+        {t("agents.sessions.stop.button")}
       </button>
-      <p className="muted small">
-        Stops the agent and every program it started. You are asked to approve first.
-      </p>
+      <p className="muted small">{t("agents.sessions.stop.note")}</p>
       <CommandStatus
         state={stop.state}
         error={stop.error}
-        waiting="Waiting for your approval below."
-        done="The session was stopped."
+        waiting={t("agents.sessions.waitingApproval")}
+        done={t("agents.sessions.stop.done")}
       />
     </div>
   );
 }
 
 function Links({ links }: { links: AgentLink[] }) {
+  const t = useT();
   return (
     <section aria-labelledby="links-h" className="card">
       <h2 id="links-h" className="h3">
-        What happened during this session
+        {t("agents.sessions.links.title")}
       </h2>
-      <p className="muted small">
-        These happened while the session was active. That does not prove the agent made them.
-      </p>
+      <p className="muted small">{t("agents.sessions.links.note")}</p>
       {links.length === 0 ? (
-        <p className="muted small">No commit, CI run or pull request is linked yet.</p>
+        <p className="muted small">{t("agents.sessions.links.empty")}</p>
       ) : (
-        <ul className="task-list" aria-label="Linked work">
+        <ul className="task-list" aria-label={t("agents.sessions.links.listLabel")}>
           {links.map((l) => (
             <li key={l.id}>
-              {LINK_KIND_TEXT[l.kind] ?? l.kind} <code className="break">{l.ref}</code> in {l.repo}
+              {t.rich("agents.sessions.links.line", {
+                kind: LINK_KIND_TEXT[l.kind] ?? l.kind,
+                ref: <code className="break">{l.ref}</code>,
+                repo: l.repo,
+              })}
               <span className="muted small">
                 {" "}
                 · {CONFIDENCE_TEXT[l.confidence] ?? l.confidence}
               </span>
               {typeof l.why.rule === "string" && (
-                <span className="muted small memory-text"> · rule: {l.why.rule}</span>
+                <span className="muted small memory-text">
+                  {" "}
+                  · {t("agents.sessions.links.rule", { rule: l.why.rule })}
+                </span>
               )}
             </li>
           ))}
@@ -853,13 +904,18 @@ function Links({ links }: { links: AgentLink[] }) {
 
 /** Agent output is untrusted: plain text, in a box of fixed height, never markup. */
 function Output({ lines, label }: { lines: string[]; label: string }) {
+  const t = useT();
   return (
     <div>
       <h3 className="h4">{label}</h3>
       {lines.length === 0 ? (
-        <p className="muted small">Nothing yet.</p>
+        <p className="muted small">{t("agents.sessions.output.empty")}</p>
       ) : (
-        <pre className="agent-output" tabIndex={0} aria-label={`${label} (plain text, scrolls)`}>
+        <pre
+          className="agent-output"
+          tabIndex={0}
+          aria-label={t("agents.sessions.output.ariaLabel", { label })}
+        >
           {lines.join("\n")}
         </pre>
       )}
@@ -895,6 +951,7 @@ function mergeTimeline(
 }
 
 function OrchestratedSessionPage({ sessionId }: { sessionId: string }) {
+  const t = useT();
   const { enabled } = useAgentsAvailability();
   // Live steps of the agents that ran in this session's workspace while it was active.
   const live = useAgentLive(sessionId).data;
@@ -902,7 +959,7 @@ function OrchestratedSessionPage({ sessionId }: { sessionId: string }) {
     "agents",
     "session.get",
     enabled,
-    (t) => t.startsWith("agent."),
+    (type) => type.startsWith("agent."),
     { session_id: sessionId, output_lines: OUTPUT_LINES },
   );
   const [announced, setAnnounced] = useState(false);
@@ -912,7 +969,8 @@ function OrchestratedSessionPage({ sessionId }: { sessionId: string }) {
     return (
       <div className="meetings">
         <p role="status">
-          The coding-agents capability is off. <a href="#/agents">Back to sessions</a>
+          {t("agents.sessions.capabilityOff")}{" "}
+          <a href="#/agents">{t("agents.sessions.backToSessions")}</a>
         </p>
       </div>
     );
@@ -921,12 +979,12 @@ function OrchestratedSessionPage({ sessionId }: { sessionId: string }) {
     return (
       <div className="meetings">
         <p role="alert">
-          {error} <a href="#/agents">All sessions</a>
+          {error} <a href="#/agents">{t("agents.sessions.all")}</a>
         </p>
       </div>
     );
   }
-  if (!data) return <p className="muted">Loading…</p>;
+  if (!data) return <p className="muted">{t("common.status.loading")}</p>;
 
   const { session } = data;
   const running = session?.state === "running" || session?.state === "waiting";
@@ -935,72 +993,75 @@ function OrchestratedSessionPage({ sessionId }: { sessionId: string }) {
   return (
     <div className="meetings agent-sessions">
       <p>
-        <a href="#/agents">← All sessions</a>
+        <a href="#/agents">{t("agents.sessions.backAll")}</a>
       </p>
-      <h1 className="memory-text">Session {sessionId}</h1>
+      <h1 className="memory-text">{t("agents.sessions.detail.title", { id: sessionId })}</h1>
       {!session ? (
-        <p className="muted">
-          This session is no longer in memory (Phoenix keeps the last 20 finished sessions). What
-          was linked to it is below.
-        </p>
+        <p className="muted">{t("agents.sessions.detail.gone")}</p>
       ) : (
         <section aria-labelledby="session-h" className="card">
           <h2 id="session-h" className="h3">
-            {session.launcher} in {session.repository}
+            {t("agents.sessions.inRepository", {
+              agent: session.launcher,
+              repository: session.repository,
+            })}
           </h2>
           <p className={session.state === "waiting" ? "agent-waiting" : ""}>
             <strong>{SESSION_STATE_TEXT[session.state]}</strong>
-            {session.stop_reason && <> · stopped because: {session.stop_reason}</>}
+            {session.stop_reason && (
+              <> · {t("agents.sessions.detail.stopReason", { reason: session.stop_reason })}</>
+            )}
             {session.failure && <> · {session.failure}</>}
             {session.exit_code !== undefined && session.exit_code !== null && (
-              <> · exit code {session.exit_code}</>
+              <> · {t("agents.sessions.detail.exitCode", { code: session.exit_code })}</>
             )}
           </p>
           <p className="muted small memory-text">
-            Workspace <code>{session.workspace}</code> · started{" "}
-            <time dateTime={session.started_at}>{formatDate(session.started_at)}</time> ·{" "}
-            {session.messages_sent} message(s) sent
+            {t.rich("agents.sessions.detail.facts", {
+              path: <code>{session.workspace}</code>,
+              date: <time dateTime={session.started_at}>{formatDate(session.started_at)}</time>,
+              count: session.messages_sent,
+            })}
           </p>
           <div className="button-row wrap">
             <button type="button" className="btn" onClick={() => void reload()}>
-              Refresh
+              {t("common.button.refresh")}
             </button>
           </div>
         </section>
       )}
       {announced && (
         <p className="sr-only" role="status">
-          Session loaded.
+          {t("agents.sessions.detail.loaded")}
         </p>
       )}
 
       {session && (
         <section aria-labelledby="output-h" className="card">
           <h2 id="output-h" className="h3">
-            What the agent printed
+            {t("agents.sessions.detail.printed")}
           </h2>
           <p className="muted small">
-            Plain text from the agent, last {OUTPUT_LINES} lines, with secrets and control
-            characters removed. Phoenix never runs or follows anything in it.
+            {t("agents.sessions.detail.printedNote", { count: plain(OUTPUT_LINES) })}
           </p>
-          <Output lines={data.output?.stdout ?? []} label="Output" />
-          <Output lines={data.output?.stderr ?? []} label="Errors" />
+          <Output lines={data.output?.stdout ?? []} label={t("agents.sessions.output.output")} />
+          <Output lines={data.output?.stderr ?? []} label={t("agents.sessions.output.errors")} />
         </section>
       )}
 
       <section aria-labelledby="timeline-h" className="card">
         <h2 id="timeline-h" className="h3">
-          Timeline
+          {t("agents.sessions.detail.timeline")}
         </h2>
         {timeline.length === 0 ? (
-          <p className="muted small">Nothing recorded.</p>
+          <p className="muted small">{t("agents.sessions.detail.nothingRecorded")}</p>
         ) : (
-          <ol className="timeline" aria-label="Timeline">
-            {timeline.map((t) => (
-              <li key={t.key} className="small memory-text">
-                <time dateTime={t.at}>{new Date(t.at).toLocaleTimeString()}</time> · {t.kind}
-                {t.detail &&
-                  ` · ${Object.entries(t.detail)
+          <ol className="timeline" aria-label={t("agents.sessions.detail.timeline")}>
+            {timeline.map((row) => (
+              <li key={row.key} className="small memory-text">
+                <time dateTime={row.at}>{formatTime(row.at)}</time> · {row.kind}
+                {row.detail &&
+                  ` · ${Object.entries(row.detail)
                     .map(([k, v]) => `${k}: ${String(v)}`)
                     .join(", ")}`}
               </li>
@@ -1014,7 +1075,7 @@ function OrchestratedSessionPage({ sessionId }: { sessionId: string }) {
       {data.ambiguous.length > 0 && (
         <section aria-labelledby="amb-h">
           <h2 id="amb-h" className="h3">
-            Waiting for you to choose ({data.ambiguous.length})
+            {t("agents.sessions.page.choose", { count: formatNumber(data.ambiguous.length) })}
           </h2>
           <ul className="card-list">
             {data.ambiguous.map((l) => (
@@ -1027,13 +1088,9 @@ function OrchestratedSessionPage({ sessionId }: { sessionId: string }) {
       {session && (
         <section aria-labelledby="control-h" className="card">
           <h2 id="control-h" className="h3">
-            Talk to the agent
+            {t("agents.sessions.detail.talk")}
           </h2>
-          {!running && (
-            <p className="muted small">
-              This session is over, so it cannot be messaged or stopped.
-            </p>
-          )}
+          {!running && <p className="muted small">{t("agents.sessions.detail.over")}</p>}
           <SendMessage sessionId={sessionId} accepts={session.accepts_input} running={running} />
           <Handoff sessionId={sessionId} accepts={session.accepts_input} running={running} />
           <StopSession sessionId={sessionId} running={running} />
@@ -1045,22 +1102,37 @@ function OrchestratedSessionPage({ sessionId }: { sessionId: string }) {
 
 const AGENT_NAMES: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex" };
 const agentName = (agent: string) => AGENT_NAMES[agent] ?? agent;
-const WINDOW_TEXT: Record<UsageView["window"], string> = { "5h": "5-hour", weekly: "weekly" };
+const USAGE_METER_LABEL: Record<UsageView["window"], MessageKey> = {
+  "5h": "agents.sessions.usage.meterLabel.fiveHour",
+  weekly: "agents.sessions.usage.meterLabel.weekly",
+};
+const USAGE_LINE: Record<UsageView["window"], MessageKey> = {
+  "5h": "agents.sessions.usage.line.fiveHour",
+  weekly: "agents.sessions.usage.line.weekly",
+};
 
-/** "2h 10m", "45m", "3d 4h": coarse on purpose, the reset time is not exact to the second. */
-function formatResetIn(iso: string, now: number): string {
+/** "resets in 2h 10m", "resets in 45m", "resets in 3d 4h": coarse on purpose, not exact to the second. */
+function formatResetIn(t: Translate, iso: string, now: number): string {
   const ms = Date.parse(iso) - now;
   if (!Number.isFinite(ms)) return "";
-  if (ms <= 0) return "resets now";
+  if (ms <= 0) return t("agents.sessions.usage.resetsNow");
   const min = Math.max(1, Math.round(ms / 60_000));
-  if (min < 60) return `resets in ${min}m`;
+  if (min < 60) return t("agents.sessions.usage.resetsMinutes", { minutes: formatNumber(min) });
   const h = Math.floor(min / 60);
-  if (h < 48) return `resets in ${h}h ${min % 60}m`;
-  return `resets in ${Math.floor(h / 24)}d ${h % 24}h`;
+  if (h < 48)
+    return t("agents.sessions.usage.resetsHours", {
+      hours: formatNumber(h),
+      minutes: formatNumber(min % 60),
+    });
+  return t("agents.sessions.usage.resetsDays", {
+    days: formatNumber(Math.floor(h / 24)),
+    hours: formatNumber(h % 24),
+  });
 }
 
 /** Plan usage per agent window, with a text for every state (colour is never the only signal). */
 function UsageMeters() {
+  const t = useT();
   const { usage, unsupported } = useAgentUsage();
   const id = useId();
   if (usage.length === 0 && unsupported.length === 0) return null;
@@ -1068,43 +1140,50 @@ function UsageMeters() {
   return (
     <section aria-labelledby={`${id}-h`} className="card">
       <h2 id={`${id}-h`} className="h3">
-        Plan usage
+        {t("agents.sessions.usage.title")}
       </h2>
-      <ul className="task-list" aria-label="Plan usage">
+      <ul className="task-list" aria-label={t("agents.sessions.usage.title")}>
         {usage.map((u) => {
           const pct = Math.min(100, Math.max(0, Math.round(u.used_pct)));
-          const window = WINDOW_TEXT[u.window] ?? u.window;
-          const reset = formatResetIn(u.resets_at, now);
+          const reset = formatResetIn(t, u.resets_at, now);
           return (
             <li key={`${u.agent}:${u.window}`} className={`usage usage-${u.level}`}>
               <div
                 className="usage-meter"
                 role="meter"
-                aria-label={`${agentName(u.agent)} ${window} plan usage`}
+                aria-label={t(USAGE_METER_LABEL[u.window], { agent: agentName(u.agent) })}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={pct}
-                aria-valuetext={`${pct}% used`}
+                aria-valuetext={t("agents.sessions.usage.valueText", { pct: formatNumber(pct) })}
               >
                 <div className="usage-fill" style={{ width: `${pct}%` }} />
               </div>
               <p className="small memory-text">
-                <strong>{agentName(u.agent)}</strong>: {pct}% of the {window} window used
+                {t.rich(USAGE_LINE[u.window], {
+                  agent: <strong>{agentName(u.agent)}</strong>,
+                  pct: formatNumber(pct),
+                })}
                 {reset && ` · ${reset}`}
               </p>
               {u.level !== "ok" && (
                 <p className="small usage-note">
-                  {u.level === "critical" ? "Almost at the limit" : "Approaching the limit"}
+                  {u.level === "critical"
+                    ? t("agents.sessions.usage.critical")
+                    : t("agents.sessions.usage.warn")}
                 </p>
               )}
               {u.stale && (
                 <p className="muted small">
-                  This reading may be out of date (last seen{" "}
-                  <time dateTime={u.observed_at}>{formatAgo(u.observed_at)}</time>).
+                  {t.rich("agents.sessions.usage.stale", {
+                    ago: <time dateTime={u.observed_at}>{formatAgo(u.observed_at)}</time>,
+                  })}
                 </p>
               )}
               {typeof u.reset_credits === "number" && (
-                <p className="muted small">{u.reset_credits} free resets left</p>
+                <p className="muted small">
+                  {t("agents.sessions.usage.resetCredits", { count: u.reset_credits })}
+                </p>
               )}
             </li>
           );
@@ -1120,6 +1199,7 @@ function UsageMeters() {
 }
 
 function StepsLog({ detail }: { detail: LiveSessionDetail }) {
+  const t = useT();
   const id = useId();
   const shown = detail.steps.slice(-SHOWN_STEPS);
   const last = shown.at(-1);
@@ -1137,26 +1217,25 @@ function StepsLog({ detail }: { detail: LiveSessionDetail }) {
   return (
     <section aria-labelledby={`${id}-h`} className="card">
       <h2 id={`${id}-h`} className="h3">
-        Steps
+        {t("agents.sessions.steps.title")}
       </h2>
       {detail.sessions.length === 0 && shown.length === 0 && (
-        <p className="muted small">
-          No live agent session has been seen for this page yet. Steps appear here while a coding
-          agent works in this folder.
-        </p>
+        <p className="muted small">{t("agents.sessions.steps.noLive")}</p>
       )}
       {detail.sessions.length > 0 && shown.length === 0 && (
-        <p className="muted small">No steps have been seen yet.</p>
+        <p className="muted small">{t("agents.sessions.steps.none")}</p>
       )}
       {detail.dropped_steps > 0 && (
         <p className="muted small">
-          {detail.dropped_steps} earlier step(s) are not kept, so the list starts later than the
-          session did.
+          {t("agents.sessions.steps.dropped", { count: detail.dropped_steps })}
         </p>
       )}
       {detail.steps.length > shown.length && (
         <p className="muted small">
-          Showing the last {shown.length} of {detail.steps.length} steps.
+          {t("agents.sessions.steps.showingLast", {
+            shown: formatNumber(shown.length),
+            total: formatNumber(detail.steps.length),
+          })}
         </p>
       )}
       {shown.length > 0 && (
@@ -1164,7 +1243,7 @@ function StepsLog({ detail }: { detail: LiveSessionDetail }) {
           ref={log}
           className="live-steps"
           role="log"
-          aria-label="Steps"
+          aria-label={t("agents.sessions.steps.title")}
           aria-live="off"
           tabIndex={0}
           onScroll={(e) => {
@@ -1176,7 +1255,9 @@ function StepsLog({ detail }: { detail: LiveSessionDetail }) {
             {shown.map((s) => (
               <li key={`${s.session_id}:${s.n}`} className="live-step small">
                 <time dateTime={s.at}>{formatTime(s.at)}</time>
-                <span className="live-step-kind">{STEP_KIND_TEXT[s.kind] ?? "Other"}</span>
+                <span className="live-step-kind">
+                  {STEP_KIND_TEXT[s.kind] ?? t("agents.sessions.steps.kind.other")}
+                </span>
                 {detail.sessions.length > 1 && agentOf.has(s.session_id) && (
                   <span className="muted">{agentOf.get(s.session_id)}</span>
                 )}
@@ -1191,12 +1272,21 @@ function StepsLog({ detail }: { detail: LiveSessionDetail }) {
   );
 }
 
-function DiffLinks({ title, links }: { title: string; links: DiffLink[] }) {
+function DiffLinks({ kind, links }: { kind: "commit" | "ci_run"; links: DiffLink[] }) {
+  const t = useT();
   return (
     <>
       {links.map((l) => (
-        <li key={`${title}:${l.repo}:${l.ref}`} className="small memory-text">
-          Appeared in {title} <code className="break">{l.ref}</code> in {l.repo}
+        <li key={`${kind}:${l.repo}:${l.ref}`} className="small memory-text">
+          {t.rich(
+            kind === "commit"
+              ? "agents.sessions.diff.appearedCommit"
+              : "agents.sessions.diff.appearedCi",
+            {
+              ref: <code className="break">{l.ref}</code>,
+              repo: l.repo,
+            },
+          )}
           {l.conclusion && ` (${l.conclusion})`}
           <span className="muted"> · {CONFIDENCE_TEXT[l.confidence] ?? l.confidence}</span>
         </li>
@@ -1206,47 +1296,45 @@ function DiffLinks({ title, links }: { title: string; links: DiffLink[] }) {
 }
 
 function DiffView({ path, diff, onClose }: { path: string; diff: LiveDiff; onClose: () => void }) {
+  const t = useT();
   const hasLinks = diff.commits.length + diff.ci_runs.length > 0;
   return (
     <div className="live-diff">
-      <h3 className="h4 memory-text">Diff of {path}</h3>
-      <p className="muted small">Source: {diff.source}. Plain text; nothing in it is run.</p>
+      <h3 className="h4 memory-text">{t("agents.sessions.diff.title", { path })}</h3>
+      <p className="muted small">{t("agents.sessions.diff.source", { source: diff.source })}</p>
       {diff.diff === "" ? (
-        <p className="muted small">There is nothing to show for this file.</p>
+        <p className="muted small">{t("agents.sessions.diff.empty")}</p>
       ) : (
         <pre
           className="agent-output"
           tabIndex={0}
-          aria-label={`Diff of ${path} (plain text, scrolls)`}
+          aria-label={t("agents.sessions.diff.ariaLabel", { path })}
         >
           {diff.diff}
         </pre>
       )}
       {diff.redacted && (
         <p className="small" role="status">
-          Text that looked like a secret was hidden. This is a best-effort check: it can miss some.
+          {t("agents.sessions.diff.redacted")}
         </p>
       )}
       {diff.truncated && (
         <p className="small" role="status">
-          This diff was truncated: only the first part is shown.
+          {t("agents.sessions.diff.truncated")}
         </p>
       )}
       {hasLinks && (
         <>
-          <p className="muted small">
-            These links come from what Phoenix saved for this session (time and folder). They do not
-            prove the agent made them.
-          </p>
-          <ul className="task-list" aria-label="Where this file appeared">
-            <DiffLinks title="commit" links={diff.commits} />
-            <DiffLinks title="CI run" links={diff.ci_runs} />
+          <p className="muted small">{t("agents.sessions.diff.linksNote")}</p>
+          <ul className="task-list" aria-label={t("agents.sessions.diff.linksLabel")}>
+            <DiffLinks kind="commit" links={diff.commits} />
+            <DiffLinks kind="ci_run" links={diff.ci_runs} />
           </ul>
         </>
       )}
       <div className="button-row wrap">
         <button type="button" className="btn" onClick={onClose}>
-          Close
+          {t("common.button.close")}
         </button>
       </div>
     </div>
@@ -1254,6 +1342,7 @@ function DiffView({ path, diff, onClose }: { path: string; diff: LiveDiff; onClo
 }
 
 function FilesChanged({ files }: { files: LiveFileOf[] }) {
+  const t = useT();
   const id = useId();
   const { run, busy, error } = useAction();
   const [open, setOpen] = useState<{ path: string; diff: LiveDiff } | null>(null);
@@ -1276,34 +1365,37 @@ function FilesChanged({ files }: { files: LiveFileOf[] }) {
   return (
     <section aria-labelledby={`${id}-h`} className="card">
       <h2 id={`${id}-h`} className="h3">
-        Files changed
+        {t("agents.sessions.files.title")}
       </h2>
       {files.length === 0 ? (
-        <p className="muted small">No file change has been seen yet.</p>
+        <p className="muted small">{t("agents.sessions.files.empty")}</p>
       ) : (
-        <ul className="task-list" aria-label="Files changed">
+        <ul className="task-list" aria-label={t("agents.sessions.files.title")}>
           {files.map((f) => (
             <li key={`${f.session_id}:${f.path}`} className="live-file small">
               <code className="break">{f.path}</code>
               <span
                 className="live-counts"
                 role="img"
-                aria-label={`${f.added} ${f.added === 1 ? "line" : "lines"} added, ${f.removed} removed`}
+                aria-label={t("agents.sessions.files.counts", {
+                  added: t("agents.sessions.files.added", { count: f.added }),
+                  removed: formatNumber(f.removed),
+                })}
               >
-                +{f.added} −{f.removed}
+                +{formatNumber(f.added)} −{formatNumber(f.removed)}
               </span>
               <button
                 type="button"
                 className="btn"
                 disabled={busy}
-                aria-label={`Open diff of ${f.path}`}
+                aria-label={t("agents.sessions.files.openDiffLabel", { path: f.path })}
                 ref={(el) => {
                   if (el) openers.current.set(f.path, el);
                   else openers.current.delete(f.path);
                 }}
                 onClick={() => void show(f)}
               >
-                Open diff
+                {t("agents.sessions.files.openDiff")}
               </button>
             </li>
           ))}
@@ -1311,7 +1403,7 @@ function FilesChanged({ files }: { files: LiveFileOf[] }) {
       )}
       {busy && (
         <p className="muted small" role="status">
-          Loading the diff…
+          {t("agents.sessions.files.loadingDiff")}
         </p>
       )}
       <Feedback error={error} />
@@ -1321,6 +1413,7 @@ function FilesChanged({ files }: { files: LiveFileOf[] }) {
 }
 
 function LiveActions({ sessionId, showApprovals }: { sessionId: string; showApprovals: boolean }) {
+  const t = useT();
   const id = useId();
   const client = useClient();
   const focus = useAction();
@@ -1364,7 +1457,9 @@ function LiveActions({ sessionId, showApprovals }: { sessionId: string; showAppr
       }
       setExported(true);
     } catch (err) {
-      setExportError(err instanceof ApiError ? err.message : "The export failed");
+      setExportError(
+        err instanceof ApiError ? err.message : t("agents.sessions.actions.exportFailed"),
+      );
     } finally {
       exporting.current = false;
       setExportBusy(false);
@@ -1374,11 +1469,11 @@ function LiveActions({ sessionId, showApprovals }: { sessionId: string; showAppr
   return (
     <section aria-labelledby={`${id}-h`} className="card">
       <h2 id={`${id}-h`} className="h3">
-        Actions
+        {t("agents.sessions.actions.title")}
       </h2>
       <div className="button-row wrap">
         <button type="button" className="btn" disabled={focus.busy} onClick={() => void jump()}>
-          Jump to terminal
+          {t("agents.sessions.actions.jump")}
         </button>
         <button
           type="button"
@@ -1386,26 +1481,26 @@ function LiveActions({ sessionId, showApprovals }: { sessionId: string; showAppr
           disabled={exportBusy}
           onClick={() => void exportMarkdown()}
         >
-          Export Markdown
+          {t("agents.sessions.actions.export")}
         </button>
       </div>
       {focus.busy && (
         <>
           <p className="small" role="status">
-            Waiting for your approval below.
+            {t("agents.sessions.waitingApproval")}
           </p>
           {!showApprovals && <Approvals />}
         </>
       )}
       {focused && (
         <p className="small" role="status">
-          Terminal window brought to the front.
+          {t("agents.sessions.actions.focused")}
         </p>
       )}
       <Feedback error={focus.error} />
       {exported && (
         <p className="small" role="status">
-          The Markdown file was saved to your downloads.
+          {t("agents.sessions.actions.exported")}
         </p>
       )}
       <Feedback error={exportError} />
@@ -1436,36 +1531,42 @@ function LiveActivity({
 
 /** A coding agent Phoenix did not start: seen only through its own hooks. Works without the `agents` capability. */
 function LiveSessionPage({ sessionId }: { sessionId: string }) {
+  const t = useT();
   const { data, error } = useAgentLive(sessionId);
   return (
     <div className="meetings agent-sessions">
       <p>
-        <a href="#/agents">← All sessions</a>
+        <a href="#/agents">{t("agents.sessions.backAll")}</a>
       </p>
-      <h1 className="memory-text">Live session {sessionId}</h1>
+      <h1 className="memory-text">{t("agents.sessions.livePage.title", { id: sessionId })}</h1>
       {!data && error && (
         <p role="alert">
-          {error} <a href="#/agents">All sessions</a>
+          {error} <a href="#/agents">{t("agents.sessions.all")}</a>
         </p>
       )}
-      {!data && !error && <p className="muted">Loading…</p>}
+      {!data && !error && <p className="muted">{t("common.status.loading")}</p>}
       {data && (
         <>
           {data.sessions.length === 0 ? (
-            <p className="muted small">No live session matches this id.</p>
+            <p className="muted small">{t("agents.sessions.livePage.noMatch")}</p>
           ) : (
-            <ul className="card-list" aria-label="Sessions on this page">
+            <ul className="card-list" aria-label={t("agents.sessions.livePage.listLabel")}>
               {data.sessions.map((s) => (
                 <li key={s.id} className="card">
                   <p>
-                    <strong className="memory-text">{agentName(s.agent)}</strong> in{" "}
-                    <span className="memory-text">{s.repository}</span> ·{" "}
-                    {s.active ? "Active" : "Ended"}
+                    {t.rich("agents.sessions.inRepository", {
+                      agent: <strong className="memory-text">{agentName(s.agent)}</strong>,
+                      repository: <span className="memory-text">{s.repository}</span>,
+                    })}{" "}
+                    · {s.active ? t("agents.sessions.active") : t("agents.sessions.ended")}
                   </p>
                   <p className="muted small memory-text">
-                    <code className="break">{s.project}</code> · first seen{" "}
-                    <time dateTime={s.first_seen}>{formatDate(s.first_seen)}</time>, last seen{" "}
-                    {formatAgo(s.last_seen)} · {s.step_count} step(s)
+                    {t.rich("agents.sessions.livePage.facts", {
+                      project: <code className="break">{s.project}</code>,
+                      first: <time dateTime={s.first_seen}>{formatDate(s.first_seen)}</time>,
+                      ago: formatAgo(s.last_seen),
+                      count: s.step_count,
+                    })}
                   </p>
                 </li>
               ))}

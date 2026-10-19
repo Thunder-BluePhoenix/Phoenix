@@ -14,6 +14,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "./client";
 import { useClient, useConnection } from "./context";
+import type { MessageKey } from "../i18n";
+import { translate } from "../i18n/store";
+import { formatNumber } from "./format";
 
 export const ATTACHMENTS_PATH = "/api/attachments";
 /** Core publishes this (count only) whenever the set changes, including the emergency stop. */
@@ -177,8 +180,6 @@ export function imageMime(
 // eslint-disable-next-line no-control-regex
 const HIDDEN = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/u;
 
-const fmt = (n: number) => n.toLocaleString("en-US");
-
 /** A name worth showing in a message: no hidden characters, not too long. */
 function shown(name: string): string {
   // eslint-disable-next-line no-control-regex
@@ -210,10 +211,11 @@ export async function readBase64(file: Blob): Promise<string> {
 export async function readFile(file: FileLike): Promise<UploadPayload | string> {
   const name = shown(file.name);
   if (file.name.length === 0 || file.name.length > DROP_LIMITS.nameChars || HIDDEN.test(file.name))
-    return `${name}: the name is empty, too long, or contains hidden characters`;
+    return translate("capture.attachments.file.badName", { name });
   const image = imageMime(file);
   if (image) {
-    if (file.size > DROP_LIMITS.imageBytes) return `${name}: an image can be at most 5 MiB`;
+    if (file.size > DROP_LIMITS.imageBytes)
+      return translate("capture.attachments.file.imageTooBig", { name });
     try {
       return {
         name: file.name,
@@ -223,23 +225,29 @@ export async function readFile(file: FileLike): Promise<UploadPayload | string> 
         content: await readBase64(file as unknown as Blob),
       };
     } catch {
-      return `${name}: the file could not be read`;
+      return translate("capture.attachments.file.unreadable", { name });
     }
   }
-  if (!isTextFile(file))
-    return `${name}: not a supported type (text files, PNG/JPEG images, or a folder)`;
+  if (!isTextFile(file)) return translate("capture.attachments.file.unsupported", { name });
   // 4 bytes per character is the most UTF-8 can use, so anything bigger cannot fit under the cap.
   if (file.size > DROP_LIMITS.textChars * 4)
-    return `${name}: too large (a text file can have at most ${fmt(DROP_LIMITS.textChars)} characters)`;
+    return translate("capture.attachments.file.tooLargeBytes", {
+      name,
+      max: formatNumber(DROP_LIMITS.textChars),
+    });
   let content: string;
   try {
     content = await file.text();
   } catch {
-    return `${name}: the file could not be read`;
+    return translate("capture.attachments.file.unreadable", { name });
   }
-  if (content.length === 0) return `${name}: the file is empty`;
+  if (content.length === 0) return translate("capture.attachments.file.empty", { name });
   if (content.length > DROP_LIMITS.textChars)
-    return `${name}: too large (${fmt(content.length)} characters; the limit is ${fmt(DROP_LIMITS.textChars)})`;
+    return translate("capture.attachments.file.tooLarge", {
+      name,
+      chars: formatNumber(content.length),
+      max: formatNumber(DROP_LIMITS.textChars),
+    });
   return {
     name: file.name,
     kind: "text",
@@ -249,15 +257,38 @@ export async function readFile(file: FileLike): Promise<UploadPayload | string> 
   };
 }
 
+/** Why a folder entry was skipped; each code has its own full message so word order can change. */
+type SkipReason =
+  | "unusualName"
+  | "hidden"
+  | "longPath"
+  | "tooDeep"
+  | "special"
+  | "unreadableFile"
+  | "unreadableFolder"
+  | "longText";
+
+const SKIP_MESSAGE: Record<SkipReason, MessageKey> = {
+  unusualName: "capture.attachments.skip.unusualName",
+  hidden: "capture.attachments.skip.hidden",
+  longPath: "capture.attachments.skip.longPath",
+  tooDeep: "capture.attachments.skip.tooDeep",
+  special: "capture.attachments.skip.special",
+  unreadableFile: "capture.attachments.skip.unreadableFile",
+  unreadableFolder: "capture.attachments.skip.unreadableFolder",
+  longText: "capture.attachments.skip.longText",
+};
+
 interface Walk {
   files: { path: string; bytes: number; text?: string }[];
   textChars: number;
-  skipped: Record<string, number>;
+  /** Count per reason, in the order each reason first happened. */
+  skipped: Map<SkipReason, number>;
   capped: boolean;
 }
 
-const skip = (walk: Walk, reason: string) => {
-  walk.skipped[reason] = (walk.skipped[reason] ?? 0) + 1;
+const skip = (walk: Walk, reason: SkipReason) => {
+  walk.skipped.set(reason, (walk.skipped.get(reason) ?? 0) + 1);
 };
 
 async function entriesOf(dir: EntryLike): Promise<EntryLike[]> {
@@ -292,7 +323,7 @@ async function walkFolder(
   try {
     children = await entriesOf(dir);
   } catch {
-    skip(walk, "a folder that could not be read");
+    skip(walk, "unreadableFolder");
     return;
   }
   for (const child of children) {
@@ -309,36 +340,36 @@ async function walkFolder(
       /[\\/]/u.test(name) ||
       HIDDEN.test(name)
     ) {
-      skip(walk, "entries with an unusual name");
+      skip(walk, "unusualName");
       continue;
     }
     if (name.startsWith(".") || name === "node_modules") {
-      skip(walk, "hidden files and folders (dot-names, node_modules, .git)");
+      skip(walk, "hidden");
       continue;
     }
     const path = prefix === "" ? name : `${prefix}/${name}`;
     if (path.length > DROP_LIMITS.folderPathChars) {
-      skip(walk, "entries with a path over 300 characters");
+      skip(walk, "longPath");
       continue;
     }
     if (child.isDirectory) {
-      if (depth >= DROP_LIMITS.folderDepth) skip(walk, "folders nested deeper than 8 levels");
+      if (depth >= DROP_LIMITS.folderDepth) skip(walk, "tooDeep");
       else await walkFolder(child, path, depth + 1, walk);
       continue;
     }
     if (!child.isFile) {
-      skip(walk, "entries that are neither a file nor a folder");
+      skip(walk, "special");
       continue;
     }
     let file: FileLike;
     try {
       file = await fileOf(child);
     } catch {
-      skip(walk, "files that could not be read");
+      skip(walk, "unreadableFile");
       continue;
     }
     if (!Number.isSafeInteger(file.size) || file.size < 0) {
-      skip(walk, "files that could not be read");
+      skip(walk, "unreadableFile");
       continue;
     }
     const entry: { path: string; bytes: number; text?: string } = { path, bytes: file.size };
@@ -353,10 +384,9 @@ async function walkFolder(
         ) {
           entry.text = text;
           walk.textChars += text.length;
-        } else if (text.length > 0)
-          skip(walk, "text files too long to include (listed without content)");
+        } else if (text.length > 0) skip(walk, "longText");
       } catch {
-        skip(walk, "files that could not be read");
+        skip(walk, "unreadableFile");
         continue;
       }
     }
@@ -368,18 +398,33 @@ async function walkFolder(
 export async function readFolder(
   dir: EntryLike,
 ): Promise<{ payload: UploadPayload | null; notes: string[] }> {
-  const walk: Walk = { files: [], textChars: 0, skipped: {}, capped: false };
+  const walk: Walk = { files: [], textChars: 0, skipped: new Map(), capped: false };
   await walkFolder(dir, "", 1, walk);
   const label = shown(dir.name);
-  const notes = Object.entries(walk.skipped).map(([why, n]) => `${label}: skipped ${n} ${why}`);
+  const notes = [...walk.skipped].map(([reason, n]) =>
+    translate(SKIP_MESSAGE[reason], {
+      label,
+      n: formatNumber(n),
+      pathChars: formatNumber(DROP_LIMITS.folderPathChars),
+      depth: formatNumber(DROP_LIMITS.folderDepth),
+    }),
+  );
   if (walk.capped)
-    notes.push(`${label}: only the first ${DROP_LIMITS.folderEntries} files were listed`);
+    notes.push(
+      translate("capture.attachments.folder.capped", {
+        label,
+        max: formatNumber(DROP_LIMITS.folderEntries),
+      }),
+    );
   if (walk.files.length === 0) {
-    notes.unshift(`${label}: no readable files were found`);
+    notes.unshift(translate("capture.attachments.folder.noFiles", { label }));
     return { payload: null, notes };
   }
   if (dir.name.length === 0 || dir.name.length > DROP_LIMITS.nameChars || HIDDEN.test(dir.name)) {
-    return { payload: null, notes: [`${label}: the folder name is not usable`, ...notes] };
+    return {
+      payload: null,
+      notes: [translate("capture.attachments.folder.badName", { label }), ...notes],
+    };
   }
   return {
     payload: {
@@ -417,7 +462,11 @@ export async function readDropped(source: DroppedSource): Promise<DropReading> {
 // ── Upload to Core + the shared list ────────────────────────────────────────────────────────────
 
 const failure = (err: unknown) =>
-  err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Request failed";
+  err instanceof ApiError
+    ? err.message
+    : err instanceof Error
+      ? err.message
+      : translate("common.error.requestFailed");
 
 export interface UploadNotice {
   /** Human sentence for a status region. */
@@ -448,15 +497,26 @@ export function useAttachmentUpload(onDone?: () => void) {
             await client.request("POST", ATTACHMENTS_PATH, payload);
             added++;
           } catch (err) {
-            problems.push(`${shown(payload.name)}: ${failure(err)}`);
+            problems.push(
+              translate("capture.attachments.notice.uploadFailed", {
+                name: shown(payload.name),
+                reason: failure(err),
+              }),
+            );
           }
         }
         const head =
           added > 0
-            ? `Attached ${added} ${added === 1 ? "item" : "items"}. Nothing has been sent anywhere yet.`
-            : "Nothing was attached.";
+            ? translate("capture.attachments.notice.attached", { n: added })
+            : translate("capture.attachments.notice.nothingAttached");
         setNotice({
-          text: problems.length > 0 ? `${head} ${problems.join(" ")}` : head,
+          text:
+            problems.length > 0
+              ? translate("capture.attachments.notice.withProblems", {
+                  head,
+                  problems: problems.join(" "),
+                })
+              : head,
           problem: problems.length > 0,
         });
         onDone?.();
@@ -537,8 +597,12 @@ export function buildMailto(input: {
       .replace(/\s+/gu, " ")
       .trim(),
   );
-  const prefix = "About: ";
-  const subject = prefix + cleanSubject.slice(0, MAIL_LIMITS.subjectChars - prefix.length).join("");
+  // The subject is capped as a whole, so the room for the name is what the prefix leaves.
+  const room =
+    MAIL_LIMITS.subjectChars - translate("capture.attachments.mail.subject", { name: "" }).length;
+  const subject = translate("capture.attachments.mail.subject", {
+    name: cleanSubject.slice(0, room).join(""),
+  });
 
   const body = input.body
     .replace(/\r\n?/gu, "\n")
@@ -547,25 +611,32 @@ export function buildMailto(input: {
       /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/gu,
       "",
     );
-  if (body.trim().length === 0) return { ok: false, reason: "Write what you want to share first." };
+  if (body.trim().length === 0)
+    return { ok: false, reason: translate("capture.attachments.mail.empty") };
   if (body.length > MAIL_LIMITS.bodyChars)
     return {
       ok: false,
-      reason: `The message is ${fmt(body.length - MAIL_LIMITS.bodyChars)} characters over the ${fmt(MAIL_LIMITS.bodyChars)} limit. Shorten it.`,
+      reason: translate("capture.attachments.mail.tooLong", {
+        over: formatNumber(body.length - MAIL_LIMITS.bodyChars),
+        limit: formatNumber(MAIL_LIMITS.bodyChars),
+      }),
     };
 
   const to = (input.to ?? "").trim();
   let recipient = "";
   if (to !== "") {
     if (to.length > 254 || !ADDRESS.test(to))
-      return { ok: false, reason: "Enter one email address, or leave the recipient empty." };
+      return { ok: false, reason: translate("capture.attachments.mail.badAddress") };
     recipient = encodeURIComponent(to).replaceAll("%40", "@");
   }
   const url = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.replaceAll("\n", "\r\n"))}`;
   if (url.length > MAIL_LIMITS.urlChars)
     return {
       ok: false,
-      reason: `Mail links this long are not reliable (${fmt(url.length)} of ${fmt(MAIL_LIMITS.urlChars)} characters once encoded). Shorten the message.`,
+      reason: translate("capture.attachments.mail.urlTooLong", {
+        length: formatNumber(url.length),
+        limit: formatNumber(MAIL_LIMITS.urlChars),
+      }),
     };
   return { ok: true, url };
 }

@@ -5,6 +5,7 @@ import { needsSecondStep, RISK_LABEL, SIDE_EFFECT_ACTION } from "../core/agent";
 import { formatTime, SIDE_EFFECT_LABEL } from "../core/format";
 import { useAction, useConfirmations } from "../core/hooks";
 import type { Confirmation } from "../core/types";
+import { useT, type MessageKey } from "../i18n";
 import { TaskCard } from "./TaskView";
 
 /**
@@ -16,11 +17,11 @@ export function requiresUnderstanding(c: Confirmation): boolean {
   return c.risk ? needsSecondStep(c.risk) : c.sideEffect === "production";
 }
 
-const RISK_NOTE: Record<NonNullable<Confirmation["risk"]>, string> = {
-  low: "Low risk",
-  medium: "Medium risk",
-  high: "High risk: check the details before approving",
-  critical: "Critical risk: check the details before approving",
+const RISK_NOTE: Record<NonNullable<Confirmation["risk"]>, MessageKey> = {
+  low: "agents.approvals.riskNote.low",
+  medium: "agents.approvals.riskNote.medium",
+  high: "agents.approvals.riskNote.high",
+  critical: "agents.approvals.riskNote.critical",
 };
 
 function Missing({ children }: { children: string }) {
@@ -37,13 +38,14 @@ function ApprovalCard({
   cardRef: (el: HTMLLIElement | null) => void;
   onDecided: (approved: boolean) => void;
 }) {
+  const t = useT();
   const { run, busy, error } = useAction();
   const [understood, setUnderstood] = useState(false);
   const [showTask, setShowTask] = useState(false);
   const id = useId();
   const second = requiresUnderstanding(c);
   const effect = SIDE_EFFECT_LABEL[c.sideEffect] ?? c.sideEffect;
-  const action = SIDE_EFFECT_ACTION[c.sideEffect] ?? "carry out this action";
+  const action = SIDE_EFFECT_ACTION[c.sideEffect] ?? t("agents.sideEffectAction.fallback");
   const expires = c.expiresAt ? formatTime(c.expiresAt) : "";
 
   const decide = async (approve: boolean) => {
@@ -63,73 +65,81 @@ function ApprovalCard({
         {c.summary}
       </p>
       <dl className="approval-facts small">
-        <dt>What will happen</dt>
+        <dt>{t("agents.approvals.whatWillHappen")}</dt>
         <dd>
-          Capability “{c.capabilityId}” will run the command “{c.command}”. Effect: {effect}.
+          {t("agents.approvals.whatText", {
+            capability: c.capabilityId,
+            command: c.command,
+            effect,
+          })}
         </dd>
-        <dt>Preview</dt>
+        <dt>{t("agents.approvals.preview")}</dt>
         <dd>
           {c.preview ? (
             <span className="memory-text">{c.preview}</span>
           ) : (
-            <Missing>No preview was provided by this capability.</Missing>
+            <Missing>{t("agents.approvals.noPreview")}</Missing>
           )}
         </dd>
-        <dt>Target</dt>
-        <dd>
-          {c.target ? c.target : <Missing>No target was provided by this capability.</Missing>}
-        </dd>
-        <dt>Risk</dt>
+        <dt>{t("agents.approvals.target")}</dt>
+        <dd>{c.target ? c.target : <Missing>{t("agents.approvals.noTarget")}</Missing>}</dd>
+        <dt>{t("agents.approvals.risk")}</dt>
         <dd>
           {c.risk ? (
             <span className={`risk-badge risk-${c.risk}`}>
               {RISK_LABEL[c.risk]}
-              <span className="sr-only">. {RISK_NOTE[c.risk]}</span>
+              <span className="sr-only">. {t(RISK_NOTE[c.risk])}</span>
             </span>
           ) : (
-            <Missing>No risk level was provided.</Missing>
+            <Missing>{t("agents.approvals.noRisk")}</Missing>
           )}
         </dd>
-        <dt>Permissions used</dt>
-        <dd>{c.permissions.length > 0 ? c.permissions.join(", ") : "None listed."}</dd>
+        <dt>{t("agents.approvals.permissions")}</dt>
+        <dd>
+          {c.permissions.length > 0
+            ? c.permissions.join(", ")
+            : t("agents.approvals.noPermissions")}
+        </dd>
         {c.details?.run && c.details.step && (
           <>
-            <dt>Workflow step</dt>
+            <dt>{t("agents.approvals.workflowStep")}</dt>
             <dd>
               {c.details.step} ·{" "}
-              {c.capabilityId === "workflows" ? "Workflow approval" : "Tool policy approval"}
+              {c.capabilityId === "workflows"
+                ? t("agents.approvals.workflowApproval")
+                : t("agents.approvals.toolPolicyApproval")}
             </dd>
           </>
         )}
         {(c.task_id || (c.evidence_ids && c.evidence_ids.length > 0)) && (
           <>
-            <dt>Requested by</dt>
+            <dt>{t("agents.approvals.requestedBy")}</dt>
             <dd>
               {c.task_id ? (
                 <>
-                  an agent task{" "}
+                  {t("agents.approvals.byAgentTask")}{" "}
                   <button
                     type="button"
                     className="link-button small"
                     aria-expanded={showTask}
                     onClick={() => setShowTask(!showTask)}
                   >
-                    {showTask ? "Hide the task" : "Show the task and its evidence"}
+                    {showTask ? t("agents.approvals.hideTask") : t("agents.approvals.showTask")}
                   </button>
                 </>
               ) : (
-                "an agent run"
+                t("agents.approvals.byAgentRun")
               )}
               {c.evidence_ids && c.evidence_ids.length > 0 && (
-                <> · evidence held so far: {c.evidence_ids.join(", ")}</>
+                <> · {t("agents.approvals.evidenceHeld", { ids: c.evidence_ids.join(", ") })}</>
               )}
             </dd>
           </>
         )}
         {expires && (
           <>
-            <dt>Expires</dt>
-            <dd>at {expires}; if you do nothing it is declined</dd>
+            <dt>{t("agents.approvals.expires")}</dt>
+            <dd>{t("agents.approvals.expiresAt", { time: expires })}</dd>
           </>
         )}
       </dl>
@@ -142,7 +152,7 @@ function ApprovalCard({
             disabled={busy}
             onChange={(e) => setUnderstood(e.target.checked)}
           />
-          I understand this will {action}
+          {t("agents.approvals.understand", { action })}
         </label>
       )}
       <div className="button-row wrap">
@@ -150,19 +160,19 @@ function ApprovalCard({
           type="button"
           className="btn btn-primary"
           disabled={busy || (second && !understood)}
-          aria-label={`Approve: ${c.summary}`}
+          aria-label={t("agents.approvals.approveLabel", { summary: c.summary })}
           onClick={() => void decide(true)}
         >
-          Approve
+          {t("agents.approvals.approve")}
         </button>
         <button
           type="button"
           className="btn"
           disabled={busy}
-          aria-label={`Reject: ${c.summary}`}
+          aria-label={t("agents.approvals.rejectLabel", { summary: c.summary })}
           onClick={() => void decide(false)}
         >
-          Reject
+          {t("agents.approvals.reject")}
         </button>
       </div>
       {error && (
@@ -186,6 +196,7 @@ interface FocusPlan {
  * cards; nothing is approved by a global shortcut. Results are announced in a polite live region.
  */
 export function Approvals({ filter }: { filter?: (confirmation: Confirmation) => boolean }) {
+  const t = useT();
   const { data: confirmations, error, reload } = useConfirmations();
   const pending = filter ? confirmations.filter(filter) : confirmations;
   const [announcement, setAnnouncement] = useState("");
@@ -204,7 +215,11 @@ export function Approvals({ filter }: { filter?: (confirmation: Confirmation) =>
     const i = pending.findIndex((x) => x.id === c.id);
     const neighbour = pending[i + 1] ?? pending[i - 1];
     plan.current = { decided: c.id, next: neighbour?.id ?? null };
-    setAnnouncement(`${approved ? "Approved" : "Rejected"}: ${c.summary}.`);
+    setAnnouncement(
+      t(approved ? "agents.approvals.announceApproved" : "agents.approvals.announceRejected", {
+        summary: c.summary,
+      }),
+    );
     void reload();
   };
 
@@ -235,17 +250,20 @@ export function Approvals({ filter }: { filter?: (confirmation: Confirmation) =>
       {live}
       <section aria-labelledby="approvals-h" className="approvals">
         <h3 id="approvals-h" ref={heading} tabIndex={-1}>
-          {pending.length > 0 ? "Needs your approval" : "Approvals"}
+          {pending.length > 0
+            ? t("agents.approvals.headingPending")
+            : t("agents.approvals.headingIdle")}
         </h3>
         {pending.length === 0 ? (
-          <p className="muted small">Nothing is waiting for your approval.</p>
+          <p className="muted small">{t("agents.approvals.nothing")}</p>
         ) : (
           <>
-            <p className="muted small">
-              Read what each request will do before you decide. Use the Up and Down arrow keys to
-              move between requests.
-            </p>
-            <ul className="card-list" aria-label="Pending approvals" onKeyDown={onKey}>
+            <p className="muted small">{t("agents.approvals.intro")}</p>
+            <ul
+              className="card-list"
+              aria-label={t("agents.approvals.listLabel")}
+              onKeyDown={onKey}
+            >
               {pending.map((c) => (
                 <ApprovalCard
                   key={c.id}

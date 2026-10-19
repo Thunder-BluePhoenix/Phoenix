@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import { formatNumber } from "./format";
 
 /** The media capabilities with a Now playing glance, in the order they are shown. */
 export const MEDIA_SERVICES = [
@@ -40,12 +41,13 @@ export function validCover(value: unknown): string | undefined {
 
 /** "3:05", "1:02:03". Unknown or negative times read "0:00". */
 export function formatClock(seconds: number | undefined): string {
-  if (seconds === undefined || !Number.isFinite(seconds) || seconds < 0) return "0:00";
-  const total = Math.floor(seconds);
+  const total =
+    seconds === undefined || !Number.isFinite(seconds) || seconds < 0 ? 0 : Math.floor(seconds);
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
-  const s = String(total % 60).padStart(2, "0");
-  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
+  const two = (n: number) => formatNumber(n, undefined, { minimumIntegerDigits: 2 });
+  const s = two(total % 60);
+  return h > 0 ? `${formatNumber(h)}:${two(m)}:${s}` : `${formatNumber(m)}:${s}`;
 }
 
 /**

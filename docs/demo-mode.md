@@ -6,6 +6,8 @@ Demo mode is a scripted, safe walkthrough of Phoenix. It plays the existing mock
 
 Start it from **Settings → Demo mode**. The web app shows the persistent **“Demo - nothing is saved”** banner, changes to an isolated temporary Core, and offers the walkthrough steps. Each step invokes the mock capability's existing `simulate` command; it does not copy scenario events into the demo implementation.
 
+Starting the demo stops this page's microphone features first: voice listening is switched off, and a call recording in progress makes the demo refuse to start (stop the recording first), so no real microphone, socket or session keeps running behind the demo banner.
+
 Stop it with **Stop demo and go back**. The web app reconnects to the real Core and restores the route you were on.
 
 ## Isolation and safety
@@ -17,8 +19,8 @@ A demo is a separate `PhoenixRuntime`, not a special state inside the real one:
 - Its secret store is `MemorySecretStore`; it never asks the OS keychain for a credential.
 - Its session token is freshly random, is never written to a token file, and is accepted only by its own Core. The real Core rejects that token; the demo Core rejects the real token.
 - It binds a fresh loopback-only port and accepts only the browser origin that was already accepted by the real Core.
-- It contains only the mock capability, has no network fetcher, starts no agent relay socket, cannot use Git or focus terminal windows, and cannot start another demo.
-- Its data directory is never created. The real data directory, real database rows and real state are not read or changed by the walkthrough.
+- It contains only the mock capability, has no network fetcher, starts no agent relay socket, cannot use Git or focus terminal windows, and cannot start another demo. Its sync relay transport is also a refusing one: configuring and running sync inside the demo reports a failure and makes no network request.
+- Its data directory is a fresh temporary path that is never created (not the real data folder). The real data directory, real database rows and real state are not read or changed by the walkthrough.
 
 Only one demo can run at a time. It refuses to start when the real emergency stop is engaged, and a real emergency stop also ends a running demo. It stops automatically after ten minutes without mock scenario activity. Stopping Core stops its demo first.
 

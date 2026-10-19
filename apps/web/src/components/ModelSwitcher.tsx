@@ -12,12 +12,13 @@ import { ApiError } from "../core/client";
 import { useAction, useAiStatus } from "../core/hooks";
 import { useClient } from "../core/context";
 import type { AiModelInfo, AiProviderStatus, AiStatus } from "../core/types";
+import { useT, type MessageKey, type Translate } from "../i18n";
 import { Feedback } from "./Feedback";
 
 const LOCALITY_TEXT = {
-  local: "On this device",
-  cloud: "Cloud (leaves this device)",
-} as const;
+  local: "services.ai.locality.local",
+  cloud: "services.ai.locality.cloud",
+} as const satisfies Record<AiProviderStatus["locality"], MessageKey>;
 
 interface ListOption {
   key: string;
@@ -96,16 +97,17 @@ interface LoadedModels {
   error: string | null;
 }
 
-function currentLabel(status: AiStatus): string {
+function currentLabel(status: AiStatus, t: Translate): string {
   const route = status.routing.chat;
-  if (!route) return "Automatic (on this device first)";
+  if (!route) return t("services.ai.automatic");
   const provider = status.providers.find((p) => p.id === route.provider);
-  const model = route.model ?? provider?.default_model ?? "default model";
-  return `${model} · ${provider?.label ?? route.provider}`;
+  const model = route.model ?? provider?.default_model ?? t("services.ai.defaultModel");
+  return t("services.model.current", { model, provider: provider?.label ?? route.provider });
 }
 
 /** The chat model, shown above the message box: change the provider and the model here. */
 export function ModelSwitcher() {
+  const t = useT();
   const { data: status, error: statusError, reload } = useAiStatus();
   const client = useClient();
   const { run, error } = useAction();
@@ -146,14 +148,14 @@ export function ModelSwitcher() {
           setLoaded({
             providerId: routeProvider,
             models: null,
-            error: err instanceof ApiError ? err.message : "Could not load the model list",
+            error: err instanceof ApiError ? err.message : t("services.model.loadFailed"),
           });
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [open, routeProvider, client]);
+  }, [open, routeProvider, client, t]);
 
   // Click outside closes; the focus is left where the user clicked.
   useEffect(() => {
@@ -173,7 +175,7 @@ export function ModelSwitcher() {
     return (
       <div className="model-switcher">
         <button type="button" className="btn model-button" disabled>
-          Model: loading…
+          {t("services.model.loading")}
         </button>
       </div>
     );
@@ -190,7 +192,7 @@ export function ModelSwitcher() {
     {
       key: "",
       selected: route === null,
-      content: <strong>Automatic (on this device first)</strong>,
+      content: <strong>{t("services.ai.automatic")}</strong>,
     },
     ...status.providers.map((p) => ({
       key: p.id,
@@ -201,15 +203,15 @@ export function ModelSwitcher() {
           <span
             className={p.locality === "cloud" ? "model-badge model-badge-cloud" : "model-badge"}
           >
-            {LOCALITY_TEXT[p.locality]}
+            {t(LOCALITY_TEXT[p.locality])}
           </span>
           {p.key_policy === "required" && !p.key_set && (
             <>
               {" "}
-              <span className="model-badge model-badge-warn">Key missing</span>
-              <span className="muted small model-hint">
-                Add the key in Settings, AI providers. You can still choose it.
+              <span className="model-badge model-badge-warn">
+                {t("services.ai.provider.keyMissing")}
               </span>
+              <span className="muted small model-hint">{t("services.model.keyHint")}</span>
             </>
           )}
         </>
@@ -229,14 +231,14 @@ export function ModelSwitcher() {
 
   const provider = status.providers.find((p) => p.id === routeProvider) ?? null;
   const modelsFor = loaded?.providerId === routeProvider ? loaded : null;
-  const defaultModel = provider?.default_model ?? "default model";
+  const defaultModel = provider?.default_model ?? t("services.ai.defaultModel");
   const listed = (modelsFor?.models ?? []).filter((m) => m.kind !== "embed");
   const modelOptions: ListOption[] = provider
     ? [
         {
           key: "",
           selected: route?.model == null,
-          content: <strong>{`Default (${defaultModel})`}</strong>,
+          content: <strong>{t("services.model.default", { model: defaultModel })}</strong>,
         },
         ...listed.map((m) => ({
           key: m.id,
@@ -283,7 +285,7 @@ export function ModelSwitcher() {
             setChose(false);
           }}
         >
-          Model: {currentLabel(status)}
+          {t("services.model.button", { label: currentLabel(status, t) })}
         </button>
         {provider && (
           <span
@@ -291,47 +293,47 @@ export function ModelSwitcher() {
               provider.locality === "cloud" ? "model-badge model-badge-cloud" : "model-badge"
             }
           >
-            {LOCALITY_TEXT[provider.locality]}
+            {t(LOCALITY_TEXT[provider.locality])}
           </span>
         )}
-        {!status.enabled && <span className="muted small">AI is off</span>}
+        {!status.enabled && <span className="muted small">{t("services.model.aiOff")}</span>}
       </div>
       {open && (
         <div className="model-popup" id={popupId}>
           <Listbox
-            label="Providers"
+            label={t("services.model.providers")}
             options={providerOptions}
             autoFocus
             onChoose={(i) => void chooseProvider(i)}
           />
           {provider && (
             <div>
-              <p className="small model-heading">Models for {provider.label}</p>
+              <p className="small model-heading">
+                {t("services.model.modelsFor", { provider: provider.label })}
+              </p>
               <Listbox
                 key={provider.id}
-                label="Models"
+                label={t("services.model.models")}
                 options={modelOptions}
                 autoFocus={chose}
                 onChoose={(i) => void chooseModel(i)}
               />
               {!modelsFor && (
                 <p className="muted small" role="status">
-                  Loading models…
+                  {t("services.model.loadingModels")}
                 </p>
               )}
               {modelsFor?.error && (
                 <p className="muted small">
-                  Could not list models: {modelsFor.error}. Showing the default model only.
+                  {t("services.model.listFailed", { error: modelsFor.error })}
                 </p>
               )}
               {modelsFor && !modelsFor.error && modelsFor.models === null && (
-                <p className="muted small">This provider did not list its models.</p>
+                <p className="muted small">{t("services.model.notListed")}</p>
               )}
             </div>
           )}
-          <p className="muted small">
-            A cloud model only receives what you have allowed in Settings, AI.
-          </p>
+          <p className="muted small">{t("services.model.cloudNote")}</p>
         </div>
       )}
       <Feedback error={error} />

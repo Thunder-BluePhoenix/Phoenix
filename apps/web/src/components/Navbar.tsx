@@ -7,12 +7,13 @@ import { useWornOutfit, WARDROBE_ROUTE } from "../core/appearance";
 import { usePetSettings } from "../core/hooks";
 import { FawkesAvatar, type FawkesAvatarHandle } from "./FawkesAvatar";
 import { NotificationCenter } from "./NotificationCenter";
+import { isMessageKey, useT, type MessageKey } from "../i18n";
 
-const CONNECTION_TEXT: Record<ConnectionStatus, string | null> = {
+const CONNECTION_TEXT: Record<ConnectionStatus, MessageKey | null> = {
   online: null,
-  connecting: "Connecting…",
-  offline: "Offline",
-  unauthenticated: "Not connected",
+  connecting: "common.connection.connecting",
+  offline: "common.connection.offline",
+  unauthenticated: "common.connection.notConnected",
 };
 
 export interface NavbarProps {
@@ -29,32 +30,36 @@ export const Navbar = forwardRef<FawkesAvatarHandle, NavbarProps>(function Navba
   { state, connection, panelOpen, panelId, route = "/", onToggleFawkes },
   ref,
 ) {
-  const connectionText = CONNECTION_TEXT[connection];
+  const t = useT();
+  const connectionKey = CONNECTION_TEXT[connection];
+  const connectionText = connectionKey ? t(connectionKey) : null;
+  const stateKey = `common.petState.${state.state}`;
+  const stateText = isMessageKey(stateKey) ? t(stateKey) : visualFor(state.state).label;
   const { data: petSettings } = usePetSettings();
   const outfit = useWornOutfit();
   return (
     <header className="navbar">
-      <a className="brand" href="#/" aria-label="Phoenix home">
+      <a className="brand" href="#/" aria-label={t("shell.nav.home")}>
         <span aria-hidden="true">🐦‍🔥</span> <span className="brand-name">Phoenix</span>
       </a>
-      <nav aria-label="Main" className="nav-links">
+      <nav aria-label={t("shell.nav.main")} className="nav-links">
         <a href="#/meetings" aria-current={route.startsWith("/meetings") ? "page" : undefined}>
-          Meetings
+          {t("shell.nav.meetings")}
         </a>
         <a href="#/provenance" aria-current={route.startsWith("/provenance") ? "page" : undefined}>
-          Provenance
+          {t("shell.nav.provenance")}
         </a>
         <a href="#/agents" aria-current={route.startsWith("/agents") ? "page" : undefined}>
-          Agents
+          {t("shell.nav.agents")}
         </a>
         <a href="#/workflows" aria-current={route.startsWith("/workflows") ? "page" : undefined}>
-          Workflows
+          {t("shell.nav.workflows")}
         </a>
         <a href="#/recap" aria-current={route === "/recap" ? "page" : undefined}>
-          Recap
+          {t("shell.nav.recap")}
         </a>
         <a href="#/settings" aria-current={route === "/settings" ? "page" : undefined}>
-          Settings
+          {t("shell.nav.settings")}
         </a>
       </nav>
       {/* Right-click Fawkes: the Wardrobe (the desktop pet's native menu opens the same route). */}
@@ -67,7 +72,7 @@ export const Navbar = forwardRef<FawkesAvatarHandle, NavbarProps>(function Navba
       >
         {state.recording && (
           <span className="rec-pill" role="status">
-            <span className="rec-dot" aria-hidden="true" /> Recording
+            <span className="rec-dot" aria-hidden="true" /> {t("shell.nav.recording")}
           </span>
         )}
         {connectionText && (
@@ -78,7 +83,7 @@ export const Navbar = forwardRef<FawkesAvatarHandle, NavbarProps>(function Navba
         {/* The recording pill already names the state; showing it twice crowds Fawkes off narrow screens. */}
         {!connectionText && !state.recording && (
           <span className="state-text" aria-hidden="true">
-            {visualFor(state.state).label}
+            {stateText}
           </span>
         )}
         {connection === "online" && <NotificationCenter />}

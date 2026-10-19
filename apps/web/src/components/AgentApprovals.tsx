@@ -3,8 +3,10 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { ApiError } from "../core/client";
 import { useClient } from "../core/context";
+import { formatNumber } from "../core/format";
 import { useAgentApprovals } from "../core/hooks";
 import type { AgentApproval } from "../core/types";
+import { useT, type MessageKey, type Translate } from "../i18n";
 import { hasHiddenChars, RevealedBlock, revealNodes, revealPlain } from "./RevealedText";
 
 const MAX_QUESTIONS = 4;
@@ -13,8 +15,9 @@ const ALWAYS_TTL_MINUTES = 60;
 /** "1:59", or "0:07": whole seconds left, never negative. */
 export function formatRemaining(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 1000));
-  const seconds = String(total % 60).padStart(2, "0");
-  return `${Math.floor(total / 60)}:${seconds}`;
+  const digits = { useGrouping: false };
+  const seconds = formatNumber(total % 60, undefined, { ...digits, minimumIntegerDigits: 2 });
+  return `${formatNumber(Math.floor(total / 60), undefined, digits)}:${seconds}`;
 }
 
 /** Wall-clock now, re-read every second while `active`. */
@@ -29,20 +32,23 @@ function useNow(active: boolean): number {
   return now;
 }
 
-const titleOf = (a: AgentApproval) =>
+const titleOf = (t: Translate, a: AgentApproval) =>
   a.kind === "question"
-    ? `${revealPlain(a.agent)} has a question`
-    : `${revealPlain(a.agent)} wants to use ${revealPlain(a.tool)}`;
+    ? t("agents.agentApprovals.titleQuestion", { agent: revealPlain(a.agent) })
+    : t("agents.agentApprovals.titleTool", {
+        agent: revealPlain(a.agent),
+        tool: revealPlain(a.tool),
+      });
 
 type Outcome = "allowed" | "denied" | "always" | "answered" | "terminal" | "stale";
 
-const OUTCOME_TEXT: Record<Outcome, string> = {
-  allowed: "Allowed",
-  denied: "Denied",
-  always: "Allowed here for 1 hour",
-  answered: "Answers sent",
-  terminal: "Left for the terminal",
-  stale: "Already answered",
+const OUTCOME_TEXT: Record<Outcome, MessageKey> = {
+  allowed: "agents.agentApprovals.outcome.allowed",
+  denied: "agents.agentApprovals.outcome.denied",
+  always: "agents.agentApprovals.outcome.always",
+  answered: "agents.agentApprovals.outcome.answered",
+  terminal: "agents.agentApprovals.outcome.terminal",
+  stale: "agents.agentApprovals.outcome.stale",
 };
 
 /** What Core is sent. `answers` is keyed by question text; a multi-select answer joins labels with ",". */
@@ -108,6 +114,7 @@ function AgentApprovalCard({
   cardRef: (el: HTMLLIElement | null) => void;
   onDecided: (outcome: Outcome) => void;
 }) {
+  const t = useT();
   const client = useClient();
   const id = useId();
   const inFlight = useRef(false);
@@ -115,7 +122,7 @@ function AgentApprovalCard({
   const [error, setError] = useState<string | null>(null);
   const questions = (a.questions ?? []).slice(0, MAX_QUESTIONS);
   const [picks, setPicks] = useState<string[][]>(() => questions.map(() => []));
-  const title = titleOf(a);
+  const title = titleOf(t, a);
   const remaining = Date.parse(a.expires_at) - now;
   const isQuestion = a.kind === "question";
   const answered = questions.length > 0 && questions.every((_, i) => (picks[i]?.length ?? 0) > 0);
@@ -159,7 +166,7 @@ function AgentApprovalCard({
     } catch (err) {
       // 409: someone else (another window, the terminal, the clock) answered first. Not a failure.
       if (err instanceof ApiError && err.status === 409) onDecided("stale");
-      else setError(err instanceof ApiError ? err.message : "Request failed");
+      else setError(err instanceof ApiError ? err.message : t("common.error.requestFailed"));
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -179,20 +186,19 @@ function AgentApprovalCard({
       </p>
       {hidden && (
         <p className="approval-missing small" role="note">
-          Warning: this request contains non-ASCII characters. Each one is shown below as an escape
-          such as {"\\u{202e}"}.
+          {t("agents.agentApprovals.hiddenWarning", { example: "\\u{202e}" })}
         </p>
       )}
       <dl className="approval-facts small">
-        <dt>Agent</dt>
+        <dt>{t("agents.agentApprovals.agent")}</dt>
         <dd className="reveal-block">{revealNodes(a.agent)}</dd>
-        <dt>Project</dt>
+        <dt>{t("agents.agentApprovals.project")}</dt>
         <dd className="reveal-block">{revealNodes(a.project)}</dd>
-        <dt>Tool</dt>
+        <dt>{t("agents.agentApprovals.tool")}</dt>
         <dd className="reveal-block">{revealNodes(a.tool)}</dd>
         {command && (
           <>
-            <dt>Command</dt>
+            <dt>{t("agents.agentApprovals.command")}</dt>
             <dd>
               <RevealedBlock text={command} />
             </dd>
@@ -200,7 +206,7 @@ function AgentApprovalCard({
         )}
         {path && (
           <>
-            <dt>Path</dt>
+            <dt>{t("agents.agentApprovals.path")}</dt>
             <dd>
               <RevealedBlock text={path} />
             </dd>
@@ -208,7 +214,7 @@ function AgentApprovalCard({
         )}
         {description && (
           <>
-            <dt>Description</dt>
+            <dt>{t("common.label.description")}</dt>
             <dd>
               <RevealedBlock text={description} />
             </dd>
@@ -216,7 +222,7 @@ function AgentApprovalCard({
         )}
         {detail && (
           <>
-            <dt>Other arguments</dt>
+            <dt>{t("agents.agentApprovals.otherArguments")}</dt>
             <dd>
               <RevealedBlock text={detail} />
             </dd>
@@ -224,16 +230,17 @@ function AgentApprovalCard({
         )}
         {a.via === "relay" && (
           <>
-            <dt>Sent through</dt>
-            <dd>the local relay</dd>
+            <dt>{t("agents.agentApprovals.sentThrough")}</dt>
+            <dd>{t("agents.agentApprovals.localRelay")}</dd>
           </>
         )}
         {Number.isFinite(remaining) && (
           <>
-            <dt>Time left</dt>
+            <dt>{t("agents.agentApprovals.timeLeft")}</dt>
             <dd>
-              <span className="agent-countdown">{formatRemaining(remaining)}</span>; after that the
-              agent asks you in its terminal
+              {t.rich("agents.agentApprovals.countdown", {
+                countdown: <span className="agent-countdown">{formatRemaining(remaining)}</span>,
+              })}
             </dd>
           </>
         )}
@@ -242,7 +249,7 @@ function AgentApprovalCard({
         <Questions approval={a} picks={picks} disabled={busy} onPick={pick} />
       )}
       {isQuestion && questions.length === 0 && (
-        <p className="muted small">The agent sent no questions. Reply in its terminal.</p>
+        <p className="muted small">{t("agents.agentApprovals.noQuestions")}</p>
       )}
       <div className="button-row wrap">
         {isQuestion ? (
@@ -251,10 +258,10 @@ function AgentApprovalCard({
               type="button"
               className="btn btn-primary"
               disabled={busy || !answered}
-              aria-label={`Send answers: ${title}`}
+              aria-label={t("agents.agentApprovals.sendAnswersLabel", { title })}
               onClick={() => void decide({ behavior: "allow", answers: answers() }, "answered")}
             >
-              Send answers
+              {t("agents.agentApprovals.sendAnswers")}
             </button>
           )
         ) : (
@@ -262,27 +269,27 @@ function AgentApprovalCard({
             type="button"
             className="btn btn-primary"
             disabled={busy}
-            aria-label={`Allow: ${title}`}
+            aria-label={t("agents.agentApprovals.allowLabel", { title })}
             onClick={() => void decide({ behavior: "allow" }, "allowed")}
           >
-            Allow
+            {t("agents.agentApprovals.allow")}
           </button>
         )}
         <button
           type="button"
           className="btn"
           disabled={busy}
-          aria-label={`Deny: ${title}`}
+          aria-label={t("agents.agentApprovals.denyLabel", { title })}
           onClick={() => void decide({ behavior: "deny" }, "denied")}
         >
-          Deny
+          {t("agents.agentApprovals.deny")}
         </button>
         {!isQuestion && a.always_ok === true && (
           <button
             type="button"
             className="btn"
             disabled={busy}
-            aria-label={`Always allow here (1 h): ${title}`}
+            aria-label={t("agents.agentApprovals.alwaysLabel", { title })}
             onClick={() =>
               void decide(
                 { behavior: "allow", always: { ttl_minutes: ALWAYS_TTL_MINUTES } },
@@ -290,17 +297,17 @@ function AgentApprovalCard({
               )
             }
           >
-            Always allow here (1 h)
+            {t("agents.agentApprovals.always")}
           </button>
         )}
         <button
           type="button"
           className="btn"
           disabled={busy}
-          aria-label={`Reply in terminal: ${title}`}
+          aria-label={t("agents.agentApprovals.terminalLabel", { title })}
           onClick={() => void decide({ behavior: "deny", terminal: true }, "terminal")}
         >
-          Reply in terminal
+          {t("agents.agentApprovals.terminal")}
         </button>
       </div>
       {error && (
@@ -325,6 +332,7 @@ interface FocusPlan {
  * the list cannot be read: the ordinary approvals queue already reports an unreachable Core.
  */
 export function AgentApprovals() {
+  const t = useT();
   const { data, error, reload } = useAgentApprovals();
   const [gone, setGone] = useState<string[]>([]);
   const [announcement, setAnnouncement] = useState("");
@@ -343,9 +351,11 @@ export function AgentApprovals() {
     );
     if (lapsed.length === 0) return;
     expiredSeen.current.push(...lapsed.map((a) => a.id));
-    setAnnouncement(`Expired: ${lapsed.map(titleOf).join("; ")}.`);
+    setAnnouncement(
+      t("agents.agentApprovals.expired", { titles: lapsed.map((a) => titleOf(t, a)).join("; ") }),
+    );
     void reload();
-  }, [live, now, reload]);
+  }, [live, now, reload, t]);
 
   useEffect(() => {
     const p = plan.current;
@@ -359,7 +369,12 @@ export function AgentApprovals() {
     const neighbour = pending[i + 1] ?? pending[i - 1];
     plan.current = { decided: a.id, next: neighbour?.id ?? null };
     setGone((ids) => [...ids, a.id]);
-    setAnnouncement(`${OUTCOME_TEXT[outcome]}: ${titleOf(a)}.`);
+    setAnnouncement(
+      t("agents.agentApprovals.outcomeAnnounce", {
+        outcome: t(OUTCOME_TEXT[outcome]),
+        title: titleOf(t, a),
+      }),
+    );
     void reload();
   };
 
@@ -383,23 +398,26 @@ export function AgentApprovals() {
         className="approval-live small"
         role="status"
         aria-live="polite"
-        aria-label="Agent approval results"
+        aria-label={t("agents.agentApprovals.resultsLabel")}
       >
         {announcement}
       </p>
       <section aria-labelledby="agent-approvals-h" className="approvals agent-approvals">
         <h3 id="agent-approvals-h" ref={heading} tabIndex={-1}>
-          {pending.length > 0 ? "Coding agents are asking" : "Coding agent requests"}
+          {pending.length > 0
+            ? t("agents.agentApprovals.headingPending")
+            : t("agents.agentApprovals.headingIdle")}
         </h3>
         {pending.length === 0 ? (
-          <p className="muted small">No coding agent is waiting for you.</p>
+          <p className="muted small">{t("agents.agentApprovals.nothing")}</p>
         ) : (
           <>
-            <p className="muted small">
-              Each request stays here until you answer it or it expires. Use the Up and Down arrow
-              keys to move between requests.
-            </p>
-            <ul className="card-list" aria-label="Pending agent requests" onKeyDown={onKey}>
+            <p className="muted small">{t("agents.agentApprovals.intro")}</p>
+            <ul
+              className="card-list"
+              aria-label={t("agents.agentApprovals.listLabel")}
+              onKeyDown={onKey}
+            >
               {pending.map((a) => (
                 <AgentApprovalCard
                   key={a.id}

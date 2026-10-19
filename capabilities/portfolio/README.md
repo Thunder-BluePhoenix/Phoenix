@@ -28,8 +28,10 @@ A **read-only** view of crypto balances. **Display only. Phoenix never places or
 | atom                                                | Cosmos Hub         | cosmos-rest.publicnode.com `/cosmos/bank/v1beta1/balances/{a}` |
 
 Not included: **Solana** (its public interface is JSON-RPC over POST; the rule is GET only), and
-tokens (ERC-20 etc.): only each network's native coin. Any default host can be replaced under
-`endpoints` (a self-hosted indexer). Addresses are validated per network against a strict pattern before
+tokens (ERC-20 etc.): only each network's native coin. A network's default host can be replaced under
+`endpoints` (a self-hosted indexer); these requests carry no key or other credential (they are plain
+unauthenticated GETs of a public address), so the override moves nothing secret. `endpoints` has no entry
+for exchanges. Addresses are validated per network against a strict pattern before
 they reach a URL.
 
 ## Exchanges (5): documented balance endpoint is a GET with a read-only key
@@ -41,8 +43,10 @@ signing needs a vendor library or a long ES256 flow; not attempted). Spot/fundin
 
 Secrets (named, stored in the OS secret store): `binance_key`, `binance_secret`, `bybit_key`,
 `bybit_secret`, `okx_key`, `okx_secret`, `okx_passphrase`, `kucoin_key`, `kucoin_secret`,
-`kucoin_passphrase`, `gate_key`, `gate_secret`. A key is sent only to that exchange's host (or the
-`endpoints` override you set for it).
+`kucoin_passphrase`, `gate_key`, `gate_secret`. A key is sent only to that exchange's own host. There is
+deliberately no config setting to change it: anyone holding the API token could otherwise point a stored
+exchange key at a host of their choosing. Tests inject a local mock through the code-only
+`exchangeUrls` creation option.
 
 ## Prices, 24h change, sparklines
 

@@ -15,17 +15,51 @@ import {
 } from "@phoenix/pet-runtime";
 import { useState } from "react";
 import { useAppearance, type Appearance } from "../core/appearance";
+import { formatNumber } from "../core/format";
 import { useAction, usePetSettings } from "../core/hooks";
+import { useT, type MessageKey, type Translate } from "../i18n";
 import { FawkesAvatar } from "./FawkesAvatar";
 import { Feedback } from "./Feedback";
 
-const SEASON_TEXT: Record<string, string> = {
-  spring: "spring",
-  summer: "summer",
-  autumn: "autumn",
-  winter: "winter",
-  any: "any time",
+const SEASON_KEY: Record<string, MessageKey> = {
+  spring: "pet.wardrobe.season.spring",
+  summer: "pet.wardrobe.season.summer",
+  autumn: "pet.wardrobe.season.autumn",
+  winter: "pet.wardrobe.season.winter",
+  any: "pet.wardrobe.season.any",
 };
+
+/** The built-in outfits' names, in the language on screen; a pack's own name is data and stays. */
+const OUTFIT_KEY: Record<string, MessageKey> = {
+  "ember-scarf": "pet.outfit.emberScarf",
+  "cinder-crest": "pet.outfit.cinderCrest",
+  "dusk-nightcap": "pet.outfit.duskNightcap",
+  "hearth-lantern": "pet.outfit.hearthLantern",
+  "blossom-sprig": "pet.outfit.blossomSprig",
+  "sunbeam-shades": "pet.outfit.sunbeamShades",
+  "maple-drift": "pet.outfit.mapleDrift",
+  "frostwool-beanie": "pet.outfit.frostwoolBeanie",
+};
+
+const GLYPH_KEY: Record<GlyphName, MessageKey> = {
+  spark: "pet.glyph.spark",
+  diamond: "pet.glyph.diamond",
+  triangle: "pet.glyph.triangle",
+  square: "pet.glyph.square",
+  ring: "pet.glyph.ring",
+  bars: "pet.glyph.bars",
+  hexagon: "pet.glyph.hexagon",
+  cross: "pet.glyph.cross",
+  wave: "pet.glyph.wave",
+  crescent: "pet.glyph.crescent",
+};
+
+const ANY_SEASON = "pet.wardrobe.season.any";
+
+const outfitName = (t: Translate, o: { id: string; name: string }) =>
+  Object.hasOwn(OUTFIT_KEY, o.id) && BUILTIN_OUTFITS.some((b) => b.id === o.id)
+    ? t(OUTFIT_KEY[o.id]!)
+    : o.name;
 
 /** Contrast of a pill colour against the pill's own background, and whether it meets WCAG AA. */
 export function pillContrast(colour: string): { ratio: number; ok: boolean } {
@@ -39,6 +73,7 @@ export function pillContrast(colour: string): { ratio: number; ok: boolean } {
  * source's colour, glyph and whether it shows in Fawkes. Core validates every pack again.
  */
 export function Wardrobe({ now = () => new Date() }: { now?: () => Date }) {
+  const t = useT();
   const { data, error: loadError, reload } = useAppearance();
   const { data: petSettings } = usePetSettings();
   const { run, error, details } = useAction();
@@ -61,19 +96,20 @@ export function Wardrobe({ now = () => new Date() }: { now?: () => Date }) {
     try {
       parsed = JSON.parse(pasted);
     } catch {
-      setProblem("That is not valid JSON.");
+      setProblem(t("pet.wardrobe.import.notJson"));
       return;
     }
     try {
       validateOutfitPack(parsed);
     } catch (err) {
-      setProblem(err instanceof OutfitError ? err.message : "That is not a valid outfit pack.");
+      // An OutfitError's text comes from the pack validator (data about the pack), shown as written.
+      setProblem(err instanceof OutfitError ? err.message : t("pet.wardrobe.import.notValid"));
       return;
     }
     if ((await run("POST", "/api/fawkes/packs", parsed)) !== undefined) {
       setPasted("");
       await reload();
-      setSaved("Outfit imported.");
+      setSaved(t("pet.wardrobe.import.done"));
     }
   };
 
@@ -81,76 +117,90 @@ export function Wardrobe({ now = () => new Date() }: { now?: () => Date }) {
     setSaved(null);
     if ((await run("DELETE", `/api/fawkes/packs/${encodeURIComponent(id)}`)) !== undefined) {
       await reload();
-      setSaved(`Deleted ${name}.`);
+      setSaved(t("pet.wardrobe.pack.deleted", { name }));
     }
   };
 
   const choices: { id: string; name: string; note: string }[] = [
-    { id: "none", name: "No outfit", note: "Fawkes as drawn" },
-    { id: "auto-season", name: "Follow the season", note: "Changes with the calendar" },
+    {
+      id: "none",
+      name: t("pet.wardrobe.choice.none"),
+      note: t("pet.wardrobe.choice.noneNote"),
+    },
+    {
+      id: "auto-season",
+      name: t("pet.wardrobe.choice.season"),
+      note: t("pet.wardrobe.choice.seasonNote"),
+    },
     ...BUILTIN_OUTFITS.map((o) => ({
       id: o.id,
-      name: o.name,
-      note: `built in, ${SEASON_TEXT[o.season ?? "any"]}`,
+      name: outfitName(t, o),
+      note: t("pet.wardrobe.note.builtIn", {
+        season: t(SEASON_KEY[o.season ?? "any"] ?? ANY_SEASON),
+      }),
     })),
     ...data.packs.map((p) => ({
       id: p.id,
       name: p.name,
-      note: `by ${p.author}, ${SEASON_TEXT[p.season ?? "any"]}`,
+      note: t("pet.wardrobe.note.pack", {
+        author: p.author,
+        season: t(SEASON_KEY[p.season ?? "any"] ?? ANY_SEASON),
+      }),
     })),
   ];
   const worn = resolveOutfit(data.outfit, data.hemisphere, data.packs, now());
 
   return (
     <div className="wardrobe">
-      <p className="muted small">
-        Outfits are only decoration. They never change what Fawkes says it is doing, and with
-        reduced motion they hold still.
-      </p>
+      <p className="muted small">{t("pet.wardrobe.intro")}</p>
       <div className="wardrobe-preview">
         <FawkesAvatar
           state={{
             state: "IDLE",
-            explanation: "Outfit preview",
+            explanation: t("pet.wardrobe.preview.explanation"),
             since: "",
             recording: false,
             sleeping: false,
           }}
           size={96}
           interactive={false}
-          actionHint="This is a preview"
+          actionHint={t("pet.wardrobe.preview.hint")}
           reducedMotion={petSettings.reduced_motion}
           outfit={worn}
         />
         <p role="status" className="small">
-          Wearing: {worn ? worn.name : "no outfit"}
+          {worn
+            ? t("pet.wardrobe.wearing", { name: outfitName(t, worn) })
+            : t("pet.wardrobe.wearingNone")}
         </p>
       </div>
       <fieldset>
-        <legend className="small">Outfit</legend>
+        <legend className="small">{t("pet.wardrobe.outfit.legend")}</legend>
         {choices.map((c) => (
           <label key={c.id} className="choice">
             <input
               type="radio"
               name="fawkes-outfit"
               checked={data.outfit === c.id}
-              onChange={() => void save({ outfit: c.id }, `Outfit set to ${c.name}.`)}
+              onChange={() =>
+                void save({ outfit: c.id }, t("pet.wardrobe.outfit.set", { name: c.name }))
+              }
             />
             {c.name} <span className="muted small">({c.note})</span>
           </label>
         ))}
       </fieldset>
       <label className="field">
-        Hemisphere (for “Follow the season”)
+        {t("pet.wardrobe.hemisphere.label")}
         <select value={data.hemisphere} onChange={(e) => void save({ hemisphere: e.target.value })}>
-          <option value="north">Northern</option>
-          <option value="south">Southern</option>
+          <option value="north">{t("pet.wardrobe.hemisphere.north")}</option>
+          <option value="south">{t("pet.wardrobe.hemisphere.south")}</option>
         </select>
       </label>
 
-      <h3 className="h3">Import an outfit</h3>
+      <h3 className="h3">{t("pet.wardrobe.import.title")}</h3>
       <label className="field">
-        Outfit pack (JSON)
+        {t("pet.wardrobe.import.packLabel")}
         <textarea
           rows={5}
           value={pasted}
@@ -160,8 +210,7 @@ export function Wardrobe({ now = () => new Date() }: { now?: () => Date }) {
         />
       </label>
       <p id="wardrobe-import-help" className="muted small">
-        Paste the pack’s JSON. A pack holds drawings only (no scripts, styles or links); a pack that
-        breaks the rules is refused as a whole. Up to {data.limits.packs} imported outfits.
+        {t("pet.wardrobe.import.help", { count: data.limits.packs })}
       </p>
       <button
         type="button"
@@ -169,7 +218,7 @@ export function Wardrobe({ now = () => new Date() }: { now?: () => Date }) {
         disabled={pasted.trim().length === 0}
         onClick={() => void importPack()}
       >
-        Import outfit
+        {t("pet.wardrobe.import.button")}
       </button>
       {problem && (
         <p className="error-text small" role="alert">
@@ -182,27 +231,24 @@ export function Wardrobe({ now = () => new Date() }: { now?: () => Date }) {
             <li key={p.id} className="small">
               {p.name}{" "}
               <span className="muted">
-                by {p.author}, {p.license}
+                {t("pet.wardrobe.pack.by", { author: p.author, license: p.license })}
               </span>{" "}
               <button
                 type="button"
                 className="btn btn-danger-outline"
                 onClick={() => void removePack(p.id, p.name)}
-                aria-label={`Delete outfit ${p.name}`}
+                aria-label={t("pet.wardrobe.pack.deleteLabel", { name: p.name })}
               >
-                Delete
+                {t("common.button.delete")}
               </button>
             </li>
           ))}
         </ul>
       )}
 
-      <h3 className="h3">Sources in Fawkes</h3>
-      <p className="muted small">
-        While a coding agent or capability is working, Fawkes shows a pill with its name, a shape
-        and its colour. Colour is never the only cue.
-      </p>
-      {data.known.length === 0 && <p className="muted small">No sources yet.</p>}
+      <h3 className="h3">{t("pet.wardrobe.sources.title")}</h3>
+      <p className="muted small">{t("pet.wardrobe.sources.intro")}</p>
+      {data.known.length === 0 && <p className="muted small">{t("pet.wardrobe.sources.none")}</p>}
       {data.known.map((k) => (
         <SourceRow
           key={k.id}
@@ -235,9 +281,11 @@ function SourceRow({
   style: SourceStyle;
   onChange: (patch: Partial<SourceStyle>) => Promise<void>;
 }) {
+  const t = useT();
   const [draft, setDraft] = useState<string | null>(null);
   const colour = draft ?? style.colour;
   const { ratio, ok } = pillContrast(colour);
+  const oneDecimal = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
   const commit = () => {
     if (draft !== null && draft !== style.colour) void onChange({ colour: draft });
     setDraft(null);
@@ -251,10 +299,10 @@ function SourceRow({
           checked={style.show}
           onChange={(e) => void onChange({ show: e.target.checked })}
         />
-        Show {label} in Fawkes
+        {t("pet.wardrobe.source.show", { label })}
       </label>
       <label className="field">
-        Colour for {label}
+        {t("pet.wardrobe.source.colour", { label })}
         <input
           type="color"
           value={colour}
@@ -263,22 +311,27 @@ function SourceRow({
         />
       </label>
       <label className="field">
-        Shape for {label}
+        {t("pet.wardrobe.source.shape", { label })}
         <select
           value={style.glyph}
           onChange={(e) => void onChange({ glyph: e.target.value as GlyphName })}
         >
-          {Object.entries(GLYPHS).map(([name, g]) => (
+          {Object.keys(GLYPHS).map((name) => (
             <option key={name} value={name}>
-              {g.label}
+              {t(GLYPH_KEY[name as GlyphName])}
             </option>
           ))}
         </select>
       </label>
       <p className={ok ? "muted small" : "error-text small"} role="status">
         {ok
-          ? `Contrast ${ratio.toFixed(1)}:1 on the pill: meets WCAG AA.`
-          : `Warning: contrast ${ratio.toFixed(1)}:1 on the pill is below WCAG AA (${AA_CONTRAST}:1). The name may be hard to read.`}
+          ? t("pet.wardrobe.source.contrastOk", {
+              ratio: formatNumber(ratio, undefined, oneDecimal),
+            })
+          : t("pet.wardrobe.source.contrastLow", {
+              ratio: formatNumber(ratio, undefined, oneDecimal),
+              min: formatNumber(AA_CONTRAST, undefined, oneDecimal),
+            })}
       </p>
     </fieldset>
   );
@@ -288,10 +341,11 @@ export type { Appearance };
 
 /** The Settings section "Fawkes appearance": the same Wardrobe as the Pet Panel tab. */
 export function FawkesAppearanceSection() {
+  const t = useT();
   return (
     <section aria-labelledby="appearance-h" className="card">
       <h2 id="appearance-h" className="h3">
-        Fawkes appearance
+        {t("pet.appearance.title")}
       </h2>
       <Wardrobe />
     </section>

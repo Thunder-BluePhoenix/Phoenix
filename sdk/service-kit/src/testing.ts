@@ -53,7 +53,9 @@ export async function startMockService(handler: MockHandler): Promise<MockServic
       res.end(body);
     });
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const listening = Promise.withResolvers<void>();
+  server.listen(0, "127.0.0.1", () => listening.resolve());
+  await listening.promise;
   const { port } = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${port}`,
@@ -63,7 +65,9 @@ export async function startMockService(handler: MockHandler): Promise<MockServic
     },
     close: async () => {
       server.closeAllConnections();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      const closed = Promise.withResolvers<void>();
+      server.close(() => closed.resolve());
+      await closed.promise;
     },
   };
 }

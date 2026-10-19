@@ -25,6 +25,7 @@ import {
   workflow,
   type MockN8n,
 } from "../testing/mock-n8n";
+import { setImmediate as yieldToLoop } from "node:timers/promises";
 
 const T0 = Date.parse("2026-10-05T09:00:00Z");
 const iso = (offsetSeconds: number) => new Date(T0 + offsetSeconds * 1000).toISOString();
@@ -292,6 +293,21 @@ describe("polling through the capability", () => {
     expect(h!.events.find((e) => e.source === "n8n")!.subject).toBe("workflow wf1");
   });
 
+  it("a workflow name that looks like a credential is redacted and the failure event is still delivered", async () => {
+    const lookalike = ["gh", "p_", "a1B2".repeat(8)].join("");
+    await ready();
+    mock!.workflows[0]!.name = `deploy ${lookalike}`;
+    mock!.executions.push(execution({ id: 777, startedAt: iso(50), status: "error" }));
+    await clock.tick();
+    await vi.waitFor(() => expect(types()).toEqual(["n8n.execution.failed"]));
+    await h!.drain();
+    const event = h!.events.find((e) => e.source === "n8n")!;
+    expect(event.payload.workflow).toBe("deploy [REDACTED]");
+    expect(JSON.stringify(event)).not.toContain(lookalike);
+    expect(h!.state.snapshot().state).toBe("ERROR");
+    expect((await h!.run("n8n", "status")).result).toMatchObject({ events_refused: 0 });
+  });
+
   it("makes no request while unwatched and resumes when someone watches", async () => {
     mock = await startMockN8n();
     clock = new Clock();
@@ -302,7 +318,7 @@ describe("polling through the capability", () => {
     h.manager.configure("n8n", { base_url: mock.url });
     await h.manager.setSecret("n8n", "api_key", MOCK_KEY);
     await h.enable("n8n");
-    await new Promise((r) => setImmediate(r));
+    await yieldToLoop();
     expect(mock.service.requests).toEqual([]);
     expect(clock.sleeps).toEqual([]);
     h.manager.presence.setClients(1);
@@ -311,8 +327,8 @@ describe("polling through the capability", () => {
     expect(afterFirst).toBeGreaterThan(0);
     h.manager.presence.setClients(0);
     clock.release();
-    await new Promise((r) => setImmediate(r));
-    await new Promise((r) => setImmediate(r));
+    await yieldToLoop();
+    await yieldToLoop();
     expect(mock.service.requests).toHaveLength(afterFirst);
     h.manager.presence.setClients(1);
     await vi.waitFor(() => expect(mock!.service.requests.length).toBeGreaterThan(afterFirst));
@@ -471,6 +487,29 @@ describe("run_again (approval path)", () => {
     expect(mock!.service.requests.filter((r) => r.method === "POST")).toHaveLength(1);
   });
 
+  it("a key reused for a different execution is refused; another command may use the same key", async () => {
+    await ready({
+      data: (m) =>
+        m.executions.push(
+          execution({ startedAt: iso(-100) }),
+          execution({ id: 102, startedAt: iso(-90) }),
+        ),
+    });
+    await h!.run("n8n", "run_again", ARGS, true);
+    const other = await h!.run("n8n", "run_again", { ...ARGS, execution_id: "102" }, true);
+    expect(other.status).toBe("failed");
+    expect(other.error?.message).toMatch(/different target/);
+    expect(mock!.posts).toEqual([{ path: "/api/v1/executions/101/retry" }]);
+    // The key is scoped per command: pausing with it is a separate action, not "already requested".
+    const paused = await h!.run(
+      "n8n",
+      "pause_workflow",
+      { workflow_id: "wf1", idempotency_key: KEY },
+      true,
+    );
+    expect(paused.result).toMatchObject({ status: "paused" });
+  });
+
   it("rejects ids that could reshape the path, before anything is asked or sent", async () => {
     await ready({ data: withExecution });
     for (const execution_id of ["../x", "a/b", "1 2", ""]) {
@@ -518,6 +557,25 @@ describe("pause_workflow (approval path)", () => {
     expect(op.error?.message).toMatch(/still reports the workflow as active/);
   });
 
+  it("an answer about a different workflow is not reported as paused", async () => {
+    await ready();
+    mock!.override.current = (_p, method) =>
+      method === "POST" ? { body: workflow({ id: "wf-other", active: false }) } : undefined;
+    const op = await h!.run("n8n", "pause_workflow", ARGS, true);
+    expect(op.status).toBe("failed");
+    expect(op.error?.message).toMatch(/different workflow/);
+  });
+
+  it("a key reused for a different workflow is refused instead of answered with the first outcome", async () => {
+    await ready({ data: (m) => m.workflows.push(workflow({ id: "wf2", name: "Other" })) });
+    await h!.run("n8n", "pause_workflow", ARGS, true);
+    const other = await h!.run("n8n", "pause_workflow", { ...ARGS, workflow_id: "wf2" }, true);
+    expect(other.status).toBe("failed");
+    expect(other.error?.message).toMatch(/different target/);
+    expect(mock!.posts).toEqual([{ path: "/api/v1/workflows/wf1/deactivate" }]);
+    expect(mock!.workflows.find((w) => w.id === "wf2")!.active).toBe(true);
+  });
+
   it("rejects ids that could reshape the path", async () => {
     await ready();
     for (const workflow_id of ["../x", "a/b", ""]) {
@@ -545,9 +603,27 @@ describe("status", () => {
     expect(op.status).toBe("succeeded");
     expect(op.result).toEqual({
       configured: true,
+      sends_key_to: new URL(mock!.url).host,
+      events_refused: 0,
       workflows: [{ id: "wf1", name: "Nightly sync", active: true }],
       items: [{ id: "101", title: "Nightly sync", state: "error", at: iso(-100) }],
     });
     expect(everything([op])).not.toContain(MOCK_KEY);
+  });
+
+  it("says which host the API key is sent to, in status and in the health message", async () => {
+    await ready();
+    const host = new URL(mock!.url).host;
+    expect((await h!.run("n8n", "status")).result).toMatchObject({ sends_key_to: host });
+    expect((await health()).message).toContain(host);
+  });
+
+  it("states the destination even before a key is stored (nothing is sent then)", async () => {
+    await ready({ key: null });
+    expect((await h!.run("n8n", "status")).result).toMatchObject({
+      configured: false,
+      sends_key_to: new URL(mock!.url).host,
+    });
+    expect(mock!.service.requests).toEqual([]);
   });
 });

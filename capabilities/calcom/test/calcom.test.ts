@@ -4,10 +4,11 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHarness, type Harness } from "@phoenix/sdk-testing";
 import type { ServiceStatus } from "@phoenix/service-kit";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CAL_API_VERSION, createCalcomCapability } from "../src";
 import { Clock } from "../testing/clock";
 import { MOCK_API_KEY, rawBooking, startMockCalcom, type MockCalcom } from "../testing/mock-calcom";
+import { setImmediate as yieldToLoop } from "node:timers/promises";
 
 const T0 = Date.parse("2026-10-05T09:00:00Z");
 const MADE_AFTER_START = "2026-10-05T09:30:00.000Z";
@@ -33,9 +34,11 @@ async function ready(
   clock = new Clock(T0);
   mock.bookings = options.bookings ?? [];
   h = createHarness({
-    modules: [createCalcomCapability({ now: () => clock.now, sleep: clock.sleep })],
+    modules: [
+      createCalcomCapability({ apiUrl: mock.url, now: () => clock.now, sleep: clock.sleep }),
+    ],
   });
-  h.manager.configure("calcom", { base_url: mock.url, ...options.config });
+  if (options.config) h.manager.configure("calcom", options.config);
   const key = options.key === undefined ? MOCK_API_KEY : options.key;
   if (key) await h.manager.setSecret("calcom", "api_key", key);
   await h.enable("calcom");
@@ -46,7 +49,7 @@ async function ready(
 const types = () => h!.types("calcom");
 const health = async () => (await h!.manager.checkHealth("calcom")).health;
 const settle = async () => {
-  for (let i = 0; i < 50; i++) await new Promise<void>((r) => setImmediate(r));
+  for (let i = 0; i < 50; i++) await yieldToLoop();
   await h!.drain();
 };
 
@@ -423,22 +426,31 @@ describe("configuration, status and secrets", () => {
     expect(mock!.requests).toEqual([]);
   });
 
-  it("refuses plain-http, a key in config, bad numbers; never calls an address with credentials", async () => {
+  it("the key can only go to Cal.com's own origin: base_url is not a setting; a key in config and bad numbers are refused", async () => {
     await ready();
-    await h!.manager.disable("calcom");
-    expect(() => h!.manager.configure("calcom", { base_url: "http://api.example.com" })).toThrow();
-    expect(() => h!.manager.configure("calcom", { api_key: MOCK_API_KEY })).toThrow();
-    expect(() => h!.manager.configure("calcom", { poll_ms: 100 })).toThrow();
-    expect(() => h!.manager.configure("calcom", { remind_minutes: 500 })).toThrow();
-    h!.manager.configure("calcom", { base_url: "https://user:pw@api.example.com" });
-    const before = mock!.requests.length;
-    await h!.enable("calcom");
     await clock.first();
-    expect(await health()).toMatchObject({
-      status: "degraded",
-      message: expect.stringMatching(/base_url/),
-    });
-    expect(mock!.requests.length).toBe(before);
+    const attacker = await startMockCalcom();
+    try {
+      await h!.manager.disable("calcom");
+      for (const base_url of [attacker.url, "https://attacker.example", "http://127.0.0.1:1"]) {
+        expect(() => h!.manager.configure("calcom", { base_url }), base_url).toThrow();
+      }
+      expect(h!.manager.get("calcom").config_schema).not.toHaveProperty("properties.base_url");
+      expect(() => h!.manager.configure("calcom", { api_key: MOCK_API_KEY })).toThrow();
+      expect(() => h!.manager.configure("calcom", { poll_ms: 100 })).toThrow();
+      expect(() => h!.manager.configure("calcom", { remind_minutes: 500 })).toThrow();
+      const before = mock!.requests.length;
+      await h!.enable("calcom");
+      await vi.waitFor(() => expect(mock!.requests.length).toBeGreaterThan(before));
+      expect(attacker.requests).toEqual([]);
+    } finally {
+      await attacker.close();
+    }
+  });
+
+  it("the code-only apiUrl option refuses plain http to a non-loopback host or credentials", () => {
+    expect(() => createCalcomCapability({ apiUrl: "http://api.example.com" })).toThrow();
+    expect(() => createCalcomCapability({ apiUrl: "https://user:pw@api.example.com" })).toThrow();
   });
 
   it("status lists only upcoming, uncancelled bookings, without the key", async () => {

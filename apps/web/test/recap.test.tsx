@@ -243,7 +243,7 @@ describe("navigation", () => {
 
 describe("formatters", () => {
   it("format time at weekly precision", () => {
-    expect([0, 29, 31, 3540, 3600, 11_100].map(formatCodingTime)).toEqual([
+    expect([0, 29, 31, 3540, 3600, 11_100].map((s) => formatCodingTime(s))).toEqual([
       "0 min",
       "0 min",
       "1 min",

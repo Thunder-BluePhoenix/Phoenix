@@ -12,13 +12,15 @@ import {
   EventStore,
   MeetingStore,
   openDatabase,
+  RECAP_OTHER_KEY,
+  RECAP_RENAMED_KEY,
   SettingsStore,
   type Database,
 } from "@phoenix/persistence";
 import { createEvent, ErrorCode, PhoenixError } from "@phoenix/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { AgentLive } from "../src/agent-live";
-import { RECAP_METRIC, RecapRuntime } from "../src/recap";
+import { MAX_SESSION_LINES, MAX_STEP_LINES, RECAP_METRIC, RecapRuntime } from "../src/recap";
 import { startCore, type TestCore } from "./helpers";
 
 const ZONE = "America/New_York";
@@ -448,6 +450,108 @@ describe("delete all", () => {
     for (const secret of ["/work/", "a.ts", "b.ts", "npm"]) expect(stored).not.toContain(secret);
     expect(stored).toContain("alpha");
     expect(RECAP_METRIC.steps).toBe("steps");
+  });
+});
+
+describe("what a token holder can and cannot make the recap count", () => {
+  const stored = (r: Rig, metric: string) =>
+    r.db.prepare("SELECT day, key, value FROM recap_daily WHERE metric = ?").all(metric);
+
+  it("drops events older than the retention window, live and from the backfill", async () => {
+    const old = "2020-01-06T12:00:00Z";
+    const db = openDatabase(":memory:");
+    dbs.push(db);
+    const events = new EventStore(db);
+    events.append(
+      createEvent({
+        event_type: "git.commit.created",
+        source: "git",
+        severity: "info",
+        timestamp: old,
+      }),
+    );
+    events.append(
+      createEvent({
+        event_type: "git.commit.created",
+        source: "git",
+        severity: "info",
+        timestamp: "2026-10-27T15:00:00Z",
+      }),
+    );
+    const r = rig(db);
+    expect(stored(r, RECAP_METRIC.commits)).toEqual([{ day: "2026-10-27", key: "", value: 1 }]);
+    r.bus.publish(
+      createEvent({
+        event_type: "git.commit.created",
+        source: "git",
+        severity: "info",
+        timestamp: old,
+      }),
+    );
+    r.bus.publish(
+      createEvent({
+        event_type: "git.commit.created",
+        source: "git",
+        severity: "info",
+        timestamp: "2026-11-03T15:00:00Z",
+      }),
+    );
+    await r.bus.drain();
+    expect(stored(r, RECAP_METRIC.commits)).toEqual([
+      { day: "2026-10-27", key: "", value: 1 },
+      { day: "2026-11-03", key: "", value: 1 },
+    ]);
+  });
+
+  it("bounds the lines one step and one session can add to the totals", () => {
+    const r = rig();
+    r.at("2026-11-04T12:00:00Z");
+    r.step("codex", "sess-big", "/work/big", "edit", {
+      file: { path: "/work/big/a.ts", added: 900_000, removed: 5 },
+    });
+    expect(stored(r, RECAP_METRIC.linesAdded)).toEqual([
+      { day: "2026-11-04", key: "", value: MAX_STEP_LINES },
+    ]);
+    expect(stored(r, RECAP_METRIC.linesRemoved)).toEqual([
+      { day: "2026-11-04", key: "", value: 5 },
+    ]);
+    for (let i = 0; i < 20; i++)
+      r.step("codex", "sess-big", "/work/big", "edit", {
+        file: { path: "/work/big/a.ts", added: 900_000, removed: 0 },
+      });
+    expect(stored(r, RECAP_METRIC.linesAdded)).toEqual([
+      { day: "2026-11-04", key: "", value: MAX_SESSION_LINES },
+    ]);
+  });
+
+  it("a project named (other) does not merge into the overflow bucket", () => {
+    const r = rig();
+    r.at("2026-11-04T12:00:00Z");
+    r.step("codex", "sess-o", "/work/(other)", "read");
+    const keys = stored(r, RECAP_METRIC.projectSteps).map((row) => String(row.key));
+    expect(keys).not.toContain(RECAP_OTHER_KEY);
+    expect(keys).toEqual([RECAP_RENAMED_KEY]);
+  });
+
+  it("after delete all, a running session does not bring its earlier time back", () => {
+    const r = rig();
+    for (const at of ["12:00:00", "12:02:00", "12:04:00"]) {
+      r.at(`2026-11-04T${at}Z`);
+      r.step("codex", "sess-live", "/work/live", "read");
+    }
+    expect(stored(r, RECAP_METRIC.longestSessionMs)).toEqual([
+      { day: "2026-11-04", key: "", value: 240_000 },
+    ]);
+    r.recap.deleteAll();
+    r.at("2026-11-04T12:06:00Z");
+    r.step("codex", "sess-live", "/work/live", "read");
+    // Only the two minutes since the delete count, not 360 s from before it.
+    expect(stored(r, RECAP_METRIC.longestSessionMs)).toEqual([
+      { day: "2026-11-04", key: "", value: 120_000 },
+    ]);
+    expect(stored(r, RECAP_METRIC.activeMs)).toEqual([
+      { day: "2026-11-04", key: "", value: 120_000 },
+    ]);
   });
 });
 

@@ -22,6 +22,9 @@ import {
 } from "react";
 import { ApiError } from "../core/client";
 import { useClient } from "../core/context";
+import { formatNumber } from "../core/format";
+import { useT, type MessageKey } from "../i18n";
+import { translate } from "../i18n/store";
 import {
   ATTACHMENTS_PATH,
   DROP_LIMITS,
@@ -33,6 +36,8 @@ import {
   useAttachmentUpload,
   type AttachmentAnswer,
   type AttachmentDetail,
+  type AttachmentKind,
+  type AttachmentOrigin,
   type AttachmentSummary,
   useAttachments,
   type AttachmentsState,
@@ -41,18 +46,30 @@ import {
 import { useAction } from "../core/hooks";
 import { Feedback } from "./Feedback";
 
+/** A whole or fixed-fraction number in the digits of the language, without a grouping separator. */
+const plainNumber = (n: number, digits: number): string =>
+  formatNumber(n, undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+    useGrouping: false,
+  });
+
 export function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  if (n < 1024) return `${plainNumber(n, 0)} B`;
+  if (n < 1024 * 1024) return `${plainNumber(n / 1024, n < 10 * 1024 ? 1 : 0)} KB`;
+  return `${plainNumber(n / (1024 * 1024), 1)} MB`;
 }
 
-const KIND_LABEL = { text: "Text", image: "Image", folder: "Folder" } as const;
-const ORIGIN_LABEL = {
-  drop: "dropped",
-  window: "window",
-  paste: "pasted",
-} as const;
+const KIND_LABEL: Record<AttachmentKind, MessageKey> = {
+  text: "capture.attachments.kind.text",
+  image: "capture.attachments.kind.image",
+  folder: "capture.attachments.kind.folder",
+};
+const ORIGIN_LABEL: Record<AttachmentOrigin, MessageKey> = {
+  drop: "capture.attachments.origin.drop",
+  window: "capture.attachments.origin.window",
+  paste: "capture.attachments.origin.paste",
+};
 
 // ── Drop zone ────────────────────────────────────────────────────────────────────────────────────
 
@@ -71,6 +88,7 @@ export function DropZone({
   label: string;
   onDone?: () => void;
 }) {
+  const t = useT();
   const { upload, busy, notice, clearNotice } = useAttachmentUpload(onDone);
   const [over, setOver] = useState(false);
   const depth = useRef(0);
@@ -112,7 +130,7 @@ export function DropZone({
     <div
       className={over ? "drop-zone drop-zone-over" : "drop-zone"}
       role="group"
-      aria-label={`Drop files on ${label}`}
+      aria-label={t("capture.attachments.dropZone.label", { label })}
       aria-describedby={hint}
       aria-busy={busy}
       onDragEnter={onDragEnter}
@@ -122,25 +140,31 @@ export function DropZone({
     >
       {children}
       <p id={hint} className="muted small drop-hint">
-        {over ? "Drop to attach." : "Drop text files, PNG/JPEG images or a folder here, or "}
-        {!over && (
-          <button type="button" className="link-button" onClick={() => picker.current?.click()}>
-            attach files…
-          </button>
-        )}
-        {!over && " Attaching sends nothing."}
+        {over
+          ? t("capture.attachments.dropZone.over")
+          : t.rich("capture.attachments.dropZone.hint", {
+              attach: (
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => picker.current?.click()}
+                >
+                  {t("capture.attachments.dropZone.attachFiles")}
+                </button>
+              ),
+            })}
       </p>
       <input
         ref={picker}
         type="file"
         multiple
         hidden
-        aria-label="Choose files to attach"
+        aria-label={t("capture.attachments.dropZone.choose")}
         onChange={onPick}
       />
       {busy && (
         <p className="small" role="status">
-          Reading what you dropped…
+          {t("capture.attachments.dropZone.reading")}
         </p>
       )}
       {notice && (
@@ -150,7 +174,7 @@ export function DropZone({
         >
           {notice.text}{" "}
           <button type="button" className="link-button" onClick={clearNotice}>
-            Dismiss
+            {t("common.button.dismiss")}
           </button>
         </p>
       )}
@@ -161,6 +185,7 @@ export function DropZone({
 // ── Tray ─────────────────────────────────────────────────────────────────────────────────────────
 
 function Preview({ item }: { item: AttachmentSummary }) {
+  const t = useT();
   const client = useClient();
   const [detail, setDetail] = useState<AttachmentDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -172,7 +197,10 @@ function Preview({ item }: { item: AttachmentSummary }) {
       .then(
         (d) => live && setDetail(d),
         (err: unknown) =>
-          live && setError(err instanceof ApiError ? err.message : "Phoenix Core is unreachable"),
+          live &&
+          setError(
+            err instanceof ApiError ? err.message : translate("common.error.coreUnreachable"),
+          ),
       )
       .finally(() => live && setLoading(false));
     return () => {
@@ -180,7 +208,7 @@ function Preview({ item }: { item: AttachmentSummary }) {
     };
   }, [client, item.id]);
 
-  if (loading) return <p className="muted small">Loading…</p>;
+  if (loading) return <p className="muted small">{t("common.status.loading")}</p>;
   if (error)
     return (
       <p className="error-text small" role="alert">
@@ -192,7 +220,7 @@ function Preview({ item }: { item: AttachmentSummary }) {
     return (
       <img
         className="attachment-image"
-        alt={`Preview of ${detail.name}`}
+        alt={t("capture.attachments.preview.imageAlt", { name: detail.name })}
         src={`data:${detail.mime};base64,${detail.content}`}
       />
     );
@@ -202,10 +230,13 @@ function Preview({ item }: { item: AttachmentSummary }) {
     try {
       files = (JSON.parse(detail.content) as { files: typeof files }).files;
     } catch {
-      return <p className="error-text small">The stored listing cannot be shown.</p>;
+      return <p className="error-text small">{t("capture.attachments.preview.listingBroken")}</p>;
     }
     return (
-      <ul className="attachment-files" aria-label={`Files in ${detail.name}`}>
+      <ul
+        className="attachment-files"
+        aria-label={t("capture.attachments.preview.filesIn", { name: detail.name })}
+      >
         {files.map((f) => (
           <li key={f.path}>
             <code>{f.path}</code> <span className="muted">({formatBytes(f.bytes)})</span>
@@ -216,7 +247,11 @@ function Preview({ item }: { item: AttachmentSummary }) {
     );
   }
   return (
-    <pre className="attachment-content" aria-label={`Contents of ${detail.name}`} tabIndex={0}>
+    <pre
+      className="attachment-content"
+      aria-label={t("capture.attachments.preview.contentsOf", { name: detail.name })}
+      tabIndex={0}
+    >
       {detail.content}
     </pre>
   );
@@ -235,6 +270,7 @@ function Chip({
   onRemove: () => void;
   busy: boolean;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const boxId = useId();
   return (
@@ -245,33 +281,42 @@ function Chip({
           type="checkbox"
           checked={selected}
           onChange={onToggle}
-          aria-label={`Include ${item.name} in the question`}
+          aria-label={t("capture.attachments.chip.include", { name: item.name })}
         />
         <label htmlFor={boxId} className="attachment-name">
           <strong>{item.name}</strong>
         </label>
         <span className="muted small">
-          {KIND_LABEL[item.kind]}
-          {item.kind === "folder" && item.files !== null ? `, ${item.files} files` : ""} ·{" "}
-          {formatBytes(item.bytes)} · {ORIGIN_LABEL[item.origin]}
+          {item.kind === "folder" && item.files !== null
+            ? t("capture.attachments.chip.metaFiles", {
+                kind: t(KIND_LABEL[item.kind]),
+                files: item.files,
+                size: formatBytes(item.bytes),
+                origin: t(ORIGIN_LABEL[item.origin]),
+              })
+            : t("capture.attachments.chip.meta", {
+                kind: t(KIND_LABEL[item.kind]),
+                size: formatBytes(item.bytes),
+                origin: t(ORIGIN_LABEL[item.origin]),
+              })}
         </span>
         <button
           type="button"
           className="btn"
           aria-expanded={open}
-          aria-label={`Preview ${item.name}`}
+          aria-label={t("capture.attachments.chip.previewLabel", { name: item.name })}
           onClick={() => setOpen(!open)}
         >
-          {open ? "Hide" : "Preview"}
+          {open ? t("capture.attachments.chip.hide") : t("capture.attachments.chip.preview")}
         </button>
         <button
           type="button"
           className="btn"
-          aria-label={`Remove ${item.name}`}
+          aria-label={t("capture.attachments.chip.removeLabel", { name: item.name })}
           disabled={busy}
           onClick={onRemove}
         >
-          Remove
+          {t("common.button.remove")}
         </button>
       </div>
       {!open && item.preview && <p className="muted small attachment-preview">{item.preview}</p>}
@@ -293,6 +338,7 @@ export function AttachmentsTray({
   excluded: Record<string, true>;
   onToggle: (id: string) => void;
 }) {
+  const t = useT();
   const { run, busy, error } = useAction();
   const items = att.data?.attachments ?? [];
   // A list that cannot load shows nothing: an unreachable Core is already reported everywhere else.
@@ -310,18 +356,15 @@ export function AttachmentsTray({
   };
 
   return (
-    <section className="attachments-tray" aria-label="Attachments">
+    <section className="attachments-tray" aria-label={t("capture.attachments.tray.label")}>
       <div className="attachment-head">
-        <h3>Attachments ({items.length})</h3>
-        <span
-          className="model-badge"
-          title="Attached files are only ever read by a model on this device"
-        >
-          Local only
+        <h3>{t("capture.attachments.tray.heading", { n: items.length })}</h3>
+        <span className="model-badge" title={t("capture.attachments.tray.localOnlyTitle")}>
+          {t("capture.attachments.localOnly")}
         </span>
         {items.length > 0 && (
           <button type="button" className="btn" onClick={() => void clear()} disabled={busy}>
-            Clear all
+            {t("capture.attachments.tray.clearAll")}
           </button>
         )}
       </div>
@@ -339,15 +382,16 @@ export function AttachmentsTray({
       </ul>
       <Feedback error={error} />
       <p className="muted small" role="note">
-        Kept in Phoenix Core&apos;s memory only (never saved to disk) for up to {ttlMin} minutes.
         {ticked.length > 0
-          ? ` Pressing "Ask about attachments" sends ${ticked.length === 1 ? "the ticked item" : `the ${ticked.length} ticked items`}, in full, to a model on this device. Nothing leaves this device.`
-          : " Nothing is sent until you ask."}
+          ? t("capture.attachments.tray.noteTicked", { minutes: ttlMin, n: ticked.length })
+          : t("capture.attachments.tray.noteNone", { minutes: ttlMin })}
       </p>
       {ticked.length > DROP_LIMITS.askAttachments && (
         <p className="warning-text small" role="alert">
-          A question can use at most {DROP_LIMITS.askAttachments} items. Untick{" "}
-          {ticked.length - DROP_LIMITS.askAttachments} to ask.
+          {t("capture.attachments.tray.tooMany", {
+            max: DROP_LIMITS.askAttachments,
+            n: ticked.length - DROP_LIMITS.askAttachments,
+          })}
         </p>
       )}
     </section>
@@ -358,6 +402,7 @@ export function AttachmentsTray({
 
 /** An editable draft of the answer, handed to the user's own mail app. Phoenix never sends it. */
 export function DraftEmail({ answer }: { answer: AttachmentAnswer }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [body, setBody] = useState(answer.answer);
   const [to, setTo] = useState("");
@@ -374,20 +419,20 @@ export function DraftEmail({ answer }: { answer: AttachmentAnswer }) {
       await openMailto(built.url);
       setProblem(null);
     } catch {
-      setProblem("Could not open your mail app.");
+      setProblem(t("capture.attachments.draft.openFailed"));
     }
   };
 
   if (!open)
     return (
       <button type="button" className="btn" onClick={() => setOpen(true)}>
-        Draft email
+        {t("capture.attachments.draft.open")}
       </button>
     );
   return (
     <form className="draft-email" onSubmit={(e) => void submit(e)}>
       <label htmlFor={toId} className="small">
-        To (optional)
+        {t("capture.attachments.draft.to")}
       </label>
       <input
         id={toId}
@@ -397,7 +442,7 @@ export function DraftEmail({ answer }: { answer: AttachmentAnswer }) {
         onChange={(e) => setTo(e.target.value)}
       />
       <label htmlFor={bodyId} className="small">
-        Message (this exact text goes in the draft)
+        {t("capture.attachments.draft.message")}
       </label>
       <textarea
         id={bodyId}
@@ -407,8 +452,10 @@ export function DraftEmail({ answer }: { answer: AttachmentAnswer }) {
         aria-describedby={`${bodyId}-count`}
       />
       <p id={`${bodyId}-count`} className="muted small">
-        {body.length} / {MAIL_LIMITS.bodyChars} characters. Opens your mail app with a draft.
-        Phoenix does not send it.
+        {t("capture.attachments.draft.count", {
+          n: plainNumber(body.length, 0),
+          max: plainNumber(MAIL_LIMITS.bodyChars, 0),
+        })}
       </p>
       {problem && (
         <p className="error-text small" role="alert">
@@ -417,10 +464,10 @@ export function DraftEmail({ answer }: { answer: AttachmentAnswer }) {
       )}
       <div className="button-row wrap">
         <button type="submit" className="btn btn-primary">
-          Open mail draft
+          {t("capture.attachments.draft.submit")}
         </button>
         <button type="button" className="btn" onClick={() => setOpen(false)}>
-          Cancel
+          {t("common.button.cancel")}
         </button>
       </div>
     </form>
@@ -429,17 +476,28 @@ export function DraftEmail({ answer }: { answer: AttachmentAnswer }) {
 
 /** A reply to "Ask about attachments", as chat text: the answer, who produced it, and its sources. */
 export function AttachmentAnswerView({ answer }: { answer: AttachmentAnswer }) {
+  const t = useT();
+  const where = t(
+    answer.locality === "local"
+      ? "capture.attachments.answer.local"
+      : "capture.attachments.answer.cloud",
+  );
   return (
     <div className="attachment-answer">
       <p className="memory-text">{answer.answer}</p>
       <p className="muted small">
-        Processed by {answer.processed_by}
         {answer.vision_model
-          ? ` · images read by ${answer.vision_model} on this device`
-          : ""} · {answer.locality === "local" ? "free, on this device" : "cloud"}
+          ? t("capture.attachments.answer.processedVision", {
+              by: answer.processed_by,
+              vision: answer.vision_model,
+              where,
+            })
+          : t("capture.attachments.answer.processed", { by: answer.processed_by, where })}
       </p>
       <p className="muted small">
-        From: {answer.sources.map((s) => s.name).join(", ")}. Generated text, not a stored fact.
+        {t("capture.attachments.answer.from", {
+          names: answer.sources.map((s) => s.name).join(", "),
+        })}
       </p>
       <DraftEmail answer={answer} />
     </div>
@@ -448,16 +506,17 @@ export function AttachmentAnswerView({ answer }: { answer: AttachmentAnswer }) {
 
 /** The Overview's drop target: give Fawkes a file here, then ask about it in the Chat tab. */
 export function FawkesDropTarget() {
+  const t = useT();
   const att = useAttachments();
   const count = att.data?.attachments.length ?? 0;
   return (
     <section aria-labelledby="fawkes-drop-h">
-      <h3 id="fawkes-drop-h">Give Fawkes a file</h3>
+      <h3 id="fawkes-drop-h">{t("capture.attachments.fawkesDrop.heading")}</h3>
       <DropZone label="Fawkes" onDone={() => void att.reload()}>
         <p className="fawkes-drop-target">
-          Drop a file, image or folder on Fawkes, then ask about it in the Chat tab.{" "}
-          <span className="model-badge">Local only</span>
-          {count > 0 ? ` ${count} attached.` : ""}
+          {t("capture.attachments.fawkesDrop.hint")}{" "}
+          <span className="model-badge">{t("capture.attachments.localOnly")}</span>
+          {count > 0 ? ` ${t("capture.attachments.fawkesDrop.count", { n: count })}` : ""}
         </p>
       </DropZone>
     </section>

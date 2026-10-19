@@ -26,6 +26,7 @@ import {
   startMockStripe,
   type MockStripe,
 } from "../testing/mock-stripe";
+import { setImmediate as yieldToLoop } from "node:timers/promises";
 
 const T0 = Date.parse("2026-10-05T09:00:00Z");
 const later = (s: number) => (T0 + s * 1000) / 1000;
@@ -51,9 +52,11 @@ async function ready(
   clock = new Clock();
   options.data?.(mock);
   h = createHarness({
-    modules: [createStripeCapability({ now: () => clock.now, sleep: clock.sleep })],
+    modules: [
+      createStripeCapability({ apiUrl: mock.url, now: () => clock.now, sleep: clock.sleep }),
+    ],
   });
-  h.manager.configure("stripe", { base_url: mock.url, ...options.config });
+  if (options.config) h.manager.configure("stripe", options.config);
   const key = options.key === undefined ? MOCK_KEY : options.key;
   if (key) await h.manager.setSecret("stripe", "restricted_key", key);
   await h.enable("stripe");
@@ -114,10 +117,11 @@ describe("manifest and configuration", () => {
     expect(view.permissions.map((p) => p.permission)).toEqual(["network", "external_api"]);
     expect(view.secrets).toEqual([expect.objectContaining({ name: "restricted_key", set: true })]);
     expect(JSON.stringify(view)).not.toContain(MOCK_KEY);
-    expect(() => h!.manager.configure("stripe", { base_url: "http://api.example.com" })).toThrow();
-    expect(() =>
-      h!.manager.configure("stripe", { base_url: "https://u:p@api.example.com" }),
-    ).toThrow();
+    // base_url is not a setting: the key can only go to Stripe's own origin (the mock is injected in code).
+    for (const base_url of ["http://api.example.com", "https://attacker.example", mock!.url]) {
+      expect(() => h!.manager.configure("stripe", { base_url }), base_url).toThrow();
+    }
+    expect(view.config_schema).not.toHaveProperty("properties.base_url");
     expect(() => h!.manager.configure("stripe", { api_key: MOCK_KEY })).toThrow();
   });
 });
@@ -140,6 +144,14 @@ describe("parsing", () => {
     expect(text).not.toContain("Ada");
     expect(text).not.toContain("example.com/");
     expect(text).not.toContain("customer@");
+  });
+
+  it("a receipt link carrying a credential-lookalike is dropped, so the payment event is still delivered", () => {
+    const lookalike = ["gh", "p_", "a1B2".repeat(8)].join("");
+    const parsed = parseCharge(
+      charge({ receipt_url: `https://pay.stripe.com/receipts/${lookalike}` }),
+    );
+    expect(parsed).toMatchObject({ id: "ch_3Abc123", url: undefined });
   });
 
   it.each([
@@ -293,7 +305,7 @@ describe("polling through the capability", () => {
     expect(everything()).not.toContain("customer@");
   });
 
-  it("sends the key only as a Bearer header to base_url", async () => {
+  it("sends the key only as a Bearer header to Stripe's origin (the injected apiUrl)", async () => {
     await ready();
     expect(mock!.service.requests[0]!.path).toBe("/v1/charges?limit=25");
     for (const r of mock!.service.requests)
@@ -310,21 +322,22 @@ describe("polling through the capability", () => {
     mock = await startMockStripe();
     clock = new Clock();
     h = createHarness({
-      modules: [createStripeCapability({ now: () => clock.now, sleep: clock.sleep })],
+      modules: [
+        createStripeCapability({ apiUrl: mock.url, now: () => clock.now, sleep: clock.sleep }),
+      ],
     });
     h.manager.presence.setClients(0);
-    h.manager.configure("stripe", { base_url: mock.url });
     await h.manager.setSecret("stripe", "restricted_key", MOCK_KEY);
     await h.enable("stripe");
-    await new Promise((r) => setImmediate(r));
+    await yieldToLoop();
     expect(mock.service.requests).toEqual([]);
     h.manager.presence.setClients(1);
     await clock.first();
     expect(mock.service.requests).toHaveLength(1);
     h.manager.presence.setClients(0);
     clock.release();
-    await new Promise((r) => setImmediate(r));
-    await new Promise((r) => setImmediate(r));
+    await yieldToLoop();
+    await yieldToLoop();
     expect(mock.service.requests).toHaveLength(1);
   });
 });

@@ -41,6 +41,15 @@ const CORE_ONLY_EVENT =
 const isCoreOnlyEvent = (type: unknown): boolean =>
   typeof type === "string" && CORE_ONLY_EVENT.test(type);
 
+/**
+ * Event types and sources of the built-in service capabilities (Phases 67, 68, 69). They only ever
+ * emit through `ctx.emit`, so `POST /api/events` refuses anything that claims to be one of them.
+ */
+const IN_PROCESS_ONLY =
+  /^(vercel|stripe|n8n|resend|notion|calcom|spotify|apple_music|portfolio)(\.|$)/;
+const isInProcessOnly = (value: unknown): boolean =>
+  typeof value === "string" && IN_PROCESS_ONLY.test(value);
+
 export function buildRoutes(s: CoreServices): Route[] {
   const notes = () => {
     if (!s.notifications) throw notFound("Notifications");
@@ -122,6 +131,15 @@ export function buildRoutes(s: CoreServices): Route[] {
         throw new PhoenixError(
           ErrorCode.SECURITY_POLICY_BLOCKED,
           `Event type "${String(expectObject(event).event_type)}" is reserved for Core`,
+        );
+      }
+      // These capabilities only ever emit through their own in-process `ctx.emit`; a copy posted
+      // here would be indistinguishable from a real deployment, payment or booking.
+      const posted = expectObject(event);
+      if (isInProcessOnly(posted.event_type) || isInProcessOnly(posted.source)) {
+        throw new PhoenixError(
+          ErrorCode.SECURITY_POLICY_BLOCKED,
+          "Events of the built-in service capabilities cannot be posted",
         );
       }
       const result = s.bus.publish(event);

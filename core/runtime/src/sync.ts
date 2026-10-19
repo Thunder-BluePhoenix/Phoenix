@@ -83,15 +83,15 @@ export interface SyncStatus {
   pending: number;
   conflicts: number;
 }
+export type SyncTransportFactory = (endpoint: string, token: string) => SyncTransport;
+
 /** Local-first sync: remote rows remain staged; selected settings apply only after explicit review. */
 export class SyncRuntime {
   constructor(
     private readonly settings: SettingsStore,
     private readonly secrets?: SecretStore,
-    private readonly transportFactory: (endpoint: string, token: string) => SyncTransport = (
-      endpoint,
-      token,
-    ) => new HttpsSyncTransport(endpoint, token),
+    private readonly transportFactory: SyncTransportFactory = (endpoint, token) =>
+      new HttpsSyncTransport(endpoint, token),
   ) {}
   private inFlight: Promise<unknown> | null = null;
   private state(): SyncState {

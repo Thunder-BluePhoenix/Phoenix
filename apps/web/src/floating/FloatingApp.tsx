@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import type { DragEvent } from "@phoenix/pet-runtime";
+import type { DragEvent, SoundPlayer } from "@phoenix/pet-runtime";
 import { visualFor } from "@phoenix/pet-states";
 import { useCallback, useEffect, useState } from "react";
+import { tauriShortcuts, type ShortcutsShell } from "../commands/shortcuts-shell";
 import { FawkesAvatar } from "../components/FawkesAvatar";
 import { ActiveSourcePills } from "../components/SourcePills";
 import { useWornOutfit } from "../core/appearance";
 import { useDisplayedState } from "../core/context";
+import { useMute } from "../core/mute";
 import { usePetSettings } from "../core/hooks";
 import type { PetState } from "../core/types";
+import { useT } from "../i18n";
 import type { DesktopShell } from "./shell";
 
 /** Non-urgent messages fade after this long; urgent ones stay until the state changes. */
@@ -46,7 +49,21 @@ export function useBubble(state: PetState): string | null {
  * recording, an explicit recording indicator. Hidden or visible, Fawkes never
  * implies recording by itself (PRD §15).
  */
-export function FloatingApp({ shell }: { shell: DesktopShell | null }) {
+export function FloatingApp({
+  shell,
+  shortcuts,
+  sounds,
+}: {
+  shell: DesktopShell | null;
+  /** The desktop's mute flag and shortcuts (null in a browser, where nothing is muted). */
+  shortcuts?: ShortcutsShell | null;
+  /** The pet's sound player, when the host has one; silenced while the desktop is muted. */
+  sounds?: SoundPlayer;
+}) {
+  const t = useT();
+  // Looked up once: a new shell object on every render would resubscribe to the mute event.
+  const [own] = useState(() => tauriShortcuts());
+  const mute = useMute(shortcuts === undefined ? own : shortcuts, sounds);
   const state = useDisplayedState();
   const { data: settings } = usePetSettings();
   const bubble = useBubble(state);
@@ -69,7 +86,7 @@ export function FloatingApp({ shell }: { shell: DesktopShell | null }) {
       }}
     >
       <div className="bubble-slot">
-        {bubble && (
+        {bubble && !mute.muted && (
           // Fawkes' own accessible name already carries this text; don't announce it twice.
           <p className="bubble" data-tone={visualFor(state.state).tone} aria-hidden="true">
             {bubble}
@@ -82,14 +99,15 @@ export function FloatingApp({ shell }: { shell: DesktopShell | null }) {
         draggable
         reducedMotion={settings.reduced_motion}
         outfit={outfit}
-        actionHint="Open in Phoenix"
+        {...(mute.sounds ? { sounds: mute.sounds } : {})}
+        actionHint={t("pet.desktop.openInPhoenix")}
         onDrag={onDrag}
         onActivate={() => shell?.openInPhoenix(routeFor(state))}
       />
       <ActiveSourcePills />
       {state.recording && (
         <span className="rec-pill" role="status">
-          <span className="rec-dot" aria-hidden="true" /> Recording
+          <span className="rec-dot" aria-hidden="true" /> {t("common.petState.RECORDING")}
         </span>
       )}
     </div>

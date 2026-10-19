@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useClient, useConnection } from "../core/context";
 import { useCapabilities } from "../core/hooks";
 import type { CapabilityView } from "../core/types";
+import { useT, type MessageKey } from "../i18n";
 import { Approvals } from "./Approvals";
 
 type Modality = {
@@ -43,13 +44,14 @@ const CAPABILITY: Record<CaptureKind, string> = {
 
 /** Core confirms grant, local model and per-use approval before a browser OS permission prompt. */
 export function Multimodal() {
+  const t = useT();
   const client = useClient();
   const connection = useConnection();
   const { data: capabilities } = useCapabilities();
   const [status, setStatus] = useState<CaptureStatus | null>(null);
-  const [statusError, setStatusError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState(false);
   const [active, setActive] = useState<CaptureKind | null>(null);
-  const [phase, setPhase] = useState("");
+  const [phase, setPhase] = useState<MessageKey | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const current = useRef<{ socket: WebSocket; session?: ScopedCaptureSession } | null>(null);
@@ -65,10 +67,10 @@ export function Multimodal() {
       )
         throw new Error("Incomplete capture status");
       setStatus(value);
-      setStatusError(null);
+      setStatusError(false);
     } catch {
       setStatus(null);
-      setStatusError("Core capture status is unavailable.");
+      setStatusError(true);
     }
   }, [client]);
 
@@ -93,7 +95,7 @@ export function Multimodal() {
     capture?.session?.stop();
     capture?.socket.close();
     setActive(null);
-    setPhase("");
+    setPhase(null);
   }, []);
   useEffect(
     () => () => {
@@ -137,7 +139,9 @@ export function Multimodal() {
     try {
       socket = client.openCaptureSocket();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Capture connection unavailable.");
+      setError(
+        err instanceof Error ? err.message : t("capture.multimodal.error.connectionUnavailable"),
+      );
       return;
     }
     const capture: { socket: WebSocket; session?: ScopedCaptureSession } = { socket };
@@ -145,7 +149,7 @@ export function Multimodal() {
     setResult(null);
     setError(null);
     setActive(kind);
-    setPhase("Waiting for Core approval. Review the request below; no device is active yet.");
+    setPhase("capture.multimodal.phase.waitingApproval");
     socket.onopen = () => {
       if (current.current === capture) socket.send(JSON.stringify({ kind, agent_id: source }));
     };
@@ -155,15 +159,15 @@ export function Multimodal() {
       try {
         message = JSON.parse(event.data) as CaptureMessage;
       } catch {
-        setError("Invalid Core capture response.");
+        setError(t("capture.multimodal.error.invalidResponse"));
         stop();
         return;
       }
       if (message.type === "ready" && !capture.session) {
         setPhase(
           kind === "microphone"
-            ? "Core approved. Requesting microphone access for one second."
-            : "Core approved. Requesting one screen frame.",
+            ? "capture.multimodal.phase.approvedMicrophone"
+            : "capture.multimodal.phase.approvedScreen",
         );
         let session: ScopedCaptureSession;
         try {
@@ -178,7 +182,7 @@ export function Multimodal() {
             },
           });
         } catch {
-          setError("Browser capture is unavailable.");
+          setError(t("capture.multimodal.error.browserUnavailable"));
           stop();
           return;
         }
@@ -189,12 +193,14 @@ export function Multimodal() {
             const bytes = await session.readFor(source);
             if (current.current !== capture || socket.readyState !== 1) return;
             if (bytes.length === 0 || bytes.length > LIMIT[kind])
-              throw new Error("Capture exceeds the allowed frame size.");
+              throw new Error(t("capture.multimodal.error.frameSize"));
             socket.send(bytes);
-            setPhase("Processing locally; the device is stopped.");
+            setPhase("capture.multimodal.phase.processing");
           } catch (err) {
             if (current.current !== capture) return;
-            setError(err instanceof Error ? err.message : "Browser device access denied.");
+            setError(
+              err instanceof Error ? err.message : t("capture.multimodal.error.deviceDenied"),
+            );
             stop();
           } finally {
             session.stop();
@@ -207,30 +213,32 @@ export function Multimodal() {
           typeof message.provider !== "string" ||
           message.locality !== "local"
         ) {
-          setError("Core returned an invalid local capture result.");
+          setError(t("capture.multimodal.error.invalidResult"));
         } else {
           setResult({ kind, text, provider: message.provider, locality: message.locality });
         }
         stop();
         void refresh();
       } else if (message.type === "error") {
-        setError(typeof message.error === "string" ? message.error : "Core refused capture.");
+        setError(
+          typeof message.error === "string" ? message.error : t("capture.multimodal.error.refused"),
+        );
         stop();
         void refresh();
       } else {
-        setError("Unexpected Core capture response.");
+        setError(t("capture.multimodal.error.unexpected"));
         stop();
       }
     };
     socket.onerror = () => {
       if (current.current === capture) {
-        setError("Capture connection failed.");
+        setError(t("capture.multimodal.error.connectionFailed"));
         stop();
       }
     };
     socket.onclose = () => {
       if (current.current === capture) {
-        setError("Capture ended without a result or approval.");
+        setError(t("capture.multimodal.error.ended"));
         stop();
       }
     };
@@ -239,35 +247,30 @@ export function Multimodal() {
   return (
     <section className="card" aria-labelledby="capture-h">
       <h2 id="capture-h" className="h3">
-        One-time device capture
+        {t("capture.multimodal.title")}
       </h2>
-      <p className="muted small">
-        Requested by: user. Core checks your capability grant and asks for per-use approval before
-        your browser asks for device access. Nothing captures in the background; no cloud fallback.
-      </p>
-      {statusError && <p role="status">{statusError}</p>}
-      {status?.kill_switch_engaged && (
-        <p role="status">Capture unavailable: kill switch engaged.</p>
-      )}
+      <p className="muted small">{t("capture.multimodal.intro")}</p>
+      {statusError && <p role="status">{t("capture.multimodal.statusUnavailable")}</p>}
+      {status?.kill_switch_engaged && <p role="status">{t("capture.multimodal.killSwitch")}</p>}
       {(["microphone", "screen"] as const).map((kind) => {
         const modality = status?.[kind === "microphone" ? "speech" : "vision"];
-        const label =
-          kind === "microphone" ? "Microphone · one second of WAV audio" : "Screen · one PNG frame";
+        const reported = (value: string | undefined) =>
+          modality?.available
+            ? (value ?? t("capture.multimodal.notReported"))
+            : t("capture.multimodal.modalityUnavailable");
         return (
           <div key={kind}>
             <p>
-              {label}. Model:{" "}
-              {modality?.available ? (modality.model ?? "not reported by Core") : "unavailable"};
-              provider:{" "}
-              {modality?.available ? (modality.provider ?? "not reported by Core") : "unavailable"};
-              locality:{" "}
-              {modality?.available ? (modality.locality ?? "not reported by Core") : "unavailable"}.{" "}
-              {modality?.detail ?? "Status not yet available."}
+              {t("capture.multimodal.modality", {
+                label: t(`capture.multimodal.kind.${kind}`),
+                model: reported(modality?.model),
+                provider: reported(modality?.provider),
+                locality: reported(modality?.locality),
+                detail: modality?.detail ?? t("capture.multimodal.statusPending"),
+              })}
             </p>
             {!granted(kind) && (
-              <p className="muted small">
-                {kind} capability grant is unavailable; enable it under Capabilities before capture.
-              </p>
+              <p className="muted small">{t(`capture.multimodal.grant.${kind}`)}</p>
             )}
             <button
               type="button"
@@ -275,14 +278,14 @@ export function Multimodal() {
               disabled={!!current.current || !available(kind)}
               onClick={() => start(kind)}
             >
-              Capture {kind}
+              {t(`capture.multimodal.capture.${kind}`)}
             </button>
           </div>
         );
       })}
       {active && (
         <>
-          <p role="status">{phase}</p>
+          <p role="status">{phase && t(phase)}</p>
           <button
             type="button"
             className="btn"
@@ -292,7 +295,7 @@ export function Multimodal() {
               setResult(null);
             }}
           >
-            Stop capture
+            {t("capture.multimodal.stop")}
           </button>
           <Approvals />
         </>
@@ -305,12 +308,19 @@ export function Multimodal() {
       {result && (
         <div role="status">
           <p>
-            {result.kind === "microphone" ? "Transcript" : "Screen description"} · {result.provider}{" "}
-            ({result.locality})
+            {t("capture.multimodal.result.heading", {
+              what: t(
+                result.kind === "microphone"
+                  ? "capture.multimodal.result.transcript"
+                  : "capture.multimodal.result.screen",
+              ),
+              provider: result.provider,
+              locality: result.locality,
+            })}
           </p>
           <p className="memory-text">{result.text}</p>
           <button type="button" className="btn" onClick={() => setResult(null)}>
-            Clear result
+            {t("capture.multimodal.result.clear")}
           </button>
         </div>
       )}

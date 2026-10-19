@@ -3,6 +3,7 @@
 import { GLYPHS } from "@phoenix/pet-runtime";
 import type { CSSProperties } from "react";
 import { useActivePills, type Pill } from "../core/appearance";
+import { useT } from "../i18n";
 import "./source-pills.css";
 
 /** Most pills drawn at once; the rest are counted in text, so nothing is silently dropped. */
@@ -13,11 +14,12 @@ export const MAX_PILLS = 4;
  * source's name as text. The glyph is decorative for assistive technology (the text says it all).
  */
 export function SourcePills({ pills }: { pills: Pill[] }) {
+  const t = useT();
   if (pills.length === 0) return null;
   const shown = pills.slice(0, MAX_PILLS);
   const hidden = pills.length - shown.length;
   return (
-    <ul className="source-pills" aria-label="Active sources">
+    <ul className="source-pills" aria-label={t("pet.sources.active")}>
       {shown.map((p) => (
         <li
           key={p.id}
@@ -36,7 +38,9 @@ export function SourcePills({ pills }: { pills: Pill[] }) {
           <span className="source-pill-label">{p.label}</span>
         </li>
       ))}
-      {hidden > 0 && <li className="source-pill source-pill-more">+{hidden} more</li>}
+      {hidden > 0 && (
+        <li className="source-pill source-pill-more">{t("pet.sources.more", { count: hidden })}</li>
+      )}
     </ul>
   );
 }

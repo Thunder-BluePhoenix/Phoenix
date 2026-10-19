@@ -11,14 +11,9 @@ import {
 import { useClient, useConnection } from "../core/context";
 import { createBrowserMicrophone, type DictationMicrophone } from "../core/dictation-mic";
 import { useAction } from "../core/hooks";
-import {
-  CONSENT_CHECKBOX,
-  CONSENT_NOTICE,
-  MIC_ONLY_NOTICE,
-  formatElapsed,
-  type NotetakerStatus,
-} from "../core/notetaker";
+import { formatElapsed, type NotetakerStatus } from "../core/notetaker";
 import { recorderFor } from "../core/notetaker-recorder";
+import { useT } from "../i18n";
 import { Feedback } from "./Feedback";
 
 /** The status of the notetaker, kept current while Core says a recording starts or ends. */
@@ -61,6 +56,7 @@ function useElapsedSeconds(startedAtMs: number | null): number {
 
 /** Settings > Notetaker: the switch (off by default) and what recording does and does not do. */
 export function NotetakerSettingsSection() {
+  const t = useT();
   const { run, busy, error } = useAction();
   const { status, refresh } = useNotetakerStatus();
   const [saved, setSaved] = useState<string | null>(null);
@@ -68,7 +64,11 @@ export function NotetakerSettingsSection() {
   const toggle = async (enabled: boolean) => {
     setSaved(null);
     if (await run("POST", "/api/notetaker/settings", { enabled })) {
-      setSaved(enabled ? "The notetaker is on." : "The notetaker is off.");
+      setSaved(
+        enabled
+          ? t("capture.notetaker.settings.savedOn")
+          : t("capture.notetaker.settings.savedOff"),
+      );
       void refresh();
     }
   };
@@ -77,41 +77,39 @@ export function NotetakerSettingsSection() {
     return (
       <section className="card" aria-labelledby="notetaker-h">
         <h2 id="notetaker-h" className="h3">
-          Notetaker
+          {t("capture.notetaker.settings.title")}
         </h2>
-        <p className="muted small">Loading…</p>
+        <p className="muted small">{t("common.status.loading")}</p>
       </section>
     );
   return (
     <section className="card notetaker-settings" aria-labelledby="notetaker-h">
       <h2 id="notetaker-h" className="h3">
-        Notetaker
+        {t("capture.notetaker.settings.title")}
       </h2>
       <p className="small">
-        The notetaker records a call on this computer, with no bot joining, and turns it into a
-        transcript, a summary and to-dos you can review. It is <strong>off</strong> until you turn
-        it on here. Turning it on is <strong>not</strong> consent to record anyone: every recording
-        asks you again.
+        {t.rich("capture.notetaker.settings.intro", {
+          off: <strong>{t("capture.notetaker.settings.introOff")}</strong>,
+          not: <strong>{t("capture.notetaker.settings.introNot")}</strong>,
+        })}
       </p>
       <ul className="small">
         <li>
-          <strong>Audio is never stored.</strong> It is kept in memory only, turned into text in
-          short pieces on this device, and erased as soon as each piece is done or the recording
-          stops.
+          <strong>{t("capture.notetaker.settings.audio.lead")}</strong>{" "}
+          {t("capture.notetaker.settings.audio.body")}
         </li>
         <li>
-          <strong>What is kept:</strong> the transcript, written as the call goes on, and a summary
-          made by a model on this device. If no model answers, you get the transcript without a
-          summary.
+          <strong>{t("capture.notetaker.settings.kept.lead")}</strong>{" "}
+          {t("capture.notetaker.settings.kept.body")}
         </li>
         <li>
-          <strong>Speakers:</strong> only “You” and “Others”. Phoenix does not tell the other people
-          apart.
+          <strong>{t("capture.notetaker.settings.speakers.lead")}</strong>{" "}
+          {t("capture.notetaker.settings.speakers.body")}
         </li>
         <li>
-          <strong>What is captured:</strong> {status.capture.detail}
+          <strong>{t("capture.notetaker.settings.captured.lead")}</strong> {status.capture.detail}
         </li>
-        <li>Fawkes shows “Recording” in every view, and a Stop button, for the whole recording.</li>
+        <li>{t("capture.notetaker.settings.banner")}</li>
       </ul>
       <label className="choice">
         <input
@@ -120,15 +118,19 @@ export function NotetakerSettingsSection() {
           disabled={busy}
           onChange={(e) => void toggle(e.target.checked)}
         />
-        Turn on the notetaker
+        {t("capture.notetaker.settings.toggle")}
       </label>
       <p className="small" role="status">
-        Speech recogniser: {status.recognizer.available ? "available" : "unavailable"}.{" "}
-        {status.recognizer.detail}
+        {t(
+          status.recognizer.available
+            ? "capture.audio.recognizerAvailable"
+            : "capture.audio.recognizerUnavailable",
+          { detail: status.recognizer.detail },
+        )}
       </p>
       <p className="muted small">{status.summary.detail}</p>
       {status.kill_switch_engaged && (
-        <p role="status">The emergency stop is engaged: recording is blocked.</p>
+        <p role="status">{t("capture.notetaker.settings.killSwitch")}</p>
       )}
       <Feedback error={error} saved={saved} />
     </section>
@@ -147,6 +149,7 @@ export function NotetakerBanner({
   /** Test seam: a fake microphone. Production uses getUserMedia through the browser. */
   createMicrophone?: () => DictationMicrophone;
 }) {
+  const t = useT();
   const client = useClient();
   const { status } = useNotetakerStatus();
   const recorder = recorderFor(client, createMicrophone);
@@ -169,13 +172,15 @@ export function NotetakerBanner({
   return (
     <div className="recording-banner notetaker-banner" role="status" data-testid="notetaker-banner">
       <strong>
-        <span className="rec-dot" aria-hidden="true" /> Recording a call
+        <span className="rec-dot" aria-hidden="true" /> {t("capture.notetaker.banner.title")}
       </strong>
       <span className="notetaker-elapsed" data-testid="notetaker-elapsed">
         {formatElapsed(elapsed)}
       </span>
       <span className="small">
-        {mine || local.phase === "recording" ? MIC_ONLY_NOTICE : status?.capture.detail}
+        {mine || local.phase === "recording"
+          ? t("capture.notetaker.micOnly")
+          : status?.capture.detail}
       </span>
       <button
         type="button"
@@ -183,7 +188,7 @@ export function NotetakerBanner({
         disabled={stopping}
         onClick={() => void stop()}
       >
-        {stopping ? "Stopping…" : "Stop recording"}
+        {stopping ? t("capture.notetaker.banner.stopping") : t("capture.notetaker.banner.stop")}
       </button>
       {(error ?? local.error) && (
         <span className="error-text" role="alert">
@@ -206,6 +211,7 @@ function ConsentDialog({
   onStart: (title: string) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const [agreed, setAgreed] = useState(false);
   const [title, setTitle] = useState("");
   const titleId = useId();
@@ -222,12 +228,12 @@ function ConsentDialog({
       onSubmit={submit}
     >
       <h3 id={`${titleId}-h`} className="h3">
-        Before you record
+        {t("capture.notetaker.consent.title")}
       </h3>
       <p role="note">
-        <strong>{CONSENT_NOTICE}</strong>
+        <strong>{t("capture.notetaker.consent.notice")}</strong>
       </p>
-      <p className="small">{MIC_ONLY_NOTICE}</p>
+      <p className="small">{t("capture.notetaker.micOnly")}</p>
       <label className="choice">
         <input
           type="checkbox"
@@ -235,10 +241,12 @@ function ConsentDialog({
           checked={agreed}
           onChange={(e) => setAgreed(e.target.checked)}
         />
-        {CONSENT_CHECKBOX}
+        {t("capture.notetaker.consent.checkbox")}
       </label>
       <label htmlFor={`${titleId}-title`}>
-        Title <span className="muted small">(optional)</span>
+        {t.rich("capture.notetaker.consent.titleField", {
+          optional: <span className="muted small">{t("capture.notetaker.consent.optional")}</span>,
+        })}
       </label>
       <input
         id={`${titleId}-title`}
@@ -249,10 +257,10 @@ function ConsentDialog({
       />
       <div className="button-row wrap">
         <button type="submit" className="btn btn-primary" disabled={!agreed || busy}>
-          Start recording
+          {t("capture.notetaker.consent.start")}
         </button>
         <button type="button" className="btn" onClick={onCancel}>
-          Cancel
+          {t("common.button.cancel")}
         </button>
       </div>
     </form>
@@ -266,6 +274,7 @@ export function RecordCall({
   /** Test seam: a fake microphone. Production uses getUserMedia through the browser. */
   createMicrophone?: () => DictationMicrophone;
 }) {
+  const t = useT();
   const client = useClient();
   const connection = useConnection();
   const { status, refresh } = useNotetakerStatus();
@@ -278,30 +287,29 @@ export function RecordCall({
   }, [local.phase, refresh]);
 
   const blocked = !status
-    ? "The notetaker status is not available."
+    ? t("capture.notetaker.blocked.unavailable")
     : !status.enabled
-      ? "The notetaker is off. Turn it on in Settings, under Notetaker."
+      ? t("capture.notetaker.blocked.off")
       : status.kill_switch_engaged
-        ? "The emergency stop is engaged."
+        ? t("capture.audio.emergencyStop")
         : !status.recognizer.available
           ? status.recognizer.detail
           : !status.consent_channel.available
-            ? `Recording needs a trusted way to ask you first. ${status.consent_channel.detail}`
+            ? t("capture.notetaker.blocked.noConsentChannel", {
+                detail: status.consent_channel.detail,
+              })
             : connection !== "online"
-              ? "Phoenix Core is not connected."
+              ? t("capture.audio.coreNotConnected")
               : status.active || local.phase !== "idle"
-                ? "A recording is already in progress."
+                ? t("capture.notetaker.blocked.inProgress")
                 : null;
 
   return (
     <section className="card notetaker-record" aria-labelledby="record-call-h">
       <h2 id="record-call-h" className="h3">
-        Record a call
+        {t("capture.notetaker.record.title")}
       </h2>
-      <p className="muted small">
-        Records this computer’s microphone, with no bot. Audio is never stored; you get a transcript
-        and, if a model on this device answers, a summary.
-      </p>
+      <p className="muted small">{t("capture.notetaker.record.intro")}</p>
       {!asking && (
         <button
           type="button"
@@ -309,7 +317,7 @@ export function RecordCall({
           disabled={blocked !== null}
           onClick={() => setAsking(true)}
         >
-          Record a call
+          {t("capture.notetaker.record.title")}
         </button>
       )}
       {blocked && <p className="muted small">{blocked}</p>}
@@ -326,14 +334,16 @@ export function RecordCall({
       )}
       {local.phase === "starting" && (
         <p className="small" role="status">
-          Waiting for the microphone permission…
+          {t("capture.audio.waitingForPermission")}
         </p>
       )}
       <Feedback error={local.error} />
       {local.meetingId && (
         <p className="small" role="status">
-          The recording was saved.{" "}
-          <a href={`#/meetings/${encodeURIComponent(local.meetingId)}`}>Open the meeting</a>
+          {t("capture.notetaker.record.saved")}{" "}
+          <a href={`#/meetings/${encodeURIComponent(local.meetingId)}`}>
+            {t("capture.notetaker.record.openMeeting")}
+          </a>
         </p>
       )}
     </section>

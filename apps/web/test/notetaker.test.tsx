@@ -11,17 +11,15 @@ import { PhoenixClient } from "../src/core/client";
 import { CoreProvider } from "../src/core/context";
 import type { DictationMicrophone } from "../src/core/dictation-mic";
 import { recorderFor } from "../src/core/notetaker-recorder";
-import {
-  CONSENT_CHECKBOX,
-  CONSENT_NOTICE,
-  MIC_ONLY_NOTICE,
-  RECORDED_HERE,
-  formatElapsed,
-  type NotetakerStatus,
-} from "../src/core/notetaker";
+import { RECORDED_HERE, formatElapsed, type NotetakerStatus } from "../src/core/notetaker";
+import { en } from "../src/i18n/en";
 import type { PetState } from "../src/core/types";
 import { fakeApi, type FakeApi } from "./fake-api";
 import { FakeWebSocket } from "./fake-ws";
+
+const CONSENT_NOTICE = en["capture.notetaker.consent.notice"];
+const CONSENT_CHECKBOX = en["capture.notetaker.consent.checkbox"];
+const MIC_ONLY_NOTICE = en["capture.notetaker.micOnly"];
 
 /** A WebSocket that records binary frames and has a real-looking readyState. */
 class AudioSocket extends FakeWebSocket {

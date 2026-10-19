@@ -12,6 +12,8 @@ import {
   type Recap,
 } from "../core/recap";
 import { downloadRecapPng } from "../core/recap-image";
+import { formatNumber } from "../core/format";
+import { useT } from "../i18n";
 import { Feedback } from "./Feedback";
 
 /** The same week, a number of weeks earlier (negative) or later, as a day key the API accepts. */
@@ -33,15 +35,16 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 /** Commits per local day, one column per week. A table for assistive tech; colour is never the only cue. */
 function ContributionGrid({ grid }: { grid: Recap["grid"] }) {
+  const t = useT();
   return (
     <section aria-labelledby="recap-grid-h">
       <h3 id="recap-grid-h" className="h3">
-        Commit grid
+        {t("memory.recap.grid.title")}
       </h3>
       <div
         className="recap-grid"
         role="img"
-        aria-label={`${grid.total} commits in ${grid.weeks.length} weeks`}
+        aria-label={t("memory.recap.grid.label", { commits: grid.total, weeks: grid.weeks.length })}
       >
         {grid.weeks.map((week) => (
           <div key={week.start} className="recap-grid-week">
@@ -49,16 +52,13 @@ function ContributionGrid({ grid }: { grid: Recap["grid"] }) {
               <span
                 key={d.day}
                 className={`recap-cell recap-level-${gridLevel(d.count, grid.max)}`}
-                title={`${formatDayKey(d.day)}: ${d.count} ${d.count === 1 ? "commit" : "commits"}`}
+                title={t("memory.recap.grid.cell", { day: formatDayKey(d.day), count: d.count })}
               />
             ))}
           </div>
         ))}
       </div>
-      <p className="muted small">
-        Counted on this computer from the commits Phoenix saw in the repositories it watches. This
-        is not your GitHub contribution calendar.
-      </p>
+      <p className="muted small">{t("memory.recap.grid.note")}</p>
     </section>
   );
 }
@@ -71,6 +71,7 @@ export function RecapPage({
   download?: typeof downloadRecapPng;
 }) {
   const client = useClient();
+  const t = useT();
   const [week, setWeek] = useState<string | undefined>(undefined);
   const [recap, setRecap] = useState<Recap | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -86,9 +87,9 @@ export function RecapPage({
       setRecap(await client.request<Recap>("GET", `/api/recap${query}`));
       setLoadError(null);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Phoenix Core is unreachable");
+      setLoadError(err instanceof Error ? err.message : t("common.error.coreUnreachable"));
     }
-  }, [client, week]);
+  }, [client, week, t]);
 
   useEffect(() => {
     void load();
@@ -97,7 +98,7 @@ export function RecapPage({
   const remove = async () => {
     const r = await run<{ deleted: number }>("DELETE", "/api/recap?confirm=true");
     setConfirm(false);
-    if (r) setSaved(`Deleted ${r.deleted} recap records.`);
+    if (r) setSaved(t("memory.recap.deleted", { count: r.deleted }));
     await load();
   };
 
@@ -106,23 +107,23 @@ export function RecapPage({
     setExportError(null);
     try {
       await download(recap, { showProjects });
-      setSaved("Recap image saved.");
+      setSaved(t("memory.recap.saved"));
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : "The recap image could not be saved");
+      setExportError(err instanceof Error ? err.message : t("memory.recap.exportFailed"));
     }
   };
 
   return (
     <section aria-labelledby="recap-h" className="card recap">
       <h2 id="recap-h" className="h3">
-        Weekly recap
+        {t("memory.recap.title")}
       </h2>
       {loadError && (
         <p className="error-text" role="alert">
           {loadError}
         </p>
       )}
-      {!recap && !loadError && <p className="muted small">Loading…</p>}
+      {!recap && !loadError && <p className="muted small">{t("common.status.loading")}</p>}
       {recap && (
         <>
           <div className="button-row wrap">
@@ -131,7 +132,7 @@ export function RecapPage({
               className="btn"
               onClick={() => setWeek(shiftWeek(recap.week.start, -1))}
             >
-              Previous week
+              {t("memory.recap.previousWeek")}
             </button>
             <strong aria-live="polite">{formatWeek(recap.week)}</strong>
             <button
@@ -140,46 +141,76 @@ export function RecapPage({
               disabled={recap.week.current}
               onClick={() => setWeek(shiftWeek(recap.week.start, 1))}
             >
-              Next week
+              {t("memory.recap.nextWeek")}
             </button>
           </div>
           {isEmptyWeek(recap) && (
             <p className="muted" role="status">
-              Nothing was recorded this week.
+              {t("memory.recap.empty")}
             </p>
           )}
           <dl className="recap-stats">
-            <Stat label="Time coding" value={formatCodingTime(recap.coding.seconds)} />
-            <Stat label="Sessions" value={recap.coding.sessions} />
-            <Stat label="Files" value={recap.coding.files} />
-            <Stat label="Lines changed" value={recap.coding.lines_changed} />
-            <Stat label="Commands" value={recap.coding.commands} />
-            <Stat label="Permissions granted" value={recap.permissions.granted} />
-            <Stat label="Permissions denied" value={recap.permissions.denied} />
             <Stat
-              label="Longest session"
+              label={t("memory.recap.stat.timeCoding")}
+              value={formatCodingTime(recap.coding.seconds)}
+            />
+            <Stat
+              label={t("memory.recap.stat.sessions")}
+              value={formatNumber(recap.coding.sessions)}
+            />
+            <Stat label={t("memory.recap.stat.files")} value={formatNumber(recap.coding.files)} />
+            <Stat
+              label={t("memory.recap.stat.linesChanged")}
+              value={formatNumber(recap.coding.lines_changed)}
+            />
+            <Stat
+              label={t("memory.recap.stat.commands")}
+              value={formatNumber(recap.coding.commands)}
+            />
+            <Stat
+              label={t("memory.recap.stat.permissionsGranted")}
+              value={formatNumber(recap.permissions.granted)}
+            />
+            <Stat
+              label={t("memory.recap.stat.permissionsDenied")}
+              value={formatNumber(recap.permissions.denied)}
+            />
+            <Stat
+              label={t("memory.recap.stat.longestSession")}
               value={formatCodingTime(recap.coding.longest_session_seconds)}
             />
-            <Stat label="Top agent" value={recap.top_agent?.name ?? "none"} />
-            <Stat label="Top project" value={recap.top_project ? recap.top_project.name : "none"} />
             <Stat
-              label="Busiest day"
-              value={recap.busiest_day ? formatDayKey(recap.busiest_day.day) : "none"}
+              label={t("memory.recap.stat.topAgent")}
+              value={recap.top_agent?.name ?? t("memory.recap.value.none")}
             />
-            <Stat label="Commits" value={recap.commits} />
-            <Stat label="CI passed / failed" value={`${recap.ci.passed} / ${recap.ci.failed}`} />
             <Stat
-              label="Meetings / decisions"
+              label={t("memory.recap.stat.topProject")}
+              value={recap.top_project ? recap.top_project.name : t("memory.recap.value.none")}
+            />
+            <Stat
+              label={t("memory.recap.stat.busiestDay")}
               value={
-                recap.meetings ? `${recap.meetings.count} / ${recap.meetings.decisions}` : "off"
+                recap.busiest_day
+                  ? formatDayKey(recap.busiest_day.day)
+                  : t("memory.recap.value.none")
+              }
+            />
+            <Stat label={t("memory.recap.stat.commits")} value={formatNumber(recap.commits)} />
+            <Stat
+              label={t("memory.recap.stat.ci")}
+              value={`${formatNumber(recap.ci.passed)} / ${formatNumber(recap.ci.failed)}`}
+            />
+            <Stat
+              label={t("memory.recap.stat.meetings")}
+              value={
+                recap.meetings
+                  ? `${formatNumber(recap.meetings.count)} / ${formatNumber(recap.meetings.decisions)}`
+                  : t("memory.recap.value.off")
               }
             />
           </dl>
           {!recap.meetings_allowed && (
-            <p className="muted small">
-              Meetings and decisions stay out of the recap while sensitive meeting data is off in
-              Memory settings.
-            </p>
+            <p className="muted small">{t("memory.recap.meetingsHidden")}</p>
           )}
           <ContributionGrid grid={recap.grid} />
           <div className="button-row wrap">
@@ -189,16 +220,13 @@ export function RecapPage({
                 checked={showProjects}
                 onChange={(e) => setShowProjects(e.target.checked)}
               />{" "}
-              Show the project name in the image
+              {t("memory.recap.showProjects")}
             </label>
             <button type="button" className="btn btn-primary" onClick={() => void exportImage()}>
-              Save image (1080 × 1920)
+              {t("memory.recap.saveImage")}
             </button>
           </div>
-          <p className="muted small">
-            Everything here is counted on this computer. Phoenix keeps counts only, never file
-            names, commands or text, and no AI is used.
-          </p>
+          <p className="muted small">{t("memory.recap.countsNote")}</p>
           {confirm ? (
             <div className="button-row wrap">
               <button
@@ -207,10 +235,10 @@ export function RecapPage({
                 disabled={busy}
                 onClick={() => void remove()}
               >
-                Confirm: delete all recap statistics
+                {t("memory.recap.confirmDelete")}
               </button>
               <button type="button" className="btn" onClick={() => setConfirm(false)}>
-                Cancel
+                {t("common.button.cancel")}
               </button>
             </div>
           ) : (
@@ -219,7 +247,7 @@ export function RecapPage({
               className="btn btn-danger-outline"
               onClick={() => setConfirm(true)}
             >
-              Delete all recap statistics…
+              {t("memory.recap.deleteAll")}
             </button>
           )}
           <Feedback error={error ?? exportError} saved={saved} />

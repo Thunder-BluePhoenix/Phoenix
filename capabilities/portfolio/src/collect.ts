@@ -20,8 +20,13 @@ export interface CollectInput {
   /** Network spec → the addresses the user listed for it. */
   networks: ReadonlyMap<NetworkSpec, readonly string[]>;
   exchanges: readonly ExchangeSpec[];
-  /** Replacement origins from config, by network or exchange id. */
+  /** Replacement origins for credential-free public indexers, by network id (from config). */
   endpoints: Readonly<Record<string, string>>;
+  /**
+   * Replacement origins for exchanges, by exchange id. Signed requests (and the key with them) go
+   * there, so this comes from code only, never from config.
+   */
+  exchangeUrls: Readonly<Record<string, string>>;
   credentials(exchange: ExchangeSpec): Promise<Credentials | undefined>;
   now(): number;
   signal: AbortSignal;
@@ -98,7 +103,7 @@ async function exchangeHoldings(spec: ExchangeSpec, input: CollectInput): Promis
     const balances = await readJson(
       {
         service: spec.name,
-        baseUrl: input.endpoints[spec.id] ?? spec.baseUrl,
+        baseUrl: input.exchangeUrls[spec.id] ?? spec.baseUrl,
         path: request.path,
         headers: request.headers,
         signal: input.signal,

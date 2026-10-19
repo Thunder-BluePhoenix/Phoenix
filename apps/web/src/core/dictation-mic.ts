@@ -8,6 +8,8 @@
 // An AudioWorklet would need its own script file (the page's CSP is `script-src 'self'`), so this
 // uses a ScriptProcessorNode like the one-shot capture does; the seam below is what tests fake.
 
+import { translate } from "../i18n/store";
+
 export interface DictationMicrophone {
   /** Asks the browser for the microphone and starts delivering PCM. Rejects if it is refused. */
   start(onPcm: (pcm: Int16Array) => void): Promise<void>;
@@ -106,7 +108,7 @@ export function createBrowserMicrophone(
     stop,
     async start(onPcm) {
       const devices = deps.mediaDevices();
-      if (!devices?.getUserMedia) throw new Error("This browser cannot use a microphone");
+      if (!devices?.getUserMedia) throw new Error(translate("capture.mic.unsupported"));
       stopped = false;
       const granted = await devices.getUserMedia({ audio: true, video: false });
       if (stopped) {
@@ -117,8 +119,7 @@ export function createBrowserMicrophone(
       stream = granted;
       try {
         audio = deps.createAudioContext(SAMPLE_RATE);
-        if (audio.sampleRate !== SAMPLE_RATE)
-          throw new Error("This device cannot provide 16 kHz microphone audio");
+        if (audio.sampleRate !== SAMPLE_RATE) throw new Error(translate("capture.mic.sampleRate"));
         source = audio.createMediaStreamSource(granted);
         processor = audio.createScriptProcessor(FRAME_SAMPLES, 1, 1);
         processor.onaudioprocess = (event) => {

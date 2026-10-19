@@ -284,13 +284,107 @@ fn mute_toggles_and_is_remembered() {
     assert_eq!(saved(dir.path())["muted"], false);
 }
 
+/// Calls a Tauri command on `webview` the way a page would (with the app's own invoke key).
+fn invoke(
+    invoke_key: &str,
+    webview: &tauri::WebviewWindow<MockRuntime>,
+    cmd: &str,
+    args: serde_json::Value,
+) -> Result<Value, Value> {
+    let request = tauri::webview::InvokeRequest {
+        cmd: cmd.into(),
+        callback: tauri::ipc::CallbackFn(0),
+        error: tauri::ipc::CallbackFn(1),
+        url: if cfg!(any(windows, target_os = "android")) {
+            "http://tauri.localhost"
+        } else {
+            "tauri://localhost"
+        }
+        .parse()
+        .unwrap(),
+        body: tauri::ipc::InvokeBody::Json(args),
+        headers: Default::default(),
+        invoke_key: invoke_key.to_string(),
+    };
+    tauri::test::get_ipc_response(webview, request).map(|body| body.deserialize::<Value>().unwrap())
+}
+
+fn shortcut_commands_work_from_the_pet_window_and_refuse_any_other() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = start(dir.path());
+    let pet = s.app.get_webview_window(WINDOW_LABEL).expect("pet window");
+    let key = s.app.invoke_key().to_string();
+
+    let report = invoke(&key, &pet, "shortcuts_list", serde_json::json!({})).expect("list");
+    assert_eq!(report["enabled"], false);
+    assert_eq!(report["muted"], false);
+    assert_eq!(report["shortcuts"].as_array().map(Vec::len), Some(7));
+
+    let report = invoke(
+        &key,
+        &pet,
+        "shortcuts_set_muted",
+        serde_json::json!({"muted": true}),
+    )
+    .expect("mute");
+    assert_eq!(report["muted"], true);
+    assert_eq!(saved(dir.path())["muted"], true);
+    assert_eq!(
+        item(&s.app, "mute").1,
+        Some(true),
+        "the menu follows the page"
+    );
+
+    let report = invoke(
+        &key,
+        &pet,
+        "shortcuts_set_enabled",
+        serde_json::json!({"enabled": true}),
+    )
+    .expect("enable");
+    assert_eq!(report["enabled"], true);
+    assert_eq!(saved(dir.path())["shortcuts_enabled"], true);
+    // Nothing is registered with the OS under the mock runtime: every action reports why.
+    assert!(report["shortcuts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|a| a["state"] != "active"));
+
+    // A window that is not one of the shell's own pages is refused and changes nothing.
+    let other = tauri::WebviewWindowBuilder::new(
+        &s.app,
+        "stranger",
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .build()
+    .expect("other window");
+    let refused = invoke(
+        &key,
+        &other,
+        "shortcuts_set_enabled",
+        serde_json::json!({"enabled": false}),
+    )
+    .expect_err("refused");
+    assert_eq!(refused["code"], "forbidden");
+    assert_eq!(saved(dir.path())["shortcuts_enabled"], true);
+    assert!(invoke(
+        &key,
+        &other,
+        "shortcuts_set_muted",
+        serde_json::json!({"muted": false})
+    )
+    .is_err());
+    assert_eq!(saved(dir.path())["muted"], true);
+}
+
 fn main() {
     // Tauri's Linux runtime builds GTK menus, which need GTK initialised (and a display; CI
     // runs this under xvfb). Without this the mock runtime panics in gtk::Menu::new.
     #[cfg(target_os = "linux")]
     gtk::init().expect("GTK failed to initialise: is a display available (xvfb-run)?");
 
-    let tests: [(&str, fn()); 14] = [
+    let tests: [(&str, fn()); 15] = [
         (
             "starts with window, tray and full menu",
             starts_with_window_tray_and_full_menu,
@@ -331,6 +425,10 @@ fn main() {
         (
             "mute toggles and is remembered",
             mute_toggles_and_is_remembered,
+        ),
+        (
+            "shortcut commands work from the pet window and refuse any other",
+            shortcut_commands_work_from_the_pet_window_and_refuse_any_other,
         ),
     ];
     for (name, test) in tests {

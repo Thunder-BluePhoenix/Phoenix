@@ -402,20 +402,9 @@ fn may_configure_shortcuts<R: Runtime>(
 #[tauri::command]
 fn shortcuts_list<R: Runtime>(
     window: WebviewWindow<R>,
-    shell: tauri::State<'_, Shell<R>>,
 ) -> Result<shortcuts::Report, shortcuts::Refusal> {
     may_configure_shortcuts(&window)?;
-    // One guard, both fields: `parking_lot::Mutex` is not reentrant, so locking twice in one
-    // expression would block this (main) thread forever.
-    let (enabled, muted) = {
-        let settings = shell.settings.lock();
-        (settings.shortcuts_enabled, settings.muted)
-    };
-    Ok(shortcuts::Report {
-        enabled,
-        muted,
-        shortcuts: shell.shortcuts.statuses(),
-    })
+    Ok(current_report(window.app_handle()))
 }
 
 /// Binds `action` to `accelerator` (empty text unbinds it). A refused accelerator changes
@@ -472,6 +461,42 @@ fn shortcuts_reset<R: Runtime>(
         }
     }
     Ok(apply_shortcuts(window.app_handle()))
+}
+
+/// Turns the global shortcuts on or off (they start off). Returns the resulting report.
+#[tauri::command]
+fn shortcuts_set_enabled<R: Runtime>(
+    window: WebviewWindow<R>,
+    enabled: bool,
+) -> Result<shortcuts::Report, shortcuts::Refusal> {
+    may_configure_shortcuts(&window)?;
+    set_shortcuts_enabled(window.app_handle(), enabled);
+    Ok(current_report(window.app_handle()))
+}
+
+/// Mutes or unmutes sounds and notification toasts in the desktop pages.
+#[tauri::command]
+fn shortcuts_set_muted<R: Runtime>(
+    window: WebviewWindow<R>,
+    muted: bool,
+) -> Result<shortcuts::Report, shortcuts::Refusal> {
+    may_configure_shortcuts(&window)?;
+    set_muted(window.app_handle(), muted);
+    Ok(current_report(window.app_handle()))
+}
+
+/// The current enabled/muted flags with every action's state.
+fn current_report<R: Runtime>(app: &AppHandle<R>) -> shortcuts::Report {
+    let shell = app.state::<Shell<R>>();
+    let (enabled, muted) = {
+        let settings = shell.settings.lock();
+        (settings.shortcuts_enabled, settings.muted)
+    };
+    shortcuts::Report {
+        enabled,
+        muted,
+        shortcuts: shell.shortcuts.statuses(),
+    }
 }
 
 fn save_position<R: Runtime>(window: &WebviewWindow<R>, shell: &Shell<R>) {
@@ -727,7 +752,21 @@ fn set_muted<R: Runtime>(app: &AppHandle<R>, muted: bool) {
     if let Some(items) = shell.menu.lock().as_ref() {
         let _ = items.mute.set_checked(muted);
     }
-    let _ = app.emit(shortcuts::MUTE_EVENT, shortcuts::MutePayload { muted });
+    emit_to_shell_windows(app, shortcuts::MUTE_EVENT, shortcuts::MutePayload { muted });
+}
+
+/// Sends a `shortcuts://` event to the Fawkes and island windows only, never to the remote pill
+/// webview (it loads a page from Core's origin, outside this shell's own pages). The pill is told
+/// nothing, and a future consumer must NOT trust a `shortcuts://mute` (or status) event that came
+/// from the pill: nothing in the shell accepts one from it, and the pill cannot set the flag.
+fn emit_to_shell_windows<R: Runtime, S: Serialize + Clone>(
+    app: &AppHandle<R>,
+    event: &str,
+    payload: S,
+) {
+    for label in [WINDOW_LABEL, island::ISLAND_LABEL] {
+        let _ = app.emit_to(label, event, payload.clone());
+    }
 }
 
 /// Makes the operating system's registrations match the settings and announces the result
@@ -768,7 +807,7 @@ fn apply_shortcuts<R: Runtime>(app: &AppHandle<R>) -> shortcuts::Report {
         muted: shell.settings.lock().muted,
         shortcuts: statuses,
     };
-    let _ = app.emit(shortcuts::STATUS_EVENT, &report);
+    emit_to_shell_windows(app, shortcuts::STATUS_EVENT, &report);
     report
 }
 
@@ -1045,7 +1084,9 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
             island_frame,
             shortcuts_list,
             shortcuts_set,
-            shortcuts_reset
+            shortcuts_reset,
+            shortcuts_set_enabled,
+            shortcuts_set_muted
         ])
         .setup(move |app| {
             let handle = app.handle();

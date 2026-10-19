@@ -4,6 +4,7 @@
 // Validation of n8n public-API responses. n8n is self-hosted and so is whatever answers at the
 // user's base_url: treat every field as hostile. Execution data (what the workflow processed) is
 // never requested and never read; only ids, names, status and times are kept.
+import { redact } from "@phoenix/logging";
 import {
   epochMs,
   expectObject,
@@ -62,12 +63,23 @@ function idOf(value: unknown): string | undefined {
         ? String(value)
         : undefined
       : str(value, 100);
-  return text !== undefined && ID.test(text) ? text : undefined;
+  // An id cannot be "redacted and still be that id": a credential-lookalike id is dropped.
+  return text !== undefined && ID.test(text) && String(redact(text)) === text ? text : undefined;
+}
+
+export const MAX_NAME = 120;
+
+/** Free text from n8n: clipped, control characters removed, secret-looking values redacted. */
+export function text(value: unknown, max = MAX_NAME): string | undefined {
+  const clipped = str(value, max * 4);
+  if (clipped === undefined) return undefined;
+  const clean = String(redact(clipped));
+  return clean.length > max ? clean.slice(0, max - 1) + "…" : clean;
 }
 
 export function parseWorkflow(raw: Json): Workflow | undefined {
   const id = idOf(raw.id);
-  const name = str(raw.name, 120);
+  const name = text(raw.name);
   if (id === undefined || name === undefined) return undefined;
   return { id, name, active: raw.active === true };
 }

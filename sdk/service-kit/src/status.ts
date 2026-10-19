@@ -21,4 +21,6 @@ export interface ServiceStatus {
   items: ServiceItem[];
   /** Why there is nothing to show, e.g. "Add an API key in Settings". Never remote text. */
   note?: string;
+  /** Events Core refused since the capability started (a refused event is a lost signal). */
+  events_refused?: number;
 }

@@ -34,6 +34,12 @@ export interface PortfolioCapabilityOptions {
   /** Epoch ms clock; tests pin it (also used to sign exchange requests). */
   now?: () => number;
   sleep?: Sleep;
+  /**
+   * Replacement origins for exchanges, by exchange id. Code only, deliberately NOT a config
+   * setting: signed requests carry the exchange key, which may only go to the exchange's own host.
+   * Tests pass a loopback mock here.
+   */
+  exchangeUrls?: Readonly<Record<string, string>>;
 }
 
 interface Settings {
@@ -102,6 +108,7 @@ function fingerprint(s: Snapshot): string {
 export function createPortfolioCapability(options: PortfolioCapabilityOptions = {}) {
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? realSleep;
+  const exchangeUrls = options.exchangeUrls ?? {};
 
   let snapshot: Snapshot = emptySnapshot();
   let polled = false;
@@ -116,6 +123,7 @@ export function createPortfolioCapability(options: PortfolioCapabilityOptions = 
       networks: cfg.networks,
       exchanges: cfg.exchanges,
       endpoints: cfg.endpoints,
+      exchangeUrls,
       credentials: (spec) => credentialsFor(ctx, spec),
       now,
       signal: ctx.signal,
@@ -252,12 +260,9 @@ export function createPortfolioCapability(options: PortfolioCapabilityOptions = 
             type: "object",
             additionalProperties: false,
             description:
-              "Replacement origins for a network or exchange (for a self-hosted indexer). Signed exchange requests, and the keys with them, go to this host.",
+              "Replacement origins for a network's public indexer (for a self-hosted indexer). Those requests carry no credential. Exchanges cannot be redirected here: their signed requests, and the keys with them, only ever go to the exchange's own host.",
             properties: Object.fromEntries(
-              [...NETWORKS.map((n) => n.id), ...EXCHANGES.map((e) => e.id)].map((id) => [
-                id,
-                { type: "string", pattern: URL_PATTERN },
-              ]),
+              NETWORKS.map((n) => [n.id, { type: "string", pattern: URL_PATTERN }]),
             ),
           },
           price_url: {

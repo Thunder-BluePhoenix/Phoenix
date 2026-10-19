@@ -28,7 +28,7 @@ export function createVercelClient(o: VercelClientOptions): ServiceClient {
     service: SERVICE,
     baseUrl: o.baseUrl,
     secret: o.secret,
-    // The token is sent only to the configured base_url.
+    // The token goes only to `baseUrl`, which the capability pins to Vercel's own origin.
     auth: (secret) => ({ authorization: `Bearer ${secret}` }),
     signal: o.signal,
   });

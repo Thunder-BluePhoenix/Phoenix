@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { PhoenixClient, readInjectedToken } from "../core/client";
 import { CoreProvider } from "../core/context";
+import { I18nProvider } from "../i18n";
 import { IslandApp } from "./IslandApp";
 import { tauriIslandShell } from "./shell";
 import "./island.css";
@@ -23,7 +24,9 @@ async function boot() {
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <CoreProvider client={client}>
-        <IslandApp shell={shell} />
+        <I18nProvider>
+          <IslandApp shell={shell} />
+        </I18nProvider>
       </CoreProvider>
     </StrictMode>,
   );

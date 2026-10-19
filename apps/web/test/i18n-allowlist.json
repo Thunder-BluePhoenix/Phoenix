@@ -1,0 +1,90 @@
+{
+  "*": [
+    {
+      "text": "Phoenix",
+      "reason": "Brand name; never translated"
+    },
+    {
+      "text": "Fawkes",
+      "reason": "Name of the pet; never translated"
+    },
+    {
+      "text": "Phoenix Core",
+      "reason": "Product name; never translated"
+    },
+    {
+      "text": "Kage",
+      "reason": "Name of a first-party capability; never translated"
+    },
+    {
+      "text": "GitHub",
+      "reason": "Third-party brand name"
+    },
+    {
+      "text": "Ollama",
+      "reason": "Third-party brand name"
+    },
+    {
+      "text": "OpenAI",
+      "reason": "Third-party brand name"
+    },
+    {
+      "text": "Anthropic",
+      "reason": "Third-party brand name"
+    },
+    {
+      "text": "ms",
+      "reason": "Unit symbol"
+    },
+    {
+      "text": "KB",
+      "reason": "Unit symbol"
+    },
+    {
+      "text": "MB",
+      "reason": "Unit symbol"
+    },
+    {
+      "text": "GB",
+      "reason": "Unit symbol"
+    },
+    {
+      "text": "px",
+      "reason": "Unit symbol"
+    },
+    {
+      "text": "pnpm dev:core",
+      "reason": "Command the user types; code identifier"
+    }
+  ],
+  "src/components/Meetings.tsx": [
+    {
+      "text": "https://meet.google.com/abc-defg-hij",
+      "reason": "Placeholder showing the shape of a Google Meet link; an example address, not a sentence"
+    }
+  ],
+  "src/components/Provenance.tsx": [
+    {
+      "text": "2026-10-10T02:00:00Z",
+      "reason": "Placeholder showing the ISO 8601 timestamp format Core parses; a code identifier"
+    }
+  ],
+  "src/components/AiProviders.tsx": [
+    {
+      "text": "provider:model",
+      "reason": "Placeholder showing the literal key format provider:model that Core parses; a code identifier"
+    }
+  ],
+  "src/components/Plans.tsx": [
+    {
+      "text": "Frappe",
+      "reason": "Third-party product name (Frappe), shown next to GitHub as the task destination"
+    }
+  ],
+  "src/components/SyncSettings.tsx": [
+    {
+      "text": "https://relay.example",
+      "reason": "Placeholder showing the shape of a relay URL; an example address, not a sentence"
+    }
+  ]
+}

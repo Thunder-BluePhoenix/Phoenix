@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import { isMessageKey, translate } from "../i18n/store";
 import type { PlanBasis, PlanDestination, PlanStatus, PlanTask, PlanTaskRun } from "./types";
 
 /** The limits Core and the plan service enforce (ai/planning generate.ts and service.ts). */
@@ -13,52 +14,48 @@ export const MAX_TASK_BODY = 6_000;
 const REPOSITORY = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$/;
 const SITE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,148}$/;
 
-export const STATUS_TEXT: Record<PlanStatus, string> = {
-  draft: "Draft: not yet proposed",
-  proposed: "Proposed: waiting for your approval",
-  approved: "Approved: ready to create",
-  creating: "Creating tasks…",
-  created: "Created",
-  failed: "Failed: some tasks were not created",
-  cancelled: "Cancelled",
-};
+export const statusText = (status: PlanStatus): string =>
+  translate(`automation.plans.status.${status}`);
 
-export const BASIS_TEXT: Record<PlanBasis, string> = {
-  meeting: "from the meeting",
-  suggested: "suggested by the model",
-  user: "written by you",
-};
+export const basisText = (basis: PlanBasis): string => translate(`automation.plans.basis.${basis}`);
 
-export const RUN_TEXT: Record<PlanTaskRun["status"], string> = {
-  pending: "Not started",
-  attempting: "In progress",
-  created: "Created",
-  failed: "Failed",
-};
+export const runText = (status: PlanTaskRun["status"]): string =>
+  translate(`automation.plans.run.${status}`);
 
-/** Plain words for the tool a preview names. */
-export const TOOL_TEXT: Record<string, string> = {
-  "github.issue.create": "Create a GitHub issue",
-  "frappe.task.create": "Create a Frappe task",
-};
+/** Plain words for the tool a preview names; any other tool is shown as its id. */
+export function toolText(tool: string): string {
+  if (tool === "github.issue.create") return translate("automation.plans.tool.githubIssue");
+  if (tool === "frappe.task.create") return translate("automation.plans.tool.frappeTask");
+  return tool;
+}
+
+/** A meeting item kind in words ("action item"); a kind this build has no words for as reported. */
+export function kindText(kind: string): string {
+  const key = `automation.plans.kind.${kind}`;
+  return isMessageKey(key) ? translate(key) : kind.replace("_", " ");
+}
 
 /** A plan is "rules-based" when no model wrote it; a model's work is labelled as such. */
 export function authorshipText(plan: { not_ai_generated: boolean; generated_by: string }): string {
   return plan.not_ai_generated
-    ? "Rules-based draft: no AI wrote this, it only restates the meeting item."
-    : `Model output (${plan.generated_by.replace(/^ai:/, "")}): check it against the meeting before approving.`;
+    ? translate("automation.plans.authorship.rules")
+    : translate("automation.plans.authorship.model", {
+        model: plan.generated_by.replace(/^ai:/, ""),
+      });
 }
 
 export function destinationText(d: PlanDestination): string {
-  return d.system === "github" ? `GitHub repository ${d.repository}` : `Frappe site ${d.site}`;
+  return d.system === "github"
+    ? translate("automation.plans.destination.github", { repository: d.repository })
+    : translate("automation.plans.destination.frappe", { site: d.site });
 }
 
 /** Whether the destination text is valid for its system, with the API's rule. */
 export function destinationProblem(d: PlanDestination): string | null {
   if (d.system === "github") {
-    return REPOSITORY.test(d.repository) ? null : 'The repository must look like "owner/name".';
+    return REPOSITORY.test(d.repository) ? null : translate("automation.plans.problem.repository");
   }
-  return SITE.test(d.site) ? null : "That is not a valid Frappe site name.";
+  return SITE.test(d.site) ? null : translate("automation.plans.problem.site");
 }
 
 export interface TaskDraft {
@@ -105,27 +102,34 @@ export interface PlanProblems {
 export function validatePlanDraft(draft: PlanDraft): PlanProblems {
   const problems: PlanProblems = { task: {} };
   const title = draft.title.replace(/\s+/g, " ").trim();
-  if (title.length === 0) problems.title = "The title cannot be empty.";
-  else if (title.length > MAX_TITLE) problems.title = `The title is longer than ${MAX_TITLE}.`;
+  if (title.length === 0) problems.title = translate("automation.plans.problem.titleEmpty");
+  else if (title.length > MAX_TITLE) {
+    problems.title = translate("automation.plans.problem.titleLong", { max: MAX_TITLE });
+  }
   const summary = draft.summary.replace(/\s+/g, " ").trim();
-  if (summary.length === 0) problems.summary = "The summary cannot be empty.";
+  if (summary.length === 0) problems.summary = translate("automation.plans.problem.summaryEmpty");
   else if (summary.length > MAX_SUMMARY) {
-    problems.summary = `The summary is longer than ${MAX_SUMMARY}.`;
+    problems.summary = translate("automation.plans.problem.summaryLong", { max: MAX_SUMMARY });
   }
   if (draft.tasks.length < 1 || draft.tasks.length > MAX_TASKS) {
-    problems.tasks = `A plan needs 1 to ${MAX_TASKS} tasks.`;
+    problems.tasks = translate("automation.plans.problem.taskCount", { max: MAX_TASKS });
   }
   draft.tasks.forEach((t, i) => {
     const found: { title?: string; body?: string; labels?: string } = {};
     const taskTitle = t.title.replace(/\s+/g, " ").trim();
-    if (taskTitle.length === 0) found.title = `Task ${i + 1} needs a title.`;
-    else if (taskTitle.length > MAX_TITLE) found.title = `The title is longer than ${MAX_TITLE}.`;
-    if (t.body.trim().length > MAX_TASK_BODY)
-      found.body = `The body is longer than ${MAX_TASK_BODY}.`;
+    if (taskTitle.length === 0)
+      found.title = translate("automation.plans.problem.taskTitle", { n: i + 1 });
+    else if (taskTitle.length > MAX_TITLE) {
+      found.title = translate("automation.plans.problem.titleLong", { max: MAX_TITLE });
+    }
+    if (t.body.trim().length > MAX_TASK_BODY) {
+      found.body = translate("automation.plans.problem.bodyLong", { max: MAX_TASK_BODY });
+    }
     const labels = labelsOf(t.labels);
-    if (labels.length > MAX_LABELS) found.labels = `At most ${MAX_LABELS} labels.`;
+    if (labels.length > MAX_LABELS)
+      found.labels = translate("automation.plans.problem.labelCount", { max: MAX_LABELS });
     else if (labels.some((l) => l.length > MAX_LABEL)) {
-      found.labels = `A label is longer than ${MAX_LABEL}.`;
+      found.labels = translate("automation.plans.problem.labelLong", { max: MAX_LABEL });
     }
     if (Object.keys(found).length > 0) problems.task[i] = found;
   });

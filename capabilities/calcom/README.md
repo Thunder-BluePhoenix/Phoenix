@@ -14,7 +14,7 @@ Payload: `booking_uid`, `title` (clipped), `status`, `start`/`end`, `attendee_co
 ## Setup
 
 - Secret `api_key`: a Cal.com API key.
-- Config: `base_url` (default `https://api.cal.com`), `poll_ms` (15 000 or more, default 60 000), `remind_minutes` (0–120, default 10; 0 turns reminders off).
+- Config: `poll_ms` (15 000 or more, default 60 000), `remind_minutes` (0–120, default 10; 0 turns reminders off). There is deliberately **no `base_url` setting**: anyone holding the API token could otherwise point the stored key at a host of their choosing, so it only ever goes to `https://api.cal.com`. Tests inject a local mock through the code-only `apiUrl` creation option.
 - `status` command (read): upcoming, uncancelled bookings.
 
 ## Behaviour

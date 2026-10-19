@@ -21,7 +21,7 @@ read -rs STRIPE_KEY && printf '{"value":"%s"}' "$STRIPE_KEY" | \
 curl "${H[@]}" -X POST -d '{}' http://127.0.0.1:4870/api/capabilities/stripe/enable
 ```
 
-Secret `restricted_key` is sent only as a Bearer credential to `base_url` (default `https://api.stripe.com`; https, or http to localhost) and is never logged or put in an error, event or config. Config: `poll_ms` (15000+, default 60000), `base_url`. Enabling grants `network` and `external_api`.
+Secret `restricted_key` is sent only as a Bearer credential to Stripe's own API origin (`https://api.stripe.com`). There is deliberately **no `base_url` setting**: anyone holding the API token could otherwise point the stored key at a host of their choosing. Tests inject a local mock through the code-only `apiUrl` creation option. The key is never logged or put in an error, event or config. Config: `poll_ms` (15000+, default 60000). Enabling grants `network` and `external_api`.
 
 ## `status` command (read)
 

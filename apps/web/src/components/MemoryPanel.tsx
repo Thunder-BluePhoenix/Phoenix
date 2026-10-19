@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { useId, useState, type FormEvent } from "react";
-import { formatDate } from "../core/format";
+import { formatDate, formatNumber } from "../core/format";
 import { useAction, useMemoryBrowser, useMemorySearch, type MemorySearch } from "../core/hooks";
 import type { MemoryAnswer, MemoryItem } from "../core/types";
+import { useT, type MessageKey, type Translate } from "../i18n";
 import { AnswerView, SENSITIVITY_LABEL } from "./AnswerView";
 import { Feedback } from "./Feedback";
 
@@ -11,18 +12,18 @@ import { Feedback } from "./Feedback";
 const PREVIEW_CHARS = 200;
 const ASK_MAX_CHARS = 500;
 
-const KIND_LABEL: Record<MemoryItem["kind"], string> = {
-  fact: "Stored fact",
-  interpretation: "Generated interpretation",
+const KIND_KEY: Record<MemoryItem["kind"], MessageKey> = {
+  fact: "memory.panel.kind.fact",
+  interpretation: "memory.panel.kind.interpretation",
 };
 
 /** One line saying how long a memory is kept; never colour alone. */
-function retentionLine(item: MemoryItem): string {
-  if (item.expires_at) {
-    const days = item.retention_days === null ? "" : `${item.retention_days} days, `;
-    return `Kept ${days}expires ${formatDate(item.expires_at)}`;
-  }
-  return "Kept until you delete it";
+function retentionLine(item: MemoryItem, t: Translate): string {
+  if (!item.expires_at) return t("memory.panel.retention.forever");
+  const date = formatDate(item.expires_at);
+  return item.retention_days === null
+    ? t("memory.panel.retention.expires", { date })
+    : t("memory.panel.retention.days", { days: item.retention_days, date });
 }
 
 function MemoryCard({
@@ -32,6 +33,7 @@ function MemoryCard({
   item: MemoryItem;
   onForgotten: (item: MemoryItem) => void;
 }) {
+  const t = useT();
   const { run, busy, error } = useAction();
   const [expanded, setExpanded] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -44,6 +46,16 @@ function MemoryCard({
     if (res !== undefined) onForgotten(item);
   };
 
+  const detail = [
+    retentionLine(item, t),
+    item.confidence < 1
+      ? t("memory.panel.confidence", {
+          percent: formatNumber(item.confidence, undefined, { style: "percent" }),
+        })
+      : "",
+    item.redacted ? t("memory.panel.redacted") : "",
+  ].filter(Boolean);
+
   return (
     <li className="memory-item">
       <p className="memory-text">{shown}</p>
@@ -54,25 +66,24 @@ function MemoryCard({
           aria-expanded={expanded}
           onClick={() => setExpanded((e) => !e)}
         >
-          {expanded ? "Show less" : "Show more"}
+          {expanded ? t("memory.panel.showLess") : t("memory.panel.showMore")}
         </button>
       )}
       <p className="memory-meta small">
-        <span className={`mem-badge mem-kind-${item.kind}`}>{KIND_LABEL[item.kind]}</span>
+        <span className={`mem-badge mem-kind-${item.kind}`}>{t(KIND_KEY[item.kind])}</span>
         <span className={`mem-badge mem-sens-${item.sensitivity}`}>
           {SENSITIVITY_LABEL[item.sensitivity]}
         </span>
         <span className="muted">
-          {item.domain} · from {item.source}
-          {item.source_ref ? ` (${item.source_ref})` : ""} ·{" "}
-          <time dateTime={item.observed_at}>{formatDate(item.observed_at)}</time>
+          {t.rich(item.source_ref ? "memory.panel.metaRef" : "memory.panel.meta", {
+            domain: item.domain,
+            source: item.source,
+            ref: item.source_ref ?? "",
+            date: <time dateTime={item.observed_at}>{formatDate(item.observed_at)}</time>,
+          })}
         </span>
       </p>
-      <p className="muted small">
-        {retentionLine(item)}
-        {item.confidence < 1 ? ` · confidence ${Math.round(item.confidence * 100)}%` : ""}
-        {item.redacted ? " · parts were redacted" : ""}
-      </p>
+      <p className="muted small">{detail.join(" · ")}</p>
       {confirming ? (
         <div className="button-row wrap">
           <button
@@ -81,10 +92,10 @@ function MemoryCard({
             disabled={busy}
             onClick={() => void forget()}
           >
-            Confirm: forget this memory
+            {t("memory.panel.confirmForget")}
           </button>
           <button type="button" className="btn" onClick={() => setConfirming(false)}>
-            Cancel
+            {t("common.button.cancel")}
           </button>
         </div>
       ) : (
@@ -93,7 +104,7 @@ function MemoryCard({
           className="btn btn-danger-outline"
           onClick={() => setConfirming(true)}
         >
-          Forget…
+          {t("memory.panel.forget")}
         </button>
       )}
       <Feedback error={error} />
@@ -112,18 +123,22 @@ function DomainFilter({
   domain: string | null;
   onChange: (domain: string | null) => void;
 }) {
+  const t = useT();
   const domains = Object.keys(counts)
     .filter((d) => counts[d]! > 0 || d === domain)
     .sort();
   return (
-    <div className="chips wrap" role="group" aria-label="Memory domain">
+    <div className="chips wrap" role="group" aria-label={t("memory.panel.domainGroup")}>
       <button
         type="button"
         className="chip"
         aria-pressed={domain === null}
         onClick={() => onChange(null)}
       >
-        All ({everything})
+        {t("memory.common.countChip", {
+          label: t("memory.common.all"),
+          count: formatNumber(everything),
+        })}
       </button>
       {domains.map((d) => (
         <button
@@ -133,7 +148,7 @@ function DomainFilter({
           aria-pressed={domain === d}
           onClick={() => onChange(d)}
         >
-          {d} ({counts[d]})
+          {t("memory.common.countChip", { label: d, count: formatNumber(counts[d]!) })}
         </button>
       ))}
     </div>
@@ -141,6 +156,7 @@ function DomainFilter({
 }
 
 function SearchBox({ search, domain }: { search: MemorySearch; domain: string | null }) {
+  const t = useT();
   const [text, setText] = useState("");
   const id = useId();
   const submit = (e: FormEvent) => {
@@ -150,9 +166,14 @@ function SearchBox({ search, domain }: { search: MemorySearch; domain: string | 
     else search.clear();
   };
   return (
-    <form className="memory-form" onSubmit={submit} role="search" aria-label="Memory search">
+    <form
+      className="memory-form"
+      onSubmit={submit}
+      role="search"
+      aria-label={t("memory.panel.searchForm")}
+    >
       <label htmlFor={id} className="small">
-        Search memory
+        {t("memory.panel.searchLabel")}
       </label>
       <div className="memory-row">
         <input
@@ -163,7 +184,7 @@ function SearchBox({ search, domain }: { search: MemorySearch; domain: string | 
           onChange={(e) => setText(e.target.value)}
         />
         <button type="submit" className="btn" disabled={search.busy}>
-          Search
+          {t("memory.common.search")}
         </button>
         {search.query !== null && (
           <button
@@ -174,7 +195,7 @@ function SearchBox({ search, domain }: { search: MemorySearch; domain: string | 
               search.clear();
             }}
           >
-            Clear search
+            {t("memory.panel.clearSearch")}
           </button>
         )}
       </div>
@@ -184,6 +205,7 @@ function SearchBox({ search, domain }: { search: MemorySearch; domain: string | 
 }
 
 function AskBox({ aiEnabled }: { aiEnabled: boolean }) {
+  const t = useT();
   const { run, busy, error } = useAction();
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<MemoryAnswer | null>(null);
@@ -199,7 +221,7 @@ function AskBox({ aiEnabled }: { aiEnabled: boolean }) {
   return (
     <form className="memory-form" onSubmit={(e) => void submit(e)}>
       <label htmlFor={id} className="small">
-        Ask Fawkes
+        {t("memory.panel.askLabel")}
       </label>
       <div className="memory-row">
         <input
@@ -210,13 +232,11 @@ function AskBox({ aiEnabled }: { aiEnabled: boolean }) {
           onChange={(e) => setQuestion(e.target.value)}
         />
         <button type="submit" className="btn btn-primary" disabled={busy || !question.trim()}>
-          Ask
+          {t("memory.common.ask")}
         </button>
       </div>
       <p className="muted small">
-        {aiEnabled
-          ? "Answers list stored facts first. Anything AI adds is labelled as generated."
-          : "AI is off, so you get matching stored facts only."}
+        {aiEnabled ? t("memory.panel.aiOn") : t("memory.common.aiOffFactsOnly")}
       </p>
       <Feedback error={error} />
       {answer && (
@@ -238,10 +258,10 @@ function DeleteMemory({
   total: number;
   onDeleted: () => void;
 }) {
+  const t = useT();
   const { run, busy, error } = useAction();
   const [confirming, setConfirming] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
-  const label = domain === null ? "all memory" : `${domain} memory`;
   const remove = async () => {
     const res = (await run(
       "POST",
@@ -250,7 +270,7 @@ function DeleteMemory({
     )) as { deleted: number } | undefined;
     setConfirming(false);
     if (res) {
-      setSaved(`Deleted ${res.deleted} ${res.deleted === 1 ? "memory" : "memories"}.`);
+      setSaved(t("memory.panel.deleted", { count: res.deleted }));
       onDeleted();
     }
   };
@@ -264,10 +284,12 @@ function DeleteMemory({
             disabled={busy}
             onClick={() => void remove()}
           >
-            Confirm: delete {label}
+            {domain === null
+              ? t("memory.panel.confirmDeleteAll")
+              : t("memory.panel.confirmDeleteDomain", { domain })}
           </button>
           <button type="button" className="btn" onClick={() => setConfirming(false)}>
-            Cancel
+            {t("common.button.cancel")}
           </button>
         </div>
       ) : (
@@ -280,7 +302,9 @@ function DeleteMemory({
             setConfirming(true);
           }}
         >
-          Delete {label}…
+          {domain === null
+            ? t("memory.panel.deleteAll")
+            : t("memory.panel.deleteDomain", { domain })}
         </button>
       )}
       <Feedback error={error} saved={saved} />
@@ -290,6 +314,7 @@ function DeleteMemory({
 
 /** Pet Panel "Memory" tab (Phase 29): browse, search, ask, forget and delete what Fawkes remembers. */
 export function MemoryPanel() {
+  const t = useT();
   const [domain, setDomain] = useState<string | null>(null);
   const browser = useMemoryBrowser(domain);
   const search = useMemorySearch();
@@ -329,25 +354,28 @@ export function MemoryPanel() {
       <Feedback error={browser.error} />
       {searching ? (
         <p className="small" role="status">
-          {search.hits.length} {search.hits.length === 1 ? "result" : "results"} for “{search.query}
-          ”.
+          {t("memory.panel.results", { count: search.hits.length, query: search.query ?? "" })}
         </p>
       ) : (
         browser.loaded && (
           <p className="muted small" role="status">
-            {browser.total} {browser.total === 1 ? "memory" : "memories"}
-            {domain ? ` in ${domain}` : ""}.
+            {domain
+              ? t("memory.panel.totalIn", { count: browser.total, domain })
+              : t("memory.panel.total", { count: browser.total })}
           </p>
         )
       )}
       {items.length === 0 ? (
         browser.loaded && (
           <p className="muted">
-            {searching ? "Nothing in memory matches that search." : "Nothing is remembered yet."}
+            {searching ? t("memory.panel.noMatch") : t("memory.panel.nothing")}
           </p>
         )
       ) : (
-        <ul className="memory-list" aria-label={searching ? "Search results" : "Memories"}>
+        <ul
+          className="memory-list"
+          aria-label={searching ? t("memory.common.searchResults") : t("memory.panel.listMemories")}
+        >
           {items.map((item) => (
             <MemoryCard key={item.id} item={item} onForgotten={forgotten} />
           ))}
@@ -360,7 +388,7 @@ export function MemoryPanel() {
           disabled={loadingMore}
           onClick={() => void loadMore()}
         >
-          Load more
+          {t("memory.panel.loadMore")}
         </button>
       )}
       {domain !== null && (

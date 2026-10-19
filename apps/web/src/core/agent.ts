@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import { translated } from "./format";
 import type { AgentRisk, AgentRunState, AgentStep } from "./types";
 
 /** Plain-language run states (Phase 31 state machine). Only states Core actually reports. */
-export const RUN_STATE_TEXT: Record<AgentRunState, string> = {
-  CREATED: "Created, not started yet",
-  READY: "Ready to start",
-  RUNNING: "Running",
-  WAITING_APPROVAL: "Waiting for your approval",
-  VERIFYING: "Checking the result",
-  COMPLETED: "Finished",
-  FAILED: "Failed",
-  CANCELLED: "Cancelled",
-};
+export const RUN_STATE_TEXT = translated({
+  CREATED: "agents.runState.CREATED",
+  READY: "agents.runState.READY",
+  RUNNING: "agents.runState.RUNNING",
+  WAITING_APPROVAL: "agents.runState.WAITING_APPROVAL",
+  VERIFYING: "agents.runState.VERIFYING",
+  COMPLETED: "agents.runState.COMPLETED",
+  FAILED: "agents.runState.FAILED",
+  CANCELLED: "agents.runState.CANCELLED",
+});
 
 const TERMINAL: Record<AgentRunState, boolean> = {
   CREATED: false,
@@ -28,39 +29,39 @@ const TERMINAL: Record<AgentRunState, boolean> = {
 /** A finished run cannot be cancelled or change again. */
 export const isTerminalRun = (state: AgentRunState): boolean => TERMINAL[state];
 
-export const RISK_LABEL: Record<AgentRisk, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  critical: "Critical",
-};
+export const RISK_LABEL = translated({
+  low: "agents.risk.low",
+  medium: "agents.risk.medium",
+  high: "agents.risk.high",
+  critical: "agents.risk.critical",
+});
 
 /** High and Critical changes need a second, explicit step before they can be approved. */
 export const needsSecondStep = (risk: AgentRisk | undefined): boolean =>
   risk === "high" || risk === "critical";
 
-export const STEP_STATUS_TEXT: Record<string, string> = {
-  ok: "done",
-  failed: "failed",
-  rejected: "rejected before it ran",
-  cancelled: "cancelled",
-  skipped: "skipped",
-  denied: "denied by policy",
-  abandoned: "abandoned",
-};
+export const STEP_STATUS_TEXT = translated({
+  ok: "agents.stepStatus.ok",
+  failed: "agents.stepStatus.failed",
+  rejected: "agents.stepStatus.rejected",
+  cancelled: "agents.stepStatus.cancelled",
+  skipped: "agents.stepStatus.skipped",
+  denied: "agents.stepStatus.denied",
+  abandoned: "agents.stepStatus.abandoned",
+});
 
-export const DECISION_TEXT: Record<NonNullable<AgentStep["decision"]>, string> = {
-  allow: "allowed by policy",
-  require_approval: "needed your approval",
-  deny: "denied by policy",
-};
+export const DECISION_TEXT = translated({
+  allow: "agents.decision.allow",
+  require_approval: "agents.decision.require_approval",
+  deny: "agents.decision.deny",
+});
 
 /** What a side effect means as a verb phrase, for "I understand this will …". */
-export const SIDE_EFFECT_ACTION: Record<string, string> = {
-  none: "have no side effects",
-  read: "read data",
-  write: "change data",
-  execute: "run commands",
-  external: "act on an external service",
-  production: "change production",
-};
+export const SIDE_EFFECT_ACTION = translated({
+  none: "agents.sideEffectAction.none",
+  read: "agents.sideEffectAction.read",
+  write: "agents.sideEffectAction.write",
+  execute: "agents.sideEffectAction.execute",
+  external: "agents.sideEffectAction.external",
+  production: "agents.sideEffectAction.production",
+});

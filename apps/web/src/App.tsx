@@ -14,9 +14,11 @@ import { WorkflowDetailPage, WorkflowRunPage, WorkflowsPage } from "./components
 import { isTabId, PetPanel } from "./components/PetPanel";
 import { useConnection, useDisplayedState, useTasks } from "./core/context";
 import { useHashRoute } from "./core/hooks";
+import { useT } from "./i18n";
 
 /** AppShell: navbar with Fawkes, Pet Panel, and the main content area. */
 export function App() {
+  const t = useT();
   const state = useDisplayedState();
   const connection = useConnection();
   const tasks = useTasks();
@@ -55,7 +57,7 @@ export function App() {
           main.current?.focus();
         }}
       >
-        Skip to content
+        {t("shell.app.skipToContent")}
       </a>
       <Navbar
         ref={avatar}
@@ -115,17 +117,15 @@ export function App() {
 }
 
 function Home({ connection }: { connection: string }) {
+  const t = useT();
   return (
     <>
       <h1>Phoenix</h1>
-      <p className="lead">Phoenix is the platform. Fawkes is the pet.</p>
+      <p className="lead">{t("shell.app.tagline")}</p>
       {connection === "unauthenticated" ? (
-        <p role="alert">
-          This page has no session token. Open Phoenix from the address printed by{" "}
-          <code>pnpm dev:core</code>.
-        </p>
+        <p role="alert">{t.rich("shell.app.noToken", { command: <code>pnpm dev:core</code> })}</p>
       ) : (
-        <p className="muted">Click Fawkes in the top bar to see what Phoenix is doing.</p>
+        <p className="muted">{t("shell.app.hint")}</p>
       )}
     </>
   );

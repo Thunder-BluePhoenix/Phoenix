@@ -9,6 +9,7 @@ import { NotetakerBanner } from "./Notetaker";
 import { MemoryPanel } from "./MemoryPanel";
 import { Overview } from "./Overview";
 import { Wardrobe } from "./Wardrobe";
+import { useT } from "../i18n";
 
 export interface PetPanelProps {
   id: string;
@@ -20,12 +21,12 @@ export interface PetPanelProps {
 }
 
 export const TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "chat", label: "Chat" },
-  { id: "activity", label: "Activity" },
-  { id: "capabilities", label: "Capabilities" },
-  { id: "memory", label: "Memory" },
-  { id: "wardrobe", label: "Wardrobe" },
+  { id: "overview", label: "pet.panel.tab.overview" },
+  { id: "chat", label: "pet.panel.tab.chat" },
+  { id: "activity", label: "pet.panel.tab.activity" },
+  { id: "capabilities", label: "pet.panel.tab.capabilities" },
+  { id: "memory", label: "pet.panel.tab.memory" },
+  { id: "wardrobe", label: "pet.panel.tab.wardrobe" },
 ] as const;
 export type TabId = (typeof TABS)[number]["id"];
 
@@ -33,6 +34,7 @@ export const isTabId = (v: string | undefined): v is TabId => TABS.some((t) => t
 
 /** Pet Panel (PRD v2.0 §5.3): current state, approvals, tasks, activity, capabilities, actions. */
 export function PetPanel({ id, state, tasks, onClose, initialTab = "overview" }: PetPanelProps) {
+  const t = useT();
   const heading = useRef<HTMLHeadingElement>(null);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [tab, setTab] = useState<TabId>(initialTab);
@@ -80,29 +82,29 @@ export function PetPanel({ id, state, tasks, onClose, initialTab = "overview" }:
           type="button"
           className="icon-button"
           onClick={onClose}
-          aria-label="Close Pet Panel"
+          aria-label={t("pet.panel.close")}
         >
           ×
         </button>
       </div>
-      <div role="tablist" aria-label="Pet Panel sections" className="tabs">
-        {TABS.map((t) => (
+      <div role="tablist" aria-label={t("pet.panel.sections")} className="tabs">
+        {TABS.map((item) => (
           <button
-            key={t.id}
+            key={item.id}
             ref={(el) => {
-              tabRefs.current[t.id] = el;
+              tabRefs.current[item.id] = el;
             }}
             type="button"
             role="tab"
-            id={`${id}-tab-${t.id}`}
-            aria-selected={tab === t.id}
-            aria-controls={`${id}-panel-${t.id}`}
-            tabIndex={tab === t.id ? 0 : -1}
+            id={`${id}-tab-${item.id}`}
+            aria-selected={tab === item.id}
+            aria-controls={`${id}-panel-${item.id}`}
+            tabIndex={tab === item.id ? 0 : -1}
             className="tab"
-            onClick={() => setTab(t.id)}
+            onClick={() => setTab(item.id)}
             onKeyDown={onTabKey}
           >
-            {t.label}
+            {t(item.label)}
           </button>
         ))}
       </div>

@@ -27,7 +27,10 @@ COPY="$ROOT/.secret-scan-tmp"
 trap 'rm -rf "$COPY"' EXIT
 rm -rf "$COPY"
 mkdir -p "$COPY"
-git ls-files --cached --others --exclude-standard -z | tar --null -T - -cf - | tar -xf - -C "$COPY"
+# A file deleted in the working tree but still in the index has nothing to scan (and would make tar fail).
+git ls-files --cached --others --exclude-standard -z \
+  | while IFS= read -r -d '' f; do [ -e "$f" ] || [ -L "$f" ] && printf '%s\0' "$f"; done \
+  | tar --null -T - -cf - | tar -xf - -C "$COPY"
 test "$(find "$COPY" -type f | wc -l)" -gt 0 || { echo "nothing to scan; refusing to report a clean result" >&2; exit 2; }
 docker run --rm -v "$COPY:/scan" "$IMAGE" detect --source /scan --no-git --config /scan/.gitleaks.toml \
   --redact --no-banner --exit-code 2 --log-level warn

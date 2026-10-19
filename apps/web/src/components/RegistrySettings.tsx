@@ -2,6 +2,9 @@
 // Copyright (C) 2026 Phoenix contributors
 import { useEffect, useState } from "react";
 import { useClient } from "../core/context";
+import { formatNumber } from "../core/format";
+import { useT } from "../i18n";
+import { translate } from "../i18n/store";
 
 type RegistryProvenance = {
   signer_key_id: string;
@@ -45,6 +48,7 @@ type RegistryPreview = {
 
 /** Browse verified, host-configured local metadata only; executable installation is not offered. */
 export function RegistrySettingsSection() {
+  const t = useT();
   const client = useClient();
   const [browse, setBrowse] = useState<RegistryBrowse | null>(null);
   const [browseError, setBrowseError] = useState<string | null>(null);
@@ -60,7 +64,9 @@ export function RegistrySettingsSection() {
       },
       (error: unknown) => {
         if (current)
-          setBrowseError(error instanceof Error ? error.message : "Registry unavailable");
+          setBrowseError(
+            error instanceof Error ? error.message : translate("automation.registry.unavailable"),
+          );
       },
     );
     return () => {
@@ -83,7 +89,9 @@ export function RegistrySettingsSection() {
         },
         (error: unknown) => {
           if (current)
-            setPreviewError(error instanceof Error ? error.message : "Registry unavailable");
+            setPreviewError(
+              error instanceof Error ? error.message : translate("automation.registry.unavailable"),
+            );
         },
       );
     return () => {
@@ -94,45 +102,42 @@ export function RegistrySettingsSection() {
   return (
     <section aria-labelledby="registry-h" className="card">
       <h2 id="registry-h" className="h3">
-        Capability registry
+        {t("automation.registry.title")}
       </h2>
-      <p className="small">
-        Browse metadata from a locally configured, host-trusted signed index. Phoenix Core verifies
-        the index signature before returning entries. Browsing does not install or run third-party
-        code.
-      </p>
+      <p className="small">{t("automation.registry.intro")}</p>
       <p className="muted small" role="status">
-        Installation unavailable: an audited OS sandbox is not available. Third-party capabilities
-        cannot be installed here.
+        {t("automation.registry.noInstall")}
       </p>
       {browseError && (
         <p className="error-text small" role="alert">
-          Registry could not be loaded: {browseError}
+          {t("automation.registry.loadFailed", { error: browseError })}
         </p>
       )}
-      {!browse && !browseError && <p className="muted small">Loading registry…</p>}
+      {!browse && !browseError && <p className="muted small">{t("automation.registry.loading")}</p>}
       {browse && !browse.configured && (
-        <p className="muted small">
-          No local registry is configured. Ask the host administrator to configure a trusted key and
-          signed index to browse capabilities.
-        </p>
+        <p className="muted small">{t("automation.registry.notConfigured")}</p>
       )}
       {browse?.configured && (
         <div className="small">
           <p>
-            Index signature: {browse.provenance.signature_status} with host-trusted Ed25519 signer{" "}
-            <code>{browse.provenance.signer_key_id}</code>.
+            {t.rich("automation.registry.indexSignature", {
+              signer: <code>{browse.provenance.signer_key_id}</code>,
+            })}
           </p>
           <p>
-            Signature: <code>{browse.provenance.signature}</code>
+            {t.rich("automation.registry.signature", {
+              signature: <code>{browse.provenance.signature}</code>,
+            })}
           </p>
           <p>
-            Signed index SHA-256: <code>{browse.provenance.index_sha256}</code>
+            {t.rich("automation.registry.indexHash", {
+              hash: <code>{browse.provenance.index_sha256}</code>,
+            })}
           </p>
         </div>
       )}
       {browse?.configured && browse.entries.length === 0 && (
-        <p className="muted small">The signed registry contains no capabilities.</p>
+        <p className="muted small">{t("automation.registry.empty")}</p>
       )}
       {browse?.configured && browse.entries.length > 0 && (
         <ul>
@@ -143,7 +148,7 @@ export function RegistrySettingsSection() {
                 aria-pressed={selected?.id === entry.id && selected.version === entry.version}
                 onClick={() => setSelected(entry)}
               >
-                Preview {entry.name} {entry.version}
+                {t("automation.registry.preview", { name: entry.name, version: entry.version })}
               </button>
               <span> — {entry.description}</span>
             </li>
@@ -154,10 +159,12 @@ export function RegistrySettingsSection() {
         <div aria-live="polite">
           {previewError && (
             <p className="error-text small" role="alert">
-              Preview unavailable: {previewError}
+              {t("automation.registry.previewFailed", { error: previewError })}
             </p>
           )}
-          {!preview && !previewError && <p className="muted small">Loading verified preview…</p>}
+          {!preview && !previewError && (
+            <p className="muted small">{t("automation.registry.previewLoading")}</p>
+          )}
           {preview &&
             preview.entry.id === selected.id &&
             preview.entry.version === selected.version && (
@@ -166,20 +173,21 @@ export function RegistrySettingsSection() {
                   {preview.entry.manifest.name} {preview.entry.version}
                 </h3>
                 <p>{preview.entry.manifest.description}</p>
-                <h4>Permissions</h4>
+                <h4>{t("automation.registry.permissions")}</h4>
                 {preview.entry.permissions.length ? (
                   <ul>
                     {preview.entry.permissions.map((permission) => (
                       <li key={permission}>
                         {permission}:{" "}
-                        {preview.permission_descriptions[permission] ?? "No description supplied"}
+                        {preview.permission_descriptions[permission] ??
+                          t("automation.registry.noDescription")}
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p>None declared.</p>
+                  <p>{t("automation.registry.noneDeclared")}</p>
                 )}
-                <h4>Data categories</h4>
+                <h4>{t("automation.registry.dataCategories")}</h4>
                 {preview.data_categories.length ? (
                   <ul>
                     {preview.data_categories.map((category) => (
@@ -187,39 +195,45 @@ export function RegistrySettingsSection() {
                     ))}
                   </ul>
                 ) : (
-                  <p>None declared.</p>
+                  <p>{t("automation.registry.noneDeclared")}</p>
                 )}
-                <h4>Licence</h4>
+                <h4>{t("automation.registry.licence")}</h4>
                 <p>
-                  {preview.entry.license}. {preview.license_policy}
+                  {t("automation.registry.licenceLine", {
+                    licence: preview.entry.license,
+                    policy: preview.license_policy,
+                  })}
                 </p>
-                <h4>Security</h4>
+                <h4>{t("automation.registry.security")}</h4>
                 <dl>
-                  <dt>Security contact</dt>
+                  <dt>{t("automation.registry.securityContact")}</dt>
                   <dd>{preview.entry.security.contact}</dd>
-                  <dt>Advisories</dt>
+                  <dt>{t("automation.registry.advisories")}</dt>
                   <dd>{preview.entry.security.advisory_url}</dd>
                 </dl>
-                <h4>Signed provenance</h4>
+                <h4>{t("automation.registry.provenance")}</h4>
                 <p>
-                  Index signature: {preview.provenance.signature_status} with host-trusted Ed25519
-                  signer <code>{preview.provenance.signer_key_id}</code>.
-                </p>
-                <p>
-                  Signature: <code>{preview.provenance.signature}</code>
+                  {t.rich("automation.registry.indexSignature", {
+                    signer: <code>{preview.provenance.signer_key_id}</code>,
+                  })}
                 </p>
                 <p>
-                  Signed index SHA-256: <code>{preview.provenance.index_sha256}</code>
+                  {t.rich("automation.registry.signature", {
+                    signature: <code>{preview.provenance.signature}</code>,
+                  })}
                 </p>
                 <p>
-                  Artifact SHA-256 declared by the signed index:{" "}
-                  <code>{preview.entry.artifact.sha256}</code> ({preview.entry.artifact.size}{" "}
-                  bytes). Artifact verification: not verified; artifact bytes have not been fetched
-                  or checked. Browsing does not execute the artifact.
+                  {t.rich("automation.registry.indexHash", {
+                    hash: <code>{preview.provenance.index_sha256}</code>,
+                  })}
                 </p>
-                <p className="muted small">
-                  Sandbox: unavailable. Installation is disabled; no install request will be sent.
+                <p>
+                  {t.rich("automation.registry.artifact", {
+                    hash: <code>{preview.entry.artifact.sha256}</code>,
+                    bytes: preview.entry.artifact.size,
+                  })}
                 </p>
+                <p className="muted small">{t("automation.registry.sandbox")}</p>
               </div>
             )}
         </div>

@@ -10,6 +10,7 @@ import {
 } from "@phoenix/pet-runtime";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { PetState } from "../core/types";
+import { isMessageKey, useT } from "../i18n";
 
 export interface FawkesAvatarProps {
   state: PetState;
@@ -64,6 +65,7 @@ export const FawkesAvatar = forwardRef<FawkesAvatarHandle, FawkesAvatarProps>(fu
   },
   ref,
 ) {
+  const t = useT();
   const host = useRef<HTMLSpanElement>(null);
   const pet = useRef<FawkesController | null>(null);
   const activate = useRef(onActivate);
@@ -86,7 +88,18 @@ export const FawkesAvatar = forwardRef<FawkesAvatarHandle, FawkesAvatarProps>(fu
   useEffect(() => {
     const controller = mountFawkes(host.current!, {
       size,
-      actionHint: actionHint ?? "Open Pet Panel",
+      actionHint: actionHint ?? t("pet.avatar.openPanel"),
+      // The accessible name in the language on screen. Core's explanation is data and stays as is.
+      describe: (view, parts) => {
+        const key = `common.petState.${view.state}`;
+        const label = isMessageKey(key) ? t(key) : parts.label;
+        const sentences = [t("pet.avatar.name", { label })];
+        if (parts.explanation !== parts.label) sentences.push(parts.explanation);
+        if (parts.recording && view.state !== "RECORDING") {
+          sentences.push(t("pet.avatar.recordingActive"));
+        }
+        return sentences.reduce((head, tail) => t("pet.avatar.join", { head, tail }));
+      },
       ...(draggable ? { draggable } : {}),
       reducedMotion:
         reducedMotionRef.current === "auto" ? "auto" : reducedMotionRef.current === "on",
@@ -115,7 +128,7 @@ export const FawkesAvatar = forwardRef<FawkesAvatarHandle, FawkesAvatarProps>(fu
       controller.destroy();
       pet.current = null;
     };
-  }, [size, draggable, actionHint, interactive]);
+  }, [size, draggable, actionHint, interactive, t]);
 
   useEffect(() => {
     pet.current?.update(state);

@@ -272,6 +272,45 @@ describe("running", () => {
     expect(speech.cancelled).toBeGreaterThanOrEqual(1); // earlier speech is cut off, not queued
   });
 
+  it("drops mic frames while Fawkes is speaking and for a short tail after, so its own voice never reaches the wake matcher", async () => {
+    let clockMs = 10_000;
+    const utterances: { onend: (() => void) | null; text: string }[] = [];
+    const synth = {
+      speaking: false,
+      speak: (u: unknown) => void (synth.speaking = u !== null),
+      cancel: () => void (synth.speaking = false),
+    };
+    const speech: SpeechDeps = {
+      synth: () => synth,
+      createUtterance: (text) => {
+        const u = { onend: null as (() => void) | null, text };
+        utterances.push(u);
+        return u;
+      },
+      now: () => clockMs,
+    };
+    const { socket, mic } = await listening({ speech });
+    const frame = () => act(() => mic.onPcm?.(new Int16Array(160).fill(5)));
+    frame();
+    expect(socket.frames).toHaveLength(1); // before any speech: sent
+
+    socket.fromCore({ type: "reply", text: "Playing OK, deny.", outcome: "ok", intent: "tool" });
+    await screen.findByText(/Fawkes:/);
+    clockMs += 5000; // a long answer: well past the tail while it is still playing
+    frame();
+    expect(socket.frames).toHaveLength(1);
+
+    // The browser says the utterance ended: frames stay dropped for the tail, then flow again.
+    synth.speaking = false;
+    act(() => utterances[0]!.onend?.());
+    clockMs += 900;
+    frame();
+    expect(socket.frames).toHaveLength(1);
+    clockMs += 200;
+    frame();
+    expect(socket.frames).toHaveLength(2);
+  });
+
   it("works when speech synthesis is absent (the answer is still on screen)", async () => {
     const { socket } = await listening({
       speech: { synth: () => undefined, createUtterance: String },

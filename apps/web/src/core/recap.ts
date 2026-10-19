@@ -1,7 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 // Wire types of GET /api/recap (see core/api/src/recap-routes.ts) and the small formatters the
-// recap page and its share image use.
+// recap page and its share image use. The formatters speak the language on screen unless they are
+// handed a `RecapText` (the share image is built from one, so it never depends on global state).
+import type { MessageKey } from "../i18n/en";
+import type { Vars } from "../i18n/icu";
+import { getActive, translate } from "../i18n/store";
+import { intlLocale, type ActiveLocale } from "../i18n/supported";
+import { formatNumber } from "./format";
+
+/** The translator and language the recap text is written in. */
+export interface RecapText {
+  t: (key: MessageKey, vars?: Vars) => string;
+  locale: ActiveLocale;
+}
+
+/** The language on screen right now. */
+export const activeRecapText = (): RecapText => ({ t: translate, locale: getActive().locale });
 
 export interface RecapRank {
   name: string;
@@ -44,26 +59,41 @@ export interface Recap {
 }
 
 /** "3 h 05 min", "42 min", "0 min": coding time at the precision a weekly number deserves. */
-export function formatCodingTime(seconds: number): string {
+export function formatCodingTime(seconds: number, text: RecapText = activeRecapText()): string {
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min`;
-  return `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")} min`;
+  if (minutes < 60) {
+    return text.t("memory.recap.time.minutes", { minutes: formatNumber(minutes, text.locale) });
+  }
+  return text.t("memory.recap.time.hoursMinutes", {
+    hours: formatNumber(Math.floor(minutes / 60), text.locale),
+    minutes: formatNumber(minutes % 60, text.locale, { minimumIntegerDigits: 2 }),
+  });
 }
 
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
-
 /** "Mon 12 Oct" from a YYYY-MM-DD key, without going through a time zone. */
-export function formatDayKey(day: string): string {
+export function formatDayKey(day: string, text: RecapText = activeRecapText()): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
   if (!m) return "";
   const date = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-  const month = date.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
-  return `${WEEKDAYS[(date.getUTCDay() + 6) % 7]} ${date.getUTCDate()} ${month}`;
+  const tag = intlLocale(text.locale);
+  const name = (options: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat(tag, { ...options, timeZone: "UTC" }).format(date);
+  return text.t("memory.recap.day", {
+    weekday: name({ weekday: "short" }),
+    day: formatNumber(date.getUTCDate(), text.locale),
+    month: name({ month: "short" }),
+  });
 }
 
 /** The week as one phrase: "Mon 12 Oct – Sun 18 Oct". */
-export function formatWeek(week: Pick<Recap["week"], "start" | "end">): string {
-  return `${formatDayKey(week.start)} – ${formatDayKey(week.end)}`;
+export function formatWeek(
+  week: Pick<Recap["week"], "start" | "end">,
+  text: RecapText = activeRecapText(),
+): string {
+  return text.t("memory.recap.week", {
+    start: formatDayKey(week.start, text),
+    end: formatDayKey(week.end, text),
+  });
 }
 
 /** 0 (none) to 4 (most) for a contribution-grid cell. */

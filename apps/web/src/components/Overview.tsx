@@ -5,6 +5,7 @@ import { useState } from "react";
 import { formatSince } from "../core/format";
 import { useAction, useKillSwitch } from "../core/hooks";
 import type { ActiveTask, PetState } from "../core/types";
+import { isMessageKey, useT } from "../i18n";
 import { AgentApprovals } from "./AgentApprovals";
 import { FawkesDropTarget } from "./Attachments";
 import { Approvals } from "./Approvals";
@@ -19,25 +20,32 @@ import { CurrentTask } from "./TaskView";
 const TASKS_SHOWN = 10;
 
 function TaskList({ tasks }: { tasks: ActiveTask[] }) {
+  const t = useT();
   const [all, setAll] = useState(false);
-  if (tasks.length === 0) return <p className="muted">Nothing running.</p>;
+  if (tasks.length === 0) return <p className="muted">{t("services.overview.nothingRunning")}</p>;
   const shown = all ? tasks : tasks.slice(0, TASKS_SHOWN);
   return (
     <>
       <ul className="task-list">
-        {shown.map((t) => (
-          <li key={t.key}>
-            <span>{t.title}</span>
-            <span className="muted"> · {t.source}</span>
-            {t.progress !== undefined && (
-              <progress max={1} value={t.progress} aria-label={`${t.title} progress`} />
+        {shown.map((task) => (
+          <li key={task.key}>
+            <span>{task.title}</span>
+            <span className="muted"> · {task.source}</span>
+            {task.progress !== undefined && (
+              <progress
+                max={1}
+                value={task.progress}
+                aria-label={t("services.overview.taskProgress", { title: task.title })}
+              />
             )}
           </li>
         ))}
       </ul>
       {tasks.length > TASKS_SHOWN && (
         <button type="button" className="btn" aria-expanded={all} onClick={() => setAll(!all)}>
-          {all ? "Show fewer" : `Show all ${tasks.length} tasks`}
+          {all
+            ? t("services.overview.showFewer")
+            : t("services.overview.showAll", { count: tasks.length })}
         </button>
       )}
     </>
@@ -45,19 +53,23 @@ function TaskList({ tasks }: { tasks: ActiveTask[] }) {
 }
 
 export function Overview({ state, tasks }: { state: PetState; tasks: ActiveTask[] }) {
+  const t = useT();
   const visual = visualFor(state.state);
+  const stateKey = `common.petState.${state.state}`;
   return (
     <div className="overview">
       <div className={`pet-status tone-${visual.tone}`}>
-        <strong>{visual.label}</strong>
+        <strong>{isMessageKey(stateKey) ? t(stateKey) : visual.label}</strong>
         <span>{state.explanation}</span>
         {state.since && Date.parse(state.since) > 0 && (
-          <span className="muted small">for {formatSince(state.since)}</span>
+          <span className="muted small">
+            {t("services.overview.stateFor", { since: formatSince(state.since) })}
+          </span>
         )}
       </div>
       {state.recording && (
         <p className="pet-recording" role="note">
-          <span className="rec-dot" aria-hidden="true" /> Recording is active.
+          <span className="rec-dot" aria-hidden="true" /> {t("services.overview.recordingActive")}
         </p>
       )}
       <FawkesDropTarget />
@@ -65,7 +77,7 @@ export function Overview({ state, tasks }: { state: PetState; tasks: ActiveTask[
       <Approvals />
       <CurrentTask />
       <section aria-labelledby="tasks-h">
-        <h3 id="tasks-h">Active tasks</h3>
+        <h3 id="tasks-h">{t("services.overview.activeTasks")}</h3>
         <TaskList tasks={tasks} />
       </section>
       <AgentsGlance />
@@ -79,6 +91,7 @@ export function Overview({ state, tasks }: { state: PetState; tasks: ActiveTask[
 }
 
 export function QuickActions({ state }: { state: PetState }) {
+  const t = useT();
   const { run, busy, error } = useAction();
   const { data: killEngaged, reload } = useKillSwitch();
   const [confirmStop, setConfirmStop] = useState(false);
@@ -91,7 +104,7 @@ export function QuickActions({ state }: { state: PetState }) {
 
   return (
     <section aria-labelledby="actions-h">
-      <h3 id="actions-h">Quick actions</h3>
+      <h3 id="actions-h">{t("services.overview.quickActions")}</h3>
       <div className="button-row wrap">
         {state.state === "ERROR" && (
           <button
@@ -100,7 +113,7 @@ export function QuickActions({ state }: { state: PetState }) {
             disabled={busy}
             onClick={() => void run("POST", "/api/pet/acknowledge", {})}
           >
-            Dismiss errors
+            {t("services.overview.dismissErrors")}
           </button>
         )}
         <button
@@ -109,7 +122,7 @@ export function QuickActions({ state }: { state: PetState }) {
           disabled={busy}
           onClick={() => void run("POST", "/api/pet/sleep", { sleeping: !state.sleeping })}
         >
-          {state.sleeping ? "Wake Fawkes" : "Pause Fawkes"}
+          {state.sleeping ? t("services.overview.wake") : t("services.overview.pause")}
         </button>
         {killEngaged ? (
           <button
@@ -118,7 +131,7 @@ export function QuickActions({ state }: { state: PetState }) {
             disabled={busy}
             onClick={() => void toggleKill(false)}
           >
-            Release emergency stop
+            {t("services.overview.releaseStop")}
           </button>
         ) : confirmStop ? (
           <>
@@ -128,10 +141,10 @@ export function QuickActions({ state }: { state: PetState }) {
               disabled={busy}
               onClick={() => void toggleKill(true)}
             >
-              Confirm: stop all capabilities
+              {t("services.overview.confirmStop")}
             </button>
             <button type="button" className="btn" onClick={() => setConfirmStop(false)}>
-              Cancel
+              {t("common.button.cancel")}
             </button>
           </>
         ) : (
@@ -140,13 +153,13 @@ export function QuickActions({ state }: { state: PetState }) {
             className="btn btn-danger-outline"
             onClick={() => setConfirmStop(true)}
           >
-            Emergency stop
+            {t("services.overview.emergencyStop")}
           </button>
         )}
       </div>
       {killEngaged && (
         <p className="warning-text" role="note">
-          Emergency stop is on: every capability is disabled and actions are blocked.
+          {t("services.overview.stopOn")}
         </p>
       )}
       {error && (

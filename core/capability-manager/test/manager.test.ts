@@ -14,8 +14,8 @@ import {
   type PhoenixEvent,
 } from "@phoenix/protocol";
 import { StateEngine } from "@phoenix/state-engine";
-import { afterEach, describe, expect, it } from "vitest";
-import { CapabilityManager, type CapabilityModule } from "../src";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { CapabilityManager, commandTargets, type CapabilityModule } from "../src";
 
 const managers: CapabilityManager[] = [];
 const children: ChildProcess[] = [];
@@ -431,6 +431,70 @@ describe("commands", () => {
     expect(
       permissions.audit.list({ limit: 100 }).find((e) => e.action === "action.failed")?.details,
     ).toMatchObject({ outcomeUnknown: true });
+  });
+
+  it("an approval request names which deployment, execution or workflow is acted on", async () => {
+    const { manager, permissions } = setup();
+    const requests: { summary: string; details?: Record<string, unknown> }[] = [];
+    const authorize = permissions.authorize.bind(permissions);
+    permissions.authorize = (request, signal) => {
+      requests.push(request);
+      return authorize(request, signal);
+    };
+    manager.registerBuiltin(
+      builtin(
+        {},
+        manifest({
+          commands: [
+            {
+              name: "deploy",
+              description: "Deploy the thing",
+              side_effect: "production",
+              permissions: [],
+              input_schema: { type: "object", additionalProperties: true },
+            },
+          ],
+        }),
+      ),
+    );
+    await manager.enable("demo");
+    const op = manager.invoke("demo", "deploy", {
+      deployment_id: "dpl_ABC123",
+      id: 7,
+      project: "web",
+      target: "production",
+      idempotency_key: "plan1-redeploy-abcdef0123456789",
+      note: "not a target",
+      nested: { workflow_id: "wf1" },
+      flag_id: true,
+    });
+    await vi.waitFor(() => expect(permissions.pendingConfirmations()).toHaveLength(1));
+    expect(requests[0]!.details).toEqual({
+      actor: "user",
+      operation_id: op.id,
+      deployment_id: "dpl_ABC123",
+      id: "7",
+      project: "web",
+      target: "production",
+    });
+    expect(permissions.pendingConfirmations()[0]!.summary).toContain("deployment_id: dpl_ABC123");
+    expect(permissions.pendingConfirmations()[0]!.summary).not.toContain("idempotency_key");
+    permissions.resolveConfirmation(permissions.pendingConfirmations()[0]!.id, false);
+  });
+
+  it("clips and redacts the target values it shows", () => {
+    const lookalike = ["gh", "p_", "a1B2".repeat(8)].join("");
+    const targets = commandTargets({
+      workflow_id: `wf-${lookalike}`,
+      execution_id: "9".repeat(200),
+      project: lookalike,
+    });
+    expect(targets.workflow_id).toBe("wf-[REDACTED]");
+    expect(targets.project).toBe("[REDACTED]");
+    expect(targets.execution_id).toHaveLength(80);
+    expect(JSON.stringify(targets)).not.toContain(lookalike);
+    expect(commandTargets("nope")).toEqual({});
+    expect(commandTargets([1, 2])).toEqual({});
   });
 
   it("validates input, rejects unknown commands and disabled capabilities", async () => {

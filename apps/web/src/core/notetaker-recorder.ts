@@ -10,6 +10,7 @@
 //
 // The microphone is requested only after the user confirmed the consent dialog AND Core accepted
 // the session (consent + notice_acknowledged are sent in that very request, every time).
+import { translate } from "../i18n/store";
 import { ApiError, type PhoenixClient } from "./client";
 import {
   createBrowserMicrophone,
@@ -46,7 +47,11 @@ const IDLE: RecorderState = {
 };
 
 const failure = (err: unknown) =>
-  err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Request failed";
+  err instanceof ApiError
+    ? err.message
+    : err instanceof Error
+      ? err.message
+      : translate("common.error.requestFailed");
 
 const MICROPHONE_CHANNEL = 1;
 
@@ -101,10 +106,11 @@ export class NotetakerRecorder {
     this.set({ sessionId: started.id, startedAtMs: this.now() });
     socket.onmessage = (event) => this.onMessage(live, event.data);
     socket.onerror = () => {
-      if (this.live === live) this.abandon("The audio connection failed.", true);
+      if (this.live === live) this.abandon(translate("capture.audio.connectionFailed"), true);
     };
     socket.onclose = () => {
-      if (this.live === live && !live.done) this.abandon("The audio connection closed.", true);
+      if (this.live === live && !live.done)
+        this.abandon(translate("capture.audio.connectionClosed"), true);
     };
   }
 
@@ -114,7 +120,7 @@ export class NotetakerRecorder {
     try {
       message = JSON.parse(data) as typeof message;
     } catch {
-      return this.abandon("Invalid reply from Core.", true);
+      return this.abandon(translate("capture.audio.invalidReply"), true);
     }
     if (message.type === "ready") {
       live.mic
@@ -126,12 +132,17 @@ export class NotetakerRecorder {
           () => {
             if (this.live === live) this.set({ phase: "recording" });
           },
-          (err: unknown) => this.abandon(`Microphone unavailable: ${failure(err)}`, true),
+          (err: unknown) =>
+            this.abandon(translate("capture.audio.micUnavailable", { reason: failure(err) }), true),
         );
     } else if (message.type === "ended" || message.type === "error") {
       const why = typeof message.reason === "string" ? message.reason : String(message.error ?? "");
       this.abandon(
-        `The recording stopped${why ? `: ${why.replaceAll("_", " ")}` : ""}. What was transcribed so far is saved.`,
+        why
+          ? translate("capture.notetaker.recorder.stoppedWithReason", {
+              reason: why.replaceAll("_", " "),
+            })
+          : translate("capture.notetaker.recorder.stopped"),
         false,
       );
     } else if (message.type === "audio_ended") {
@@ -204,6 +215,11 @@ export class NotetakerRecorder {
 }
 
 const recorders = new WeakMap<PhoenixClient, NotetakerRecorder>();
+
+/** The recorder of this client if one was ever made (never creates one, so never a microphone). */
+export function existingRecorder(client: PhoenixClient): NotetakerRecorder | undefined {
+  return recorders.get(client);
+}
 
 /** The one recorder of this client. `createMicrophone` (tests pass a fake) counts only the first time. */
 export function recorderFor(

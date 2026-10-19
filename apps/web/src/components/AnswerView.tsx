@@ -1,12 +1,43 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { formatDate, safeHttpUrl } from "../core/format";
-import type { MemoryAnswer, MemoryFact, MemorySensitivity } from "../core/types";
+import { formatDate, formatNumber, safeHttpUrl } from "../core/format";
+import type {
+  MemoryAnswer,
+  MemoryEvidence,
+  MemoryFact,
+  MemorySensitivity,
+  MemoryStoredInterpretation,
+} from "../core/types";
+import { useT, type MessageKey } from "../i18n";
+import { translate } from "../i18n/store";
 
-export const SENSITIVITY_LABEL: Record<MemorySensitivity, string> = {
-  public: "Public",
-  internal: "Internal",
-  sensitive: "Sensitive",
+const SENSITIVITY_KEY: Record<MemorySensitivity, MessageKey> = {
+  public: "capture.answer.sensitivity.public",
+  internal: "capture.answer.sensitivity.internal",
+  sensitive: "capture.answer.sensitivity.sensitive",
+};
+
+/**
+ * The sensitivity words in the language on screen, for components that read them without `useT()`
+ * (the value is looked up each time; the component re-renders on a language change through its own
+ * `useT()`).
+ */
+export const SENSITIVITY_LABEL: Record<MemorySensitivity, string> = Object.defineProperties(
+  {} as Record<MemorySensitivity, string>,
+  {
+    public: { enumerable: true, get: () => translate(SENSITIVITY_KEY.public) },
+    internal: { enumerable: true, get: () => translate(SENSITIVITY_KEY.internal) },
+    sensitive: { enumerable: true, get: () => translate(SENSITIVITY_KEY.sensitive) },
+  },
+);
+
+const CLASSIFICATION_KEY: Record<
+  (MemoryFact | MemoryEvidence | MemoryStoredInterpretation)["classification"],
+  MessageKey
+> = {
+  stored_fact: "capture.answer.classification.storedFact",
+  retrieved_evidence: "capture.answer.classification.retrievedEvidence",
+  stored_interpretation: "capture.answer.classification.storedInterpretation",
 };
 
 /** A source reference as text; a link only when it is a plain http(s) URL. Never HTML. */
@@ -37,28 +68,32 @@ function AnswerRecord({
     | MemoryAnswer["retrieved_evidence"][number]
     | MemoryAnswer["stored_interpretations"][number];
 }) {
+  const t = useT();
   return (
     <li>
       <p className="memory-text">{item.text}</p>
       <p className="muted small memory-text">
-        {item.classification === "stored_fact"
-          ? "Stored fact"
-          : item.classification === "retrieved_evidence"
-            ? "Retrieved evidence, not an asserted fact"
-            : "Stored interpretation, not a fact"}
-        {" · source id "}
-        <code className="break">{item.id}</code>
-        {" · "}
-        {item.domain} · from {item.source}
-        <SourceRef sourceRef={item.source_ref} />
-        {" · observed "}
-        <time dateTime={item.observed_at}>{formatDate(item.observed_at)}</time>
-        {" · "}
-        {SENSITIVITY_LABEL[item.sensitivity]}
-        {" · "}
-        {item.freshness === "stale" ? "Stale observation" : "Fresh observation"}
-        {" · confidence "}
-        {item.confidence === null ? "unknown" : `${Math.round(item.confidence * 100)}%`}
+        {t.rich("capture.answer.record", {
+          classification: t(CLASSIFICATION_KEY[item.classification]),
+          id: <code className="break">{item.id}</code>,
+          domain: item.domain,
+          source: item.source,
+          ref: <SourceRef sourceRef={item.source_ref} />,
+          observed: <time dateTime={item.observed_at}>{formatDate(item.observed_at)}</time>,
+          sensitivity: t(SENSITIVITY_KEY[item.sensitivity]),
+          freshness: t(
+            item.freshness === "stale"
+              ? "capture.answer.freshness.stale"
+              : "capture.answer.freshness.fresh",
+          ),
+          confidence:
+            item.confidence === null
+              ? t("capture.answer.confidenceUnknown")
+              : formatNumber(Math.round(item.confidence * 100) / 100, undefined, {
+                  style: "percent",
+                  maximumFractionDigits: 0,
+                }),
+        })}
       </p>
     </li>
   );
@@ -66,36 +101,52 @@ function AnswerRecord({
 
 /** At least 0.01 shows cents; smaller amounts keep up to six significant digits, never exponent form. */
 function formatCost(amount: number): string {
-  if (amount >= 0.01) return amount.toFixed(2);
-  if (amount <= 0) return "0";
+  const digits = (fraction: number, max = fraction): string =>
+    formatNumber(Number(amount.toFixed(max)), undefined, {
+      minimumFractionDigits: fraction,
+      maximumFractionDigits: max,
+      useGrouping: false,
+    });
+  if (amount >= 0.01) return digits(2);
+  if (amount <= 0) return formatNumber(0);
   const decimals = Math.min(20, Math.max(0, 5 - Math.floor(Math.log10(amount))));
-  return amount.toFixed(decimals).replace(/\.?0+$/, "");
+  return digits(0, decimals);
 }
 
 /** Exactly one line saying who answered, where, and what it cost; nothing for older answers. */
 function Attribution({ answer }: { answer: MemoryAnswer }) {
+  const t = useT();
   const { provider, locality } = answer;
   if (!provider || !locality) return null;
-  const where = locality === "local" ? "on this device" : "in the cloud (leaves this device)";
-  let cost = "cost unknown";
-  if (locality === "local") cost = "free, on this device";
+  const where = t(
+    locality === "local"
+      ? "capture.answer.attribution.whereLocal"
+      : "capture.answer.attribution.whereCloud",
+  );
+  let cost = t("capture.answer.attribution.costUnknown");
+  if (locality === "local") cost = t("capture.answer.attribution.costFree");
   else if (answer.cost && Number.isFinite(answer.cost.amount))
-    cost = `about $${formatCost(answer.cost.amount)} (from your prices)`;
+    cost = t("capture.answer.attribution.costAbout", { amount: formatCost(answer.cost.amount) });
   return (
     <p className="small memory-attribution">
-      Answered by {answer.model ?? "its default model"} via {answer.provider_label ?? provider} ·{" "}
-      {where} · {cost}
+      {t("capture.answer.attribution.line", {
+        model: answer.model ?? t("capture.answer.attribution.defaultModel"),
+        provider: answer.provider_label ?? provider,
+        where,
+        cost,
+      })}
     </p>
   );
 }
 
 /** Core keeps assertions, retrieved material, previous interpretations and generated text apart. */
 export function AnswerView({ answer }: { answer: MemoryAnswer }) {
+  const t = useT();
   return (
     <div className="memory-answer">
-      <h4>Stored facts</h4>
+      <h4>{t("capture.answer.facts.heading")}</h4>
       {answer.facts.length === 0 ? (
-        <p className="muted small">No stored facts matched your question.</p>
+        <p className="muted small">{t("capture.answer.facts.empty")}</p>
       ) : (
         <ul className="memory-facts">
           {answer.facts.map((item) => (
@@ -103,9 +154,9 @@ export function AnswerView({ answer }: { answer: MemoryAnswer }) {
           ))}
         </ul>
       )}
-      <h4>Retrieved evidence (not stored facts)</h4>
+      <h4>{t("capture.answer.evidence.heading")}</h4>
       {answer.retrieved_evidence.length === 0 ? (
-        <p className="muted small">No retrieved evidence matched.</p>
+        <p className="muted small">{t("capture.answer.evidence.empty")}</p>
       ) : (
         <ul className="memory-facts">
           {answer.retrieved_evidence.map((item) => (
@@ -113,9 +164,9 @@ export function AnswerView({ answer }: { answer: MemoryAnswer }) {
           ))}
         </ul>
       )}
-      <h4>Previous stored interpretations (not facts)</h4>
+      <h4>{t("capture.answer.interpretations.heading")}</h4>
       {answer.stored_interpretations.length === 0 ? (
-        <p className="muted small">No previous interpretations matched.</p>
+        <p className="muted small">{t("capture.answer.interpretations.empty")}</p>
       ) : (
         <ul className="memory-facts">
           {answer.stored_interpretations.map((item) => (
@@ -123,13 +174,14 @@ export function AnswerView({ answer }: { answer: MemoryAnswer }) {
           ))}
         </ul>
       )}
-      <h4>Generated hypothesis</h4>
+      <h4>{t("capture.answer.hypothesis.heading")}</h4>
       {answer.ai_used && answer.interpretation ? (
         <div className="memory-interpretation">
           <p className="small">
             <strong>
-              Generated hypothesis by {answer.processed_by ?? "an AI model"}, not a stored fact or
-              established conclusion.
+              {t("capture.answer.hypothesis.label", {
+                by: answer.processed_by ?? t("capture.answer.hypothesis.anAiModel"),
+              })}
             </strong>
           </p>
           <Attribution answer={answer} />
@@ -137,7 +189,9 @@ export function AnswerView({ answer }: { answer: MemoryAnswer }) {
         </div>
       ) : (
         <p className="small">
-          {answer.ai_used ? "AI was used but gave no interpretation." : "No AI was used."}
+          {answer.ai_used
+            ? t("capture.answer.hypothesis.noInterpretation")
+            : t("capture.answer.hypothesis.noAi")}
         </p>
       )}
       {answer.note && <p className="muted small">{answer.note}</p>}

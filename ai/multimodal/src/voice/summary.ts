@@ -6,6 +6,8 @@
 // numbers and array lengths are read, and the sentence around them is fixed here. Nothing in the
 // output can add a clause, a link or an instruction to what is spoken.
 
+import { neutraliseWake } from "./wake";
+
 export const MAX_REPLY_CHARS = 300;
 const MAX_FIELD_CHARS = 40;
 const MAX_ITEMS = 3;
@@ -19,10 +21,11 @@ export function clipSpeech(text: string, max: number): string {
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 }
 
+/** A third-party string as speech: wake phrases removed first (Fawkes must not wake itself), then clipped. */
 function field(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0
-    ? clipSpeech(value, MAX_FIELD_CHARS)
-    : null;
+  if (typeof value !== "string") return null;
+  const spoken = clipSpeech(neutraliseWake(value).replace(/^[\s,.:;!?-]+/u, ""), MAX_FIELD_CHARS);
+  return spoken.length > 0 ? spoken : null;
 }
 
 function plural(n: number, noun: string): string {
@@ -80,5 +83,7 @@ export function summariseToolOutput(tool: string, output: unknown): string {
       if (counts.length > 0) text = `${counts.join(", ")}.`;
     }
   }
-  return clipSpeech(text ?? `I checked ${clipSpeech(tool, 60)}.`, MAX_REPLY_CHARS);
+  // One more pass over the whole sentence: a run split across two fields ("ok" | "Fawkes") or a
+  // key/tool name that is not a `field()` must not wake the assistant either.
+  return clipSpeech(neutraliseWake(text ?? `I checked ${clipSpeech(tool, 60)}.`), MAX_REPLY_CHARS);
 }

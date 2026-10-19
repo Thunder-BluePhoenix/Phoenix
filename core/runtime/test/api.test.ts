@@ -117,6 +117,34 @@ describe("events", () => {
     ).toBe(403);
   });
 
+  it("refuses events that claim to come from a built-in service capability, by type or by source", async () => {
+    const { api, runtime } = await start();
+    const families = [
+      "vercel",
+      "stripe",
+      "n8n",
+      "resend",
+      "notion",
+      "calcom",
+      "spotify",
+      "apple_music",
+      "portfolio",
+    ];
+    for (const family of families) {
+      const byType = await api("POST", "/api/events", event(`${family}.deploy.failed`));
+      expect([family, byType.status]).toEqual([family, 403]);
+      expect(byType.json.code).toBe("SECURITY_POLICY_BLOCKED");
+      const bySource = await api("POST", "/api/events", event("build.failed", { source: family }));
+      expect([family, bySource.status]).toEqual([family, 403]);
+    }
+    await runtime.bus.drain();
+    expect((await api("GET", "/api/events?type=vercel.*")).json.events).toEqual([]);
+    // Lookalikes that are not these families still pass: the rule is a namespace, not a substring.
+    for (const type of ["vercelish.deploy.failed", "build.vercel.failed", "notionx.page"]) {
+      expect([type, (await api("POST", "/api/events", event(type))).status]).toEqual([type, 202]);
+    }
+  });
+
   it("rejects malformed requests", async () => {
     const { api } = await start();
     expect((await api("POST", "/api/events", "{not json")).json.code).toBe("INVALID_REQUEST");

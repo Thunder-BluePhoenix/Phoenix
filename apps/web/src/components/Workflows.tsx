@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { formatAgo, formatDate } from "../core/format";
+import { formatAgo, formatDate, formatNumber } from "../core/format";
 import {
   useAction,
   useWorkflow,
@@ -21,18 +21,20 @@ import type {
 import {
   authorisationText,
   definitionText,
-  ENVIRONMENT_TEXT,
+  environmentText,
   expiryOf,
   expiryProblem,
+  MAX_EXPIRY_DAYS,
   NEEDS_ATTENTION,
   parsePayload,
   refusedStart,
-  RUN_STATUS_TEXT,
-  STEP_STATUS_TEXT,
+  runStatusText,
+  stepStatusText,
   toolSteps,
 } from "../core/workflows";
 import { Approvals } from "./Approvals";
 import { Feedback } from "./Feedback";
+import { useT } from "../i18n";
 
 const workflowHref = (id: string) => `#/workflows/${encodeURIComponent(id)}`;
 const runHref = (workflowId: string, runId: string) =>
@@ -40,12 +42,14 @@ const runHref = (workflowId: string, runId: string) =>
 
 /** The state of a workflow in words: enabled or not, environment, authorised or not. */
 function WorkflowState({ w }: { w: Workflow }) {
+  const t = useT();
   return (
     <span className="small">
-      <strong>{w.enabled ? "Enabled" : "Disabled"}</strong> ·{" "}
+      <strong>{w.enabled ? t("common.status.enabled") : t("common.status.disabled")}</strong> ·{" "}
       <span className={w.environment === "production" ? "wf-production" : ""}>
-        {ENVIRONMENT_TEXT[w.environment]}
-        {w.environment === "production" && " (changes live systems)"}
+        {w.environment === "production"
+          ? t("automation.workflows.environment.productionLive")
+          : environmentText(w.environment)}
       </span>{" "}
       · {authorisationText(w)}
     </span>
@@ -53,25 +57,23 @@ function WorkflowState({ w }: { w: Workflow }) {
 }
 
 export function WorkflowsPage() {
+  const t = useT();
   const { data: workflows, error, reload } = useWorkflows();
   const { data: metrics } = useWorkflowMetrics();
   return (
     <div className="meetings workflows">
-      <h1>Workflows</h1>
-      <p className="muted">
-        A workflow reacts to an event with a fixed list of steps. A workflow that changes production
-        does nothing until you authorise exactly the definition you reviewed.
-      </p>
+      <h1>{t("automation.workflows.title")}</h1>
+      <p className="muted">{t("automation.workflows.intro")}</p>
       {error && (
         <p className="error-text" role="alert">
           {error}
         </p>
       )}
       {workflows && workflows.length === 0 && (
-        <p className="muted">No workflows yet. Create one by reviewing a definition below.</p>
+        <p className="muted">{t("automation.workflows.empty")}</p>
       )}
       <WorkflowEditor onSaved={reload} />
-      <ul className="card-list" aria-label="Workflows">
+      <ul className="card-list" aria-label={t("automation.workflows.title")}>
         {workflows?.map((w) => (
           <li key={w.id} className="card meeting-row">
             <a href={workflowHref(w.id)}>
@@ -79,16 +81,22 @@ export function WorkflowsPage() {
             </a>
             <WorkflowState w={w} />
             <span className="muted small memory-text">
-              Runs when <code>{w.trigger.event}</code> happens · version {w.version}
+              {t.rich("automation.workflows.row.runsWhen", {
+                event: <code>{w.trigger.event}</code>,
+                version: w.version,
+              })}
             </span>
             {w.problems.length > 0 && (
               <span className="error-text small memory-text">
-                Cannot run: {w.problems.join(" ")}
+                {t("automation.workflows.row.cannotRun", { problems: w.problems.join(" ") })}
               </span>
             )}
             {metrics?.[w.id] && (
               <span className="muted small">
-                {metrics[w.id]?.runs_started} run(s), {metrics[w.id]?.runs_succeeded} succeeded
+                {t("automation.workflows.row.metrics", {
+                  started: metrics[w.id]?.runs_started ?? 0,
+                  succeeded: formatNumber(metrics[w.id]?.runs_succeeded ?? 0),
+                })}
               </span>
             )}
           </li>
@@ -100,31 +108,45 @@ export function WorkflowsPage() {
 
 /** Plain-text metrics, only for numbers that exist. */
 function Metrics({ m }: { m: WorkflowMetrics | undefined }) {
-  if (!m)
-    return <p className="muted small">This workflow has not run yet, so there are no numbers.</p>;
+  const t = useT();
+  if (!m) return <p className="muted small">{t("automation.workflows.metrics.none")}</p>;
   const rows: [string, string | number][] = [
-    ["Runs started", m.runs_started],
-    ["Succeeded", m.runs_succeeded],
-    ["Failed", m.runs_failed],
-    ["Needing your attention", m.runs_needing_attention],
-    ["Cancelled", m.runs_cancelled],
-    ["Refused", m.runs_refused],
-    ["Interrupted", m.runs_interrupted],
-    ["Steps that failed", `${m.steps_failed} (${Math.round(m.step_failure_rate * 100)}% of steps)`],
-    ["Approvals waiting", m.approvals_waiting],
+    [t("automation.workflows.metrics.started"), formatNumber(m.runs_started)],
+    [t("automation.workflows.metrics.succeeded"), formatNumber(m.runs_succeeded)],
+    [t("automation.workflows.metrics.failed"), formatNumber(m.runs_failed)],
+    [t("automation.workflows.metrics.attention"), formatNumber(m.runs_needing_attention)],
+    [t("automation.workflows.metrics.cancelled"), formatNumber(m.runs_cancelled)],
+    [t("automation.workflows.metrics.refused"), formatNumber(m.runs_refused)],
+    [t("automation.workflows.metrics.interrupted"), formatNumber(m.runs_interrupted)],
     [
-      "Approvals approved / rejected / expired",
-      `${m.approvals_approved} / ${m.approvals_rejected} / ${m.approvals_expired}`,
+      t("automation.workflows.metrics.stepsFailed"),
+      t("automation.workflows.metrics.stepsFailedValue", {
+        count: formatNumber(m.steps_failed),
+        percent: formatNumber(Math.round(m.step_failure_rate * 100)),
+      }),
+    ],
+    [t("automation.workflows.metrics.approvalsWaiting"), formatNumber(m.approvals_waiting)],
+    [
+      t("automation.workflows.metrics.approvalsOutcome"),
+      t("automation.workflows.metrics.approvalsOutcomeValue", {
+        approved: formatNumber(m.approvals_approved),
+        rejected: formatNumber(m.approvals_rejected),
+        expired: formatNumber(m.approvals_expired),
+      }),
     ],
     [
-      "Run time (median / 90th percentile)",
+      t("automation.workflows.metrics.runTime"),
       m.duration
-        ? `${m.duration.p50} ms / ${m.duration.p90} ms over ${m.duration.samples} runs`
-        : "no finished runs",
+        ? t("automation.workflows.metrics.runTimeValue", {
+            median: formatNumber(m.duration.p50),
+            p90: formatNumber(m.duration.p90),
+            samples: m.duration.samples,
+          })
+        : t("automation.workflows.metrics.noFinishedRuns"),
     ],
   ];
   return (
-    <dl className="approval-facts small" aria-label="Metrics">
+    <dl className="approval-facts small" aria-label={t("automation.workflows.metrics.label")}>
       {rows.map(([k, v]) => (
         <div key={k} className="metric-row">
           <dt>{k}</dt>
@@ -143,6 +165,7 @@ function WorkflowEditor({
   initial?: WorkflowDetail;
   onSaved: () => Promise<void>;
 }) {
+  const t = useT();
   const id = useId();
   const [draft, setDraft] = useState(() =>
     initial?.definition
@@ -185,23 +208,25 @@ function WorkflowEditor({
     try {
       parsed = JSON.parse(text);
     } catch {
-      setProblem("Enter a JSON workflow definition before checking it.");
+      setProblem(t("automation.workflows.editor.enterJson"));
       return;
     }
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      setProblem("A workflow definition must be a JSON object.");
+      setProblem(t("automation.workflows.editor.notObject"));
       return;
     }
     if (!("enabled" in parsed) || parsed.enabled !== (initial?.workflow.enabled ?? false)) {
       setProblem(
         initial
-          ? `Keep "enabled": ${initial.workflow.enabled}. Change the switch separately after saving.`
-          : 'Set "enabled": false. Saving a new definition must not switch it on.',
+          ? t("automation.workflows.editor.keepEnabled", {
+              enabled: String(initial.workflow.enabled),
+            })
+          : t("automation.workflows.editor.setDisabled"),
       );
       return;
     }
     if (initial && (!("id" in parsed) || parsed.id !== initial.workflow.id)) {
-      setProblem("Editing must keep the same workflow ID. Use Create workflow for a new ID.");
+      setProblem(t("automation.workflows.editor.keepId"));
       return;
     }
     setProblem(null);
@@ -215,8 +240,8 @@ function WorkflowEditor({
       if (!result.valid || !result.hash) {
         setProblem(
           result.problems.length
-            ? `Not valid: ${result.problems.join("; ")}`
-            : "Validation did not return a valid definition hash.",
+            ? t("automation.workflows.editor.notValid", { problems: result.problems.join("; ") })
+            : t("automation.workflows.editor.noHash"),
         );
         return;
       }
@@ -246,14 +271,12 @@ function WorkflowEditor({
       }
       setReview(null);
       if (result.workflow.hash !== review.hash) {
-        setProblem(
-          "The saved definition hash differs from the reviewed hash. Review the stored definition before using it.",
-        );
+        setProblem(t("automation.workflows.editor.hashDiffers"));
       } else {
         setNote(
           initial
-            ? "Definition saved. Existing switch state is unchanged; saving does not authorise it."
-            : "Definition saved switched off. Saving does not authorise or enable it.",
+            ? t("automation.workflows.editor.savedExisting")
+            : t("automation.workflows.editor.savedNew"),
         );
       }
       setSavedId(result.workflow.id);
@@ -266,18 +289,20 @@ function WorkflowEditor({
   return (
     <section className="card wf-editor" aria-labelledby={`${id}-heading`}>
       <h2 id={`${id}-heading`} className="h3">
-        {initial ? "Edit definition" : "Create workflow"}
+        {initial
+          ? t("automation.workflows.editor.titleEdit")
+          : t("automation.workflows.editor.titleCreate")}
       </h2>
       <p className="muted small">
-        Enter the complete JSON definition.{" "}
         {initial
-          ? `Keep "enabled": ${initial.workflow.enabled}; this edit preserves its current switch state. Saving does not authorise or run it.`
-          : 'New definitions must have "enabled": false. Saving does not run, enable or authorise them.'}{" "}
-        Checking never saves.
+          ? t("automation.workflows.editor.introExisting", {
+              enabled: String(initial.workflow.enabled),
+            })
+          : t("automation.workflows.editor.introNew")}
       </p>
       <form onSubmit={(e) => void check(e)}>
         <div className="field">
-          <label htmlFor={`${id}-json`}>Workflow definition (JSON)</label>
+          <label htmlFor={`${id}-json`}>{t("automation.workflows.editor.label")}</label>
           <textarea
             id={`${id}-json`}
             className="wf-editor-input"
@@ -293,7 +318,7 @@ function WorkflowEditor({
           className="btn"
           disabled={validation.busy || save.busy || checking.current || saving.current}
         >
-          Check draft
+          {t("automation.workflows.editor.check")}
         </button>
       </form>
       <Feedback error={validation.error || save.error} />
@@ -303,25 +328,35 @@ function WorkflowEditor({
         </p>
       )}
       {review && review.text === draft && (
-        <div className="review-edit" aria-label="Reviewed definition">
+        <div className="review-edit" aria-label={t("automation.workflows.editor.reviewed")}>
           <p>
-            <strong>Valid draft.</strong> Review this exact definition and hash before saving. A
-            change requires another check.
+            {t.rich("automation.workflows.editor.valid", {
+              lead: <strong>{t("automation.workflows.editor.validLead")}</strong>,
+            })}
           </p>
-          <pre className="agent-output wf-definition" tabIndex={0} aria-label="Definition to save">
+          <pre
+            className="agent-output wf-definition"
+            tabIndex={0}
+            aria-label={t("automation.workflows.editor.toSave")}
+          >
             {definitionText(review.definition)}
           </pre>
           <p className="memory-text">
-            Validated hash: <code className="break">{review.hash}</code>
+            {t.rich("automation.workflows.editor.hash", {
+              hash: <code className="break">{review.hash}</code>,
+            })}
           </p>
           <p>
             {review.authorisation?.required
-              ? `Authorisation required separately: ${review.authorisation.reasons.join("; ")}`
-              : "No authorisation required."}{" "}
-            Saving never authorises;{" "}
+              ? t("automation.workflows.editor.authRequired", {
+                  reasons: review.authorisation.reasons.join("; "),
+                })
+              : t("automation.workflows.editor.authNotRequired")}{" "}
             {initial
-              ? `the switch remains ${initial.workflow.enabled ? "on" : "off"}.`
-              : "the new workflow stays switched off."}
+              ? initial.workflow.enabled
+                ? t("automation.workflows.editor.switchOn")
+                : t("automation.workflows.editor.switchOff")
+              : t("automation.workflows.editor.switchNew")}
           </p>
           <button
             type="button"
@@ -329,14 +364,14 @@ function WorkflowEditor({
             disabled={save.busy || saving.current}
             onClick={() => void submit()}
           >
-            Confirm: save exactly this definition
+            {t("automation.workflows.editor.confirm")}
           </button>
         </div>
       )}
       {note && <p role="status">{note}</p>}
       {savedId && (
         <p>
-          <a href={workflowHref(savedId)}>Review stored workflow</a>
+          <a href={workflowHref(savedId)}>{t("automation.workflows.editor.reviewStored")}</a>
         </p>
       )}
     </section>
@@ -344,6 +379,7 @@ function WorkflowEditor({
 }
 
 function Validate({ definition }: { definition: unknown }) {
+  const t = useT();
   const { run, busy, error } = useAction();
   const [result, setResult] = useState<WorkflowValidation | null>(null);
   const check = async () => {
@@ -359,25 +395,33 @@ function Validate({ definition }: { definition: unknown }) {
         disabled={busy || definition === null}
         onClick={() => void check()}
       >
-        Check the definition
+        {t("automation.workflows.validate.button")}
       </button>
-      <p className="muted small">A dry run. Nothing is saved and nothing runs.</p>
+      <p className="muted small">{t("automation.workflows.validate.dryRun")}</p>
       <Feedback error={error} />
       {result && (
         <div role="status">
           {result.valid ? (
             <p>
-              <strong>Valid.</strong> Hash <code className="break">{result.hash}</code>.{" "}
-              {result.authorisation?.required
-                ? `Needs your authorisation: ${result.authorisation.reasons.join("; ")}.`
-                : "No authorisation needed."}
+              {t.rich("automation.workflows.validate.valid", {
+                lead: <strong>{t("automation.workflows.validate.validLead")}</strong>,
+                hash: <code className="break">{result.hash}</code>,
+                authorisation: result.authorisation?.required
+                  ? t("automation.workflows.validate.needsAuth", {
+                      reasons: result.authorisation.reasons.join("; "),
+                    })
+                  : t("automation.workflows.validate.noAuth"),
+              })}
             </p>
           ) : (
             <>
               <p className="error-text">
-                <strong>Not valid.</strong> {result.problems.length} problem(s):
+                {t.rich("automation.workflows.validate.invalid", {
+                  lead: <strong>{t("automation.workflows.validate.invalidLead")}</strong>,
+                  count: result.problems.length,
+                })}
               </p>
-              <ul aria-label="Problems">
+              <ul aria-label={t("automation.workflows.validate.problems")}>
                 {result.problems.map((p) => (
                   <li key={p} className="memory-text">
                     {p}
@@ -394,6 +438,7 @@ function Validate({ definition }: { definition: unknown }) {
 
 /** Authorising lets a production workflow run. It shows what it lets run and sends the hash it showed. */
 function Authorise({ detail, onDone }: { detail: WorkflowDetail; onDone: () => Promise<void> }) {
+  const t = useT();
   const { workflow: w, definition } = detail;
   const { run, busy, error } = useAction();
   const [expires, setExpires] = useState("");
@@ -412,25 +457,23 @@ function Authorise({ detail, onDone }: { detail: WorkflowDetail; onDone: () => P
       hash: w.hash,
       ...(at ? { expires_at: at } : {}),
     });
-    setNote(
-      res ? `Authorised version ${w.version}. Any later change to the definition ends this.` : "",
-    );
+    setNote(res ? t("automation.workflows.authorise.done", { version: w.version }) : "");
     await onDone();
   };
 
   return (
     <section aria-labelledby="authorise-h" className="card">
       <h2 id="authorise-h" className="h3">
-        Authorise for production
+        {t("automation.workflows.authorise.title")}
       </h2>
       {w.authorisation_reasons.length === 0 ? (
-        <p className="muted small">This workflow does not need authorisation.</p>
+        <p className="muted small">{t("automation.workflows.authorise.notNeeded")}</p>
       ) : (
         <>
           <p className="small">
-            <strong>Why it needs your authorisation:</strong>
+            <strong>{t("automation.workflows.authorise.why")}</strong>
           </p>
-          <ul aria-label="Reasons" className="small">
+          <ul aria-label={t("automation.workflows.authorise.reasons")} className="small">
             {w.authorisation_reasons.map((r) => (
               <li key={r} className="memory-text">
                 {r}
@@ -441,31 +484,45 @@ function Authorise({ detail, onDone }: { detail: WorkflowDetail; onDone: () => P
       )}
       <form className="review-edit" onSubmit={(e) => void submit(e)} noValidate>
         <p className="small">
-          This will let the workflow <strong className="memory-text">{w.name}</strong> run whenever{" "}
-          <code>{w.trigger.event}</code> happens, with no further question for these steps unless
-          the workflow asks:
+          {t.rich("automation.workflows.authorise.intro", {
+            name: <strong className="memory-text">{w.name}</strong>,
+            event: <code>{w.trigger.event}</code>,
+          })}
         </p>
-        <ul aria-label="What would be allowed to run">
-          {steps.length === 0 && <li className="muted small">It calls no tools.</li>}
+        <ul aria-label={t("automation.workflows.authorise.allowed")}>
+          {steps.length === 0 && (
+            <li className="muted small">{t("automation.workflows.authorise.noTools")}</li>
+          )}
           {steps.map((s) => (
             <li key={s.step} className="memory-text">
-              Step <code>{s.step}</code> calls <code>{s.tool}</code>
-              {s.undo && (
-                <>
-                  {" "}
-                  (undo: <code>{s.undo}</code>)
-                </>
-              )}
+              {s.undo
+                ? t.rich("automation.workflows.authorise.stepUndo", {
+                    step: <code>{s.step}</code>,
+                    tool: <code>{s.tool}</code>,
+                    undo: <code>{s.undo}</code>,
+                  })
+                : t.rich("automation.workflows.authorise.step", {
+                    step: <code>{s.step}</code>,
+                    tool: <code>{s.tool}</code>,
+                  })}
             </li>
           ))}
         </ul>
         <p className="small memory-text">
-          Definition being authorised: version {w.version}, hash{" "}
-          <code className="break">{w.hash}</code>
+          {t.rich("automation.workflows.authorise.being", {
+            version: w.version,
+            hash: <code className="break">{w.hash}</code>,
+          })}
         </p>
         <div className="field">
           <label htmlFor={id}>
-            Expires <span className="muted small">(optional, within 90 days)</span>
+            {t.rich("automation.workflows.authorise.expires", {
+              hint: (
+                <span className="muted small">
+                  {t("automation.workflows.authorise.expiresHint", { days: MAX_EXPIRY_DAYS })}
+                </span>
+              ),
+            })}
           </label>
           <input
             id={id}
@@ -482,7 +539,7 @@ function Authorise({ detail, onDone }: { detail: WorkflowDetail; onDone: () => P
           )}
         </div>
         <button type="submit" className="btn btn-primary" disabled={busy || w.problems.length > 0}>
-          Authorise exactly this definition
+          {t("automation.workflows.authorise.submit")}
         </button>
         <Feedback error={error} saved={note} />
       </form>
@@ -491,6 +548,7 @@ function Authorise({ detail, onDone }: { detail: WorkflowDetail; onDone: () => P
 }
 
 function RunNow({ workflow, onStarted }: { workflow: Workflow; onStarted: () => Promise<void> }) {
+  const t = useT();
   const { run, busy, error, details } = useAction();
   const [payload, setPayload] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -517,17 +575,17 @@ function RunNow({ workflow, onStarted }: { workflow: Workflow; onStarted: () => 
   return (
     <section aria-labelledby="runnow-h" className="card">
       <h2 id="runnow-h" className="h3">
-        Run now
+        {t("automation.workflows.runNow.title")}
       </h2>
       <form className="review-edit" onSubmit={(e) => void submit(e)} noValidate>
-        <p className="muted small">
-          Starts the workflow by hand with the same checks as when its event happens: enabled, not
-          stopped by the emergency stop, valid, and authorised if it changes production.
-        </p>
+        <p className="muted small">{t("automation.workflows.runNow.intro")}</p>
         <div className="field">
           <label htmlFor={id}>
-            Data the event would have carried{" "}
-            <span className="muted small">(a JSON object, optional)</span>
+            {t.rich("automation.workflows.runNow.payload", {
+              hint: (
+                <span className="muted small">{t("automation.workflows.runNow.payloadHint")}</span>
+              ),
+            })}
           </label>
           <textarea
             id={id}
@@ -545,27 +603,39 @@ function RunNow({ workflow, onStarted }: { workflow: Workflow; onStarted: () => 
           )}
         </div>
         <button type="submit" className="btn btn-primary" disabled={busy || blocked}>
-          Run now
+          {t("automation.workflows.runNow.button")}
         </button>
         {blocked && (
           <p className="muted small memory-text">
             {workflow.enabled
-              ? `It cannot run: ${workflow.problems.join(" ")}`
-              : "Enable the workflow to run it."}
+              ? t("automation.workflows.runNow.cannotRun", {
+                  problems: workflow.problems.join(" "),
+                })
+              : t("automation.workflows.runNow.enableFirst")}
           </p>
         )}
         {refused ? (
           <p className="error-text" role="alert">
-            <strong>The start was refused.</strong>{" "}
+            <strong>{t("automation.workflows.runNow.refusedLead")}</strong>{" "}
             <span className="memory-text">{refused.reason}</span>{" "}
-            {refused.runId && <a href={runHref(workflow.id, refused.runId)}>See the refused run</a>}
+            {refused.runId && (
+              <a href={runHref(workflow.id, refused.runId)}>
+                {t("automation.workflows.runNow.seeRefused")}
+              </a>
+            )}
           </p>
         ) : (
           <Feedback error={error} />
         )}
         {started && (
           <p className="small" role="status">
-            Started. <a href={runHref(workflow.id, started.id)}>Follow the run</a>
+            {t.rich("automation.workflows.runNow.started", {
+              link: (
+                <a href={runHref(workflow.id, started.id)}>
+                  {t("automation.workflows.runNow.follow")}
+                </a>
+              ),
+            })}
           </p>
         )}
       </form>
@@ -574,15 +644,18 @@ function RunNow({ workflow, onStarted }: { workflow: Workflow; onStarted: () => 
 }
 
 function RunRow({ run }: { run: WorkflowRunSummary }) {
+  const t = useT();
   return (
     <li className="card meeting-row">
       <a href={runHref(run.workflow_id, run.id)}>
-        <strong>{RUN_STATUS_TEXT[run.status] ?? run.status}</strong>
-        {NEEDS_ATTENTION[run.status] && <span> (needs a look)</span>}
+        <strong>{runStatusText(run.status)}</strong>
+        {NEEDS_ATTENTION[run.status] && <span> {t("automation.workflows.run.needsLook")}</span>}
       </a>
       <span className="muted small">
         {formatAgo(run.created_at)}
-        {run.current_step && !run.terminal && ` · now at step ${run.current_step}`}
+        {run.current_step &&
+          !run.terminal &&
+          ` · ${t("automation.workflows.run.nowAtStep", { step: run.current_step })}`}
       </span>
       {run.reason && <span className="small memory-text">{run.reason}</span>}
     </li>
@@ -590,6 +663,7 @@ function RunRow({ run }: { run: WorkflowRunSummary }) {
 }
 
 export function WorkflowDetailPage({ workflowId }: { workflowId: string }) {
+  const t = useT();
   const { data, error, reload } = useWorkflow(workflowId);
   const { data: runs, reload: reloadRuns } = useWorkflowRuns(workflowId);
   const { data: metrics } = useWorkflowMetrics();
@@ -601,12 +675,12 @@ export function WorkflowDetailPage({ workflowId }: { workflowId: string }) {
     return (
       <div className="meetings">
         <p role="alert">
-          {error} <a href="#/workflows">All workflows</a>
+          {error} <a href="#/workflows">{t("automation.workflows.detail.all")}</a>
         </p>
       </div>
     );
   }
-  if (!data) return <p className="muted">Loading…</p>;
+  if (!data) return <p className="muted">{t("common.status.loading")}</p>;
 
   const { workflow: w, definition } = data;
   const path = `/api/workflows/${encodeURIComponent(w.id)}`;
@@ -629,7 +703,7 @@ export function WorkflowDetailPage({ workflowId }: { workflowId: string }) {
   return (
     <div className="meetings workflows">
       <p>
-        <a href="#/workflows">← All workflows</a>
+        <a href="#/workflows">{t("automation.workflows.detail.backAll")}</a>
       </p>
       <h1 className="memory-text">{w.name}</h1>
       <p>
@@ -637,13 +711,14 @@ export function WorkflowDetailPage({ workflowId }: { workflowId: string }) {
       </p>
       {w.environment === "production" && (
         <p className="wf-production-banner" role="note">
-          <strong>Production.</strong> This workflow can change live systems. It runs only while you
-          have authorised its exact definition.
+          {t.rich("automation.workflows.detail.production", {
+            lead: <strong>{t("automation.workflows.detail.productionLead")}</strong>,
+          })}
         </p>
       )}
       {w.problems.length > 0 && (
         <div className="error-text" role="alert">
-          <strong>It cannot run right now:</strong>
+          <strong>{t("automation.workflows.detail.cannotRunNow")}</strong>
           <ul>
             {w.problems.map((p) => (
               <li key={p} className="memory-text">
@@ -656,38 +731,53 @@ export function WorkflowDetailPage({ workflowId }: { workflowId: string }) {
 
       <section aria-labelledby="def-h" className="card">
         <h2 id="def-h" className="h3">
-          Definition
+          {t("automation.workflows.detail.definition")}
         </h2>
         <p className="small memory-text">
-          Version {w.version} · hash <code className="break">{w.hash}</code>
+          {t.rich("automation.workflows.detail.versionHash", {
+            version: w.version,
+            hash: <code className="break">{w.hash}</code>,
+          })}
         </p>
         <p className="small memory-text">
-          Runs when <code>{w.trigger.event}</code> happens
-          {w.trigger.where && (
-            <>
-              {" "}
-              and <code>{w.trigger.where}</code>
-            </>
-          )}
-          .
+          {w.trigger.where
+            ? t.rich("automation.workflows.detail.runsWhenAnd", {
+                event: <code>{w.trigger.event}</code>,
+                condition: <code>{w.trigger.where}</code>,
+              })
+            : t.rich("automation.workflows.detail.runsWhen", {
+                event: <code>{w.trigger.event}</code>,
+              })}
         </p>
         {definition ? (
           <>
-            <h3 className="h4">Tools it can call</h3>
-            <ul aria-label="Tools" className="task-list">
-              {toolSteps(definition).length === 0 && <li className="muted small">None.</li>}
+            <h3 className="h4">{t("automation.workflows.detail.tools")}</h3>
+            <ul aria-label={t("automation.workflows.detail.toolsLabel")} className="task-list">
+              {toolSteps(definition).length === 0 && (
+                <li className="muted small">{t("automation.workflows.detail.none")}</li>
+              )}
               {toolSteps(definition).map((s) => {
                 const risky = flagged.some((r) => r.includes(s.tool));
                 return (
                   <li key={s.step} className="memory-text">
-                    Step <code>{s.step}</code>: <code>{s.tool}</code>
+                    {t.rich("automation.workflows.detail.toolStep", {
+                      step: <code>{s.step}</code>,
+                      tool: <code>{s.tool}</code>,
+                    })}
                     {risky && (
                       <>
                         {" "}
-                        <strong className="wf-flag">Production or critical action</strong>
+                        <strong className="wf-flag">
+                          {t("automation.workflows.detail.flagged")}
+                        </strong>
                       </>
                     )}
-                    {s.undo && <span className="muted small"> · declared undo: {s.undo}</span>}
+                    {s.undo && (
+                      <span className="muted small">
+                        {" "}
+                        · {t("automation.workflows.detail.declaredUndo", { undo: s.undo })}
+                      </span>
+                    )}
                   </li>
                 );
               })}
@@ -695,13 +785,13 @@ export function WorkflowDetailPage({ workflowId }: { workflowId: string }) {
             <pre
               className="agent-output wf-definition"
               tabIndex={0}
-              aria-label="Definition (read-only text, scrolls)"
+              aria-label={t("automation.workflows.detail.definitionText")}
             >
               {definitionText(definition)}
             </pre>
           </>
         ) : (
-          <p className="error-text">The stored definition could not be read.</p>
+          <p className="error-text">{t("automation.workflows.detail.unreadable")}</p>
         )}
         <Validate definition={definition} />
       </section>
@@ -709,7 +799,7 @@ export function WorkflowDetailPage({ workflowId }: { workflowId: string }) {
 
       <section aria-labelledby="state-h" className="card">
         <h2 id="state-h" className="h3">
-          Switch
+          {t("automation.workflows.detail.switch")}
         </h2>
         <button
           type="button"
@@ -717,12 +807,11 @@ export function WorkflowDetailPage({ workflowId }: { workflowId: string }) {
           disabled={toggle.busy}
           onClick={() => void setEnabled()}
         >
-          {w.enabled ? "Disable" : "Enable"}
+          {w.enabled
+            ? t("automation.workflows.detail.disable")
+            : t("automation.workflows.detail.enable")}
         </button>
-        <p className="muted small">
-          Enabling does not authorise. An enabled production workflow that is not authorised records
-          every trigger as refused.
-        </p>
+        <p className="muted small">{t("automation.workflows.detail.switchNote")}</p>
         <Feedback error={toggle.error} />
       </section>
 
@@ -730,25 +819,39 @@ export function WorkflowDetailPage({ workflowId }: { workflowId: string }) {
 
       <section aria-labelledby="auths-h" className="card">
         <h2 id="auths-h" className="h3">
-          Authorisations
+          {t("automation.workflows.detail.authorisations")}
         </h2>
         {data.authorisations.length === 0 ? (
-          <p className="muted small">None yet.</p>
+          <p className="muted small">{t("automation.workflows.detail.noneYet")}</p>
         ) : (
-          <ul className="task-list" aria-label="Authorisations">
+          <ul className="task-list" aria-label={t("automation.workflows.detail.authorisations")}>
             {data.authorisations.map((a) => (
               <li key={a.id} className="memory-text">
-                <strong>{a.live ? "In force" : a.revoked_at ? "Revoked" : "Not in force"}</strong> ·
-                by {a.authorised_by} on{" "}
-                <time dateTime={a.authorised_at}>{formatDate(a.authorised_at)}</time>
+                <strong>
+                  {a.live
+                    ? t("automation.workflows.detail.inForce")
+                    : a.revoked_at
+                      ? t("automation.workflows.detail.revoked")
+                      : t("automation.workflows.detail.notInForce")}
+                </strong>{" "}
+                ·{" "}
+                {t.rich("automation.workflows.detail.authorisedBy", {
+                  by: a.authorised_by,
+                  date: <time dateTime={a.authorised_at}>{formatDate(a.authorised_at)}</time>,
+                })}
                 {a.expires_at && (
                   <>
                     {" "}
-                    · expires <time dateTime={a.expires_at}>{formatDate(a.expires_at)}</time>
+                    ·{" "}
+                    {t.rich("automation.workflows.detail.authExpires", {
+                      date: <time dateTime={a.expires_at}>{formatDate(a.expires_at)}</time>,
+                    })}
                   </>
                 )}
-                {!a.live && !a.revoked_at && " · the definition changed or it expired"} · for hash{" "}
-                <code>{a.definition_hash.slice(0, 12)}</code>
+                {!a.live && !a.revoked_at && ` · ${t("automation.workflows.detail.authChanged")}`} ·{" "}
+                {t.rich("automation.workflows.detail.forHash", {
+                  hash: <code>{a.definition_hash.slice(0, 12)}</code>,
+                })}
               </li>
             ))}
           </ul>
@@ -762,10 +865,10 @@ export function WorkflowDetailPage({ workflowId }: { workflowId: string }) {
                 disabled={revoke.busy}
                 onClick={() => void doRevoke()}
               >
-                Confirm: revoke authorisation
+                {t("automation.workflows.detail.confirmRevoke")}
               </button>
               <button type="button" className="btn" onClick={() => setConfirmRevoke(false)}>
-                Cancel
+                {t("common.button.cancel")}
               </button>
             </div>
           ) : (
@@ -774,10 +877,12 @@ export function WorkflowDetailPage({ workflowId }: { workflowId: string }) {
               className="btn btn-danger-outline"
               onClick={() => setConfirmRevoke(true)}
             >
-              Revoke authorisation…
+              {t("automation.workflows.detail.revoke")}
             </button>
           ))}
-        {live.length > 0 && <p className="muted small">Runs in flight stop at their next step.</p>}
+        {live.length > 0 && (
+          <p className="muted small">{t("automation.workflows.detail.revokeNote")}</p>
+        )}
         <Feedback error={revoke.error} />
       </section>
 
@@ -785,12 +890,12 @@ export function WorkflowDetailPage({ workflowId }: { workflowId: string }) {
 
       <section aria-labelledby="runs-recent-h" className="card">
         <h2 id="runs-recent-h" className="h3">
-          Recent runs
+          {t("automation.workflows.detail.recentRuns")}
         </h2>
         {runs.length === 0 ? (
-          <p className="muted small">No runs yet.</p>
+          <p className="muted small">{t("automation.workflows.detail.noRuns")}</p>
         ) : (
-          <ul className="card-list" aria-label="Recent runs">
+          <ul className="card-list" aria-label={t("automation.workflows.detail.recentRuns")}>
             {runs.map((r) => (
               <RunRow key={r.id} run={r} />
             ))}
@@ -800,7 +905,7 @@ export function WorkflowDetailPage({ workflowId }: { workflowId: string }) {
 
       <section aria-labelledby="metrics-h" className="card">
         <h2 id="metrics-h" className="h3">
-          Numbers
+          {t("automation.workflows.metrics.title")}
         </h2>
         <Metrics m={metrics?.[w.id]} />
       </section>
@@ -809,31 +914,36 @@ export function WorkflowDetailPage({ workflowId }: { workflowId: string }) {
 }
 
 function StepRow({ step }: { step: WorkflowRun["steps"][number] }) {
+  const t = useT();
   return (
     <li className={`card wf-step${step.destructive ? " wf-step-destructive" : ""}`}>
       <p className="memory-text">
         <strong>
-          {step.phase === "compensation" ? "Undo: " : ""}
-          {step.step_id}
+          {step.phase === "compensation"
+            ? t("automation.workflows.step.undo", { step: step.step_id })
+            : step.step_id}
         </strong>{" "}
-        ({step.type}) · {STEP_STATUS_TEXT[step.status] ?? step.status}
-        {step.attempts > 1 && ` · ${step.attempts} attempts`}
+        ({step.type}) · {stepStatusText(step.status)}
+        {step.attempts > 1 &&
+          ` · ${t("automation.workflows.step.attempts", { count: step.attempts })}`}
       </p>
       {step.destructive && (
         <p className="wf-flag small">
-          <strong>Changes state</strong>: this step can change a real system.
+          {t.rich("automation.workflows.step.destructive", {
+            lead: <strong>{t("automation.workflows.step.changesState")}</strong>,
+          })}
         </p>
       )}
       {step.tool && (
         <p className="small memory-text">
-          Tool <code>{step.tool}</code>
+          {t.rich("automation.workflows.step.tool", { tool: <code>{step.tool}</code> })}
         </p>
       )}
       {step.input && (
         <pre
           className="agent-output"
           tabIndex={0}
-          aria-label={`Input of step ${step.step_id} (plain text, scrolls)`}
+          aria-label={t("automation.workflows.step.input", { step: step.step_id })}
         >
           {step.input}
         </pre>
@@ -842,7 +952,7 @@ function StepRow({ step }: { step: WorkflowRun["steps"][number] }) {
         <pre
           className="agent-output"
           tabIndex={0}
-          aria-label={`Output of step ${step.step_id} (plain text, scrolls)`}
+          aria-label={t("automation.workflows.step.output", { step: step.step_id })}
         >
           {step.output}
         </pre>
@@ -854,6 +964,7 @@ function StepRow({ step }: { step: WorkflowRun["steps"][number] }) {
 
 /** One run: status, why, every step, and cancel while it is not finished. */
 export function WorkflowRunPage({ workflowId, runId }: { workflowId: string; runId: string }) {
+  const t = useT();
   const { data: run, error, reload } = useWorkflowRun(runId);
   const cancel = useAction();
   const [confirm, setConfirm] = useState(false);
@@ -865,12 +976,13 @@ export function WorkflowRunPage({ workflowId, runId }: { workflowId: string; run
     return (
       <div className="meetings">
         <p role="alert">
-          {error} <a href={workflowHref(workflowId)}>Back to the workflow</a>
+          {error}{" "}
+          <a href={workflowHref(workflowId)}>{t("automation.workflows.run.backToWorkflow")}</a>
         </p>
       </div>
     );
   }
-  if (!run) return <p className="muted">Loading…</p>;
+  if (!run) return <p className="muted">{t("common.status.loading")}</p>;
   const runApprovals = (
     <Approvals
       filter={(c) =>
@@ -892,29 +1004,38 @@ export function WorkflowRunPage({ workflowId, runId }: { workflowId: string; run
       <p>
         <a href={workflowHref(run.workflow_id)}>← {run.workflow_name}</a>
       </p>
-      <h1 className="memory-text">Run of {run.workflow_name}</h1>
+      <h1 className="memory-text">
+        {t("automation.workflows.run.title", { name: run.workflow_name })}
+      </h1>
       <p role="status" aria-live="polite">
-        <strong>{RUN_STATUS_TEXT[run.status] ?? run.status}</strong>
-        {NEEDS_ATTENTION[run.status] && " (not a success)"}
-        {run.current_step && !run.terminal && ` · at step ${run.current_step}`}
+        <strong>{runStatusText(run.status)}</strong>
+        {NEEDS_ATTENTION[run.status] && ` ${t("automation.workflows.run.notSuccess")}`}
+        {run.current_step &&
+          !run.terminal &&
+          ` · ${t("automation.workflows.run.atStep", { step: run.current_step })}`}
       </p>
       {run.reason && <p className="memory-text">{run.reason}</p>}
       <p className="muted small memory-text">
-        Created <time dateTime={run.created_at}>{formatDate(run.created_at)}</time>
+        {t.rich("automation.workflows.run.created", {
+          date: <time dateTime={run.created_at}>{formatDate(run.created_at)}</time>,
+        })}
         {run.finished_at && (
           <>
             {" "}
-            · finished <time dateTime={run.finished_at}>{formatDate(run.finished_at)}</time>
+            ·{" "}
+            {t.rich("automation.workflows.run.finished", {
+              date: <time dateTime={run.finished_at}>{formatDate(run.finished_at)}</time>,
+            })}
           </>
         )}{" "}
-        · chain depth {run.chain_depth}
+        · {t("automation.workflows.run.chainDepth", { depth: formatNumber(run.chain_depth) })}
       </p>
       {/* Both workflow gates and tool policy confirmations belong to this run only when Core
           provides the run identifier; a generic policy request must stay in the main queue. */}
       {run.status === "waiting_approval" && (
         <section aria-labelledby="wait-h" className="card">
           <h2 id="wait-h" className="h3">
-            Waiting for you
+            {t("automation.workflows.run.waitingForYou")}
           </h2>
           {runApprovals}
         </section>
@@ -923,7 +1044,7 @@ export function WorkflowRunPage({ workflowId, runId }: { workflowId: string; run
       {!run.terminal && (
         <section aria-labelledby="cancel-h" className="card">
           <h2 id="cancel-h" className="h3">
-            Stop this run
+            {t("automation.workflows.run.stop")}
           </h2>
           {confirm ? (
             <div className="button-row wrap">
@@ -933,10 +1054,10 @@ export function WorkflowRunPage({ workflowId, runId }: { workflowId: string; run
                 disabled={cancel.busy}
                 onClick={() => void doCancel()}
               >
-                Confirm: cancel this run
+                {t("automation.workflows.run.confirmCancel")}
               </button>
               <button type="button" className="btn" onClick={() => setConfirm(false)}>
-                Keep running
+                {t("automation.workflows.run.keepRunning")}
               </button>
             </div>
           ) : (
@@ -945,31 +1066,33 @@ export function WorkflowRunPage({ workflowId, runId }: { workflowId: string; run
               className="btn btn-danger-outline"
               onClick={() => setConfirm(true)}
             >
-              Cancel this run…
+              {t("automation.workflows.run.cancel")}
             </button>
           )}
-          <p className="muted small">
-            A cancel does not run declared undo steps. A step already in progress may still finish.
-          </p>
+          <p className="muted small">{t("automation.workflows.run.cancelNote")}</p>
           <Feedback error={cancel.error} />
         </section>
       )}
       <section aria-labelledby="trigger-h" className="card">
         <h2 id="trigger-h" className="h3">
-          What started it
+          {t("automation.workflows.run.trigger")}
         </h2>
-        <pre className="agent-output" tabIndex={0} aria-label="Trigger (plain text, scrolls)">
+        <pre
+          className="agent-output"
+          tabIndex={0}
+          aria-label={t("automation.workflows.run.triggerText")}
+        >
           {run.trigger}
         </pre>
       </section>
       <section aria-labelledby="steps-h" className="card">
         <h2 id="steps-h" className="h3">
-          Steps ({run.steps.length})
+          {t("automation.workflows.run.stepsHeading", { count: formatNumber(run.steps.length) })}
         </h2>
         {run.steps.length === 0 ? (
-          <p className="muted small">No step has started.</p>
+          <p className="muted small">{t("automation.workflows.run.noSteps")}</p>
         ) : (
-          <ol className="card-list" aria-label="Steps">
+          <ol className="card-list" aria-label={t("automation.workflows.run.stepsLabel")}>
             {run.steps.map((s) => (
               <StepRow key={s.seq} step={s} />
             ))}

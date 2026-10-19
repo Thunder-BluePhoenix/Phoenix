@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import { translate } from "../i18n/store";
 import { ApiError, type PhoenixClient } from "./client";
 import type { AttachmentAnswer } from "./attachments";
 import type { AgentTaskSummary, MemoryAnswer } from "./types";
@@ -35,10 +36,8 @@ export interface CiTaskInput {
   runId?: number;
 }
 
-const unreachable = "Phoenix Core is unreachable";
-
 function failureText(err: unknown): string {
-  return err instanceof ApiError ? err.message : unreachable;
+  return err instanceof ApiError ? err.message : translate("common.error.coreUnreachable");
 }
 
 /**
@@ -89,7 +88,7 @@ export class ChatStore {
       this.push({
         id: this.id(),
         kind: "error",
-        text: `Asking memory failed: ${failureText(err)}.`,
+        text: translate("capture.chat.error.askMemory", { reason: failureText(err) }),
       });
     } finally {
       this.set({ asking: false });
@@ -112,7 +111,11 @@ export class ChatStore {
     this.set({
       items: [
         ...this.snapshot.items,
-        { id: this.id(), kind: "user", text: `${text}\n(about: ${names.join(", ")})` },
+        {
+          id: this.id(),
+          kind: "user",
+          text: translate("capture.chat.attachmentQuestion", { text, names: names.join(", ") }),
+        },
       ],
       draft: "",
     });
@@ -127,7 +130,7 @@ export class ChatStore {
       this.push({
         id: this.id(),
         kind: "error",
-        text: `Asking about attachments failed: ${failureText(err)}.`,
+        text: translate("capture.chat.error.askAttachments", { reason: failureText(err) }),
       });
     } finally {
       this.set({ asking: false });
@@ -151,15 +154,20 @@ export class ChatStore {
       ).task;
     } catch (err) {
       if (err instanceof ApiError && err.details.includes("AGENTS_DISABLED")) {
-        return "Automation is off, so no task was started. Turn it on in Settings, under Automation.";
+        return translate("capture.chat.error.automationOff");
       }
-      return `Could not start the task: ${failureText(err)}.`;
+      return translate("capture.chat.error.startTask", { reason: failureText(err) });
     }
-    const what = input.runId === undefined ? "the latest failed run" : `run ${input.runId}`;
     this.push({
       id: this.id(),
       kind: "user",
-      text: `Diagnose a CI failure in ${input.repository} (${what})`,
+      text:
+        input.runId === undefined
+          ? translate("capture.chat.ciUser.latest", { repository: input.repository })
+          : translate("capture.chat.ciUser.run", {
+              repository: input.repository,
+              run: input.runId,
+            }),
     });
     this.push({ id: this.id(), kind: "task", taskId: task.id, title: task.title });
     return null;

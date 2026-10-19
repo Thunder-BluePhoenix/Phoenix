@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import type { MessageKey } from "../i18n/en";
+import { isMessageKey, translate, type Translate } from "../i18n/store";
+import type { ActiveLocale } from "../i18n/supported";
 
 /** One step of the demo walkthrough, as Core's `POST /api/demo/start` sends it. */
 export interface DemoStep {
@@ -7,7 +10,7 @@ export interface DemoStep {
   scenario: string;
   /** Translation key of the caption (core/runtime/src/demo.ts `DEMO_CAPTION_IDS`). */
   caption_id: string;
-  /** The caption in English; shown when no translation exists for `caption_id`. */
+  /** The caption in English, as Core sends it; shown when no translation exists for `caption_id`. */
   caption: string;
   /** Hash route to show while the scenario plays. */
   route: string;
@@ -20,31 +23,51 @@ export interface DemoSession {
   steps: DemoStep[];
 }
 
-/** Every string the demo UI itself shows, in one table so the translation pass has one place to look. */
-export const DEMO_UI_TEXT = {
-  banner: "Demo - nothing is saved",
-  bannerDetail:
-    "This is a scripted walkthrough on a separate, temporary Core. Your data is untouched.",
-  settingsTitle: "Demo mode",
-  settingsIntro:
-    "Watch Fawkes react to builds, agents, deploys and meetings. The demo runs on a separate Core that keeps everything in memory, sends nothing anywhere and is deleted when you stop it. Your own data is not read or changed.",
-  start: "Start demo",
-  starting: "Starting demo...",
-  stop: "Stop demo and go back",
-  stopping: "Stopping...",
-  play: "Play this step",
-  next: "Next step",
-  previous: "Previous step",
-  playing: "Playing",
-  finished: "That was the last step. Stop the demo to go back to your own Phoenix.",
-  stepOf: "Step",
-  startFailed: "The demo could not start",
-  stopFailed: "The demo could not be stopped cleanly; it stops by itself when it is idle",
-  playFailed: "The demo step could not be played",
-  invalidSession: "Core sent an invalid demo address; the demo was not opened",
-  demoOffline: "The demo Core is not reachable. It may have stopped after being idle.",
-} as const;
-export type DemoUiTextId = keyof typeof DEMO_UI_TEXT;
+/** The demo UI's own messages, by the name the controller and the walkthrough use. */
+const DEMO_UI_KEYS = {
+  banner: "services.demo.banner",
+  bannerDetail: "services.demo.bannerDetail",
+  settingsTitle: "services.demo.settingsTitle",
+  settingsIntro: "services.demo.settingsIntro",
+  start: "services.demo.start",
+  starting: "services.demo.starting",
+  stop: "services.demo.stop",
+  play: "services.demo.play",
+  next: "services.demo.next",
+  previous: "services.demo.previous",
+  playing: "services.demo.playing",
+  finished: "services.demo.finished",
+  startFailed: "services.demo.startFailed",
+  stopFailed: "services.demo.stopFailed",
+  playFailed: "services.demo.playFailed",
+  invalidSession: "services.demo.invalidSession",
+  demoOffline: "services.demo.offline",
+} as const satisfies Record<string, MessageKey>;
+export type DemoUiTextId = keyof typeof DEMO_UI_KEYS;
+
+/**
+ * Every string the demo UI itself shows, in one table. Each value is read through `translate` when
+ * it is used, so it is always in the language on screen (a component re-renders on a language
+ * change through `useT()`).
+ */
+export const DEMO_UI_TEXT: Readonly<Record<DemoUiTextId, string>> = (() => {
+  const table: Partial<Record<DemoUiTextId, string>> = {};
+  for (const [name, key] of Object.entries(DEMO_UI_KEYS)) {
+    Object.defineProperty(table, name, { enumerable: true, get: () => translate(key) });
+  }
+  return table as Record<DemoUiTextId, string>;
+})();
+
+/**
+ * The caption of a step in the language on screen. English is what Core sends, so it is shown as
+ * sent; any other language uses the translation of `caption_id` and falls back to Core's English
+ * when the id is one this build does not know.
+ */
+export function demoCaption(step: DemoStep, t: Translate, locale: ActiveLocale): string {
+  if (locale === "en") return step.caption;
+  const key = `services.demo.caption.${step.caption_id.replace(/^demo\./, "")}`;
+  return isMessageKey(key) ? t(key) : step.caption;
+}
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);

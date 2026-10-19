@@ -14,6 +14,7 @@ import {
   startMockVercel,
   type MockVercel,
 } from "../testing/mock-vercel";
+import { setImmediate as yieldToLoop } from "node:timers/promises";
 
 const T0 = Date.parse("2026-10-05T09:00:00Z");
 const KEY = "plan1-redeploy-abcdef0123456789";
@@ -40,9 +41,11 @@ async function ready(
   clock = new Clock();
   options.data?.(mock);
   h = createHarness({
-    modules: [createVercelCapability({ now: () => clock.now, sleep: clock.sleep })],
+    modules: [
+      createVercelCapability({ apiUrl: mock.url, now: () => clock.now, sleep: clock.sleep }),
+    ],
   });
-  h.manager.configure("vercel", { base_url: mock.url, ...options.config });
+  if (options.config) h.manager.configure("vercel", options.config);
   const token = options.token === undefined ? MOCK_TOKEN : options.token;
   if (token) await h.manager.setSecret("vercel", "token", token);
   await h.enable("vercel");
@@ -68,13 +71,28 @@ describe("manifest", () => {
     expect(JSON.stringify(view)).not.toContain(MOCK_TOKEN);
   });
 
-  it("refuses a plain-http base_url that is not loopback, and secrets in config", async () => {
+  it("the token can only go to Vercel's own origin: base_url is not a setting, so a token holder cannot redirect it", async () => {
     await ready();
-    expect(() => h!.manager.configure("vercel", { base_url: "http://api.example.com" })).toThrow();
-    expect(() =>
-      h!.manager.configure("vercel", { base_url: "https://user:pw@example.com" }),
-    ).toThrow();
-    expect(() => h!.manager.configure("vercel", { token: MOCK_TOKEN })).toThrow();
+    const attacker = await startMockVercel();
+    try {
+      for (const base_url of [attacker.url, "https://attacker.example", "http://127.0.0.1:1"]) {
+        expect(() => h!.manager.configure("vercel", { base_url }), base_url).toThrow();
+      }
+      expect(h!.manager.get("vercel").config_schema).not.toHaveProperty("properties.base_url");
+      await h!.manager.disable("vercel");
+      const before = mock!.service.requests.length;
+      await h!.enable("vercel");
+      await vi.waitFor(() => expect(mock!.service.requests.length).toBeGreaterThan(before));
+      expect(attacker.service.requests).toEqual([]);
+      expect(() => h!.manager.configure("vercel", { token: MOCK_TOKEN })).toThrow();
+    } finally {
+      await attacker.close();
+    }
+  });
+
+  it("the code-only apiUrl option itself refuses plain http to a non-loopback host", () => {
+    expect(() => createVercelCapability({ apiUrl: "http://api.example.com" })).toThrow();
+    expect(() => createVercelCapability({ apiUrl: "https://user:pw@example.com" })).toThrow();
   });
 });
 
@@ -146,6 +164,30 @@ describe("polling", () => {
     await ready({ token: null });
     expect(mock!.service.requests).toEqual([]);
     expect(await health()).toMatchObject({ status: "degraded" });
+  });
+
+  it("a branch or actor that looks like a credential still yields a delivered event, redacted", async () => {
+    // Built at runtime: it must match the secret scanner without being a literal in the tree.
+    const lookalike = ["gh", "p_", "a1B2".repeat(8)].join("");
+    await ready();
+    mock!.deployments.push(
+      deployment({
+        uid: "dpl_tok1",
+        state: "ERROR",
+        created: T0 + 1000,
+        meta: { githubCommitRef: `fix-${lookalike}` },
+        creator: { username: `Bearer ${lookalike}` },
+      }),
+    );
+    await clock.tick();
+    await vi.waitFor(() => expect(types()).toEqual(["vercel.deploy.failed"]));
+    await h!.drain();
+    const event = h!.events.find((e) => e.source === "vercel")!;
+    expect(event.payload.branch).toBe("fix-[REDACTED]");
+    expect(JSON.stringify(event)).not.toContain(lookalike);
+    expect(h!.state.snapshot().state).toBe("ERROR");
+    const status = await h!.run("vercel", "status");
+    expect(status.result).toMatchObject({ events_refused: 0 });
   });
 });
 
@@ -239,14 +281,16 @@ describe("pausing when nothing is watching", () => {
     mock = await startMockVercel();
     clock = new Clock();
     h = createHarness({
-      modules: [createVercelCapability({ now: () => clock.now, sleep: clock.sleep })],
+      modules: [
+        createVercelCapability({ apiUrl: mock.url, now: () => clock.now, sleep: clock.sleep }),
+      ],
     });
     const presence = h.manager.presence;
     presence.setClients(0);
-    h.manager.configure("vercel", { base_url: mock.url });
+    // No base_url setting exists; the mock is injected in code.
     await h.manager.setSecret("vercel", "token", MOCK_TOKEN);
     await h.enable("vercel");
-    await new Promise((r) => setImmediate(r));
+    await yieldToLoop();
     expect(mock.service.requests).toEqual([]);
     expect(clock.sleeps).toEqual([]);
     presence.setClients(1);
@@ -255,8 +299,8 @@ describe("pausing when nothing is watching", () => {
     // Unwatched again: after the wait ends no further request is made.
     presence.setClients(0);
     clock.release();
-    await new Promise((r) => setImmediate(r));
-    await new Promise((r) => setImmediate(r));
+    await yieldToLoop();
+    await yieldToLoop();
     expect(mock.service.requests).toHaveLength(1);
     presence.setClients(1);
     await vi.waitFor(() => expect(mock!.service.requests).toHaveLength(2));
@@ -321,6 +365,41 @@ describe("redeploy (approval path)", () => {
     expect(mock!.posts).toHaveLength(2);
   });
 
+  it("a key reused for a different deployment is refused, not answered with the first outcome", async () => {
+    await ready({
+      data: (m) =>
+        m.deployments.push(
+          deployment({ created: T0 - 1000 }),
+          deployment({ uid: "dpl_OTHER9", created: T0 - 2000 }),
+        ),
+    });
+    await h!.run("vercel", "redeploy", ARGS, true);
+    const other = await h!.run(
+      "vercel",
+      "redeploy",
+      { ...ARGS, deployment_id: "dpl_OTHER9" },
+      true,
+    );
+    expect(other.status).toBe("failed");
+    expect(other.error?.message).toMatch(/different deployment/);
+    expect(mock!.posts).toHaveLength(1);
+    // The original target still gets its remembered outcome.
+    const again = await h!.run("vercel", "redeploy", ARGS, true);
+    expect(again.result).toMatchObject({ status: "already_requested" });
+  });
+
+  it("aborts before the POST when Vercel answers with a different deployment than asked for", async () => {
+    await ready({ data: (m) => m.deployments.push(deployment({ created: T0 - 1000 })) });
+    mock!.override.current = (path, method) =>
+      method === "GET" && path.startsWith("/v13/deployments/")
+        ? { body: { ...deployment({ uid: "dpl_EVIL99", name: "payments" }), id: "dpl_EVIL99" } }
+        : undefined;
+    const op = await h!.run("vercel", "redeploy", ARGS, true);
+    expect(op.status).toBe("failed");
+    expect(op.error?.message).toMatch(/different deployment/);
+    expect(mock!.posts).toEqual([]);
+  });
+
   it("an unknown deployment is a 404 with nothing posted, and the key stays usable", async () => {
     await ready();
     const op = await h!.run("vercel", "redeploy", ARGS, true);
@@ -367,6 +446,7 @@ describe("status", () => {
     expect(op.status).toBe("succeeded");
     expect(op.result).toEqual({
       configured: true,
+      events_refused: 0,
       items: [
         {
           id: "dpl_ABC123",

@@ -212,7 +212,7 @@ paths:
         Interface language (Phase 70): the saved locale (default en) and the supported codes
         (en, zh, hi, es, ar, fr, bn, pt, ru, id). Every view reads it.
       responses:
-        "200": { description: '{ locale, supported }' }
+        "200": { description: "{ locale, supported }" }
     post:
       summary: Set the interface language; publishes ui.settings.changed
       requestBody:

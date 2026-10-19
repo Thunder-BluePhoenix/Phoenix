@@ -23,6 +23,8 @@ const run = promisify(execFile);
 const SHA = /^[0-9a-f]{40}$/;
 /** A Vercel deployment id (`dpl_…`): one safe path segment, so it cannot reshape a graph key. */
 const VERCEL_ID = /^[A-Za-z0-9_-]{1,100}$/;
+/** A Vercel project name: it becomes part of a Service key and of a Deployment key. */
+const VERCEL_PROJECT = /^[A-Za-z0-9._-]{1,100}$/;
 const REPOSITORY = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
 /** Most files recorded per commit; the rest are counted in the detail, not stored. */
 export const MAX_FILES_PER_COMMIT = 200;
@@ -436,7 +438,8 @@ export class GraphIngestor {
   private vercelDeployEvent(event: PhoenixEvent, out: IngestOutcome): boolean {
     const id = str(event.payload.deployment_id, 100);
     const project = str(event.payload.project, 100);
-    if (id === undefined || !VERCEL_ID.test(id) || project === undefined) return false;
+    if (id === undefined || !VERCEL_ID.test(id)) return false;
+    if (project === undefined || !VERCEL_PROJECT.test(project)) return false;
     const repo = this.repoOf(event);
     const service: NodeRef = { type: "Service", key: `vercel:${project}` };
     if (keyProblem("Service", service.key) !== null) return false;
@@ -451,7 +454,8 @@ export class GraphIngestor {
     };
     const ref: NodeRef = {
       type: "Deployment",
-      key: repo !== null ? `${repo}/deploy/${id}` : `vercel/${project}/deploy/${id}`,
+      // `vercel:` + project + `:` + id can never equal a GitHub key (`owner/repo/deploy/<n>`).
+      key: repo !== null ? `${repo}/deploy/${id}` : `vercel:${project}:${id}`,
     };
     if (keyProblem("Deployment", ref.key) !== null) return false;
     const target = str(event.payload.target, 100) ?? "unknown";

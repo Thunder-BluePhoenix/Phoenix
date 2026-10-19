@@ -3,11 +3,13 @@
 import { useId, useMemo, useState } from "react";
 import { formatTime, SEVERITY_LABEL } from "../core/format";
 import { useActivity } from "../core/hooks";
+import { useT } from "../i18n";
 
 const SEVERITIES = ["error", "warning", "success", "info"] as const;
 
 /** Recent events with source and severity filters (PRD v2.0 §5.3 "Activity"). */
 export function ActivityFeed() {
+  const t = useT();
   const { items, error } = useActivity();
   const [source, setSource] = useState("all");
   const [severities, setSeverities] = useState<Set<string>>(new Set(SEVERITIES));
@@ -29,16 +31,16 @@ export function ActivityFeed() {
   return (
     <div className="activity">
       <div className="filters">
-        <label htmlFor={sourceId}>Source</label>
+        <label htmlFor={sourceId}>{t("common.label.source")}</label>
         <select id={sourceId} value={source} onChange={(e) => setSource(e.target.value)}>
-          <option value="all">All sources</option>
+          <option value="all">{t("agents.activity.allSources")}</option>
           {sources.map((s) => (
             <option key={s} value={s}>
               {s}
             </option>
           ))}
         </select>
-        <div className="chips" role="group" aria-label="Severity">
+        <div className="chips" role="group" aria-label={t("agents.activity.severity")}>
           {SEVERITIES.map((s) => (
             <button
               key={s}
@@ -54,9 +56,11 @@ export function ActivityFeed() {
       </div>
       {error && <p className="error-text">{error}</p>}
       {visible.length === 0 ? (
-        <p className="muted">No activity{items.length > 0 ? " matches these filters" : " yet"}.</p>
+        <p className="muted">
+          {items.length > 0 ? t("agents.activity.emptyFiltered") : t("agents.activity.emptyNone")}
+        </p>
       ) : (
-        <ol className="feed" aria-label="Recent activity">
+        <ol className="feed" aria-label={t("agents.activity.feedLabel")}>
           {visible.map(({ seq, event, description }) => (
             <li key={seq} className={`feed-item sev-${event.severity}`}>
               <time dateTime={event.timestamp} className="muted small">

@@ -16,7 +16,7 @@ Payload: `page_id`/`database_id`, `title` (clipped), `archived`, `edited_at`, `u
 ## Setup
 
 - Secret `integration_token`: a Notion internal integration token with **Read content** only. The `Notion-Version` header is fixed to `2022-06-28`.
-- Config: `watch` (up to 20 `{ "type": "page"|"database", "id": "<uuid, with or without dashes>" }`), `base_url` (default `https://api.notion.com`), `poll_ms` (15 000 or more, default 60 000).
+- Config: `watch` (up to 20 `{ "type": "page"|"database", "id": "<uuid, with or without dashes>" }`), `poll_ms` (15 000 or more, default 60 000). There is deliberately **no `base_url` setting**: anyone holding the API token could otherwise point the stored token at a host of their choosing, so it only ever goes to `https://api.notion.com`. Tests inject a local mock through the code-only `apiUrl` creation option.
 - `status` command (read): each watched item, its title and last edit time.
 
 ## Behaviour

@@ -4,6 +4,7 @@
 // Validation of Stripe REST responses. Only what Phoenix shows is kept: ids, status, amount,
 // currency, time and the receipt link. Customer names, e-mail addresses, card details,
 // descriptions and metadata are never read, so they cannot end up in an event, a log or the graph.
+import { redact } from "@phoenix/logging";
 import {
   epochMs,
   expectObject,
@@ -92,8 +93,17 @@ function chargeStatus(raw: Json): ChargeStatus | undefined {
   return status === "succeeded" || status === "pending" || status === "failed" ? status : undefined;
 }
 
+/**
+ * A remote value that must stay exactly as sent (an id, a code, a link): kept only when a secret
+ * scan would not redact anything in it, otherwise dropped, so it can never make Core refuse the
+ * whole event.
+ */
+function plain(value: string | undefined): string | undefined {
+  return value !== undefined && String(redact(value)) === value ? value : undefined;
+}
+
 export function parseCharge(raw: Json): Charge | undefined {
-  const id = str(raw.id, 120);
+  const id = plain(str(raw.id, 120));
   const status = chargeStatus(raw);
   const amount = int(raw.amount);
   const currency = str(raw.currency, 10)?.toLowerCase();
@@ -109,7 +119,7 @@ export function parseCharge(raw: Json): Charge | undefined {
   ) {
     return undefined;
   }
-  const code = str(raw.failure_code, 64);
+  const code = plain(str(raw.failure_code, 64));
   return {
     id,
     status,
@@ -119,7 +129,7 @@ export function parseCharge(raw: Json): Charge | undefined {
     refunded: raw.refunded === true,
     livemode: raw.livemode === true,
     failureCode: code !== undefined && CODE.test(code) ? code : undefined,
-    url: httpsUrl(raw.receipt_url),
+    url: plain(httpsUrl(raw.receipt_url)),
   };
 }
 

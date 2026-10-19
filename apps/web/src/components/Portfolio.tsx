@@ -10,6 +10,7 @@ import {
   readSnapshot,
   sparklinePath,
 } from "../core/portfolio";
+import { useT } from "../i18n";
 
 const CHART_WIDTH = 120;
 const CHART_HEIGHT = 32;
@@ -23,13 +24,14 @@ function Change({ pct }: { pct: number | undefined }) {
 
 /** What the portfolio capability knows: total, 24 h change, 7-day line and holdings. Display only. */
 export function PortfolioGlance() {
+  const t = useT();
   const { data: caps } = useCapabilities();
   const on = caps.find((c) => c.id === "portfolio")?.status === "enabled";
   const { data, error } = useCommandResult<unknown>(
     "portfolio",
     "snapshot",
     on,
-    (t) => t === "portfolio.snapshot.updated",
+    (type) => type === "portfolio.snapshot.updated",
   );
   if (!on) return null;
   const snapshot = readSnapshot(data);
@@ -37,20 +39,20 @@ export function PortfolioGlance() {
   const loaded = snapshot !== null && snapshot.updated_at !== null;
   return (
     <section aria-labelledby="portfolio-h" className="portfolio">
-      <h3 id="portfolio-h">Portfolio</h3>
+      <h3 id="portfolio-h">{t("services.portfolio.title")}</h3>
       {error && <p className="error-text small">{error}</p>}
-      {!loaded && !error && <p className="muted small">Not yet loaded.</p>}
+      {!loaded && !error && <p className="muted small">{t("services.common.notYetLoaded")}</p>}
       {snapshot && loaded && (
         <>
           <p className="portfolio-total">
             <strong>{formatUsd(snapshot.total_usd)}</strong>{" "}
-            <span className="muted small">24 h </span>
+            <span className="muted small">{t("services.portfolio.change24h")} </span>
             <Change pct={snapshot.change_24h_pct} />
           </p>
           {path && (
             <svg
               role="img"
-              aria-label="7-day value"
+              aria-label={t("services.portfolio.chart")}
               className="portfolio-chart"
               viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
               width={CHART_WIDTH}
@@ -75,7 +77,9 @@ export function PortfolioGlance() {
             </ul>
           )}
           {snapshot.unpriced > 0 && (
-            <p className="muted small">{snapshot.unpriced} without a price, not in the total.</p>
+            <p className="muted small">
+              {t("services.portfolio.unpriced", { count: snapshot.unpriced })}
+            </p>
           )}
         </>
       )}
@@ -83,14 +87,18 @@ export function PortfolioGlance() {
         .filter((s) => !s.ok)
         .map((s) => (
           <p key={s.id} className="error-text small">
-            {s.name}: {s.error ?? "could not be read"}
+            {s.error
+              ? t("services.portfolio.sourceError", { name: s.name, error: s.error })
+              : t("services.portfolio.sourceUnreadable", { name: s.name })}
           </p>
         ))}
       {snapshot && loaded && (
         <p className="muted small">
-          {snapshot.price_source && `Prices: ${snapshot.price_source}. `}
+          {snapshot.price_source &&
+            `${t("services.portfolio.prices", { source: snapshot.price_source })} `}
           {snapshot.note}
-          {snapshot.updated_at && ` Updated ${formatAgo(snapshot.updated_at)}.`}
+          {snapshot.updated_at &&
+            ` ${t("services.portfolio.updated", { ago: formatAgo(snapshot.updated_at) })}`}
         </p>
       )}
     </section>

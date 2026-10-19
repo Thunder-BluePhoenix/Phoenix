@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { useEffect, useId, useRef, useState } from "react";
-import { formatTime, SEVERITY_LABEL } from "../core/format";
+import { formatNumber, formatTime, SEVERITY_LABEL } from "../core/format";
 import { useNotifications } from "../core/hooks";
+import { useT } from "../i18n";
 
 /** Bell with unread count and a list of recent notifications (PRD v1 FR-013). */
 export function NotificationCenter() {
+  const t = useT();
   const { items, unread, markRead, markAllRead } = useNotifications();
   const [open, setOpen] = useState(false);
   const popoverId = useId();
@@ -32,7 +34,10 @@ export function NotificationCenter() {
     };
   }, [open]);
 
-  const label = unread > 0 ? `Notifications, ${unread} unread` : "Notifications";
+  const label =
+    unread > 0
+      ? t("agents.notifications.titleUnread", { count: formatNumber(unread) })
+      : t("agents.notifications.title");
   return (
     <div className="notif" ref={root}>
       <button
@@ -52,22 +57,29 @@ export function NotificationCenter() {
         </svg>
         {unread > 0 && (
           <span className="badge" aria-hidden="true">
-            {unread > 99 ? "99+" : unread}
+            {unread > 99
+              ? t("agents.notifications.overflow", { count: formatNumber(99) })
+              : formatNumber(unread)}
           </span>
         )}
       </button>
       {open && (
-        <div id={popoverId} className="notif-popover" role="dialog" aria-label="Notifications">
+        <div
+          id={popoverId}
+          className="notif-popover"
+          role="dialog"
+          aria-label={t("agents.notifications.title")}
+        >
           <div className="notif-head">
-            <strong>Notifications</strong>
+            <strong>{t("agents.notifications.title")}</strong>
             {unread > 0 && (
               <button type="button" className="link-button" onClick={() => void markAllRead()}>
-                Mark all read
+                {t("agents.notifications.markAllRead")}
               </button>
             )}
           </div>
           {items.length === 0 ? (
-            <p className="muted">You're all caught up.</p>
+            <p className="muted">{t("agents.notifications.empty")}</p>
           ) : (
             <ul className="notif-list">
               {items.map((n) => (
@@ -90,9 +102,9 @@ export function NotificationCenter() {
                       type="button"
                       className="link-button small"
                       onClick={() => void markRead(n.id)}
-                      aria-label={`Mark "${n.title}" as read`}
+                      aria-label={t("agents.notifications.markReadLabel", { title: n.title })}
                     >
-                      Mark read
+                      {t("agents.notifications.markRead")}
                     </button>
                   )}
                 </li>

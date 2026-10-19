@@ -4,6 +4,7 @@
 // Validation of Vercel REST responses. Everything Vercel (or whatever answers in its place) sends
 // is untrusted: wrong types, odd ids and giant strings are dropped or clipped here, so the rest of
 // the capability only ever sees small, well-formed values.
+import { redact } from "@phoenix/logging";
 import {
   epochMs,
   expectObject,
@@ -44,31 +45,50 @@ export interface Deployment {
   actor?: string | undefined;
 }
 
+export const MAX_TEXT = 100;
+
+/** Free text from Vercel: clipped, control characters removed, secret-looking values redacted. */
+export function text(value: unknown, max = MAX_TEXT): string | undefined {
+  const clipped = str(value, max * 4);
+  if (clipped === undefined) return undefined;
+  const clean = String(redact(clipped));
+  return clean.length > max ? clean.slice(0, max - 1) + "…" : clean;
+}
+
+/**
+ * A value that is used as an id, name or link: kept only when it has nothing a secret scan would
+ * redact. An id cannot be "redacted and still be that id", so such a value is dropped instead.
+ */
+function plain(value: string | undefined): string | undefined {
+  return value !== undefined && String(redact(value)) === value ? value : undefined;
+}
+
 /** One deployment from the list or detail endpoint, or undefined when it is unusable. */
 export function parseDeployment(raw: Json): Deployment | undefined {
-  const id = str(raw.uid ?? raw.id, 100);
-  const project = str(raw.name, 100);
+  const id = plain(str(raw.uid ?? raw.id, 100));
+  const project = plain(str(raw.name, 100));
   const createdAt = epochMs(raw.createdAt ?? raw.created);
   if (!id || !ID.test(id) || !project || !PROJECT.test(project) || createdAt === undefined) {
     return undefined;
   }
   const meta = isObject(raw.meta) ? raw.meta : {};
   const host = str(raw.url, 253);
-  const org = str(meta.githubOrg, 100);
-  const repo = str(meta.githubRepo, 100);
+  const org = plain(str(meta.githubOrg, 100));
+  const repo = plain(str(meta.githubRepo, 100));
   const sha = str(meta.githubCommitSha, 40);
-  const target = str(raw.target, 50)?.toLowerCase();
-  const creator = isObject(raw.creator) ? str(raw.creator.username, 100) : undefined;
+  const target = plain(str(raw.target, 50)?.toLowerCase());
+  const creator = isObject(raw.creator) ? text(raw.creator.username) : undefined;
   return {
     id,
     project,
     state: (str(raw.state ?? raw.readyState, 30) ?? "UNKNOWN").toUpperCase(),
     target: target !== undefined && TARGET.test(target) ? target : "preview",
     createdAt,
-    url:
+    url: plain(
       httpsUrl(raw.inspectorUrl) ??
-      (host && HOST.test(host) ? httpsUrl(`https://${host}`) : undefined),
-    branch: str(meta.githubCommitRef, 100),
+        (host && HOST.test(host) ? httpsUrl(`https://${host}`) : undefined),
+    ),
+    branch: text(meta.githubCommitRef),
     sha: sha !== undefined && SHA.test(sha) ? sha.toLowerCase() : undefined,
     repository:
       org !== undefined && repo !== undefined && REPO_PART.test(org) && REPO_PART.test(repo)

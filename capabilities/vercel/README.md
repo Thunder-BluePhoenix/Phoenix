@@ -24,19 +24,19 @@ curl "${H[@]}" -X POST -d '{}' http://127.0.0.1:4870/api/capabilities/vercel/ena
 ```
 
 - **Secret `token`**: a Vercel access token scoped to the team you watch. Never put it in config, a log or a command input; Phoenix refuses secrets there.
-- Config: `team_id` (optional), `project` (optional filter), `poll_ms` (5000+, default 30000), `base_url` (default `https://api.vercel.com`; https, or http to localhost; no credentials, query or fragment).
+- Config: `team_id` (optional), `project` (optional filter), `poll_ms` (5000+, default 30000). There is deliberately **no `base_url` setting**: the token is sent only to `https://api.vercel.com`, because anyone holding the API token could otherwise point the stored credential at a host of their choosing. Tests inject a local mock through the code-only `apiUrl` creation option.
 - Enabling grants `network` and `external_api`. Installed, never auto-enabled.
 
 ## Commands
 
 - `status` (side effect `read`): the latest deployments as `{configured, items[]}`.
-- `redeploy` (side effect `external`, **always asks**): `{deployment_id, idempotency_key}` (`additionalProperties:false`). It reads the deployment (GET) and then makes one `POST /v13/deployments?forceNew=1` naming the project, source deployment id and target. The same `idempotency_key` never starts a second deployment in this process (it answers `already_requested`). If the POST's outcome is unknown (5xx, dropped connection) the answer says so and the key is not re-sent blindly; use a new key after checking.
+- `redeploy` (side effect `external`, **always asks**): `{deployment_id, idempotency_key}` (`additionalProperties:false`). It reads the deployment (GET), checks that Vercel answered with the deployment that was asked for (otherwise it aborts with nothing posted), and then makes one `POST /v13/deployments?forceNew=1` naming the project, source deployment id and target. The same `idempotency_key` for the same deployment never starts a second deployment while Phoenix runs (it answers `already_requested`); a key reused for a different deployment is refused. Keys are remembered in memory only, until Phoenix restarts or the capability is disabled. If the POST's outcome is unknown (5xx, dropped connection) the answer says so and the key is not re-sent blindly; use a new key after checking.
 
 ## How it behaves
 
 - **No history replay.** A deployment first seen older than the moment the capability was enabled is recorded silently. One that was still building then reports how it ended.
 - **Pausing.** No request is made while no client is connected; polling resumes the moment one connects.
-- **Errors.** 401 pauses polling for 5 minutes and sets health _degraded_; 429/`Retry-After` is honoured (an hour at most); other failures back off to 5 minutes. Error messages never contain the token, the URL or text the remote sent. Redirects are never followed, responses over 2 MiB are cut off, strings are clipped, only https links survive, malformed entries are skipped. Health is _degraded_ when no token is set.
+- **Errors.** 401 pauses polling for 5 minutes and sets health _degraded_; 429/`Retry-After` is honoured (an hour at most); other failures back off to 5 minutes. Error messages never contain the token, the URL or text the remote sent. Redirects are never followed, responses over 2 MiB are cut off, strings are clipped, only https links survive, malformed entries are skipped. Branch and actor text is redacted if it looks like a credential. If Core refuses an event it is logged (code only) and counted as `events_refused` in `status` and the health message. Health is _degraded_ when no token is set.
 
 ## Unverified
 

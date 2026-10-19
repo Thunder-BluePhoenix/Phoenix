@@ -2,6 +2,9 @@
 // Copyright (C) 2026 Phoenix contributors
 import { useEffect, useRef, useState } from "react";
 import { useClient } from "../core/context";
+import { formatNumber } from "../core/format";
+import { useT } from "../i18n";
+import { translate } from "../i18n/store";
 import type { ProactiveInsight, ProactiveNoise, ProactiveStatus } from "../core/types";
 import { Feedback } from "./Feedback";
 
@@ -9,6 +12,7 @@ const bounded = (text: string, limit = 500) => text.slice(0, limit);
 
 /** Opt-in Kage suggestions with an optional local evaluation cadence. */
 export function ProactiveSettingsSection() {
+  const t = useT();
   const client = useClient();
   const pending = useRef(false);
   const [status, setStatus] = useState<ProactiveStatus | null>(null);
@@ -33,7 +37,12 @@ export function ProactiveSettingsSection() {
       },
       (reason) => {
         if (active)
-          setError(bounded(reason instanceof Error ? reason.message : "Request failed", 300));
+          setError(
+            bounded(
+              reason instanceof Error ? reason.message : translate("common.error.requestFailed"),
+              300,
+            ),
+          );
       },
     );
     return () => {
@@ -50,7 +59,12 @@ export function ProactiveSettingsSection() {
     try {
       await operation();
     } catch (reason) {
-      setError(bounded(reason instanceof Error ? reason.message : "Request failed", 300));
+      setError(
+        bounded(
+          reason instanceof Error ? reason.message : translate("common.error.requestFailed"),
+          300,
+        ),
+      );
     } finally {
       pending.current = false;
       setBusy(false);
@@ -69,7 +83,7 @@ export function ProactiveSettingsSection() {
         setInsights(null);
         setDelivered([]);
       }
-      setMessage("Suggestion preferences saved.");
+      setMessage(t("automation.proactive.saved"));
     });
   const optedIn = !!status?.preferences.enabled && status.preferences.capabilities.includes("kage");
   const available = status?.source.capability_id === "kage" && status.source.available;
@@ -77,33 +91,35 @@ export function ProactiveSettingsSection() {
   return (
     <section className="card" aria-labelledby="proactive-h">
       <h2 id="proactive-h" className="h3">
-        Proactive suggestions
+        {t("automation.proactive.title")}
       </h2>
-      <p className="muted small">
-        Off by default. The only supported source is accepted, unassigned action items from Kage
-        meetings. Kage must be available. No deployment prediction, incident or dependency provider
-        is available. Evaluation is manual unless you explicitly select a cadence after opting in.
-        Scheduled evaluation runs locally and respects quiet hours, rate limits and emergency stop.
-      </p>
+      <p className="muted small">{t("automation.proactive.intro")}</p>
       {status && (
         <>
           <p role="status">
-            Kage source: {available ? "available" : "unavailable"}. Suggestions are{" "}
-            {optedIn ? "on" : "off"} (
-            {status.preferences.cadenceMinutes
-              ? `every ${status.preferences.cadenceMinutes} minutes`
-              : "manual only"}
-            ).
+            {t("automation.proactive.status", {
+              source: available
+                ? t("automation.proactive.sourceAvailable")
+                : t("automation.proactive.sourceUnavailable"),
+              state: optedIn
+                ? t("automation.proactive.stateOn")
+                : t("automation.proactive.stateOff"),
+              cadence: status.preferences.cadenceMinutes
+                ? t("automation.proactive.cadenceEvery", {
+                    minutes: status.preferences.cadenceMinutes,
+                  })
+                : t("automation.proactive.cadenceManual"),
+            })}
           </p>
           <fieldset disabled={busy}>
-            <legend>Opt in</legend>
+            <legend>{t("automation.proactive.optIn")}</legend>
             <label className="choice">
               <input
                 type="checkbox"
                 checked={status.preferences.enabled}
                 onChange={(event) => void save({ enabled: event.target.checked })}
               />
-              Enable proactive suggestions
+              {t("automation.proactive.enable")}
             </label>
             <label className="choice">
               <input
@@ -114,11 +130,11 @@ export function ProactiveSettingsSection() {
                   void save({ capabilities: event.target.checked ? ["kage"] : [] })
                 }
               />
-              Kage accepted, unassigned action items
+              {t("automation.proactive.kageItems")}
             </label>
           </fieldset>
           <label className="field">
-            Automatic evaluation cadence
+            {t("automation.proactive.cadence")}
             <select
               disabled={busy || !optedIn || !available}
               value={status.preferences.cadenceMinutes ?? ""}
@@ -128,15 +144,15 @@ export function ProactiveSettingsSection() {
                 })
               }
             >
-              <option value="">Manual only (off)</option>
-              <option value="15">Every 15 minutes</option>
-              <option value="30">Every 30 minutes</option>
-              <option value="60">Every hour</option>
-              <option value="1440">Every day</option>
+              <option value="">{t("automation.proactive.cadenceOff")}</option>
+              <option value="15">{t("automation.proactive.cadence15")}</option>
+              <option value="30">{t("automation.proactive.cadence30")}</option>
+              <option value="60">{t("automation.proactive.cadence60")}</option>
+              <option value="1440">{t("automation.proactive.cadence1440")}</option>
             </select>
           </label>
           <fieldset disabled={busy}>
-            <legend>Quiet hours</legend>
+            <legend>{t("automation.proactive.quietHours")}</legend>
             <label className="choice">
               <input
                 type="checkbox"
@@ -153,12 +169,12 @@ export function ProactiveSettingsSection() {
                   })
                 }
               />
-              Use quiet hours
+              {t("automation.proactive.useQuiet")}
             </label>
             {quiet && (
               <div className="settings-form">
                 <label className="field">
-                  Time zone (IANA)
+                  {t("automation.proactive.timezone")}
                   <input
                     value={timezoneDraft ?? quiet.timezone}
                     onChange={(event) => setTimezoneDraft(event.target.value)}
@@ -170,7 +186,7 @@ export function ProactiveSettingsSection() {
                   />
                 </label>
                 <label className="field">
-                  Quiet from
+                  {t("automation.proactive.quietFrom")}
                   <input
                     type="time"
                     value={quiet.start}
@@ -180,7 +196,7 @@ export function ProactiveSettingsSection() {
                   />
                 </label>
                 <label className="field">
-                  Quiet until
+                  {t("automation.proactive.quietUntil")}
                   <input
                     type="time"
                     value={quiet.end}
@@ -193,7 +209,7 @@ export function ProactiveSettingsSection() {
             )}
           </fieldset>
           <label className="field">
-            Maximum suggestions per hour
+            {t("automation.proactive.maxPerHour")}
             <input
               type="number"
               min="1"
@@ -220,11 +236,13 @@ export function ProactiveSettingsSection() {
                     "/api/proactive/preview",
                   );
                   setInsights(result.insights);
-                  setMessage(`${result.insights.length} grounded suggestion(s) in preview.`);
+                  setMessage(
+                    t("automation.proactive.previewCount", { count: result.insights.length }),
+                  );
                 })
               }
             >
-              Preview suggestions
+              {t("automation.proactive.preview")}
             </button>
             <button
               type="button"
@@ -238,13 +256,16 @@ export function ProactiveSettingsSection() {
                   }>("POST", "/api/proactive/evaluate", {});
                   setDelivered(result.delivered);
                   setMessage(
-                    `${result.delivered.length} delivered; ${result.suppressed} suppressed.`,
+                    t("automation.proactive.evaluated", {
+                      delivered: formatNumber(result.delivered.length),
+                      suppressed: formatNumber(result.suppressed),
+                    }),
                   );
                   setNoise(await client.request<ProactiveNoise>("GET", "/api/proactive/noise"));
                 })
               }
             >
-              Evaluate now
+              {t("automation.proactive.evaluate")}
             </button>
             <button
               type="button"
@@ -256,12 +277,12 @@ export function ProactiveSettingsSection() {
                 })
               }
             >
-              Refresh noise metrics
+              {t("automation.proactive.refreshNoise")}
             </button>
           </div>
           {delivered.length > 0 && (
-            <div aria-label="Delivered suggestions">
-              <h3>Delivered suggestions</h3>
+            <div aria-label={t("automation.proactive.delivered")}>
+              <h3>{t("automation.proactive.delivered")}</h3>
               <ul>
                 {delivered.map((entry) => (
                   <li key={entry.insight_id}>
@@ -281,11 +302,13 @@ export function ProactiveSettingsSection() {
                           setNoise(
                             await client.request<ProactiveNoise>("GET", "/api/proactive/noise"),
                           );
-                          setMessage("Suggestion dismissed.");
+                          setMessage(t("automation.proactive.dismissed"));
                         })
                       }
                     >
-                      Dismiss {bounded(entry.notification.title, 80)}
+                      {t("automation.proactive.dismiss", {
+                        title: bounded(entry.notification.title, 80),
+                      })}
                     </button>
                   </li>
                 ))}
@@ -293,18 +316,23 @@ export function ProactiveSettingsSection() {
             </div>
           )}
           {insights !== null && (
-            <div aria-label="Suggestion preview">
-              <h3>Grounded preview</h3>
-              {insights.length === 0 && <p>No eligible accepted, unassigned Kage action items.</p>}
+            <div aria-label={t("automation.proactive.previewLabel")}>
+              <h3>{t("automation.proactive.previewHeading")}</h3>
+              {insights.length === 0 && <p>{t("automation.proactive.previewEmpty")}</p>}
               <ul>
                 {insights.map((insight) => (
                   <li key={insight.id}>
                     <strong>{bounded(insight.title)}</strong> — {bounded(insight.body)}
                     <p className="memory-text">
-                      Evidence: meeting {bounded(insight.evidence.meeting_id, 120)}, item{" "}
-                      {bounded(insight.evidence.item_id, 120)} (
-                      {insight.evidence.source === "transcript" ? "transcript" : "summary"}): “
-                      {bounded(insight.evidence.quote)}”
+                      {t("automation.proactive.evidence", {
+                        meeting: bounded(insight.evidence.meeting_id, 120),
+                        item: bounded(insight.evidence.item_id, 120),
+                        source:
+                          insight.evidence.source === "transcript"
+                            ? t("automation.proactive.sourceTranscript")
+                            : t("automation.proactive.sourceSummary"),
+                        quote: bounded(insight.evidence.quote),
+                      })}
                     </p>
                   </li>
                 ))}
@@ -312,15 +340,21 @@ export function ProactiveSettingsSection() {
             </div>
           )}
           {noise && (
-            <dl className="approval-facts small" aria-label="Suggestion noise metrics">
-              <dt>Delivered</dt>
-              <dd>{noise.delivered}</dd>
-              <dt>Dismissed</dt>
-              <dd>{noise.dismissed}</dd>
-              <dt>Suppressed</dt>
-              <dd>{noise.suppressed}</dd>
-              <dt>Dismissal rate</dt>
-              <dd>{(noise.dismissalRate * 100).toFixed(1)}%</dd>
+            <dl className="approval-facts small" aria-label={t("automation.proactive.noiseLabel")}>
+              <dt>{t("automation.proactive.noiseDelivered")}</dt>
+              <dd>{formatNumber(noise.delivered)}</dd>
+              <dt>{t("automation.proactive.noiseDismissed")}</dt>
+              <dd>{formatNumber(noise.dismissed)}</dd>
+              <dt>{t("automation.proactive.noiseSuppressed")}</dt>
+              <dd>{formatNumber(noise.suppressed)}</dd>
+              <dt>{t("automation.proactive.noiseRate")}</dt>
+              <dd>
+                {formatNumber(noise.dismissalRate * 100, undefined, {
+                  minimumFractionDigits: 1,
+                  maximumFractionDigits: 1,
+                })}
+                %
+              </dd>
             </dl>
           )}
         </>
