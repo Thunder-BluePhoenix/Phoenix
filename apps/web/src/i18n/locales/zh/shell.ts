@@ -86,8 +86,10 @@ export const shell: Record<keyof typeof enShell, string> = {
   "shell.shortcuts.resetDone": "“{action}”的快捷键已重置。",
   "shell.shortcuts.resetAllDone": "所有快捷键均已重置。",
   "shell.shortcuts.reason.invalid": "这不是有效的快捷键。",
-  "shell.shortcuts.reason.unsupportedKey": "无法使用该按键。请将字母、数字、F 键或方向键与修饰键搭配使用。",
-  "shell.shortcuts.reason.needs_modifiers": "快捷键至少需要两个修饰键（Ctrl、Alt、Shift 或 Cmd），以免占用正常输入。",
+  "shell.shortcuts.reason.unsupportedKey":
+    "无法使用该按键。请将字母、数字、F 键或方向键与修饰键搭配使用。",
+  "shell.shortcuts.reason.needs_modifiers":
+    "快捷键至少需要两个修饰键（Ctrl、Alt、Shift 或 Cmd），以免占用正常输入。",
   "shell.shortcuts.reason.needs_third_modifier":
     "在许多键盘上，Ctrl+Alt 或 Alt+Shift 加字母或数字会输入符号（AltGr 或 Option）。请再加一个修饰键。",
   "shell.shortcuts.reason.reserved": "系统已占用该组合键。",

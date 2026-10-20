@@ -23,6 +23,7 @@ import { Feedback } from "./Feedback";
 import { DictationSettingsSection } from "./Dictation";
 import { DemoSettingsSection } from "./Demo";
 import { LanguageSection } from "./Language";
+import { ShortcutSettings } from "./ShortcutSettings";
 import { VoiceSettingsSection } from "./Voice";
 import { NotetakerSettingsSection } from "./Notetaker";
 import { Multimodal } from "./Multimodal";
@@ -59,6 +60,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <RegistrySettingsSection />
       <SyncSettingsSection />
       <SupportSettings />
+      <ShortcutSettings />
       <DemoSettingsSection />
       <div className="card">
         <QuickActions state={state} />

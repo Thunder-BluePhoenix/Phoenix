@@ -1877,3 +1877,121 @@ code.break {
     animation: none;
   }
 }
+
+/* ── Phase 70: command palette and global-shortcut settings (logical properties only) ── */
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-block-start: 12vh;
+  padding-inline: 12px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.palette {
+  inline-size: min(560px, 100%);
+  max-block-size: 70vh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: start;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+.palette-input {
+  font: inherit;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+}
+.palette-input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.palette-list:empty {
+  display: none;
+}
+.palette-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  text-align: start;
+  border-block-end: 1px solid var(--border);
+}
+.palette-option:last-child {
+  border-block-end: 0;
+}
+.palette-option-active {
+  background: var(--bg);
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.palette-keys {
+  flex-shrink: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  /* Key names are Latin text: keep their order inside a right-to-left line. */
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.palette-empty,
+.palette-hint {
+  margin: 0;
+}
+.shortcut-list {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.shortcut-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding-block: 6px;
+  border-block-end: 1px solid var(--border);
+}
+.shortcut-name,
+.shortcut-binding {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: start;
+}
+.shortcut-capture {
+  font: inherit;
+  padding: 5px 8px;
+  border: 2px solid var(--focus);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+}

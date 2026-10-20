@@ -5,7 +5,7 @@
 | Stage | Stage 12 — Coucou parity and beyond |
 | Release target | Post-v2.0 track |
 | Priority | Low |
-| Status | 🟨 Eight original outfits, a strict outfit-pack sanitiser, the Wardrobe tab and per-source pills built and tested with component and unit tests; nothing was looked at on a real display; the desktop native "Wardrobe" menu entry is not wired |
+| Status | 🟨 Eight original outfits, a strict outfit-pack sanitiser, the Wardrobe tab and per-source pills built and tested with component and unit tests; nothing was looked at on a real display; the desktop native "Wardrobe" menu entry was added in Phase 70 and checked only by a lifecycle test on the mock runtime |
 | Depends on | [Phase 59 — Fawkes Interactions, Emotes & Sounds](phase-59-fawkes-interactions-and-sounds.md) |
 | Unblocks | — |
 
@@ -16,7 +16,7 @@ Personalise Fawkes and tell sources apart at a glance.
 ## Tasks — parity with Coucou
 
 - [x] Wardrobe and seasonal outfits: the Wardrobe tab of the Pet Panel (`apps/web/src/components/Wardrobe.tsx`), opened by right-clicking the navbar Fawkes; "No outfit", "Follow the season" (northern or southern hemisphere) and the eight built-in outfits (`pet/assets/src/outfits.ts`, `pet/assets/src/outfits/everyday.ts`, `seasonal.ts`). Tests: `apps/web/test/wardrobe.test.tsx` ("Wardrobe", "Wardrobe entry point"), `pet/assets/test/outfits.test.ts` ("seasons").
-- [ ] Wardrobe entry in the desktop's native right-click menu (floating Fawkes and island). The route constant `WARDROBE_ROUTE` exists in `apps/web/src/core/appearance.ts` and only the web navbar uses it; nothing in `apps/desktop/src-tauri/src/` references the Wardrobe.
+- [ ] Wardrobe entry in the desktop's native right-click menu (floating Fawkes and island). The route constant `WARDROBE_ROUTE` exists in `apps/web/src/core/appearance.ts` and the web navbar used it alone when Phase 61 was built. Update (Phase 70): the desktop menu now has a "Wardrobe" entry that opens `/panel/wardrobe` (`apps/desktop/src-tauri/src/lib.rs`, `shortcuts.rs`; lifecycle test "Wardrobe opens the pet panel tab" on the mock runtime). Left unticked: nobody opened the real native menu or looked at the result.
 - [x] A colour and a glyph per agent and per service (`pet/assets/src/outfits/sources.ts`, `core/runtime/src/appearance.ts`, `apps/web/src/components/SourcePills.tsx`). Deviation: the identity is a colour plus one of ten small geometric glyphs plus a text label, not a "mini character" ([gap register](../gaps.md)). Tests: `apps/web/test/wardrobe.test.tsx` ("source pills", "per-source settings"), `core/runtime/test/appearance.test.ts`.
 - [x] Choose which tools and agents appear ("active pills"): a per-source "Show … in Fawkes" switch in the Wardrobe; a hidden source gets no pill. Tests: `wardrobe.test.tsx` ("'Show in Fawkes' off hides the source", "a capability with a running task gets a pill from the task list"), `appearance.test.ts`.
 
@@ -43,7 +43,7 @@ What exists and what its tests pin down:
 - **Core.** `GET/POST /api/fawkes/appearance`, `POST /api/fawkes/packs`, `DELETE /api/fawkes/packs/:id`; a `fawkes.appearance.changed` event updates connected views without a reload; a body of 300,000 characters answers 413.
 - **Pills.** A pill always carries its glyph and a text label (colour is never the only cue) and counts pills beyond the cap in text. The floating window shows pills for active agent sessions and running capability tasks. The island page also renders `ActiveSourcePills`, but no test exercises pills inside the island.
 
-What was not done or not run: any look at pixels on a real display; the fit of floating and island pills at real sizes; the native "Wardrobe" context-menu entry in `apps/desktop`; an independent audit of the sanitiser (only tests and a static review). Open items are in the [gap register](../gaps.md).
+What was not done or not run: any look at pixels on a real display; the fit of floating and island pills at real sizes; a real click on the native "Wardrobe" context-menu entry that Phase 70 added to `apps/desktop` (lifecycle test on the mock runtime only); an independent audit of the sanitiser (only tests and a static review). Open items are in the [gap register](../gaps.md).
 
 ## Notes & risks
 

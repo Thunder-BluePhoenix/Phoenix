@@ -22,6 +22,7 @@ export function LanguageSection() {
       </label>
       <select
         id={selectId}
+        data-focus-target="language"
         value={locale}
         onChange={(e) => {
           if (isLocale(e.target.value)) void save(e.target.value);

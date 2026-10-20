@@ -32,6 +32,19 @@ export function useDemo(): { controller: DemoController; state: DemoSnapshot } {
   return { controller, state };
 }
 
+/** Like useDemo, but null where there is no <DemoHost> (the palette's demo commands then vanish). */
+export function useOptionalDemo(): { controller: DemoController; state: DemoSnapshot } | null {
+  const controller = useContext(DemoContext);
+  const state = useSyncExternalStore(
+    controller ? controller.subscribe : NO_SUBSCRIBE,
+    controller ? controller.getSnapshot : NO_SNAPSHOT,
+  );
+  return controller && state ? { controller, state } : null;
+}
+
+const NO_SUBSCRIBE = (): (() => void) => () => {};
+const NO_SNAPSHOT = (): DemoSnapshot | null => null;
+
 /**
  * The root of the app. It owns which Core the page talks to: the real one, or, while the demo runs,
  * the demo's own. Switching remounts everything below (so no view keeps data from the other Core)

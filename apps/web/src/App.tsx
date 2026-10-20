@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { detectPlatform } from "./commands/keys";
+import { buildBindings, COMMANDS, type CommandContext } from "./commands/registry";
+import { tauriShortcuts } from "./commands/shortcuts-shell";
+import { useShortcuts } from "./commands/useShortcuts";
 import { AgentSessionDetail, AgentSessionsPage } from "./components/AgentSessions";
+import { CommandPalette } from "./components/CommandPalette";
+import { useOptionalDemo } from "./components/Demo";
 import type { FawkesAvatarHandle } from "./components/FawkesAvatar";
 import { MeetingDetail, MeetingsPage } from "./components/Meetings";
 import { Navbar } from "./components/Navbar";
@@ -11,9 +17,10 @@ import { ProvenanceNode, ProvenancePage } from "./components/Provenance";
 import { RecapPage } from "./components/Recap";
 import { SettingsPage } from "./components/Settings";
 import { WorkflowDetailPage, WorkflowRunPage, WorkflowsPage } from "./components/Workflows";
-import { isTabId, PetPanel } from "./components/PetPanel";
+import { isTabId, PetPanel, type TabId } from "./components/PetPanel";
 import { useConnection, useDisplayedState, useTasks } from "./core/context";
 import { useHashRoute } from "./core/hooks";
+import { useMute } from "./core/mute";
 import { useT } from "./i18n";
 
 /** AppShell: navbar with Fawkes, Pet Panel, and the main content area. */
@@ -46,6 +53,61 @@ export function App() {
     avatar.current?.focus();
   }, []);
 
+  // Command palette and in-app shortcuts: one registry, one document keydown listener.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [panelNonce, setPanelNonce] = useState(0);
+  const [languageFocus, setLanguageFocus] = useState(0);
+  const wantLanguage = useRef(false);
+  const platform = useMemo(() => detectPlatform(), []);
+  const bindings = useMemo(() => buildBindings(COMMANDS), []);
+  const [shortcutsShell] = useState(() => tauriShortcuts());
+  const mute = useMute(shortcutsShell);
+  const demo = useOptionalDemo();
+  const demoPhase = demo?.state.phase;
+  const demoController = demo?.controller;
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
+  const commandContext = useMemo<CommandContext>(
+    () => ({
+      navigate: (to) => {
+        window.location.hash = `#${to}`;
+      },
+      openPanelTab: (tab: TabId) => {
+        // Already on that route (the panel was closed meanwhile): the hash would not change.
+        if (route === `/panel/${tab}`) {
+          setPanelOpen(true);
+          setPanelNonce((n) => n + 1);
+        } else window.location.hash = `#/panel/${tab}`;
+      },
+      openLanguageSettings: () => {
+        wantLanguage.current = true;
+        if (route === "/settings") setLanguageFocus((n) => n + 1);
+        else window.location.hash = "#/settings";
+      },
+      togglePalette: () => setPaletteOpen((open) => !open),
+      demo:
+        demoController && demoPhase
+          ? {
+              phase: demoPhase,
+              start: () => void demoController.start(),
+              stop: () => void demoController.stop(),
+            }
+          : null,
+      mute: mute.toggle ? { muted: mute.muted, toggle: mute.toggle } : null,
+    }),
+    [route, demoController, demoPhase, mute.toggle, mute.muted],
+  );
+  useShortcuts(bindings, platform, commandContext);
+
+  // "Open Settings > Language": focus the language picker once the page is there. Runs after the
+  // palette has closed and given focus back, so the picker keeps it.
+  useEffect(() => {
+    if (!wantLanguage.current || route !== "/settings") return;
+    wantLanguage.current = false;
+    const picker = document.querySelector<HTMLElement>('[data-focus-target="language"]');
+    picker?.scrollIntoView?.({ block: "center" });
+    picker?.focus();
+  }, [route, languageFocus]);
+
   return (
     <div className="app-shell">
       {/* Not a plain #main link: the hash is the router, so that would navigate to a route "main". */}
@@ -70,7 +132,7 @@ export function App() {
       />
       {panelOpen && (
         <PetPanel
-          key={panelRoute ? route : "panel"}
+          key={`${panelRoute ? route : "panel"}:${panelNonce}`}
           id={panelId}
           state={state}
           tasks={tasks}
@@ -112,6 +174,14 @@ export function App() {
           <Home connection={connection} />
         )}
       </main>
+      <CommandPalette
+        open={paletteOpen}
+        onClose={closePalette}
+        commands={COMMANDS}
+        bindings={bindings}
+        platform={platform}
+        ctx={commandContext}
+      />
     </div>
   );
 }

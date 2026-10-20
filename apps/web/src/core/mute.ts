@@ -94,6 +94,8 @@ export interface MuteHandle {
   muted: boolean;
   /** `player` made silent while muted; undefined when there is no player. */
   sounds: SoundPlayer | undefined;
+  /** Asks the shell to flip the flag; null without a shell (nothing to mute in a browser). */
+  toggle: (() => void) | null;
 }
 
 /** Mute state of a desktop window (`shell` null in a browser: never muted). */
@@ -102,5 +104,16 @@ export function useMute(shell: ShortcutsShell | null, player?: SoundPlayer): Mut
   useEffect(() => (shell ? state.attach(shell) : undefined), [shell, state]);
   const muted = useSyncExternalStore(state.subscribe, state.isMuted);
   const sounds = useMemo(() => (player ? silenced(player, state) : undefined), [player, state]);
-  return { muted, sounds };
+  const toggle = useMemo(
+    () =>
+      shell
+        ? () =>
+            void shell.setMuted(!state.isMuted()).then(
+              (r) => state.set(r.muted),
+              () => {},
+            )
+        : null,
+    [shell, state],
+  );
+  return { muted, sounds, toggle };
 }

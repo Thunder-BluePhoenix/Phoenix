@@ -7,12 +7,7 @@
 import type { DemoPhase } from "../core/demo-controller";
 import type { MessageKey } from "../i18n";
 import type { TabId } from "../components/PetPanel";
-import {
-  ChordError,
-  chordId,
-  parseChord,
-  type Chord,
-} from "./keys";
+import { ChordError, chordId, parseChord, type Chord } from "./keys";
 
 /** What a command may do. The App builds it from its own state; tests pass a fake. */
 export interface CommandContext {
@@ -105,12 +100,48 @@ export const COMMANDS: readonly Command[] = [
     run: (ctx) => ctx.togglePalette(),
   },
   go("nav.home", "/", "shell.cmd.nav.home", ["overview", "start", "phoenix"]),
-  go("nav.meetings", "/meetings", "shell.cmd.nav.meetings", ["kage", "calls", "notes"], "Mod+Alt+Shift+1"),
-  go("nav.provenance", "/provenance", "shell.cmd.nav.provenance", ["graph", "source", "origin"], "Mod+Alt+Shift+2"),
-  go("nav.agents", "/agents", "shell.cmd.nav.agents", ["sessions", "terminal", "coding"], "Mod+Alt+Shift+3"),
-  go("nav.workflows", "/workflows", "shell.cmd.nav.workflows", ["automation", "runs"], "Mod+Alt+Shift+4"),
-  go("nav.recap", "/recap", "shell.cmd.nav.recap", ["weekly", "statistics", "summary"], "Mod+Alt+Shift+5"),
-  go("nav.settings", "/settings", "shell.cmd.nav.settings", ["preferences", "options", "configure"], "Mod+Alt+Shift+6"),
+  go(
+    "nav.meetings",
+    "/meetings",
+    "shell.cmd.nav.meetings",
+    ["kage", "calls", "notes"],
+    "Mod+Alt+Shift+1",
+  ),
+  go(
+    "nav.provenance",
+    "/provenance",
+    "shell.cmd.nav.provenance",
+    ["graph", "source", "origin"],
+    "Mod+Alt+Shift+2",
+  ),
+  go(
+    "nav.agents",
+    "/agents",
+    "shell.cmd.nav.agents",
+    ["sessions", "terminal", "coding"],
+    "Mod+Alt+Shift+3",
+  ),
+  go(
+    "nav.workflows",
+    "/workflows",
+    "shell.cmd.nav.workflows",
+    ["automation", "runs"],
+    "Mod+Alt+Shift+4",
+  ),
+  go(
+    "nav.recap",
+    "/recap",
+    "shell.cmd.nav.recap",
+    ["weekly", "statistics", "summary"],
+    "Mod+Alt+Shift+5",
+  ),
+  go(
+    "nav.settings",
+    "/settings",
+    "shell.cmd.nav.settings",
+    ["preferences", "options", "configure"],
+    "Mod+Alt+Shift+6",
+  ),
   {
     id: "settings.language",
     labelKey: "shell.cmd.settings.language",

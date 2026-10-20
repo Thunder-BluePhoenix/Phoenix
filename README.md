@@ -66,6 +66,7 @@ Phoenix is local-first. Everything it stores lives in its data directory on your
 - [Developer preview programme](docs/preview/programme.md) (a plan, not a record of completed stages)
 - [v1.0 verification plan](docs/release/v1-verification.md) and [v2.0 verification plan](docs/release/v2-verification.md) (plans and decisions, not releases)
 - [Capability SDK docs](docs/capabilities/) and the local [0.1.0 static docs snapshot](docs/capabilities/site/0.1.0/index.html) (not hosted or published)
+- [« OK Fawkes » voice assistant](docs/voice-assistant.md), [demo mode](docs/demo-mode.md) and the [interface languages](apps/web/src/i18n/README.md) (all non-English text is machine-generated and unreviewed)
 
 ## License
 

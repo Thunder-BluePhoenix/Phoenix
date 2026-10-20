@@ -47,24 +47,25 @@ Every distributed dependency and asset must be GPL-3.0 compatible. Update this f
 
 Direct dependencies:
 
-| Package                 | Kind                   | Licence                   | Compatible |
-| ----------------------- | ---------------------- | ------------------------- | ---------- |
-| tauri                   | runtime                | MIT/Apache-2.0            | ✅         |
-| tauri-plugin-autostart  | runtime                | MIT/Apache-2.0            | ✅         |
-| tauri-plugin-opener     | runtime                | MIT/Apache-2.0            | ✅         |
-| parking_lot             | runtime                | MIT/Apache-2.0            | ✅         |
-| serde, serde_json       | runtime                | MIT/Apache-2.0            | ✅         |
-| tauri-build             | build                  | MIT/Apache-2.0            | ✅         |
-| objc2, objc2-foundation | runtime (macOS only)   | MIT                       | ✅         |
-| objc2-app-kit           | runtime (macOS only)   | Zlib OR Apache-2.0 OR MIT | ✅         |
-| core-graphics           | runtime (macOS only)   | MIT OR Apache-2.0         | ✅         |
-| core-foundation         | runtime (macOS only)   | MIT OR Apache-2.0         | ✅         |
-| gtk                     | runtime (Linux only)   | MIT                       | ✅         |
-| libloading              | runtime (Linux only)   | ISC                       | ✅         |
-| x11-dl                  | runtime (Linux only)   | MIT                       | ✅         |
-| windows                 | runtime (Windows only) | MIT OR Apache-2.0         | ✅         |
-| tempfile                | test                   | MIT/Apache-2.0            | ✅         |
-| @tauri-apps/cli         | dev                    | MIT/Apache-2.0            | ✅         |
+| Package                      | Kind                   | Licence                   | Compatible |
+| ---------------------------- | ---------------------- | ------------------------- | ---------- |
+| tauri                        | runtime                | MIT/Apache-2.0            | ✅         |
+| tauri-plugin-autostart       | runtime                | MIT/Apache-2.0            | ✅         |
+| tauri-plugin-opener          | runtime                | MIT/Apache-2.0            | ✅         |
+| tauri-plugin-global-shortcut | runtime                | Apache-2.0 OR MIT         | ✅         |
+| parking_lot                  | runtime                | MIT/Apache-2.0            | ✅         |
+| serde, serde_json            | runtime                | MIT/Apache-2.0            | ✅         |
+| tauri-build                  | build                  | MIT/Apache-2.0            | ✅         |
+| objc2, objc2-foundation      | runtime (macOS only)   | MIT                       | ✅         |
+| objc2-app-kit                | runtime (macOS only)   | Zlib OR Apache-2.0 OR MIT | ✅         |
+| core-graphics                | runtime (macOS only)   | MIT OR Apache-2.0         | ✅         |
+| core-foundation              | runtime (macOS only)   | MIT OR Apache-2.0         | ✅         |
+| gtk                          | runtime (Linux only)   | MIT                       | ✅         |
+| libloading                   | runtime (Linux only)   | ISC                       | ✅         |
+| x11-dl                       | runtime (Linux only)   | MIT                       | ✅         |
+| windows                      | runtime (Windows only) | MIT OR Apache-2.0         | ✅         |
+| tempfile                     | test                   | MIT/Apache-2.0            | ✅         |
+| @tauri-apps/cli              | dev                    | MIT/Apache-2.0            | ✅         |
 
 ### Transitive crates (scanned 2026-10-08)
 
@@ -77,7 +78,23 @@ Worth naming:
 | `cssparser`, `cssparser-macros`, `dtoa-short`, `option-ext`, `selectors` | MPL-2.0                                | File-level copyleft; compatible with GPL-3.0 (MPL-2.0 §3.3). We do not modify them. Their source must stay available, which `Cargo.lock` plus crates.io satisfies. |
 | `r-efi` (2 versions)                                                     | MIT OR Apache-2.0 OR LGPL-2.1-or-later | UEFI only; we use the MIT option.                                                                                                                                  |
 
-`THIRD_PARTY_NOTICES.md` at the repository root holds the licence text of every npm package that ships and every Rust crate (468 packages, 228 distinct texts). It is generated from the lockfiles by `scripts/generate-third-party-notices.mjs` and CI fails if it is out of date. Run `node scripts/generate-third-party-notices.mjs` after changing dependencies (use `cargo fetch` first on a clean machine). 40 crates ship no licence file; they are listed in the notices with their declared licence and source, not with a text. Copying `THIRD_PARTY_NOTICES.md` and `LICENSE` into the release bundles is part of packaging.
+`THIRD_PARTY_NOTICES.md` at the repository root holds the licence text of every npm package that ships and every Rust crate (485 packages: 10 npm and 475 Rust crates; 233 distinct texts). It is generated from the lockfiles by `scripts/generate-third-party-notices.mjs` and CI fails if it is out of date. Run `node scripts/generate-third-party-notices.mjs` after changing dependencies (use `cargo fetch` first on a clean machine). 40 crates ship no licence file; they are listed in the notices with their declared licence and source, not with a text. Copying `THIRD_PARTY_NOTICES.md` and `LICENSE` into the release bundles is part of packaging.
+
+#### Crates added by `tauri-plugin-global-shortcut` (Phase 70)
+
+Phase 70 added the direct dependency `tauri-plugin-global-shortcut` 2.4.1 (global keyboard shortcuts, loaded only when the user enables them). Compared with the previous committed `apps/desktop/src-tauri/Cargo.lock`, 17 package entries are new (the plugin itself, listed in the direct table above, plus the 16 crates below; none was removed). The licence expression is the one printed for each in the regenerated `THIRD_PARTY_NOTICES.md`. Every expression offers a GPL-3.0-compatible option. These licences were taken from the regenerated notices; the new crates were NOT re-scanned for advisories here (the 2026-10-08 `cargo audit` and `cargo metadata` figures below were not redone). The advisory checks that cover them are `pnpm audit` for npm (no known vulnerabilities on the final tree) and the CI `cargo audit` job for Rust.
+
+| Crate                                                                                                                                                                                                        | Version                                         | Licence (as in the notices) | Note                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- | --------------------------- | -------------------------------------------- |
+| `global-hotkey`                                                                                                                                                                                              | 0.8.0                                           | Apache-2.0 OR MIT           | New in the lockfile with the plugin.         |
+| `keyboard-types`                                                                                                                                                                                             | 0.7.0 (0.8.3 was already present)               | MIT OR Apache-2.0           | New version in the lockfile.                 |
+| `x11rb`, `x11rb-protocol`                                                                                                                                                                                    | 0.13.2                                          | MIT OR Apache-2.0           | New in the lockfile.                         |
+| `xkeysym`                                                                                                                                                                                                    | 0.2.1                                           | MIT OR Apache-2.0 OR Zlib   | New in the lockfile.                         |
+| `gethostname`                                                                                                                                                                                                | 1.1.0                                           | Apache-2.0                  | New in the lockfile.                         |
+| `windows-sys`                                                                                                                                                                                                | 0.59.0 (0.45.0 and 0.61.2 were already present) | MIT OR Apache-2.0           | New version in the lockfile.                 |
+| `windows-targets`, `windows_aarch64_gnullvm`, `windows_aarch64_msvc`, `windows_i686_gnu`, `windows_i686_gnullvm`, `windows_i686_msvc`, `windows_x86_64_gnu`, `windows_x86_64_gnullvm`, `windows_x86_64_msvc` | 0.52.6                                          | MIT OR Apache-2.0           | New version in the lockfile; Windows builds. |
+
+The direct crate `tauri-plugin-global-shortcut` 2.4.1 (Apache-2.0 OR MIT) is in the direct dependency table above. The counts in the 2026-10-08 paragraph above (458 crates and the licence tallies) describe the earlier lockfile; `THIRD_PARTY_NOTICES.md` now lists 475 Rust crates.
 
 ### Vulnerability scan (2026-10-08)
 
@@ -91,6 +108,37 @@ They need to be revisited before a Linux build ships. CI runs `cargo audit` on e
 ## Provider presets (Phase 63)
 
 `ai/models/src/openai-compatible.ts` and `gemini.ts` name the public API base URLs of OpenAI, DeepSeek, Qwen (Alibaba Cloud Model Studio, international endpoint), Moonshot, LM Studio and Google Gemini, read from each vendor's public documentation (the URL is kept beside each preset as `docs`). Only facts (URLs, request field names) are used: no vendor code, SDK, schema file, logo or other asset was copied, and no vendor SDK is a dependency.
+
+## Service integrations and media (Phase 67/68)
+
+`capabilities/{vercel,stripe,n8n,resend,notion,calcom,spotify,apple-music,portfolio}` and `sdk/service-kit` talk to the public HTTP APIs below, using only facts read from each service's public documentation (default API hosts, endpoint paths, request and response field names, the signing recipes of five exchanges). No vendor SDK, vendor code, schema file, logo or other asset was copied, no vendor SDK is a dependency, and no new npm dependency was added (`sdk/service-kit` uses the global `fetch` and `node:http`/`node:net`; the exchange signing in `capabilities/portfolio` uses `node:crypto`). The response shapes were written from the documentation and exercised against local mocks only; no service was contacted. **The terms of use and rate limits of these services were NOT reviewed** (see the gap register).
+
+Hosts named in the capability sources (`capabilities/*/src`):
+
+| Capability           | Host(s) the code contacts                                                                                                                                                                                                                                                                                                                                                       | Credential sent                                                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `vercel`             | `https://api.vercel.com`                                                                                                                                                                                                                                                                                                                                                        | Access token, to that host only                                                   |
+| `stripe`             | `https://api.stripe.com` (GET only)                                                                                                                                                                                                                                                                                                                                             | API key, to that host only                                                        |
+| `n8n`                | No default: the `base_url` the user sets (https, or http to loopback); `n8n.example.com` appears only as an example in the setting's help text                                                                                                                                                                                                                                  | API key, to whatever host `base_url` names (visible, not prevented; gap register) |
+| `resend`             | `https://api.resend.com` (GET only); email links are built as `https://resend.com/emails/<id>` and are not fetched                                                                                                                                                                                                                                                              | API key, to the API host only                                                     |
+| `notion`             | `https://api.notion.com` (GET only)                                                                                                                                                                                                                                                                                                                                             | Integration token, to that host only                                              |
+| `calcom`             | `https://api.cal.com`; booking links are built under `https://app.cal.com/booking/` and are not fetched                                                                                                                                                                                                                                                                         | API key, to the API host only                                                     |
+| `spotify`            | None for control (local AppleScript to the Spotify app); cover art only from `https://*.scdn.co` (no redirects, 400 KB cap)                                                                                                                                                                                                                                                     | None                                                                              |
+| `apple-music`        | None (local AppleScript to the Music app)                                                                                                                                                                                                                                                                                                                                       | None                                                                              |
+| `portfolio` networks | `https://blockstream.info/api` (btc), `https://api.blockcypher.com` (ltc, doge), Blockscout hosts `eth`, `optimism`, `base`, `arbitrum`, `polygon`, `gnosis`, `etc` `.blockscout.com`, `https://api.xrpscan.com`, `https://horizon.stellar.org`, `https://mainnet-api.algonode.cloud`, `https://toncenter.com`, `https://api.trongrid.io`, `https://cosmos-rest.publicnode.com` | None (public addresses only)                                                      |
+| `portfolio` exchange | `https://api.binance.com`, `https://api.bybit.com`, `https://www.okx.com`, `https://api.kucoin.com`, `https://api.gateio.ws` (HMAC-signed GET)                                                                                                                                                                                                                                  | Read-only key and secret, to the exchange host only (code-only `exchangeUrls`)    |
+| `portfolio` prices   | `https://api.coingecko.com` (one `coins/markets` GET)                                                                                                                                                                                                                                                                                                                           | None                                                                              |
+
+The public indexers and CoinGecko are free services that rate-limit; no key or agreement with any of them exists.
+
+## Interface translations and Phase 70 sources
+
+`apps/web/src/i18n` is a zero-dependency framework written for Phoenix (typed English source, an ICU-subset message parser, lazy locale chunks, an `en-XA` pseudo-locale for tests). Nothing was copied for Phase 70: no i18n library, no message catalogue, no translation file, no keyboard-shortcut code or key table from another project, and nothing from Coucou. The global-shortcut crate is the only new dependency (see Desktop shell above).
+
+| Item                                                                                   | Author                                 | Licence                                                                                              | Provenance                                                                                                                                                                                             |
+| -------------------------------------------------------------------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| English source text (`apps/web/src/i18n/en/*.ts`, about 2,600 keys in nine namespaces) | Phoenix contributors                   | GPL-3.0-or-later (the SPDX header of each source file)                                               | Original text written for Phoenix.                                                                                                                                                                     |
+| Nine other locales (`apps/web/src/i18n/locales/{zh,hi,es,ar,fr,bn,pt,ru,id}`)          | Machine-generated, no human translator | GPL-3.0-or-later (the SPDX header of each source file, as for the English source text it translates) | Produced by machine translation of the English source text; **not reviewed by a native speaker** (see `apps/web/src/i18n/README.md` and the gap register). Brand and outfit names in them are guesses. |
 
 ## Artwork, audio and fonts
 

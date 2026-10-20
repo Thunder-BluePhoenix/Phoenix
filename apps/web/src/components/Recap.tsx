@@ -250,6 +250,7 @@ export function RecapPage({
               {t("memory.recap.deleteAll")}
             </button>
           )}
+          <p className="muted small">{t("memory.recap.deleteNote")}</p>
           <Feedback error={error ?? exportError} saved={saved} />
         </>
       )}
