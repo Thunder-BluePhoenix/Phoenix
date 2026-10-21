@@ -27,6 +27,8 @@ export const phone: Record<keyof typeof enphone, string> = {
   "phone.lockedOut":
     "Pemasangan dikunci sampai {time} karena terlalu banyak kode salah dimasukkan.",
   "phone.notListening": "Tautan ponsel aktif, tetapi pendengar belum berjalan.",
+  "phone.addressChanged":
+    "Alamat jaringan yang Anda pilih tidak tersedia lagi, jadi tautan ponsel tetap mati. Pilih alamat lagi untuk menyalakannya kembali.",
   "phone.listen.address": "Alamat dan port",
   "phone.listen.fingerprint": "Sidik jari sertifikat (SHA-256)",
   "phone.pair.show": "Tampilkan kode pemasangan",

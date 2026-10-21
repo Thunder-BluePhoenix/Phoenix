@@ -29,6 +29,8 @@ export const phone: Record<keyof typeof enphone, string> = {
     "O emparelhamento está bloqueado até {time} porque foram introduzidos demasiados códigos errados.",
   "phone.notListening":
     "A ligação com o telemóvel está ativada, mas o serviço ainda não está em execução.",
+  "phone.addressChanged":
+    "O endereço de rede que você escolheu não está mais disponível, então o link do telefone continua desligado. Escolha um endereço novamente para ligá-lo de novo.",
   "phone.listen.address": "Endereço e porta",
   "phone.listen.fingerprint": "Impressão digital do certificado (SHA-256)",
   "phone.pair.show": "Mostrar código de emparelhamento",

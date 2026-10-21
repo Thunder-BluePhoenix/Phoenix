@@ -43,6 +43,7 @@ const base = (patch: Partial<PhoneStatus> = {}): PhoneStatus => ({
   pairing: null,
   pending_pair: null,
   locked_out_until: null,
+  off_reason: null,
   devices: 0,
   ...patch,
 });
@@ -218,6 +219,13 @@ describe("phone link: pairing code", () => {
     expect(
       (s.getByRole("button", { name: "Show pairing code" }) as HTMLButtonElement).disabled,
     ).toBe(true);
+  });
+
+  it("says the chosen address is gone, rather than a generic 'not running yet'", async () => {
+    open(base({ enabled: true, off_reason: "address_changed", addresses: ["10.0.0.9"] }));
+    const s = await section();
+    expect(await s.findByText(/network address you chose is no longer available/i)).toBeTruthy();
+    expect(s.queryByText(/listener is not running yet/)).toBeNull();
   });
 });
 

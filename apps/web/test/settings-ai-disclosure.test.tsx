@@ -156,12 +156,12 @@ describe("AI capability activation disclosure", () => {
       "GET /api/capabilities": () => ({ capabilities: [enabled] }),
     });
     const p = await panel();
-    fireEvent.click(p.getByRole("button", { name: "Restart" }));
+    await openDisclosure(p, "Restart");
     expect(api.posts(disablePath)).toHaveLength(0);
     expect(api.posts(enablePath)).toHaveLength(0);
     fireEvent.click(p.getByRole("button", { name: "Cancel" }));
     expect(api.posts(disablePath)).toHaveLength(0);
-    fireEvent.click(p.getByRole("button", { name: "Restart" }));
+    await openDisclosure(p, "Restart");
     expect(
       (p.getByRole("button", { name: "Confirm restart for version 1.2.3" }) as HTMLButtonElement)
         .disabled,

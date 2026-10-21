@@ -26,6 +26,8 @@ export const phone = {
     "The kill switch is on, so the phone listener is closed. Turn the phone link on again here after you release the kill switch.",
   "phone.lockedOut": "Pairing is locked until {time} because too many wrong codes were entered.",
   "phone.notListening": "Phone link is on, but the listener is not running yet.",
+  "phone.addressChanged":
+    "The network address you chose is no longer available, so the phone link stays off. Choose an address again to turn it back on.",
 
   "phone.listen.address": "Address and port",
   "phone.listen.fingerprint": "Certificate fingerprint (SHA-256)",

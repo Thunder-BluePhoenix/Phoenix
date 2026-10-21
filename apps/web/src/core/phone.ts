@@ -19,6 +19,8 @@ export interface PhoneStatus {
   pairing: { expires_at: string } | null;
   pending_pair: PhonePendingPair | null;
   locked_out_until: string | null;
+  /** Why an enabled link is not listening, when Core knows: the chosen address is gone. */
+  off_reason: "address_changed" | null;
   devices: number;
 }
 

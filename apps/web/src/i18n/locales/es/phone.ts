@@ -29,6 +29,8 @@ export const phone: Record<keyof typeof enphone, string> = {
     "La vinculación está bloqueada hasta las {time} porque se introdujeron demasiados códigos incorrectos.",
   "phone.notListening":
     "El enlace con el teléfono está activado, pero el servicio aún no se está ejecutando.",
+  "phone.addressChanged":
+    "La dirección de red que elegiste ya no está disponible, así que el enlace con el teléfono sigue desactivado. Elige una dirección de nuevo para volver a activarlo.",
   "phone.listen.address": "Dirección y puerto",
   "phone.listen.fingerprint": "Huella del certificado (SHA-256)",
   "phone.pair.show": "Mostrar código de vinculación",

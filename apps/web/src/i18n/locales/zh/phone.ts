@@ -24,6 +24,8 @@ export const phone: Record<keyof typeof enphone, string> = {
     "紧急开关已开启，因此手机监听已关闭。解除紧急开关后，请在此重新开启手机连接。",
   "phone.lockedOut": "由于输入错误代码次数过多，配对已锁定至 {time}。",
   "phone.notListening": "手机连接已开启，但监听尚未运行。",
+  "phone.addressChanged":
+    "你选择的网络地址已不可用，因此手机连接保持关闭。请重新选择地址以再次开启。",
   "phone.listen.address": "地址和端口",
   "phone.listen.fingerprint": "证书指纹 (SHA-256)",
   "phone.pair.show": "显示配对码",

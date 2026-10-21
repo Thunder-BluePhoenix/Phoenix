@@ -187,7 +187,9 @@ export function PhoneLink() {
           )}
           {status.enabled && !status.kill_switch && !status.listening && (
             <p className="small" role="status">
-              {t("phone.notListening")}
+              {status.off_reason === "address_changed"
+                ? t("phone.addressChanged")
+                : t("phone.notListening")}
             </p>
           )}
 

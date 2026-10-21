@@ -29,6 +29,8 @@ export const phone: Record<keyof typeof enphone, string> = {
   "phone.lockedOut":
     "L'association est verrouillée jusqu'à {time} car trop de codes erronés ont été saisis.",
   "phone.notListening": "Le lien téléphone est activé, mais l'écouteur n'est pas encore démarré.",
+  "phone.addressChanged":
+    "L’adresse réseau que vous avez choisie n’est plus disponible ; le lien téléphone reste donc désactivé. Choisissez de nouveau une adresse pour le réactiver.",
   "phone.listen.address": "Adresse et port",
   "phone.listen.fingerprint": "Empreinte du certificat (SHA-256)",
   "phone.pair.show": "Afficher le code d'association",
