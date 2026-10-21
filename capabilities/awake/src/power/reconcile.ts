@@ -51,7 +51,8 @@ export type RecoveryEvent =
   | "awake.privileged.apply"
   | "awake.privileged.undo"
   | "awake.recovery.pending"
-  | "awake.recovery.reconciled";
+  | "awake.recovery.reconciled"
+  | "awake.recovery.discarded";
 
 export interface RecoveryManagerOptions {
   journal: RecoveryJournal;
@@ -60,6 +61,12 @@ export interface RecoveryManagerOptions {
   reverters: Record<string, Reverter>;
   now: () => number;
   newId: () => string;
+  /**
+   * Read-only check that a change whose apply was never confirmed is really NOT in effect (for the
+   * pmset kinds: `pmset -g` shows the setting off). Consulted only when an undo is refused for an
+   * entry with no confirmed apply; without a "yes" that entry stays pending. Returns false when unsure.
+   */
+  verifyNotApplied?: (entry: PendingEntry) => Promise<boolean>;
   /** Publishes an awake.* event; "warning" severities are the loud ones. */
   emit: (
     type: RecoveryEvent,
@@ -76,6 +83,8 @@ export class RecoveryManager {
   private readonly outstanding = new Map<string, PendingChange>();
   private chain: Promise<unknown> = Promise.resolve();
   private integrityAnnounced = false;
+  /** When an undo first found the recovery lock held by something that looks alive; cleared once it is not. */
+  private lockedSince: number | undefined;
 
   constructor(private readonly o: RecoveryManagerOptions) {}
 
@@ -91,7 +100,20 @@ export class RecoveryManager {
    * not made) or whatever `doApply` throws: a NotAppliedError closes the entry, anything else
    * leaves it pending, because the change may have happened.
    */
-  async change(
+  change(
+    kind: string,
+    apply: Fields,
+    undo: Fields,
+    doApply: () => Promise<void>,
+    session: string | null,
+  ): Promise<string> {
+    // Same chain as undo(): an undo requested while this change is still in flight waits for it, so
+    // the OFF can never overtake the ON and leave the machine changed with the entry marked undone.
+    // `doApply` must therefore not call undo() itself.
+    return this.enqueue(() => this.changeNow(kind, apply, undo, doApply, session));
+  }
+
+  private async changeNow(
     kind: string,
     apply: Fields,
     undo: Fields,
@@ -143,9 +165,43 @@ export class RecoveryManager {
    * entries `filter` accepts. Safe to call any number of times; calls never overlap.
    */
   undo(filter?: (entry: PendingEntry) => boolean): Promise<UndoReport> {
-    const run = this.chain.then(() => this.undoNow(filter));
+    return this.enqueue(() => this.undoNow(filter));
+  }
+
+  /** Runs `job` after everything queued before it, whether that succeeded or not. */
+  private enqueue<T>(job: () => Promise<T>): Promise<T> {
+    const run = this.chain.then(job);
     this.chain = run.catch(() => undefined);
     return run;
+  }
+
+  /**
+   * Clears a pending entry whose kind has NO reverter registered (so it can never be undone and
+   * would warn forever), for example a forged or leftover journal line. Never touches an entry that
+   * can be undone. Resolves to false when there is nothing to discard.
+   */
+  discard(id: string): Promise<{ id: string; kind: string } | undefined> {
+    return this.enqueue(async () => {
+      const entry = this.o.journal.read().pending.find((e) => e.id === id);
+      if (!entry || Object.hasOwn(this.o.reverters, entry.kind)) return undefined;
+      this.o.journal.append({ t: "undone", id, at: this.o.now() });
+      this.outstanding.delete(id);
+      this.o.emit("awake.recovery.discarded", "warning", { id, kind: entry.kind });
+      // The entry may have been the only thing keeping the WARNING state on.
+      if (this.outstanding.size === 0) {
+        this.o.emit("awake.recovery.reconciled", "info", {
+          undone: 0,
+          untrusted: 0,
+          partial_tail: false,
+        });
+      }
+      return { id, kind: entry.kind };
+    });
+  }
+
+  /** Whether `kind` can be undone by this manager (a reverter is registered for it). */
+  canUndo(kind: string): boolean {
+    return Object.hasOwn(this.o.reverters, kind);
   }
 
   /** Launch-time crash recovery: the same undo, named for what it is. */
@@ -168,17 +224,30 @@ export class RecoveryManager {
     report.untrusted = peek.untrusted;
     report.partialTail = peek.partialTail;
     // Nothing to undo: no lock, no files touched, no processes asked about.
-    if (peek.pending.length === 0) {
-      this.track([]);
+    const wanted = filter ? peek.pending.filter(filter) : peek.pending;
+    if (wanted.length === 0) {
+      // Entries that are none of this call's business keep blocking quit; an empty journal clears it.
+      if (peek.pending.length === 0) {
+        this.lockedSince = undefined;
+        this.track([]);
+      }
       this.announce(report);
       return report;
     }
     const lock = await this.o.lock.acquire();
     if (!lock.ok) {
       report.locked = true;
+      this.lockedSince ??= this.o.now();
       this.track(peek.pending);
+      // Nothing was undone: this is NOT "restored". Warn (Fawkes WARNING) until a later undo clears it.
+      this.o.emit("awake.recovery.pending", "warning", {
+        count: wanted.length,
+        kinds: wanted.map((e) => e.kind),
+        locked: true,
+      });
       return report;
     }
+    this.lockedSince = undefined;
     const heldByOther = new Set<string>();
     try {
       const self = await this.identity();
@@ -217,9 +286,12 @@ export class RecoveryManager {
       try {
         await reverter(entry.undo, entry);
       } catch (err) {
-        // A change whose apply was never confirmed, and whose undo is refused because the helper is
-        // absent, cannot have been applied through that helper: close it rather than block quitting.
+        // A change whose apply was never confirmed and whose undo is refused (helper absent) may
+        // still be in effect: ON may have run before the helper went away. Close the entry only
+        // when a read-only check says the change is NOT in effect; otherwise it stays pending.
         if (!(err instanceof NotAppliedError) || entry.applied) throw err;
+        const clear = await this.o.verifyNotApplied?.(entry).catch(() => false);
+        if (clear !== true) throw err;
       }
       this.o.journal.append({ t: "undone", id: entry.id, at: this.o.now() });
     } catch (err) {
@@ -265,6 +337,11 @@ export class RecoveryManager {
         partial_tail: report.partialTail,
       });
     }
+  }
+
+  /** Set while the last undo found the recovery lock held by a live-looking holder (so nothing was undone). */
+  lockBlocked(): { since: number } | undefined {
+    return this.lockedSince === undefined ? undefined : { since: this.lockedSince };
   }
 
   /** The veto the desktop shell and Core shutdown consult: no while a change still needs undoing. */

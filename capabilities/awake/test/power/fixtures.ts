@@ -7,7 +7,7 @@ import type { JournalFs } from "../../src/power/journal";
 import { RecoveryJournal } from "../../src/power/journal";
 import { RecoveryLock, type ProcessProbe } from "../../src/power/lock";
 import { RecoveryManager, type RecoveryEvent, type Reverter } from "../../src/power/reconcile";
-import type { Owner } from "../../src/power/format";
+import type { Owner, PendingEntry } from "../../src/power/format";
 import type { RunResult } from "../../src/system";
 
 /** An in-memory file system with switches to make writes fail, like a full or read-only disk. */
@@ -107,6 +107,7 @@ export function instance(
   procs: FakeProcesses,
   options: {
     reverters?: Record<string, Reverter>;
+    verifyNotApplied?: (entry: PendingEntry) => Promise<boolean>;
     now?: () => number;
     maxBytes?: number;
   } = {},
@@ -131,6 +132,7 @@ export function instance(
         return Promise.resolve();
       },
     },
+    ...(options.verifyNotApplied ? { verifyNotApplied: options.verifyNotApplied } : {}),
     now,
     newId: () => `chg_${procs.selfPid}_${++n}`,
     emit: (type, severity, payload) => events.push({ type, severity, payload }),

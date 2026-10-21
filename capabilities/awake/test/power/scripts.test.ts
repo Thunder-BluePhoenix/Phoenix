@@ -5,8 +5,16 @@
 // bash, in a temp HOME, without root. Their real mode refuses unless euid is 0 and --yes is given;
 // that refusal is tested too, and the real mode is never reached.
 import { execFile } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
@@ -33,10 +41,20 @@ interface Out {
   stderr: string;
 }
 
-async function bash(script: string, home: string, args: string[]): Promise<Out> {
+async function bash(
+  script: string,
+  home: string,
+  args: string[],
+  extraEnv: Record<string, string> = {},
+): Promise<Out> {
   try {
     const r = await run("/bin/bash", [script, ...args], {
-      env: { PATH: process.env.PATH ?? "", HOME: home, PHOENIX_SUDOERS_DIR: "/etc/sudoers.d" },
+      env: {
+        PATH: process.env.PATH ?? "",
+        HOME: home,
+        PHOENIX_SUDOERS_DIR: "/etc/sudoers.d",
+        ...extraEnv,
+      },
     });
     return { code: 0, stdout: r.stdout, stderr: r.stderr };
   } catch (err) {
@@ -230,5 +248,214 @@ describe("real mode refuses", () => {
     }
     expect(readFileSync(INSTALL, "utf8")).toContain("visudo -cf");
     expect(readFileSync(UNINSTALL, "utf8")).toContain("visudo -c");
+  });
+});
+
+// ---- findings 1, 5, 8: the root script creates user files AS the user and refuses planted links ----
+
+const me = userInfo().username;
+const plainName = /^[a-z_][a-z0-9_-]{0,31}$/.test(me);
+const dry = it.skipIf(!plainName);
+
+/** A temp HOME with the folders a real macOS account has. */
+const macHome = () => {
+  const h = tempHome();
+  mkdirSync(join(h, "Library", "Application Support"), { recursive: true });
+  return h;
+};
+
+describe("--dry-run: every step is printed, none is run (finding 1)", () => {
+  dry(
+    "creates every user-owned folder and file AS THE USER; only the sudoers rule is root's",
+    async () => {
+      const home = macHome();
+      const out = await bash(INSTALL, home, ["--dry-run", "--user", me, "--home", home]);
+      expect(out.code, out.stderr).toBe(0);
+      const steps = out.stdout.split("\n").filter((l) => l.startsWith("RUN "));
+      const root = steps.filter((l) => l.startsWith("RUN root: "));
+      const user = steps.filter((l) => l.startsWith(`RUN ${me}: `));
+      // Root touches only the sudoers file (and validators / launchctl); never anything under HOME.
+      for (const l of root) {
+        if (l.includes("install -m 0440")) expect(l).toContain("/etc/sudoers.d/phoenix-awake.new");
+        if (l.includes("/bin/mv") || l.includes("install ")) expect(l).not.toContain(home);
+      }
+      expect(root.some((l) => l.includes("/usr/bin/install -d"))).toBe(false);
+      // Each dir and file under HOME is made by the user, with no -o/-g (nothing to chown).
+      const made = user.filter((l) => l.includes("/usr/bin/install"));
+      expect(made.map((l) => l.replace(`RUN ${me}: `, ""))).toEqual([
+        `/usr/bin/install -d -m 0700 ${home}/Library/Application Support/Phoenix`,
+        `/usr/bin/install -d -m 0755 ${home}/Library/LaunchAgents`,
+        `/usr/bin/install -d -m 0755 ${home}/Library/Logs`,
+        expect.stringMatching(
+          new RegExp(
+            `^/usr/bin/install -m 0644 \\S+/script\\.mjs ${home}/Library/Application Support/Phoenix/phoenix-awake-backstop\\.mjs$`,
+          ),
+        ),
+        expect.stringMatching(
+          new RegExp(
+            `^/usr/bin/install -m 0644 \\S+/plist ${home}/Library/LaunchAgents/dev\\.phoenix\\.awake-backstop\\.plist$`,
+          ),
+        ),
+      ]);
+      for (const l of made) expect(l).not.toMatch(/ -o | -g /);
+      // The root step order: rule first, then the user's files.
+      const iRule = steps.findIndex((l) => l.includes("phoenix-awake.new"));
+      const iFirstUser = steps.findIndex((l) => l.startsWith(`RUN ${me}:`));
+      expect(iRule).toBeGreaterThanOrEqual(0);
+      expect(iRule).toBeLessThan(iFirstUser);
+      // Nothing was created.
+      expect(readdirSync(join(home, "Library")).sort()).toEqual(["Application Support"]);
+    },
+  );
+
+  dry(
+    "refuses, before anything is printed to run, when a component is a symbolic link",
+    async () => {
+      for (const link of ["LaunchAgents", "Logs", "Application Support/Phoenix"]) {
+        const home = macHome();
+        const target = mkdtempSync(join(tmpdir(), "zz-awake-target-"));
+        homes.push(target);
+        symlinkSync(target, join(home, "Library", link));
+        const out = await bash(INSTALL, home, ["--dry-run", "--user", me, "--home", home]);
+        expect(out.code, link).not.toBe(0);
+        expect(out.stderr, link).toContain("is a symbolic link");
+        expect(out.stdout, link).not.toContain("RUN ");
+        expect(readdirSync(target), link).toEqual([]);
+      }
+    },
+  );
+
+  dry("refuses a symlinked leaf (the plist or the log) and a symlinked HOME itself", async () => {
+    const home = macHome();
+    mkdirSync(join(home, "Library", "LaunchAgents"));
+    symlinkSync(
+      "/etc/sudoers.d/phoenix-awake",
+      join(home, "Library", "LaunchAgents", "dev.phoenix.awake-backstop.plist"),
+    );
+    const leaf = await bash(INSTALL, home, ["--dry-run", "--user", me, "--home", home]);
+    expect(leaf.code).not.toBe(0);
+    expect(leaf.stderr).toContain("is a symbolic link");
+
+    const real = macHome();
+    const parent = tempHome();
+    const viaLink = join(parent, "home-link");
+    symlinkSync(real, viaLink);
+    const top = await bash(INSTALL, parent, ["--dry-run", "--user", me, "--home", viaLink]);
+    expect(top.code).not.toBe(0);
+    expect(top.stderr).toContain("is a symbolic link");
+  });
+
+  dry("refuses when a component is not owned by the account the rule is for", async () => {
+    const home = macHome();
+    mkdirSync(join(home, "Library", "Logs"));
+    // `nobody` is a plain account name that is not this user: the temp folders are owned by `me`.
+    const out = await bash(INSTALL, home, ["--dry-run", "--user", "nobody", "--home", home]);
+    expect(out.code).not.toBe(0);
+    expect(out.stderr).toMatch(new RegExp(`owned by ${me}, not by nobody`));
+    expect(out.stdout).not.toContain("RUN ");
+  });
+
+  dry("refuses a component that is a file where a folder belongs", async () => {
+    const home = macHome();
+    writeFileSync(join(home, "Library", "LaunchAgents"), "x");
+    const out = await bash(INSTALL, home, ["--dry-run", "--user", me, "--home", home]);
+    expect(out.code).not.toBe(0);
+    expect(out.stderr).toContain("is not a directory");
+  });
+
+  dry(
+    "uninstall removes the user's files AS THE USER, the rule first, and refuses links",
+    async () => {
+      const home = macHome();
+      const ok = await bash(UNINSTALL, home, ["--dry-run", "--user", me, "--home", home]);
+      expect(ok.code, ok.stderr).toBe(0);
+      const steps = ok.stdout.split("\n").filter((l) => l.startsWith("RUN "));
+      const iRule = steps.findIndex((l) =>
+        l.startsWith("RUN root: /bin/rm -f -- /etc/sudoers.d/phoenix-awake"),
+      );
+      const iUser = steps.findIndex((l) => l.startsWith(`RUN ${me}: /bin/rm -f --`));
+      expect(iRule).toBeGreaterThanOrEqual(0);
+      expect(iRule).toBeLessThan(iUser);
+      expect(steps.filter((l) => l.startsWith("RUN root:") && l.includes(home))).toEqual([]);
+
+      for (const link of ["LaunchAgents", "Logs", "Application Support/Phoenix"]) {
+        const h = macHome();
+        const target = mkdtempSync(join(tmpdir(), "zz-awake-target-"));
+        homes.push(target);
+        writeFileSync(join(target, "keep"), "x");
+        symlinkSync(target, join(h, "Library", link));
+        const out = await bash(UNINSTALL, h, ["--dry-run", "--user", me, "--home", h]);
+        expect(out.code, link).not.toBe(0);
+        expect(out.stderr, link).toContain("is a symbolic link");
+        expect(out.stdout, link).not.toContain("RUN " + me);
+        expect(readdirSync(target), link).toEqual(["keep"]);
+      }
+    },
+  );
+
+  it("PHOENIX_SUDOERS_DIR moves the rule only in print and dry-run modes; real mode has no such path", async () => {
+    const home = macHome();
+    const plan = await bash(INSTALL, home, ["--print-plan", "--user", "alice"], {
+      PHOENIX_SUDOERS_DIR: "/tmp/elsewhere",
+    });
+    expect(paths(plan.stdout, "CREATE")).toContain("/tmp/elsewhere/phoenix-awake");
+    for (const file of [INSTALL, UNINSTALL]) {
+      const text = readFileSync(file, "utf8");
+      // The default is the fixed path, and the variable is read only inside the non-executing branch.
+      expect(text).toContain('SUDOERS_DIR="/etc/sudoers.d"\nif [');
+      const reads = text.split("\n").filter((l) => l.includes("PHOENIX_SUDOERS_DIR:-"));
+      expect(reads).toHaveLength(1);
+      const at = text.indexOf(reads[0] ?? "");
+      const guard = text.lastIndexOf("\nif [", at);
+      expect(text.slice(guard, at)).toMatch(/dry"? -eq 1/);
+      expect(text.slice(guard, at)).toMatch(/!= "(install|uninstall)"/);
+    }
+  });
+});
+
+describe("--data-dir and the journal the backstop watches (finding 8)", () => {
+  it("--print-plan shows the journal it will watch, and warns about the default", async () => {
+    const home = tempHome();
+    const def = await bash(INSTALL, home, ["--print-plan", "--user", "alice"]);
+    expect(paths(def.stdout, "WATCH")).toEqual([
+      `${home}/.phoenix/prod/awake/recovery-journal.jsonl`,
+    ]);
+    expect(def.stdout).toContain("no --data-dir given");
+    expect(def.stdout).toContain("journal_path");
+    const given = await bash(INSTALL, home, [
+      "--print-plan",
+      "--user",
+      "alice",
+      "--data-dir",
+      "/srv/phoenix/dev",
+    ]);
+    expect(paths(given.stdout, "WATCH")).toEqual(["/srv/phoenix/dev/awake/recovery-journal.jsonl"]);
+    expect(given.stdout).not.toContain("no --data-dir given");
+  });
+
+  it("--data-dir must be absolute", async () => {
+    for (const bad of ["relative/dir", "./x", "~/phoenix"]) {
+      const out = await bash(INSTALL, tempHome(), [
+        "--print-plan",
+        "--user",
+        "alice",
+        "--data-dir",
+        bad,
+      ]);
+      expect(out.code, bad).not.toBe(0);
+      expect(out.stderr, bad).toContain("must be an absolute path");
+    }
+  });
+});
+
+describe("the sudoers rule is described as account-wide (finding 5)", () => {
+  it("the script header, the plan and the --yes refusal all say any process of the account can use it", async () => {
+    const text = readFileSync(INSTALL, "utf8");
+    expect(text).toMatch(/ACCOUNT-WIDE/);
+    expect(text).toMatch(/ANY process that\s+#\s+runs as you/);
+    const plan = await bash(INSTALL, tempHome(), ["--print-plan", "--user", "alice"]);
+    expect(plan.stdout).toContain("account-wide");
+    expect(plan.stdout).toContain("AI agent");
+    expect(readFileSync(UNINSTALL, "utf8")).toContain("--dry-run");
   });
 });

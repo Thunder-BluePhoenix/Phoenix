@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { encodeLine, parseJournal } from "../../src/power/format";
 import { JournalWriteError, NotAppliedError } from "../../src/power/journal";
+import { MAX_LOCK_SKEW_MS, PS_START_ARGV, createProcessProbe } from "../../src/power/lock";
 import { FakeProcesses, JOURNAL, LOCK, MemFs, OFF, ON, instance } from "./fixtures";
 
 const DISABLE = "pmset.disablesleep";
@@ -200,7 +201,7 @@ describe("undo", () => {
     const fs = new MemFs();
     const procs = new FakeProcesses(100);
     const reverters = { [DISABLE]: () => Promise.reject(new NotAppliedError("no helper")) };
-    const a = instance(fs, procs, { reverters });
+    const a = instance(fs, procs, { reverters, verifyNotApplied: () => Promise.resolve(true) });
     // Crash between journal and apply: no `applied` line.
     fs.files.set(
       JOURNAL,
@@ -218,6 +219,39 @@ describe("undo", () => {
     const report = await a.manager.undo();
     expect(report.failed).toEqual([]);
     expect(parseJournal(fs.read(JOURNAL) ?? "").pending).toEqual([]);
+  });
+
+  it("an unconfirmed entry whose undo is refused STAYS pending unless a read-only check says it is not in effect (finding 11)", async () => {
+    for (const verify of [
+      undefined,
+      () => Promise.resolve(false),
+      () => Promise.reject(new Error("pmset unreadable")),
+    ]) {
+      const fs = new MemFs();
+      const procs = new FakeProcesses(100);
+      const reverters = { [DISABLE]: () => Promise.reject(new NotAppliedError("no helper")) };
+      const a = instance(fs, procs, {
+        reverters,
+        ...(verify ? { verifyNotApplied: verify } : {}),
+      });
+      fs.files.set(
+        JOURNAL,
+        encodeLine({
+          t: "change",
+          id: "c1",
+          kind: DISABLE,
+          apply: ON,
+          undo: OFF,
+          at: 1,
+          session: "s",
+          owner: procs.self,
+        }),
+      );
+      const report = await a.manager.undo();
+      expect(report.failed.map((f) => f.id)).toEqual(["c1"]);
+      expect(parseJournal(fs.read(JOURNAL) ?? "").pending.map((e) => e.id)).toEqual(["c1"]);
+      expect(a.manager.canQuit().ok).toBe(false);
+    }
   });
 
   it("but an entry that WAS applied stays pending when its undo is refused", async () => {
@@ -377,6 +411,183 @@ describe("recovery lock", () => {
     await b.manager.reconcile();
     expect(fs.files.has(LOCK)).toBe(false);
     expect(fs.dirs).toEqual([]);
+  });
+});
+
+describe("a held or forged recovery lock (finding 3)", () => {
+  it("a live holder: not restored, the WARNING event fires, the entry stays pending and the lock is reported", async () => {
+    const fs = new MemFs();
+    const procs = new FakeProcesses(100);
+    await journalled(fs, procs);
+    procs.die(100);
+    procs.table.set(300, "start-300");
+    fs.files.set(LOCK, JSON.stringify({ pid: 300, started: "start-300", at: 1_000_000 }));
+    const b = instance(fs, procs.as(200));
+    const report = await b.manager.undo();
+    expect(report.locked).toBe(true);
+    expect(report.failed).toEqual([]);
+    expect(b.events.filter((e) => e.type === "awake.recovery.pending")).toEqual([
+      {
+        type: "awake.recovery.pending",
+        severity: "warning",
+        payload: { count: 1, kinds: [DISABLE], locked: true },
+      },
+    ]);
+    expect(b.manager.canQuit().ok).toBe(false);
+    expect(b.manager.lockBlocked()).toEqual({ since: 1_000_000 });
+    expect(parseJournal(fs.read(JOURNAL) ?? "").pending).toHaveLength(1);
+  });
+
+  it("the block is cleared once an undo gets the lock", async () => {
+    const fs = new MemFs();
+    const procs = new FakeProcesses(100);
+    await journalled(fs, procs);
+    procs.die(100);
+    procs.table.set(300, "start-300");
+    fs.files.set(LOCK, JSON.stringify({ pid: 300, started: "start-300", at: 1_000_000 }));
+    const b = instance(fs, procs.as(200));
+    await b.manager.undo();
+    expect(b.manager.lockBlocked()).toBeDefined();
+    procs.die(300);
+    const report = await b.manager.undo();
+    expect(report.locked).toBe(false);
+    expect(b.manager.lockBlocked()).toBeUndefined();
+    expect(b.manager.canQuit().ok).toBe(true);
+  });
+
+  it("a forged lock {pid:1, started:'', at:9e15} does not hold the lock for ever", async () => {
+    const fs = new MemFs();
+    const procs = new FakeProcesses(100);
+    await journalled(fs, procs);
+    procs.die(100);
+    // pid 1 exists and an empty start token trusts existence alone: only the future date can save us.
+    procs.table.set(1, "");
+    fs.files.set(LOCK, JSON.stringify({ pid: 1, started: "", at: 9e15 }));
+    const b = instance(fs, procs.as(200));
+    const report = await b.manager.undo();
+    expect(report.locked).toBe(false);
+    expect(b.undoCalls).toEqual([OFF]);
+  });
+
+  it("a lock dated a little ahead (clock skew) is still honoured; far ahead is stale", async () => {
+    for (const [ahead, locked] of [
+      [MAX_LOCK_SKEW_MS - 1_000, true],
+      [MAX_LOCK_SKEW_MS + 1_000, false],
+    ] as const) {
+      const fs = new MemFs();
+      const procs = new FakeProcesses(100);
+      await journalled(fs, procs);
+      procs.die(100);
+      procs.table.set(300, "start-300");
+      fs.files.set(LOCK, JSON.stringify({ pid: 300, started: "start-300", at: 1_000_000 + ahead }));
+      const b = instance(fs, procs.as(200));
+      expect((await b.manager.undo()).locked, String(ahead)).toBe(locked);
+    }
+  });
+});
+
+describe("change and undo are serialised (finding 4b)", () => {
+  it("an undo requested while the ON is still in flight runs AFTER it", async () => {
+    const fs = new MemFs();
+    const procs = new FakeProcesses(100);
+    const order: string[] = [];
+    const a = instance(fs, procs, {
+      reverters: {
+        [DISABLE]: () => {
+          order.push("off");
+          return Promise.resolve();
+        },
+      },
+    });
+    const gate = Promise.withResolvers<void>();
+    const changed = a.manager.change(
+      DISABLE,
+      ON,
+      OFF,
+      async () => {
+        order.push("on:start");
+        await gate.promise;
+        order.push("on:done");
+      },
+      "awk_1",
+    );
+    const undone = a.manager.undo();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    // The entry is journalled and the ON has started; the OFF must not have run yet.
+    expect(order).toEqual(["on:start"]);
+    gate.resolve();
+    await changed;
+    const report = await undone;
+    expect(order).toEqual(["on:start", "on:done", "off"]);
+    expect(report.undone).toHaveLength(1);
+    // `undone` was journalled only after the OFF ran, and the entry was applied before that.
+    const lines = (fs.files.get(JOURNAL) ?? "").trim().split("\n");
+    const kinds = lines.map((l) => (JSON.parse(l) as { rec: { t: string } }).rec.t);
+    expect(kinds).toEqual(["change", "applied", "undone"]);
+    expect(a.manager.canQuit().ok).toBe(true);
+  });
+
+  it("a change that fails does not wedge the queue", async () => {
+    const a = instance(new MemFs(), new FakeProcesses(100));
+    await expect(
+      a.manager.change(DISABLE, ON, OFF, () => Promise.reject(new Error("boom")), "s"),
+    ).rejects.toThrow("boom");
+    expect((await a.manager.undo()).undone).toHaveLength(1);
+  });
+});
+
+describe("discarding an entry nothing can undo (finding 9)", () => {
+  const unknown = (procs: FakeProcesses, id = "x1") =>
+    encodeLine({
+      t: "change",
+      id,
+      kind: "forged.kind",
+      apply: {},
+      undo: {},
+      at: 1,
+      session: null,
+      owner: procs.self,
+    });
+
+  it("closes only an entry whose kind has no reverter, warns, and clears the quit veto", async () => {
+    const fs = new MemFs();
+    const procs = new FakeProcesses(100);
+    const a = instance(fs, procs);
+    fs.files.set(JOURNAL, unknown(procs));
+    await a.manager.undo();
+    expect(a.manager.canQuit().ok).toBe(false);
+    expect(await a.manager.discard("x1")).toEqual({ id: "x1", kind: "forged.kind" });
+    expect(parseJournal(fs.read(JOURNAL) ?? "").pending).toEqual([]);
+    expect(a.manager.canQuit().ok).toBe(true);
+    expect(a.events.map((e) => e.type)).toContain("awake.recovery.discarded");
+    expect(a.events.at(-1)?.type).toBe("awake.recovery.reconciled");
+  });
+
+  it("refuses an entry that can be undone, and one that does not exist", async () => {
+    const fs = new MemFs();
+    const procs = new FakeProcesses(100);
+    const { a } = await journalled(fs, procs);
+    const id = parseJournal(fs.read(JOURNAL) ?? "").pending[0]?.id ?? "";
+    expect(await a.manager.discard(id)).toBeUndefined();
+    expect(await a.manager.discard("nope")).toBeUndefined();
+    expect(parseJournal(fs.read(JOURNAL) ?? "").pending).toHaveLength(1);
+  });
+});
+
+describe("process start time is read in a pinned zone and locale (finding 7)", () => {
+  it("the probe asks `env TZ=UTC LC_ALL=C /bin/ps -o lstart= -p <pid>`", async () => {
+    const calls: [string, readonly string[]][] = [];
+    const probe = createProcessProbe((file, args) => {
+      calls.push([file, args]);
+      return Promise.resolve({ code: 0, stdout: "Tue Oct 20 09:00:00 2026\n", stderr: "" });
+    }, 321);
+    expect(await probe.self()).toEqual({ pid: 321, started: "Tue Oct 20 09:00:00 2026" });
+    expect(await probe.alive({ pid: 7, started: "Tue Oct 20 09:00:00 2026" })).toBe(true);
+    expect(calls).toEqual([
+      ["/usr/bin/env", ["TZ=UTC", "LC_ALL=C", "/bin/ps", "-o", "lstart=", "-p", "321"]],
+      ["/usr/bin/env", ["TZ=UTC", "LC_ALL=C", "/bin/ps", "-o", "lstart=", "-p", "7"]],
+    ]);
+    expect(PS_START_ARGV(321)).toEqual(calls[0]?.[1]);
   });
 });
 

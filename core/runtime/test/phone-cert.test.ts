@@ -86,11 +86,11 @@ describe("self-signed certificate builder", () => {
   });
 
   it("refuses a key that is not P-256 and an address that is not dotted IPv4", () => {
-    const p384 = generateKeyPairSync("ec", { namedCurve: "secp384r1" });
     const opts = { address: "10.0.0.5", notBefore: new Date(NOW), notAfter: new Date(NOW + DAY) };
-    expect(() => buildSelfSignedCertificate({ ...opts, privateKey: p384.privateKey })).toThrow(
-      /P-256/,
-    );
+    {
+      const { privateKey } = generateKeyPairSync("ec", { namedCurve: "secp384r1" });
+      expect(() => buildSelfSignedCertificate({ ...opts, privateKey })).toThrow(/P-256/);
+    }
     const { privateKey } = keys();
     for (const bad of ["10.0.0", "10.0.0.256", "10.0.0.5.1", "::1", "host.local", "010.0.0.5", ""])
       expect(

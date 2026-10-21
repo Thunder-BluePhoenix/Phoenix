@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { describe, expect, it } from "vitest";
-import { AwakeError, MAX_SESSION_MINUTES, type SessionStatus } from "../src";
+import {
+  AwakeError,
+  MAX_HOLD_PIECE_SECONDS,
+  MAX_SESSION_MINUTES,
+  type BatteryReading,
+  type SessionStatus,
+} from "../src";
 import { rig, type Rig } from "../testing/ctx";
 import { settle } from "../testing/fakes";
 
@@ -26,7 +32,7 @@ describe("start / extend / end bounds", () => {
     const status = await started(r, 90);
     expect(r.sys.children).toHaveLength(1);
     expect(r.sys.children[0]?.file).toBe("caffeinate");
-    expect(r.sys.children[0]?.args).toEqual(["-d", "-i", "-s", "-t", "5400"]);
+    expect(r.sys.children[0]?.args).toEqual(["-d", "-i", "-s", "-t", "5400", "-w", "777"]);
     expect(status.active).toBe(true);
     expect(status.session?.ends_at).toBe(new Date(r.sys.clock.now() + 90 * MIN).toISOString());
     expect(status.session?.remaining_seconds).toBe(5400);
@@ -56,7 +62,7 @@ describe("start / extend / end bounds", () => {
     expect(status.session?.remaining_seconds).toBe(80 * 60);
     expect(r.sys.children).toHaveLength(2);
     expect(r.sys.children[0]?.alive).toBe(false);
-    expect(r.sys.children[1]?.args.at(-1)).toBe(String(80 * 60));
+    expect(r.sys.children[1]?.args).toContain(String(80 * 60));
     expect(r.fake.last("awake.session.extended").payload).toMatchObject({ minutes: 60 });
   });
 
@@ -310,6 +316,10 @@ describe("hostile input", () => {
     ["reason NUL", { minutes: 5, reason: "a\u0000b" }],
     ["reason bidi override", { minutes: 5, reason: "a\u202eb" }],
     ["reason zero-width", { minutes: 5, reason: "a\u200bb" }],
+    ["reason tag character", { minutes: 5, reason: "a\u{E0041}b" }],
+    ["reason variation selector", { minutes: 5, reason: "a\uFE0Fb" }],
+    ["reason supplementary variation selector", { minutes: 5, reason: "a\u{E0100}b" }],
+    ["reason grapheme joiner", { minutes: 5, reason: "a\u034Fb" }],
     ["bad mode", { minutes: 5, mode: "forever" }],
     ["not an object", "30"],
   ];
@@ -388,5 +398,143 @@ describe("manifest", () => {
       "awake.session.ended",
     ]);
     expect(m.state_rules).toBeUndefined();
+  });
+});
+
+describe("a killed Core cannot leave the machine awake for days (finding 2)", () => {
+  const holdSeconds = (r: Rig): number[] =>
+    r.sys.children.map((c) => {
+      const t = c.args.indexOf("-t");
+      return Number(t >= 0 ? c.args[t + 1] : c.args.at(-1));
+    });
+
+  it("macOS: one hold for the whole session, bound to Core's pid by caffeinate -w", async () => {
+    const r = await rig({ platform: "darwin" });
+    await started(r, MAX_SESSION_MINUTES);
+    await r.sys.clock.advance(3 * 24 * 60 * MIN);
+    // One hold, never swapped: three days in, still the original child.
+    expect(r.sys.children).toHaveLength(1);
+    expect(holdSeconds(r)).toEqual([MAX_SESSION_MINUTES * 60]);
+    const args = r.sys.children[0]?.args ?? [];
+    expect(args.slice(-2)).toEqual(["-w", "777"]);
+  });
+
+  it.each(["linux", "win32"] as const)(
+    "%s: a 7-day timed session is held in pieces of at most 30 minutes, renewed make-before-break",
+    async (platform) => {
+      const r = await rig({ platform });
+      await started(r, MAX_SESSION_MINUTES);
+      const seen: number[] = [];
+      for (let i = 0; i < 40; i++) {
+        await r.sys.clock.advance(15 * MIN);
+        seen.push(r.sys.alive.length);
+      }
+      expect(seen.every((n) => n === 1)).toBe(true);
+      expect(r.sys.children.length).toBeGreaterThan(30);
+      for (const s of holdSeconds(r)) expect(s).toBeLessThanOrEqual(MAX_HOLD_PIECE_SECONDS);
+      // The live hold always has time left, so there is never a gap.
+      await r.sys.clock.advance(MAX_SESSION_MINUTES * MIN);
+      expect(r.sys.alive).toHaveLength(0);
+      expect(r.fake.last("awake.session.ended").payload).toMatchObject({ reason: "expired" });
+      for (const s of holdSeconds(r)) expect(s).toBeLessThanOrEqual(MAX_HOLD_PIECE_SECONDS);
+      expect(r.sys.clock.pending).toBe(0);
+    },
+  );
+
+  it("linux: a short session needs a single hold and no renewal", async () => {
+    const r = await rig({ platform: "linux" });
+    await started(r, 10);
+    await r.sys.clock.advance(9 * MIN);
+    expect(r.sys.children).toHaveLength(1);
+    expect(holdSeconds(r)).toEqual([600]);
+    await r.sys.clock.advance(MIN);
+    expect(r.sys.alive).toHaveLength(0);
+    expect(r.fake.last("awake.session.ended").payload).toMatchObject({ reason: "expired" });
+  });
+
+  it("linux: extend also gives a hold of at most 30 minutes and keeps the renewals going", async () => {
+    const r = await rig({ platform: "linux" });
+    await started(r, 60);
+    await r.call("extend", { minutes: 600 });
+    expect(Math.max(...holdSeconds(r))).toBeLessThanOrEqual(MAX_HOLD_PIECE_SECONDS);
+    expect(r.sys.alive).toHaveLength(1);
+    await r.sys.clock.advance(5 * 60 * MIN);
+    expect(r.sys.alive).toHaveLength(1);
+    expect(Math.max(...holdSeconds(r))).toBeLessThanOrEqual(MAX_HOLD_PIECE_SECONDS);
+    await r.sys.clock.advance(6 * 60 * MIN);
+    expect(r.sys.alive).toHaveLength(0);
+  });
+
+  it("linux: a renewal that cannot start ends the session as inhibitor_lost", async () => {
+    const r = await rig({ platform: "linux" });
+    await started(r, 120);
+    r.sys.spawnThrows = true;
+    await r.sys.clock.advance(15 * MIN);
+    expect(r.fake.last("awake.session.ended").payload).toMatchObject({ reason: "inhibitor_lost" });
+    expect(r.sys.alive).toHaveLength(0);
+  });
+});
+
+describe("a disable during start is honoured (finding 4a)", () => {
+  function blockedBattery() {
+    const gate = Promise.withResolvers<BatteryReading>();
+    let calls = 0;
+    return {
+      gate,
+      read: () => (++calls === 1 ? gate.promise : Promise.resolve({ kind: "none" } as const)),
+    };
+  }
+
+  it("the command's signal aborting while the battery is read: no session, no hold, no timer", async () => {
+    const b = blockedBattery();
+    const r = await rig({ battery: b.read });
+    const pending = r.module.commands?.start?.({ minutes: 30 }, r.fake.ctx);
+    r.fake.controller.abort();
+    b.gate.resolve({ kind: "none" });
+    expect((await refusal(Promise.resolve(pending))).kind).toBe("cancelled");
+    await settle();
+    expect(r.sys.children).toHaveLength(0);
+    expect(r.sys.clock.pending).toBe(0);
+    expect(r.fake.types()).not.toContain("awake.session.started");
+    expect(r.fake.events).toHaveLength(0);
+    expect(((await r.call("status")) as SessionStatus).active).toBe(false);
+  });
+
+  it("a disable that reaches only the controller (shutdown, no signal) also cancels the start", async () => {
+    const b = blockedBattery();
+    const r = await rig({ battery: b.read });
+    const ctx = { ...r.fake.ctx, signal: new AbortController().signal };
+    const pending = r.module.commands?.start?.({ minutes: 30 }, ctx);
+    await r.module.shutdown?.(ctx);
+    b.gate.resolve({ kind: "none" });
+    expect((await refusal(Promise.resolve(pending))).kind).toBe("cancelled");
+    expect(r.sys.children).toHaveLength(0);
+    expect(r.sys.clock.pending).toBe(0);
+    expect(r.fake.types()).not.toContain("awake.session.started");
+  });
+
+  it("an agents_grace start is cancelled the same way and never subscribes", async () => {
+    const b = blockedBattery();
+    const r = await rig({ battery: b.read });
+    const pending = r.module.commands?.start?.({ minutes: 5, mode: "agents_grace" }, r.fake.ctx);
+    r.fake.controller.abort();
+    b.gate.resolve({ kind: "none" });
+    expect((await refusal(Promise.resolve(pending))).kind).toBe("cancelled");
+    expect(r.feed.subscribers).toBe(0);
+    expect(r.sys.children).toHaveLength(0);
+  });
+
+  it("a cancelled start does not poison the next one", async () => {
+    const b = blockedBattery();
+    const r = await rig({ battery: b.read });
+    const ctx = { ...r.fake.ctx, signal: new AbortController().signal };
+    const pending = r.module.commands?.start?.({ minutes: 30 }, ctx);
+    await r.module.shutdown?.(ctx);
+    b.gate.resolve({ kind: "none" });
+    await refusal(Promise.resolve(pending));
+    await r.module.init?.(r.fake.ctx);
+    const status = (await r.call("start", { minutes: 5 })) as SessionStatus;
+    expect(status.active).toBe(true);
+    expect(r.sys.alive).toHaveLength(1);
   });
 });

@@ -211,6 +211,8 @@ function sessionModule(ref: { controller: SessionController | undefined }): Awak
               type: "integer",
               minimum: MIN_SESSION_MINUTES,
               maximum: MAX_SESSION_MINUTES,
+              // Shown in the approval prompt: the user is approving how long, not just "start".
+              "x-phoenix-confirm": true,
             },
             reason: { type: "string", minLength: 1, maxLength: MAX_LABEL_LENGTH },
             mode: { type: "string", enum: [...MODES] },
@@ -233,6 +235,8 @@ function sessionModule(ref: { controller: SessionController | undefined }): Awak
               type: "integer",
               minimum: MIN_SESSION_MINUTES,
               maximum: MAX_SESSION_MINUTES,
+              // Shown in the approval prompt: the user is approving how long, not just "start".
+              "x-phoenix-confirm": true,
             },
           },
         },
@@ -253,7 +257,7 @@ function sessionModule(ref: { controller: SessionController | undefined }): Awak
       },
     ],
     commands: {
-      async start(input) {
+      async start(input, ctx) {
         const body = inputOf(input, ["minutes", "reason", "mode"]);
         const minutes = parseMinutes(body.minutes);
         const label = parseLabel(body.reason);
@@ -261,7 +265,7 @@ function sessionModule(ref: { controller: SessionController | undefined }): Awak
         if (mode !== "timed" && mode !== "agents_grace") {
           throw new AwakeError("invalid", "mode must be timed or agents_grace");
         }
-        return await controller().start(mode, minutes, label);
+        return await controller().start(mode, minutes, label, ctx.signal);
       },
       extend(input) {
         const body = inputOf(input, ["minutes"]);

@@ -21,15 +21,15 @@ which is the same mechanism, with the same limit, as every other approval. See G
 
 ## Listener
 
-| Property  | Value                                                                                                                                                           |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Property  | Value                                                                                                                                                                                                                                                                                                                                                                                  |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Bind      | one private LAN IPv4 address chosen by the user (only RFC 1918 `10/8`, `172.16/12`, `192.168/16` and `100.64/10` are offered; default: the first of those), port 47821 (`phone.port` is not user-configurable in this build). If the chosen address vanishes the link stays **off** (status `off_reason: "address_changed"`, the setting is kept) and never opens on another interface |
-| Transport | HTTPS, TLS 1.2+, self-signed certificate made by Phoenix                                                                                                        |
-| Routes    | only `/phone/v1/*` (table below). No static files, no directory listing, no WebSocket/CONNECT, no CORS                                                          |
-| `Host`    | must be exactly `<address>` or `<address>:<port>` (DNS-rebinding allow-list)                                                                                    |
-| `Origin`  | any `Origin` header is refused (native clients only; **PWAs are not supported**, see GAPS)                                                                      |
-| Body      | `application/json`, at most 16 KiB; 32 connections, at most 4 per remote address; TLS handshake timeout 8 s; header/request timeouts 10 s/15 s                    |
-| Logs      | route name, status and device id only: never a path with an id, a code, a key or a signature                                                                    |
+| Transport | HTTPS, TLS 1.2+, self-signed certificate made by Phoenix                                                                                                                                                                                                                                                                                                                               |
+| Routes    | only `/phone/v1/*` (table below). No static files, no directory listing, no WebSocket/CONNECT, no CORS                                                                                                                                                                                                                                                                                 |
+| `Host`    | must be exactly `<address>` or `<address>:<port>` (DNS-rebinding allow-list)                                                                                                                                                                                                                                                                                                           |
+| `Origin`  | any `Origin` header is refused (native clients only; **PWAs are not supported**, see GAPS)                                                                                                                                                                                                                                                                                             |
+| Body      | `application/json`, at most 16 KiB; 32 connections, at most 4 per remote address; TLS handshake timeout 8 s; header/request timeouts 10 s/15 s                                                                                                                                                                                                                                         |
+| Logs      | route name, status and device id only: never a path with an id, a code, a key or a signature                                                                                                                                                                                                                                                                                           |
 
 Closing: disabling the link, deleting phone data, the **kill switch**, and Core shutdown all close
 the socket, destroy every connection (including half-open TLS ones), and clear the live pairing code and the replay-nonce cache. The
@@ -175,7 +175,7 @@ public/private key, signature, nonce, code or token.
 
 ## What is not built
 
-Recorded in the gap register by the parent. Not built: `apps/ios`, `apps/android` (no Xcode/Android
+Recorded in the [gap register](gaps.md). Not built: `apps/ios`, `apps/android` (no Xcode/Android
 toolchain was verified; push notifications need APNs/FCM accounts), Live Activities / Dynamic Island,
 widgets, Control Center, Siri and Shortcuts, Face ID / fingerprint prompts (phone side), Spotlight,
 Focus filter, PWA support, a QR image. **The exit criterion “a permission request is approved from a

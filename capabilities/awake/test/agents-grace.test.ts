@@ -158,6 +158,66 @@ describe("agents_grace session", () => {
   });
 });
 
+describe("agents_grace only trusts the agents capability (finding 11)", () => {
+  it("agent.* events from another source neither hold nor extend the session", async () => {
+    const r = await rig();
+    await grace(r, 5);
+    await r.feed.publish("agent.working", work("evil"), "someother");
+    await r.feed.publish("agent.working", work("evil"), "core");
+    await r.feed.publish("agent.working", work("evil"), "");
+    await r.sys.clock.advance(60 * MIN);
+    expect(r.sys.alive).toHaveLength(0);
+    expect(r.fake.last("awake.session.ended").payload).toMatchObject({ reason: "agents_done" });
+  });
+
+  it("an event with no source at all is ignored", async () => {
+    const r = await rig();
+    await grace(r, 5);
+    const handler = r.feed.handlers.get("awake-session");
+    await handler?.({ event_type: "agent.working", payload: work("a") });
+    expect(((await r.call("status")) as SessionStatus).session?.agents_working).toBe(0);
+  });
+
+  it("the agents capability's events still count", async () => {
+    const r = await rig();
+    await grace(r, 5);
+    await r.feed.publish("agent.working", work("a"), "agents");
+    expect(((await r.call("status")) as SessionStatus).session?.agents_working).toBe(1);
+  });
+
+  it("a hostile source cannot cancel a running countdown either", async () => {
+    const r = await rig();
+    await grace(r, 5);
+    await r.feed.publish("agent.working", work("a"));
+    await r.feed.publish("agent.completed", work("a"));
+    await r.feed.publish("agent.working", work("b"), "other");
+    await r.sys.clock.advance(5 * MIN);
+    expect(r.sys.alive).toHaveLength(0);
+  });
+});
+
+describe("agents_grace holds are bounded off macOS (finding 2)", () => {
+  it.each(["linux", "win32"] as const)(
+    "%s: grace and working holds never exceed 30 min",
+    async (platform) => {
+      const r = await rig({ platform });
+      await grace(r, 120);
+      await r.feed.publish("agent.working", work("a"));
+      for (let i = 0; i < 12; i++) {
+        await r.sys.clock.advance(15 * MIN);
+        await r.feed.publish("agent.progress", work("a"));
+      }
+      await r.feed.publish("agent.completed", work("a"));
+      await r.sys.clock.advance(60 * MIN);
+      expect(r.sys.alive).toHaveLength(1);
+      for (const c of r.sys.children) expect(Number(c.args.at(-1))).toBeLessThanOrEqual(30 * 60);
+      await r.sys.clock.advance(60 * MIN);
+      expect(r.sys.alive).toHaveLength(0);
+      expect(r.fake.last("awake.session.ended").payload).toMatchObject({ reason: "agents_done" });
+    },
+  );
+});
+
 describe("composeAwake", () => {
   const mod = (over: Partial<AwakeModule>): AwakeModule => ({
     commands: {},

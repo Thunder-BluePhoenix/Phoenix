@@ -3,7 +3,10 @@
 //
 // What actually keeps the machine awake: one child process per hold, chosen by platform.
 // Every child is bounded by its own timer (caffeinate -t, `sleep N`, the loop in the Windows
-// script), so it expires by itself even if Phoenix is killed. Argv arrays only; no shell.
+// script), so it expires by itself even if Phoenix is killed. On macOS the child is also tied to
+// Core's pid (`caffeinate -w`), so a SIGKILLed Core frees the machine at once instead of at the end
+// of a session that may run for days; elsewhere the session controller keeps each hold short and
+// renews it (see `Inhibitor.parentBound`). Argv arrays only; no shell.
 import { AwakeError, type AwakeEnv, type Platform, type SpawnedChild } from "./system";
 
 /** Longest single hold: the longest session (7 days). */
@@ -19,6 +22,12 @@ export interface InhibitHandle {
 }
 
 export interface Inhibitor {
+  /**
+   * True when a hold ends by itself as soon as Core's process is gone (macOS `caffeinate -w`), so
+   * one hold may span a whole session. False: the hold only ends at its own timer, so the session
+   * must run it in short pieces and renew them.
+   */
+  readonly parentBound: boolean;
   /** Starts a hold that ends by itself after `seconds`. Throws AwakeError if it cannot start. */
   acquire(seconds: number): InhibitHandle;
 }
@@ -48,15 +57,29 @@ export interface HoldCommand {
   args: string[];
 }
 
-/** The exact command for a hold; throws on anything but an integer number of seconds in range. */
-export function holdCommand(platform: Platform, seconds: number): HoldCommand {
+/** Whether `platform`'s hold command ends by itself when `parentPid` (Core) exits. */
+export function holdIsParentBound(platform: Platform): boolean {
+  return platform === "darwin";
+}
+
+/**
+ * The exact command for a hold; throws on anything but an integer number of seconds in range and a
+ * positive integer pid. `parentPid` is Core's own pid: macOS ties the hold to it (`caffeinate -w`).
+ */
+export function holdCommand(platform: Platform, seconds: number, parentPid: number): HoldCommand {
   if (!Number.isSafeInteger(seconds) || seconds < 1 || seconds > MAX_HOLD_SECONDS) {
     throw new AwakeError("invalid", "seconds must be an integer between 1 and 604800");
+  }
+  if (!Number.isSafeInteger(parentPid) || parentPid < 1) {
+    throw new AwakeError("invalid", "parent pid must be a positive integer");
   }
   const n = String(seconds);
   switch (platform) {
     case "darwin":
-      return { file: "caffeinate", args: ["-d", "-i", "-s", "-t", n] };
+      return {
+        file: "caffeinate",
+        args: ["-d", "-i", "-s", "-t", n, "-w", String(parentPid)],
+      };
     case "linux":
       return {
         file: "systemd-inhibit",
@@ -80,8 +103,9 @@ export function holdCommand(platform: Platform, seconds: number): HoldCommand {
 
 export function createInhibitor(env: AwakeEnv): Inhibitor {
   return {
+    parentBound: holdIsParentBound(env.platform),
     acquire(seconds) {
-      const { file, args } = holdCommand(env.platform, seconds);
+      const { file, args } = holdCommand(env.platform, seconds, env.pid);
       let child: SpawnedChild;
       try {
         child = env.spawn(file, args);

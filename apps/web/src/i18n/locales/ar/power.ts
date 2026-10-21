@@ -88,6 +88,12 @@ export const power: Record<keyof typeof enpower, string> = {
   "power.recovery.engagedSince": "وضع الغطاء المغلق قيد التشغيل منذ {time}.",
   "power.recovery.needsSession":
     "ابدأ جلسة إبقاء الجهاز مستيقظًا أولًا؛ يحتاجها وضع الغطاء المغلق.",
+  "power.recovery.journal.discard": "تجاهل هذا الإدخال",
+  "power.recovery.lockBlocked":
+    "عملية استرداد أخرى تحتفظ بالقفل، لذلك لم يُتراجع عن أي شيء بعد. التغيير ما زال معلقًا.",
+  "power.recovery.sleepUnjournaled":
+    "السكون معطّل على هذا الكمبيوتر، لكن Phoenix لا يملك سجلًا بأنه عطّله. لقد غيّره شيء آخر.",
+  "power.recovery.journalPath": "السجل: {path}",
   "power.continuity.heading": "استمرارية الوكيل",
   "power.continuity.intro":
     "إضافات لعمليات الوكيل الطويلة. كل واحدة منها متوقفة حتى تفعّلها، ولا تختار أيٌّ منها شبكة أو طرفية أو برنامجًا نيابةً عنك.",

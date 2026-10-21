@@ -85,6 +85,12 @@ export const power: Record<keyof typeof enpower, string> = {
   "power.recovery.engagedSince": "Mode layar tertutup aktif sejak {time}.",
   "power.recovery.needsSession":
     "Mulai dulu sesi tetap menyala; mode layar tertutup membutuhkannya.",
+  "power.recovery.journal.discard": "Buang entri ini",
+  "power.recovery.lockBlocked":
+    "Proses pemulihan lain memegang kunci, jadi belum ada yang dibatalkan. Perubahan masih tertunda.",
+  "power.recovery.sleepUnjournaled":
+    "Tidur dinonaktifkan di komputer ini, tetapi Phoenix tidak punya catatan telah menonaktifkannya. Ada hal lain yang mengubahnya.",
+  "power.recovery.journalPath": "Jurnal: {path}",
   "power.continuity.heading": "Kelangsungan agen",
   "power.continuity.intro":
     "Fitur tambahan untuk proses agen yang berjalan lama. Setiap fitur nonaktif sampai Anda mengaktifkannya, dan tidak ada satu pun yang memilihkan jaringan, terminal, atau program untuk Anda.",

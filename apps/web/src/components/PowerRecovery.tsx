@@ -88,7 +88,7 @@ function RecoveryAction({ command, label, input, disabled, primary, onDone }: Ac
   );
 }
 
-function PendingItem({ change }: { change: PendingChange }) {
+function PendingItem({ change, onDone }: { change: PendingChange; onDone: () => void }) {
   const t = useT();
   const when = timeText(change.at);
   return (
@@ -102,6 +102,18 @@ function PendingItem({ change }: { change: PendingChange }) {
       </span>
       {when && (
         <span className="muted small"> {t("power.recovery.journal.at", { time: when })}</span>
+      )}
+      {change.discardable && change.id !== "" && (
+        <>
+          {" "}
+          <RecoveryAction
+            command="recovery.discard"
+            label={t("power.recovery.journal.discard")}
+            input={{ id: change.id }}
+            disabled={false}
+            onDone={onDone}
+          />
+        </>
       )}
     </li>
   );
@@ -169,7 +181,7 @@ function Journal({ status, onDone }: { status: RecoveryStatus; onDone: () => voi
           </p>
           <ul>
             {pending.map((change, i) => (
-              <PendingItem key={`${change.id}-${i}`} change={change} />
+              <PendingItem key={`${change.id}-${i}`} change={change} onDone={onDone} />
             ))}
           </ul>
           <RecoveryAction
@@ -188,6 +200,21 @@ function Journal({ status, onDone }: { status: RecoveryStatus; onDone: () => voi
       )}
       {!status.can_quit && (
         <p className="warning-text small">{t("power.recovery.journal.cannotQuit")}</p>
+      )}
+      {status.lock_blocked && (
+        <p role="alert" className="warning-text small">
+          {t("power.recovery.lockBlocked")}
+        </p>
+      )}
+      {status.sleep_disabled_unjournaled === true && (
+        <p role="alert" className="warning-text small">
+          {t("power.recovery.sleepUnjournaled")}
+        </p>
+      )}
+      {status.journal_path && (
+        <p className="muted small">
+          {t("power.recovery.journalPath", { path: status.journal_path })}
+        </p>
       )}
     </div>
   );
@@ -214,8 +241,12 @@ function Safety({ status, onDone }: { status: RecoveryStatus; onDone: () => void
         <RecoveryAction
           command="safety.acknowledge"
           label={t("power.recovery.safety.acknowledge")}
-          input={{ acknowledge: true, version: status.safety.version }}
-          disabled={!understood}
+          input={{
+            acknowledge: true,
+            version: status.safety.version,
+            text_sha256: status.safety.text_sha256,
+          }}
+          disabled={!understood || status.safety.text_sha256 === null}
           onDone={onDone}
         />
       </div>

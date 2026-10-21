@@ -5,13 +5,20 @@
 // command goes to a recording Runner, the disk is a map, and "processes" are a table. No sudo,
 // pmset or launchctl is ever run. "Crash" means dropping an instance without disabling it.
 import { describe, expect, it } from "vitest";
-import { createRecoveryModule, powerServices, type PowerServices } from "../../src/power";
-import { parseJournal } from "../../src/power/format";
+import {
+  SAFETY_TEXT_SHA256 as HASH,
+  createRecoveryModule,
+  powerServices,
+  type PowerServices,
+} from "../../src/power";
+import { encodeLine, parseJournal } from "../../src/power/format";
+import { SAFETY_TEXT_SHA256 } from "../../src/power/safety";
+import { SHUTDOWN_WAIT_MS } from "../../src/power";
 import type { AwakeDeps, AwakeModule } from "../../src/system";
 import { createAwakeCapability } from "../../src";
 import { FakeContext } from "../../testing/ctx";
 import { FakeFeed, FakeSystem, settle, type RunScript } from "../../testing/fakes";
-import type { BatteryReading } from "../../src/system";
+import type { BatteryReading, Runner } from "../../src/system";
 import { FakeProcesses, JOURNAL, MemFs } from "./fixtures";
 
 const SUDO_ON = "/usr/bin/sudo -n /usr/bin/pmset -a disablesleep 1";
@@ -25,6 +32,8 @@ interface RigOptions {
   reading?: BatteryReading;
   modules?: AwakeModule[];
   script?: RunScript;
+  /** Wraps the fake machine's Runner (to hold a command in flight). */
+  wrapRun?: (run: Runner) => Runner;
 }
 
 interface Rig {
@@ -43,8 +52,9 @@ async function rig(options: RigOptions): Promise<Rig> {
   fake.config = options.config ?? {};
   const battery = { reading: options.reading ?? ({ kind: "none" } as BatteryReading) };
   let n = 0;
+  const baseEnv = sys.env;
   const module = createAwakeCapability({
-    env: sys.env,
+    env: options.wrapRun ? { ...baseEnv, run: options.wrapRun(baseEnv.run) } : baseEnv,
     feed: () => new FakeFeed(),
     battery: () => Promise.resolve(battery.reading),
     batteryPollMs: 60_000,
@@ -121,7 +131,12 @@ function dig(value: unknown, ...path: string[]): unknown {
   return at;
 }
 
-const ack = (i: Instance) => i.r.call("safety.acknowledge", { acknowledge: true, version: 1 });
+const ack = (i: Instance) =>
+  i.r.call("safety.acknowledge", {
+    acknowledge: true,
+    version: 1,
+    text_sha256: SAFETY_TEXT_SHA256,
+  });
 async function lidClosedOn(i: Instance, minutes = 60) {
   await ack(i);
   await i.r.call("start", { minutes });
@@ -460,16 +475,42 @@ describe("lid events, status and acknowledgement", () => {
     const fs = new MemFs();
     const a = await boot(fs, new FakeProcesses(100));
     await expect(
-      a.r.call("safety.acknowledge", { acknowledge: true, version: 99 }),
+      a.r.call("safety.acknowledge", {
+        acknowledge: true,
+        version: 99,
+        text_sha256: SAFETY_TEXT_SHA256,
+      }),
     ).rejects.toThrow();
     await expect(
-      a.r.call("safety.acknowledge", { acknowledge: false, version: 1 }),
+      a.r.call("safety.acknowledge", {
+        acknowledge: false,
+        version: 1,
+        text_sha256: SAFETY_TEXT_SHA256,
+      }),
     ).rejects.toThrow();
     expect(dig(await a.r.call("recovery.status", {}), "safety", "acknowledged")).toBe(false);
     await ack(a);
     expect(events(a, "awake.safety.acknowledged")).toHaveLength(1);
     const b = await boot(fs, new FakeProcesses(200));
     expect(dig(await b.r.call("recovery.status", {}), "safety", "acknowledged")).toBe(true);
+  });
+
+  it("the acknowledgement is bound to the warning text: a wrong or missing hash is refused, and the prompt says it is a safety acknowledgement", async () => {
+    const a = await boot(new MemFs(), new FakeProcesses(100));
+    for (const bad of [{}, { text_sha256: "0".repeat(64) }, { text_sha256: 5 }]) {
+      await expect(
+        a.r.call("safety.acknowledge", { acknowledge: true, version: 1, ...bad }),
+      ).rejects.toThrow(/text_sha256/);
+    }
+    expect(dig(await a.r.call("recovery.status", {}), "safety", "acknowledged")).toBe(false);
+    expect(dig(await a.r.call("recovery.status", {}), "safety", "text_sha256")).toBe(HASH);
+    await ack(a);
+    expect(events(a, "awake.safety.acknowledged")[0]?.payload).toMatchObject({ text_sha256: HASH });
+    const spec = createRecoveryModule().commandSpecs.find((c) => c.name === "safety.acknowledge");
+    expect(spec?.description).toMatch(/SAFETY ACKNOWLEDGEMENT/);
+    expect(spec?.description).toMatch(/YOU/);
+    expect(spec?.description).toMatch(/agent or script must never approve/);
+    expect(JSON.stringify(spec?.input_schema)).toContain("text_sha256");
   });
 
   it("a corrupt acknowledgement file means not acknowledged", async () => {
@@ -490,6 +531,226 @@ describe("lid events, status and acknowledgement", () => {
     const i = await boot(new MemFs(), new FakeProcesses(100));
     await expect(i.r.call("lid_closed.start", { force: true })).rejects.toThrow();
     await expect(i.r.call("recovery.undo_now", { all: true })).rejects.toThrow();
+  });
+});
+
+describe("shutdown races a lid_closed.start that is still in flight (finding 4b)", () => {
+  it("the OFF runs after the ON, and `undone` is journalled only after the OFF", async () => {
+    const fs = new MemFs();
+    const gate = Promise.withResolvers<void>();
+    const i = await boot(fs, new FakeProcesses(100), {
+      wrapRun: (run) => async (file, args, opts) => {
+        if (file === "/usr/bin/sudo" && args.join(" ") === "-n /usr/bin/pmset -a disablesleep 1") {
+          await gate.promise;
+        }
+        return run(file, args, opts);
+      },
+    });
+    await ack(i);
+    await i.r.call("start", { minutes: 60 });
+    const starting = i.r.call("lid_closed.start", {}).catch((err: unknown) => err);
+    await settle();
+    // The ON is in flight (journalled, blocked); now Core shuts down.
+    const disabling = i.r.disable();
+    await settle();
+    expect(i.sudo()).toEqual([]);
+    gate.resolve();
+    await disabling;
+    await starting;
+    await settle();
+    expect(i.sudo()).toEqual([SUDO_ON, SUDO_OFF]);
+    const recs = (fs.read(JOURNAL) ?? "")
+      .trim()
+      .split("\n")
+      .map((l) => (JSON.parse(l) as { rec: { t: string } }).rec.t);
+    expect(recs.indexOf("undone")).toBeGreaterThan(recs.indexOf("applied"));
+    expect(parseJournal(fs.read(JOURNAL) ?? "").pending).toEqual([]);
+    expect(events(i, "awake.lid_closed.started")).toHaveLength(0);
+  });
+
+  it("the module's shutdown() resolves once the undo is done, or after the wait cap", async () => {
+    const i = await boot(new MemFs(), new FakeProcesses(100));
+    await lidClosedOn(i);
+    await i.r.disable();
+    expect(i.sudo()).toEqual([SUDO_ON, SUDO_OFF]);
+
+    const stuck = Promise.withResolvers<void>();
+    const j = await boot(new MemFs(), new FakeProcesses(100), {
+      wrapRun: (run) => async (file, args, opts) => {
+        if (file === "/usr/bin/sudo" && args.at(-1) === "0") await stuck.promise;
+        return run(file, args, opts);
+      },
+    });
+    await lidClosedOn(j);
+    const done = j.r.disable();
+    await settle();
+    await j.r.sys.clock.advance(SHUTDOWN_WAIT_MS);
+    await done;
+    stuck.resolve();
+  });
+});
+
+describe("a held recovery lock is not 'restored' (finding 3)", () => {
+  it("lid_closed.end under a live holder: restored false, WARNING, pending, status shows the lock; clears when free", async () => {
+    const fs = new MemFs();
+    const procs = new FakeProcesses(100);
+    const i = await boot(fs, procs);
+    await lidClosedOn(i);
+    procs.table.set(300, "start-300");
+    fs.files.set(
+      "/data/awake/recovery.lock",
+      JSON.stringify({ pid: 300, started: "start-300", at: i.r.sys.clock.now() }),
+    );
+    const ended = await i.r.call("lid_closed.end", {});
+    expect(ended).toMatchObject({ ended: true, restored: false });
+    expect(events(i, "awake.lid_closed.ended")[0]).toMatchObject({
+      severity: "warning",
+      payload: { restored: false },
+    });
+    expect(events(i, "awake.recovery.pending").at(-1)).toMatchObject({
+      severity: "warning",
+      payload: { locked: true },
+    });
+    expect(i.sudo()).toEqual([SUDO_ON]);
+    expect(i.services()?.canQuit().ok).toBe(false);
+    const status = await i.r.call("recovery.status", {});
+    expect(dig(status, "recovery_lock", "blocked")).toBe(true);
+    expect(dig(status, "journal", "pending", "0", "kind")).toBe("pmset.disablesleep");
+    procs.die(300);
+    expect(await i.r.call("recovery.undo_now", {})).toMatchObject({ undone: 1, locked: false });
+    expect(dig(await i.r.call("recovery.status", {}), "recovery_lock", "blocked")).toBe(false);
+  });
+});
+
+describe("status: journal_path, unjournaled sleep, discard (findings 8, 5, 9)", () => {
+  it("reports the journal path this Phoenix writes", async () => {
+    const i = await boot(new MemFs(), new FakeProcesses(100));
+    expect(dig(await i.r.call("recovery.status", {}), "journal_path")).toBe(JOURNAL);
+  });
+
+  it("warns when pmset says sleep is disabled but nothing in the journal explains it", async () => {
+    const i = await boot(new MemFs(), new FakeProcesses(100));
+    i.r.sys.script = (file, args) =>
+      file === "/usr/bin/pmset" && args.join(" ") === "-g"
+        ? { code: 0, stdout: "System-wide power settings:\n SleepDisabled\t\t1\n", stderr: "" }
+        : undefined;
+    expect(dig(await i.r.call("recovery.status", {}), "sleep_disabled_unjournaled")).toBe(true);
+    i.r.sys.script = (file) =>
+      file === "/usr/bin/pmset"
+        ? { code: 0, stdout: " SleepDisabled\t\t0\n", stderr: "" }
+        : undefined;
+    expect(dig(await i.r.call("recovery.status", {}), "sleep_disabled_unjournaled")).toBe(false);
+    i.r.sys.script = (file) =>
+      file === "/usr/bin/pmset" ? { code: 1, stdout: "", stderr: "" } : undefined;
+    expect(dig(await i.r.call("recovery.status", {}), "sleep_disabled_unjournaled")).toBeNull();
+  });
+
+  it("does not warn when Phoenix itself turned sleep off", async () => {
+    const i = await boot(new MemFs(), new FakeProcesses(100));
+    await lidClosedOn(i);
+    i.r.sys.script = (file) =>
+      file === "/usr/bin/pmset" ? { code: 0, stdout: " SleepDisabled 1\n", stderr: "" } : undefined;
+    expect(dig(await i.r.call("recovery.status", {}), "sleep_disabled_unjournaled")).toBe(false);
+  });
+
+  const forged = (pid: number, started: string) =>
+    encodeLine({
+      t: "change",
+      id: "forged_1",
+      kind: "forged.kind",
+      apply: {},
+      undo: {},
+      at: 1,
+      session: null,
+      owner: { pid, started },
+    });
+
+  it("recovery.discard clears an unknown-kind entry (audited), and refuses one that can be undone", async () => {
+    const fs = new MemFs();
+    const procs = new FakeProcesses(100);
+    const a = await boot(fs, procs);
+    await lidClosedOn(a);
+    procs.die(100);
+    fs.files.set(JOURNAL, (fs.files.get(JOURNAL) ?? "") + forged(100, "start-100"));
+    const i = await boot(fs, procs.as(200), {
+      script: (file) =>
+        file === "/usr/bin/sudo" ? { code: 1, stdout: "", stderr: "" } : undefined,
+    });
+    const status = await i.r.call("recovery.status", {});
+    const pending = dig(status, "journal", "pending") as {
+      id: string;
+      kind: string;
+      discardable: boolean;
+    }[];
+    expect(pending.map((p) => [p.kind, p.discardable])).toEqual([
+      ["pmset.disablesleep", false],
+      ["forged.kind", true],
+    ]);
+    const real = pending.find((p) => p.kind === "pmset.disablesleep")?.id ?? "";
+    await expect(i.r.call("recovery.discard", { id: real })).rejects.toThrow(
+      /nothing was discarded/,
+    );
+    await expect(i.r.call("recovery.discard", { id: "forged_1", extra: 1 })).rejects.toThrow();
+    expect(await i.r.call("recovery.discard", { id: "forged_1" })).toMatchObject({
+      discarded: true,
+      kind: "forged.kind",
+    });
+    expect(events(i, "awake.recovery.discarded")[0]).toMatchObject({
+      severity: "warning",
+      payload: { id: "forged_1", kind: "forged.kind" },
+    });
+    expect(parseJournal(fs.read(JOURNAL) ?? "").pending.map((e) => e.kind)).toEqual([
+      "pmset.disablesleep",
+    ]);
+  });
+});
+
+describe("a refused undo of an unconfirmed ON (finding 11)", () => {
+  const unconfirmed = (owner: { pid: number; started: string }) =>
+    encodeLine({
+      t: "change",
+      id: "c_unconfirmed",
+      kind: "pmset.disablesleep",
+      apply: { argv: ["/usr/bin/pmset", "-a", "disablesleep", "1"] },
+      undo: { argv: ["/usr/bin/pmset", "-a", "disablesleep", "0"] },
+      at: 1,
+      session: "awk_x",
+      owner,
+    });
+
+  const reconcileWith = async (pmset: string | undefined) => {
+    const fs = new MemFs();
+    fs.files.set(JOURNAL, unconfirmed({ pid: 100, started: "start-100" }));
+    const procs = new FakeProcesses(200);
+    const i = await boot(fs, procs, {
+      script: (file, args) => {
+        if (file === "/usr/bin/sudo") return { code: 1, stdout: "", stderr: "" };
+        if (file === "/usr/bin/pmset" && args.join(" ") === "-g")
+          return pmset === undefined
+            ? { code: null, stdout: "", stderr: "" }
+            : { code: 0, stdout: pmset, stderr: "" };
+        return undefined;
+      },
+    });
+    for (let n = 0; n < 5; n++) await settle();
+    return { fs, i };
+  };
+
+  it("stays pending when pmset still says sleep is disabled, or cannot be read", async () => {
+    for (const out of [" SleepDisabled\t1\n", undefined, "nothing useful\n"]) {
+      const { fs, i } = await reconcileWith(out);
+      expect(
+        parseJournal(fs.read(JOURNAL) ?? "").pending.map((e) => e.id),
+        String(out),
+      ).toEqual(["c_unconfirmed"]);
+      expect(i.services()?.canQuit().ok, String(out)).toBe(false);
+    }
+  });
+
+  it("is closed once pmset confirms sleep is NOT disabled", async () => {
+    const { fs, i } = await reconcileWith(" SleepDisabled\t0\n");
+    expect(parseJournal(fs.read(JOURNAL) ?? "").pending).toEqual([]);
+    expect(i.services()?.canQuit().ok).toBe(true);
   });
 });
 

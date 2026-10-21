@@ -550,7 +550,7 @@ export class CapabilityManager {
     if (signal?.aborted || entry.abort?.signal.aborted) controller.abort();
     let dispatched = false;
     void (async () => {
-      const targets = commandTargets(input);
+      const targets = commandTargets(input, spec.input_schema);
       let action;
       try {
         if (controller.signal.aborted)
@@ -935,17 +935,41 @@ const secretRef = (id: string, name: string) => `capability.${id}.${name}`;
 
 const TARGET_PROPERTY = /(_id|^id|^project|^target)$/;
 const MAX_TARGET_CHARS = 80;
+/**
+ * A command's `input_schema` property may carry `"x-phoenix-confirm": true` to have its value shown
+ * in the approval prompt like a target (for example how long a keep-awake session lasts). Opt-in
+ * per property: a command that does not set it prompts exactly as before.
+ */
+export const CONFIRM_SHOW_KEYWORD = "x-phoenix-confirm";
+
+function showsInPrompt(name: string, schema: Record<string, unknown> | undefined): boolean {
+  if (TARGET_PROPERTY.test(name)) return true;
+  const properties = schema?.properties;
+  if (typeof properties !== "object" || properties === null || Array.isArray(properties)) {
+    return false;
+  }
+  const property = (properties as Record<string, unknown>)[name];
+  return (
+    typeof property === "object" &&
+    property !== null &&
+    (property as Record<string, unknown>)[CONFIRM_SHOW_KEYWORD] === true
+  );
+}
 
 /**
  * The string/number values of a command input that name what is acted on (`*_id`, `id`, `project`,
- * `target`), redacted and clipped, so an approval request can say which deployment, execution or
- * workflow a command is about. Nothing else of the input is included.
+ * `target`, plus any property its `input_schema` flags with `x-phoenix-confirm`), redacted and
+ * clipped, so an approval request can say which deployment, execution or workflow a command is
+ * about. Nothing else of the input is included.
  */
-export function commandTargets(input: unknown): Record<string, string> {
+export function commandTargets(
+  input: unknown,
+  inputSchema?: Record<string, unknown>,
+): Record<string, string> {
   const targets: Record<string, string> = {};
   if (typeof input !== "object" || input === null || Array.isArray(input)) return targets;
   for (const [name, value] of Object.entries(input)) {
-    if (!TARGET_PROPERTY.test(name)) continue;
+    if (!showsInPrompt(name, inputSchema)) continue;
     if (typeof value !== "string" && typeof value !== "number") continue;
     // Redact the whole value first: clipping first could leave the start of a secret unmasked.
     targets[name] = String(redact(String(value))).slice(0, MAX_TARGET_CHARS);

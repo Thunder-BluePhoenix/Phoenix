@@ -5,18 +5,19 @@ Code: `src/power/` (module `recoveryModule`), `helper/`, `scripts/awake/`. User 
 
 ## Commands
 
-| Command              | Side effect           | Notes                                                                       |
-| -------------------- | --------------------- | --------------------------------------------------------------------------- |
-| `lid_closed.start`   | execute (always asks) | needs the safety acknowledgement, a running session, the helper, macOS      |
-| `lid_closed.end`     | execute               | restores sleep, keeps the session                                           |
-| `recovery.status`    | read                  | journal, lid, floors, helper, safety                                        |
-| `recovery.undo_now`  | execute               | undoes everything the journal still lists                                   |
-| `safety.acknowledge` | write                 | `{acknowledge: true, version: 1}`, stored in `<data dir>/awake/safety.json` |
+| Command              | Side effect           | Notes                                                                                                                                       |
+| -------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lid_closed.start`   | execute (always asks) | needs the safety acknowledgement, a running session, the helper, macOS                                                                      |
+| `lid_closed.end`     | execute               | restores sleep, keeps the session                                                                                                           |
+| `recovery.status`    | read                  | journal, `journal_path`, `recovery_lock`, lid, floors, helper, safety, unjournaled-sleep check                                              |
+| `recovery.undo_now`  | execute               | undoes everything the journal still lists                                                                                                   |
+| `recovery.discard`   | write                 | `{id}`: drops ONE pending entry whose kind has no reverter (unknown/forged); audited                                                        |
+| `safety.acknowledge` | write                 | `{acknowledge: true, version: 1, text_sha256}` (hash of the warning text, from `recovery.status`), stored in `<data dir>/awake/safety.json` |
 
 ## Events
 
 `awake.lid.closed|opened`, `awake.lid_closed.started|ended`, `awake.privileged.apply|undo` (audit),
-`awake.recovery.pending` (warning; Fawkes WARNING) / `reconciled` / `quit_refused`,
+`awake.recovery.pending` (warning; Fawkes WARNING; also fired, with `locked: true`, when the recovery lock is held and nothing could be undone) / `reconciled` / `discarded` / `quit_refused`,
 `awake.safety.acknowledged`, `awake.floor.low_power_on|off|low_power_unavailable|ended`.
 
 ## Config
@@ -31,11 +32,20 @@ fall back to the defaults.
 a change with `recovery.change(kind, apply, undo, doApply, sessionId)`; register how to undo it with
 `registerReverter(kind, fn)` in your `init` (reconcile runs after every module's init). Throw
 `NotAppliedError` from `doApply` when nothing changed. The launchd backstop only undoes the pmset
-kinds; other kinds are undone at the next Phoenix launch.
+kinds; other kinds are undone at the next Phoenix launch. `change()` and `undo()` run on one queue: an
+undo requested while a change is in flight waits for it, so `doApply` must never call `undo()` itself
+(it would wait for itself). Module `shutdown()` returns a promise that resolves when the undo is done or
+after `SHUTDOWN_WAIT_MS` (10 s).
 
 ## Known limits
 
-- The data dir is `PHOENIX_DATA_DIR`, else `~/.phoenix/<env>` (Core does not pass it to capabilities).
+- The data dir is `PHOENIX_DATA_DIR`, else `~/.phoenix/<env>` (Core does not pass it to capabilities;
+  config `dataDir` is ignored, and `<env>` is `dev` when `PHOENIX_ENV` is unset). The launchd backstop
+  watches the journal given to `install-helper.sh --data-dir` (default `~/.phoenix/prod`): compare it with
+  `journal_path` in `recovery.status`.
+- `safety.acknowledge` is an ordinary approvable command: command handlers receive no actor, so Core's
+  approval cannot tell a person from an agent. The command text and the `text_sha256` binding are the
+  only distinction.
 - Quit veto: Core shutdown has no veto hook and the Tauri shell was not edited. `canQuit()` and the
   `awake.recovery.quit_refused` event exist; nothing consults them yet.
 - A privileged change cannot be undone synchronously (sudo is async). Disable marks the session ended

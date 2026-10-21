@@ -46,7 +46,9 @@ const config = (hotspot: Record<string, unknown>, extra: Record<string, unknown>
 });
 
 const writes = (r: { sys: { runs: { file: string; args: readonly string[] }[] } }) =>
-  r.sys.runs.filter((x) => x.file === "/usr/sbin/networksetup" && x.args[0] === "-setairportnetwork");
+  r.sys.runs.filter(
+    (x) => x.file === "/usr/sbin/networksetup" && x.args[0] === "-setairportnetwork",
+  );
 
 describe("parsers and validators", () => {
   it("finds the Wi-Fi device and ignores other ports and odd names", () => {

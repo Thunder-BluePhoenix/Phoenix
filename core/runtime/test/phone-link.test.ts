@@ -340,7 +340,10 @@ describe("pairing", () => {
     const guesses = MAX_WRONG_CODES_PER_CODE + 1;
     for (let i = 0; i < guesses; i++) {
       expect(() =>
-        r.core.runtime.phone.pair(pairBody("AAAA-AAAA-AAAA"), `192.0.2.${10 + Math.floor(i / MAX_WRONG_CODES)}`),
+        r.core.runtime.phone.pair(
+          pairBody("AAAA-AAAA-AAAA"),
+          `192.0.2.${10 + Math.floor(i / MAX_WRONG_CODES)}`,
+        ),
       ).toThrow(/invalid or expired/);
     }
     expect((await r.status()).locked_out_until).not.toBeNull();
@@ -980,9 +983,7 @@ describe("a disabled link refuses everything", () => {
     const { phone, pairing } = await r.pairedPhone();
     expect(r.core.runtime.phone.authenticate(authRequest(phone)).id).toBe(phone.deviceId);
     await r.core.runtime.phone.configure({ enabled: false });
-    expect(() => r.core.runtime.phone.authenticate(authRequest(phone))).toThrow(
-      /not listening/,
-    );
+    expect(() => r.core.runtime.phone.authenticate(authRequest(phone))).toThrow(/not listening/);
     expect(() => r.core.runtime.phone.pair(pairBody(pairing.code), "192.0.2.50")).toThrow(
       /not listening/,
     );
@@ -1013,8 +1014,23 @@ describe("device-name check", () => {
 describe("network address choice", () => {
   const info = (address: string, internal = false, family = "IPv4"): NetworkInterfaceInfo =>
     family === "IPv4"
-      ? { address, netmask: "255.255.255.0", family: "IPv4", mac: "00:00:00:00:00:00", internal, cidr: `${address}/24` }
-      : { address, netmask: "ffff::", family: "IPv6", mac: "00:00:00:00:00:00", internal, cidr: `${address}/64`, scopeid: 0 };
+      ? {
+          address,
+          netmask: "255.255.255.0",
+          family: "IPv4",
+          mac: "00:00:00:00:00:00",
+          internal,
+          cidr: `${address}/24`,
+        }
+      : {
+          address,
+          netmask: "ffff::",
+          family: "IPv6",
+          mac: "00:00:00:00:00:00",
+          internal,
+          cidr: `${address}/64`,
+          scopeid: 0,
+        };
 
   it("offers only private LAN and CGNAT IPv4 addresses, never a public, loopback or link-local one", () => {
     const offered = lanAddressesFrom({
@@ -1067,7 +1083,10 @@ describe("delete all phone data", () => {
         },
       });
       await r.pairedPhone();
-      await r.core.runtime.phone.configure({ address: "127.0.0.1", require_user_verification: false });
+      await r.core.runtime.phone.configure({
+        address: "127.0.0.1",
+        require_user_verification: false,
+      });
       await r.core.api("POST", "/api/privacy/delete", { data: "phone", confirm: true });
       await r.core.runtime.phone.configure({}); // queues behind the shutdown deleteAll started
       await new Promise((resolve) => setImmediate(resolve));

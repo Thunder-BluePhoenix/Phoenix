@@ -29,6 +29,14 @@ export const AGENT_STALE_MS = 60 * 60_000;
 /** While agents work, the hold is renewed this often, each time for `AGENT_HOLD_SECONDS`. */
 export const AGENT_RENEW_MS = 15 * 60_000;
 export const AGENT_HOLD_SECONDS = 30 * 60;
+/**
+ * Where a hold is not tied to Core's pid (Linux, Windows), no single hold may outlast this: a
+ * killed Core leaves the machine awake for at most this long, and the controller renews the hold
+ * (make before break) every `AGENT_RENEW_MS`. Same piece size agents_grace has always used.
+ */
+export const MAX_HOLD_PIECE_SECONDS = AGENT_HOLD_SECONDS;
+/** The agents capability's id: the only source whose `agent.*` events count as agent work. */
+export const AGENTS_CAPABILITY_ID = "agents";
 /** A hold's own timer may fire a moment before ours; that still counts as the session running out. */
 const HOLD_EXIT_SLACK_MS = 2_000;
 const MAX_TRACKED_AGENTS = 200;
@@ -36,9 +44,15 @@ const MAX_AGENT_ID_LENGTH = 200;
 
 export type SessionMode = "timed" | "agents_grace";
 
-// eslint-disable-next-line no-control-regex
-const UNSEEN =
-  /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb]/;
+/**
+ * Characters a person cannot see: control, format (zero-width, bidi, tag characters U+E0000..E007F,
+ * soft hyphen), line/paragraph separators. This is the same class as `HIDDEN_TEXT_CHARS` in
+ * core/runtime/src/agent-approvals.ts, redefined here because capabilities must not import from
+ * core/runtime. Added on top of it: variation selectors (U+FE00..FE0F, U+E0100..E01EF, which are
+ * `Mn`, not `Cf`) and the combining grapheme joiner U+034F, which render as nothing. Plain spaces
+ * and ordinary combining accents stay allowed.
+ */
+const UNSEEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Variation_Selector}\u034f]/u;
 
 /** Whole minutes in 1..10080; rejects strings, NaN, fractions, negatives and anything huge. */
 export function parseMinutes(value: unknown, field = "minutes"): number {
@@ -161,6 +175,8 @@ interface Session {
   hardCap: number;
   tracker: AgentWorkTracker;
   hold: InhibitHandle;
+  /** Epoch ms the current hold's own timer runs out. */
+  holdEndsAt: number;
   deadline: TimerHandle | undefined;
   renew: TimerHandle | undefined;
   watch: BatteryWatch;
@@ -169,10 +185,18 @@ interface Session {
 
 const SUBSCRIBER_ID = "awake-session";
 const KILL_SWITCH_EVENT = "security.kill_switch.engaged";
+/** Reasons that mean the capability is going away: a start still in flight must not outlive it. */
+const CANCELS_PENDING_START: ReadonlySet<SessionEndReason> = new Set([
+  "disabled",
+  "shutdown",
+  "kill_switch",
+]);
 
 export class SessionController implements SessionPort {
   private session: Session | undefined;
   private starting = false;
+  /** Set by shutdown / disable / kill switch while a start is waiting on the battery read. */
+  private startCancelled = false;
 
   constructor(private readonly o: SessionControllerOptions) {}
 
@@ -206,10 +230,17 @@ export class SessionController implements SessionPort {
     };
   }
 
+  /**
+   * Starts a session. `signal` is the calling command's signal: a disable or the kill switch
+   * aborts it, and a start that sees it aborted after any await gives up with `cancelled` before it
+   * holds anything (the battery read is slow, and a disable landing in that window finds no session
+   * to end).
+   */
   async start(
     mode: SessionMode,
     minutes: number,
     label: string | undefined,
+    signal?: AbortSignal,
   ): Promise<SessionStatus> {
     if (this.session || this.starting) {
       throw new AwakeError(
@@ -224,8 +255,10 @@ export class SessionController implements SessionPort {
       );
     }
     this.starting = true;
+    this.startCancelled = false;
     try {
       const reading = await this.o.battery();
+      this.refuseIfCancelled(signal);
       if (belowFloor(reading, this.o.floor)) {
         throw new AwakeError(
           "battery_low",
@@ -235,11 +268,7 @@ export class SessionController implements SessionPort {
       const now = this.o.clock.now();
       const hardCap = now + MAX_SESSION_MINUTES * 60_000;
       const endsAt = now + minutes * 60_000;
-      // agents_grace starts in its grace phase (nobody working yet): the hold outlasts it a little.
-      const holdSeconds = Math.min(
-        mode === "timed" ? minutes * 60 : minutes * 60 + 60,
-        MAX_HOLD_SECONDS,
-      );
+      const holdSeconds = this.holdSecondsFor(mode, endsAt, hardCap, now);
       const hold = this.o.inhibitor.acquire(holdSeconds);
       const session: Session = {
         id: this.o.newId(),
@@ -251,6 +280,7 @@ export class SessionController implements SessionPort {
         hardCap,
         tracker: new AgentWorkTracker(),
         hold,
+        holdEndsAt: now + holdSeconds * 1000,
         deadline: undefined,
         renew: undefined,
         watch: { stop() {} },
@@ -267,7 +297,7 @@ export class SessionController implements SessionPort {
         onTrip: () => this.end("battery"),
       });
       this.listen(session);
-      if (mode === "agents_grace") this.armRenew(session);
+      if (mode === "agents_grace" || !this.o.inhibitor.parentBound) this.armRenew(session);
       this.armDeadline(session);
       this.o.emit("awake.session.started", this.fields(session, minutes));
     } finally {
@@ -292,7 +322,7 @@ export class SessionController implements SessionPort {
       );
     }
     // Make before break: the new hold must run before the old one is let go.
-    this.swapHold(s, Math.ceil((endsAt - now) / 1000));
+    this.swapHold(s, this.holdSecondsFor(s.mode, endsAt, s.hardCap, now));
     s.endsAt = endsAt;
     this.armDeadline(s);
     this.o.emit("awake.session.extended", this.fields(s, minutes));
@@ -302,7 +332,11 @@ export class SessionController implements SessionPort {
   /** Ends the session and releases the hold. Idempotent. Returns whether a session was running. */
   end(reason: SessionEndReason): boolean {
     const s = this.session;
-    if (!s) return false;
+    if (!s) {
+      // A start still reading the battery has no session to end yet: make it give up instead.
+      if (this.starting && CANCELS_PENDING_START.has(reason)) this.startCancelled = true;
+      return false;
+    }
     this.session = undefined;
     try {
       s.hold.release();
@@ -354,10 +388,38 @@ export class SessionController implements SessionPort {
     });
   }
 
+  private refuseIfCancelled(signal: AbortSignal | undefined): void {
+    if (signal?.aborted || this.startCancelled || this.session) {
+      throw new AwakeError("cancelled", "The keep-awake session was cancelled before it started");
+    }
+  }
+
+  /**
+   * How long the next hold should run. Where the hold is tied to Core's pid it may span the whole
+   * wait; otherwise it is capped to `MAX_HOLD_PIECE_SECONDS` and renewed. `endsAt === null` is an
+   * agents_grace session with agents working: renewed pieces up to the hard cap. A grace countdown
+   * is held a minute past its end.
+   */
+  private holdSecondsFor(
+    mode: SessionMode,
+    endsAt: number | null,
+    hardCap: number,
+    now: number,
+  ): number {
+    const piece = this.o.inhibitor.parentBound ? MAX_HOLD_SECONDS : MAX_HOLD_PIECE_SECONDS;
+    const wanted =
+      endsAt === null
+        ? Math.min(AGENT_HOLD_SECONDS, Math.ceil((hardCap - now) / 1000))
+        : Math.ceil((endsAt - now) / 1000) + (mode === "agents_grace" ? 60 : 0);
+    return Math.max(1, Math.min(wanted, piece));
+  }
+
   private swapHold(s: Session, seconds: number): void {
-    const next = this.o.inhibitor.acquire(Math.min(seconds, MAX_HOLD_SECONDS));
+    const held = Math.min(seconds, MAX_HOLD_SECONDS);
+    const next = this.o.inhibitor.acquire(held);
     const old = s.hold;
     s.hold = next;
+    s.holdEndsAt = this.o.clock.now() + held * 1000;
     this.watchHold(s, next);
     old.release();
   }
@@ -379,9 +441,21 @@ export class SessionController implements SessionPort {
   private armRenew(s: Session): void {
     s.renew = this.o.clock.setTimer(() => {
       if (this.session !== s) return;
-      this.syncAgents(s, true);
+      if (s.mode === "agents_grace") this.syncAgents(s, true);
+      else this.renewTimed(s);
       if (this.session === s) this.armRenew(s);
     }, AGENT_RENEW_MS);
+  }
+
+  /** A timed session on a hold that is not pid-bound: the next piece starts before this one ends. */
+  private renewTimed(s: Session): void {
+    if (s.endsAt === null || s.holdEndsAt >= s.endsAt) return;
+    try {
+      const now = this.o.clock.now();
+      this.swapHold(s, this.holdSecondsFor(s.mode, s.endsAt, s.hardCap, now));
+    } catch {
+      this.end("inhibitor_lost");
+    }
   }
 
   private listen(s: Session): void {
@@ -396,6 +470,9 @@ export class SessionController implements SessionPort {
           this.end("kill_switch");
           return;
         }
+        // Any capability may declare `agent.*` events; only the agents capability's count, or a
+        // third one could keep the machine awake for days by faking "working".
+        if (event.source !== AGENTS_CAPABILITY_ID) return;
         s.tracker.apply(event, this.o.clock.now());
         this.syncAgents(s, false);
       });
@@ -414,17 +491,20 @@ export class SessionController implements SessionPort {
     try {
       if (working) {
         const resumed = s.endsAt !== null;
-        s.endsAt = null;
         if (renewing || resumed)
-          this.swapHold(s, Math.min(AGENT_HOLD_SECONDS, Math.ceil((s.hardCap - now) / 1000)));
+          this.swapHold(s, this.holdSecondsFor(s.mode, null, s.hardCap, now));
+        s.endsAt = null;
         this.armDeadline(s);
         if (resumed) this.o.emit("awake.session.extended", this.fields(s, 0));
       } else if (s.endsAt === null) {
         const endsAt = Math.min(now + s.minutes * 60_000, s.hardCap);
-        this.swapHold(s, Math.ceil((endsAt - now) / 1000) + 60);
+        this.swapHold(s, this.holdSecondsFor(s.mode, endsAt, s.hardCap, now));
         s.endsAt = endsAt;
         this.armDeadline(s);
         this.o.emit("awake.session.extended", this.fields(s, 0));
+      } else if (renewing && s.holdEndsAt < s.endsAt) {
+        // Grace countdown on a hold that is not pid-bound: the next piece, still counting down.
+        this.swapHold(s, this.holdSecondsFor(s.mode, s.endsAt, s.hardCap, now));
       }
     } catch {
       this.end("inhibitor_lost");

@@ -9,3 +9,6 @@
 bd60e96dd43cf477db8feef8d15259a120caf0f7:ai/memory/test/pipeline.test.ts:aws-access-token:15
 bd60e96dd43cf477db8feef8d15259a120caf0f7:ai/memory/test/ingestors.test.ts:aws-access-token:357
 5134773b2efc631ee9be85f4e23eedc3541c2b4f:capabilities/frappe/test/frappe.test.ts:generic-api-key:29
+
+# A test passes a key object by variable name; generic-api-key matched the property name. There is no secret in the line, and it no longer has that shape.
+f9287519f1fa540a3f62e5bb417920fb7046518c:core/runtime/test/phone-cert.test.ts:generic-api-key:91

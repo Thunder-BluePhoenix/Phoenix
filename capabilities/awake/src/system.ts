@@ -61,6 +61,8 @@ export interface AwakeClock {
 /** Everything an Awake module needs from the host machine. */
 export interface AwakeEnv {
   platform: Platform;
+  /** Core's own pid: a macOS hold is tied to it (`caffeinate -w`), so a killed Core frees the machine. */
+  pid: number;
   run: Runner;
   spawn: Spawner;
   clock: AwakeClock;
@@ -142,6 +144,7 @@ export function isPlatform(value: string): value is Platform {
 export function realEnv(): AwakeEnv {
   return {
     platform: isPlatform(process.platform) ? process.platform : "linux",
+    pid: process.pid,
     run: realRunner,
     spawn: realSpawner,
     clock: realClock,
@@ -152,7 +155,7 @@ export function realEnv(): AwakeEnv {
 
 /** Why an Awake command was refused. Messages never contain secrets or remote text. */
 export type AwakeErrorKind =
-  "invalid" | "conflict" | "no_session" | "limit" | "battery_low" | "unavailable";
+  "invalid" | "conflict" | "no_session" | "limit" | "battery_low" | "unavailable" | "cancelled";
 
 export class AwakeError extends Error {
   constructor(
@@ -167,6 +170,8 @@ export class AwakeError extends Error {
 /** The part of a bus event the Awake modules read. */
 export interface FeedEvent {
   event_type: string;
+  /** The publishing capability's id (the bus envelope's `source`). Core's own events say "core". */
+  source?: string;
   payload?: Record<string, unknown>;
 }
 

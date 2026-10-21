@@ -102,7 +102,8 @@ class LookupSlots {
 
   release(): void {
     const next = this.waiters.shift();
-    if (next) next.resolve(true); // the slot passes straight to the waiter
+    if (next)
+      next.resolve(true); // the slot passes straight to the waiter
     else this.active -= 1;
   }
 

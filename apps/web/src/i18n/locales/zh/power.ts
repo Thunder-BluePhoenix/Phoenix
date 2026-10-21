@@ -79,6 +79,11 @@ export const power: Record<keyof typeof enpower, string> = {
   "power.recovery.engaged": "合盖模式已开启。",
   "power.recovery.engagedSince": "合盖模式已自 {time} 开启。",
   "power.recovery.needsSession": "请先开始保持唤醒会话；合盖模式需要它。",
+  "power.recovery.journal.discard": "丢弃此条目",
+  "power.recovery.lockBlocked": "另一个恢复进程持有锁，因此尚未撤销任何内容。该更改仍待处理。",
+  "power.recovery.sleepUnjournaled":
+    "此电脑已禁用睡眠，但 Phoenix 没有关闭睡眠的记录。是其他程序更改了它。",
+  "power.recovery.journalPath": "日志：{path}",
   "power.continuity.heading": "智能体持续运行",
   "power.continuity.intro":
     "为长时间运行的智能体提供的附加功能。每一项在你开启之前都是关闭的，而且都不会替你选择网络、终端或程序。",

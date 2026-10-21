@@ -87,6 +87,12 @@ export const power: Record<keyof typeof enpower, string> = {
   "power.recovery.engagedSince": "लिड-क्लोज़्ड मोड {time} से चालू है।",
   "power.recovery.needsSession":
     "पहले जागृत रखने का सत्र शुरू करें; लिड-क्लोज़्ड मोड को उसकी ज़रूरत है।",
+  "power.recovery.journal.discard": "इस प्रविष्टि को हटाएँ",
+  "power.recovery.lockBlocked":
+    "कोई अन्य पुनर्प्राप्ति प्रक्रिया लॉक को पकड़े हुए है, इसलिए अभी कुछ भी पूर्ववत नहीं हुआ। बदलाव अभी लंबित है।",
+  "power.recovery.sleepUnjournaled":
+    "इस कंप्यूटर पर स्लीप अक्षम है, लेकिन Phoenix के पास इसे बंद करने का कोई रिकॉर्ड नहीं है। किसी और ने इसे बदला है।",
+  "power.recovery.journalPath": "जर्नल: {path}",
   "power.continuity.heading": "एजेंट निरंतरता",
   "power.continuity.intro":
     "लंबे एजेंट रन के लिए अतिरिक्त सुविधाएँ। हर एक तब तक बंद रहती है जब तक आप उसे चालू नहीं करते, और इनमें से कोई भी आपके लिए नेटवर्क, टर्मिनल या प्रोग्राम नहीं चुनती।",

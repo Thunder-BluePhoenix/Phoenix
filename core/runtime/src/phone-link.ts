@@ -32,7 +32,12 @@ import type { PermissionGateway } from "@phoenix/permissions";
 import { DeviceStore, type Database, type SettingsStore } from "@phoenix/persistence";
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
 import { canonicalJson } from "@phoenix/workflows";
-import { HIDDEN_TEXT_CHARS, systemClock, type AgentApprovals, type ApprovalClock } from "./agent-approvals";
+import {
+  HIDDEN_TEXT_CHARS,
+  systemClock,
+  type AgentApprovals,
+  type ApprovalClock,
+} from "./agent-approvals";
 import { ensureTlsIdentity, removeTlsIdentity } from "./phone-cert";
 
 /** Capability id the pairing confirmation is raised under. A phone can never answer it. */
@@ -528,7 +533,8 @@ export class PhoneLink implements PhoneApi, PhoneDeviceApi {
         const changed = (address ?? null) !== this.d.settings.get<string | null>(KEY_ADDRESS, null);
         this.d.settings.set(KEY_ADDRESS, address);
         // A new address also brings back a link that went off because the old one vanished.
-        reopen = changed && (this.running !== null || this.d.settings.get<boolean>(KEY_ENABLED, false));
+        reopen =
+          changed && (this.running !== null || this.d.settings.get<boolean>(KEY_ENABLED, false));
         if (changed)
           this.d.permissions.audit.record({
             actor: "user",
@@ -627,8 +633,7 @@ export class PhoneLink implements PhoneApi, PhoneDeviceApi {
     const iso = new Date(this.clock.now()).toISOString();
     if (!this.devicesStore.revoke(id, iso))
       throw new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, "Device not found");
-    for (const key of [...this.nonces.keys()])
-      if (key.startsWith(`${id}\n`)) this.dropNonce(key);
+    for (const key of [...this.nonces.keys()]) if (key.startsWith(`${id}\n`)) this.dropNonce(key);
     this.d.permissions.audit.record({
       actor: "user",
       action: "phone.device.revoked",

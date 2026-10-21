@@ -83,6 +83,12 @@ export const power = {
   "power.recovery.engaged": "Lid-closed mode is on.",
   "power.recovery.engagedSince": "Lid-closed mode is on since {time}.",
   "power.recovery.needsSession": "Start a keep-awake session first; lid-closed mode needs one.",
+  "power.recovery.journal.discard": "Discard this entry",
+  "power.recovery.lockBlocked":
+    "Another recovery process holds the lock, so nothing was undone yet. The change is still pending.",
+  "power.recovery.sleepUnjournaled":
+    "Sleep is disabled on this computer, but Phoenix has no record of turning it off. Something else changed it.",
+  "power.recovery.journalPath": "Journal: {path}",
   "power.continuity.heading": "Agent continuity",
   "power.continuity.intro":
     "Extras for long agent runs. Each one is off until you turn it on, and none of them chooses a network, a terminal or a program for you.",

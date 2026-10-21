@@ -3,12 +3,16 @@
 //
 // The launchd backstop. The script is imported as a module and driven with fakes: it is never
 // started as a process, and no sudo, launchctl or pmset ever runs.
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync, utimesSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 // @ts-expect-error the helper is plain ESM JavaScript, installed on its own
 import * as script from "../../helper/phoenix-awake-backstop.mjs";
 import { backstopDecision, MAX_ENTRY_AGE_MS, PRIVILEGED_KINDS } from "../../src/power/backstop";
 import { encodeLine, parseJournal, type JournalRecord, type Owner } from "../../src/power/format";
 import { ALLOWED_HELPER_ARGV } from "../../src/power/helper-client";
+import { MAX_LOCK_SKEW_MS, PS_START_ARGV, STALE_LOCK_MS } from "../../src/power/lock";
 
 const NOW = 10 * 24 * 3600_000;
 const OWNER: Owner = { pid: 100, started: "start-100" };
@@ -142,8 +146,8 @@ function deps(f: Fake) {
     appendFile: (p: string, t: string) => void f.files.set(p, (f.files.get(p) ?? "") + t),
     runFile: (file: string, args: string[]): Promise<ScriptResult> => {
       f.ran.push([file, ...args].join(" "));
-      if (file === "/bin/ps") {
-        const pid = Number(args[3]);
+      if (file === "/usr/bin/env" && args[2] === "/bin/ps") {
+        const pid = Number(args[6]);
         return Promise.resolve(
           f.alive.has(pid) ? { code: 0, stdout: `start-${pid}\n` } : { code: 1, stdout: "" },
         );
@@ -252,7 +256,63 @@ describe("runBackstop", () => {
     const d = deps(f);
     const run = d.runFile;
     d.runFile = (file, args) =>
-      file === "/bin/ps" ? Promise.resolve({ code: null, stdout: "" }) : run(file, args);
+      file === "/usr/bin/env" ? Promise.resolve({ code: null, stdout: "" }) : run(file, args);
     expect((await script.runBackstop(J, d)).undone).toEqual([]);
+  });
+});
+
+describe("the script's lock file is judged by its mtime (finding 3)", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+  const lockWithMtime = (nowMs: number, mtimeMs: number) => {
+    const dir = mkdtempSync(join(tmpdir(), "zz-awake-lock-"));
+    dirs.push(dir);
+    const path = join(dir, "j.backstop-lock");
+    writeFileSync(path, "{}");
+    utimesSync(path, mtimeMs / 1000, mtimeMs / 1000);
+    return { path, lock: script.realLock(path, () => nowMs) };
+  };
+  const NOW_MS = 2_000_000_000_000;
+
+  it("a fresh lock keeps the run out", async () => {
+    const { lock } = lockWithMtime(NOW_MS, NOW_MS - 1000);
+    expect(await lock.acquire()).toBe(false);
+  });
+
+  it("a lock older than the stale limit is taken over", async () => {
+    const { lock, path } = lockWithMtime(NOW_MS, NOW_MS - STALE_LOCK_MS - 5000);
+    expect(await lock.acquire()).toBe(true);
+    expect(JSON.parse(readFileSync(path, "utf8")).pid).toBe(process.pid);
+    lock.release();
+    expect(existsSync(path)).toBe(false);
+  });
+
+  it("a lock with a FUTURE mtime (forged, to wedge the backstop for ever) is stale", async () => {
+    const { lock } = lockWithMtime(NOW_MS, NOW_MS + 24 * 3600_000);
+    expect(await lock.acquire()).toBe(true);
+    lock.release();
+  });
+
+  it("a mtime a little ahead (clock skew) is still honoured", async () => {
+    const { lock } = lockWithMtime(NOW_MS, NOW_MS + MAX_LOCK_SKEW_MS - 5000);
+    expect(await lock.acquire()).toBe(false);
+  });
+
+  it("the skew and stale limits equal the TypeScript lock's", () => {
+    expect(script.MAX_LOCK_SKEW_MS).toBe(MAX_LOCK_SKEW_MS);
+    expect(script.STALE_LOCK_MS).toBe(STALE_LOCK_MS);
+  });
+});
+
+describe("process start times are read in a pinned zone and locale (finding 7)", () => {
+  it("the script runs exactly the argv the TypeScript probe runs", async () => {
+    const f = fake([change("c1")]);
+    f.alive.add(100);
+    await script.runBackstop(J, deps(f));
+    const ps = f.ran.filter((c) => c.includes("/bin/ps"));
+    expect(ps).toEqual([`/usr/bin/env ${PS_START_ARGV(100).join(" ")}`]);
+    expect(ps[0]).toContain("TZ=UTC LC_ALL=C /bin/ps -o lstart= -p 100");
   });
 });

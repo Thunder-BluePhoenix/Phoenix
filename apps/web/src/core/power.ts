@@ -12,6 +12,8 @@ export interface PendingChange {
   at: number;
   session: string | null;
   owner: PendingOwner;
+  /** True when this Phoenix has no way to undo `kind`: only then can the entry be discarded. */
+  discardable: boolean;
 }
 
 export interface RecoveryJournal {
@@ -61,11 +63,19 @@ export interface RecoverySafety {
   acknowledged: boolean;
   version: number;
   acknowledged_at: string | null;
+  /** SHA-256 of the warning wording the acknowledgement is bound to; `null` when Core did not send one. */
+  text_sha256: string | null;
 }
 
 /** What the `recovery.status` command reports, after `readRecoveryStatus`. */
 export interface RecoveryStatus {
   session_active: boolean;
+  /** The journal this Phoenix writes; compare with the WATCH line of install-helper.sh --print-plan. */
+  journal_path: string | null;
+  /** A recovery undo found the lock held by another process, so nothing was undone. */
+  lock_blocked: boolean;
+  /** `pmset` says sleep is disabled but the journal has no record of it; `null` when unknown. */
+  sleep_disabled_unjournaled: boolean | null;
   journal: RecoveryJournal;
   can_quit: boolean;
   /** `null` while Phoenix does not know whether the privileged helper is installed. */
@@ -127,6 +137,7 @@ function readPending(raw: unknown): PendingChange {
     at: Math.floor(clamped(r.at, 0, MAX_EPOCH_MS, 0)),
     session: text(r.session),
     owner: owner as PendingOwner,
+    discardable: r.discardable === true,
   };
 }
 
@@ -190,6 +201,10 @@ function readSafety(raw: unknown): RecoverySafety | null {
     acknowledged: bool(r.acknowledged),
     version: r.version,
     acknowledged_at: isoOrNull(r.acknowledged_at),
+    text_sha256:
+      typeof r.text_sha256 === "string" && /^[0-9a-f]{64}$/.test(r.text_sha256)
+        ? r.text_sha256
+        : null,
   };
 }
 
@@ -208,12 +223,16 @@ export function readRecoveryStatus(raw: unknown): RecoveryStatus | null {
   const helper = record(r.helper);
   const lid = record(r.lid);
   const lidClosed = record(r.lid_closed);
+  const lock = record(r.recovery_lock);
   const lidState =
     lid !== null && typeof lid.state === "string" && Object.hasOwn(LID_STATES, lid.state)
       ? lid.state
       : "unknown";
   return {
     session_active: bool(r.session_active),
+    journal_path: text(r.journal_path),
+    lock_blocked: lock !== null && bool(lock.blocked),
+    sleep_disabled_unjournaled: triBool(r.sleep_disabled_unjournaled),
     journal,
     can_quit: bool(r.can_quit),
     helper_installed: helper === null ? null : triBool(helper.installed),

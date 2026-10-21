@@ -89,6 +89,12 @@ export const power: Record<keyof typeof enpower, string> = {
   "power.recovery.engagedSince": "Le mode capot fermé est activé depuis {time}.",
   "power.recovery.needsSession":
     "Démarrez d’abord une session « rester éveillé » ; le mode capot fermé en a besoin.",
+  "power.recovery.journal.discard": "Ignorer cette entrée",
+  "power.recovery.lockBlocked":
+    "Un autre processus de récupération détient le verrou : rien n’a encore été annulé. Le changement reste en attente.",
+  "power.recovery.sleepUnjournaled":
+    "La mise en veille est désactivée sur cet ordinateur, mais Phoenix n’a aucune trace de l’avoir désactivée. Autre chose l’a modifiée.",
+  "power.recovery.journalPath": "Journal : {path}",
   "power.continuity.heading": "Continuité des agents",
   "power.continuity.intro":
     "Options supplémentaires pour les longues exécutions d’agents. Chacune est désactivée tant que vous ne l’activez pas, et aucune ne choisit à votre place un réseau, un terminal ou un programme.",

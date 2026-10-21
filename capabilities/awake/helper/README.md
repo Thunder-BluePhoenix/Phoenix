@@ -37,7 +37,7 @@ sudo ./scripts/awake/install-helper.sh --yes
 sudo ./scripts/awake/uninstall-helper.sh --yes        # removes every file listed above
 ```
 
-Both scripts refuse to run unless root and `--yes`. The rule is checked with `visudo -cf` before it
+Both scripts refuse to run unless root and `--yes`. The rule is **account-wide**: any process running as you can use the four lines without a password. Files under your home are created and removed as you, and the scripts refuse when a path component is a symlink or not yours. `--dry-run` prints each step without running it. `--data-dir DIR` (absolute) chooses the journal the backstop watches; see `docs/awake-helper.md`. The rule is checked with `visudo -cf` before it
 is put in place, and `visudo -c` after uninstall.
 
 ## What was and was not verified

@@ -7,25 +7,29 @@ Installed, never auto-enabled. Permission: `shell_command` (plus whatever later 
 
 ## Commands
 
-| Command  | Side effect | Input                                                                           | Notes                                                                                                                                                                                         |
-| -------- | ----------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `start`  | `execute`   | `{ minutes: 1..10080, reason?: string ≤ 80, mode?: "timed" \| "agents_grace" }` | Refused if a session runs, or the battery is below the floor. `reason` is shown to the user only; control, bidi and zero-width characters are rejected.                                       |
-| `extend` | `execute`   | `{ minutes: 1..10080 }`                                                         | Timed sessions only; the time left may never exceed 10080 min.                                                                                                                                |
-| `end`    | `execute`   | `{}`                                                                            | Idempotent. The web button asks for a 1.5 s hold (or Space/Enter held).                                                                                                                       |
-| `status` | `read`      | `{}`                                                                            | `{ active, session?: { id, mode, label?, started_at, ends_at, remaining_seconds, agents_working?, grace_minutes? }, battery_floor_percent, min_minutes, max_minutes }`. No pid, argv or path. |
+| Command  | Side effect | Input                                                                           | Notes                                                                                                                                                                                                                 |
+| -------- | ----------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start`  | `execute`   | `{ minutes: 1..10080, reason?: string ≤ 80, mode?: "timed" \| "agents_grace" }` | Refused if a session runs, or the battery is below the floor. `reason` is shown to the user only; control, format (bidi, zero-width, tag characters), variation-selector and grapheme-joiner characters are rejected. |
+| `extend` | `execute`   | `{ minutes: 1..10080 }`                                                         | Timed sessions only; the time left may never exceed 10080 min.                                                                                                                                                        |
+| `end`    | `execute`   | `{}`                                                                            | Idempotent. The web button asks for a 1.5 s hold (or Space/Enter held).                                                                                                                                               |
+| `status` | `read`      | `{}`                                                                            | `{ active, session?: { id, mode, label?, started_at, ends_at, remaining_seconds, agents_working?, grace_minutes? }, battery_floor_percent, min_minutes, max_minutes }`. No pid, argv or path.                         |
 
-`start`, `extend` and `end` always ask for confirmation (gateway) and are audited.
+`start`, `extend` and `end` always ask for confirmation (gateway) and are audited. The prompt for `start` and `extend` names the `minutes` (the `minutes` property carries the generic `x-phoenix-confirm` schema flag, which makes the capability manager show that value in the prompt; `reason` is not shown). A `start` that is still reading the battery when the capability is disabled, the kill switch fires or Core exits is cancelled (`cancelled`) before it holds anything.
 
 ## What holds the machine awake
 
 | Platform | Child process                                                                             | Verified                                            |
 | -------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| macOS    | `caffeinate -d -i -s -t <seconds>`                                                        | Yes, on one Mac (`PHOENIX_REAL_AWAKE=1`, see below) |
+| macOS    | `caffeinate -d -i -s -t <seconds> -w <Core pid>`                                          | Yes, on one Mac (`PHOENIX_REAL_AWAKE=1`, see below) |
 | Linux    | `systemd-inhibit --what=idle:sleep --who=Phoenix --why=… sleep <seconds>`                 | **No** (fake runner only)                           |
 | Windows  | `powershell.exe` running a constant script that calls `SetThreadExecutionState` in a loop | **No, UNVERIFIED** (never run on Windows)           |
 
 Every child bounds itself (`-t`, `sleep N`, the script's loop), so it expires even if Phoenix is
-killed. Argv arrays only; no shell. The Windows script is a constant; the only variable is the
+killed. On macOS `-w` also ties the hold to Core's pid, so even a SIGKILLed Core frees the machine
+at once (one hold spans the whole session). On Linux and Windows nothing ties the child to Core, so
+a hold is never longer than 30 minutes: the session renews it every 15 minutes, starting the new
+hold before releasing the old one, and a killed Core leaves the machine awake for at most 30
+minutes. (Behaviour of `caffeinate -w` on a killed parent is from its man page, not observed here.) Argv arrays only; no shell. The Windows script is a constant; the only variable is the
 validated integer passed as a separate argv element and bound to an `[int]` parameter.
 
 The hold is released exactly once on: `end`, expiry, capability disable, the emergency stop, Core
@@ -49,7 +53,7 @@ finishes, completes, fails, ends, waits or goes idle, a countdown of `minutes` s
 ends with `reason: agents_done`. An agent silent for 1 hour stops counting. The hold is renewed every
 15 minutes in 30-minute pieces, so a crashed Phoenix never leaves a long hold. Requires Core's bus
 (`createAwakeCapability({ feed })`; `builtins.ts` passes the agents capability's `services().events`);
-without it `agents_grace` is refused.
+without it `agents_grace` is refused. Only events whose bus `source` is `agents` count: another capability that declares `agent.*` events cannot keep the machine awake.
 
 ## Events
 

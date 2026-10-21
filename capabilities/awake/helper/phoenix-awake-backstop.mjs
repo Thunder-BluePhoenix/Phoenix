@@ -37,6 +37,8 @@ export const ALLOWED = [
 /** Kinds this script may undo: exactly the privileged ones. */
 export const PRIVILEGED_KINDS = ["pmset.disablesleep", "pmset.lowpowermode"];
 export const STALE_LOCK_MS = 10 * 60_000;
+/** A lock file dated further ahead of the clock than this is forged or from a broken clock: stale. */
+export const MAX_LOCK_SKEW_MS = 60_000;
 /** A pending entry this old is undone even if its owner looks alive: a session never lasts longer. */
 export const MAX_ENTRY_AGE_MS = 8 * 24 * 3600_000;
 const JOURNAL_VERSION = 1;
@@ -171,7 +173,16 @@ export function backstopDecision(journal, now, pidAlive) {
 
 /** The start time of a pid as `ps -o lstart=` prints it: "" when it is not running. */
 async function startOf(runFile, pid) {
-  const r = await runFile("/bin/ps", ["-o", "lstart=", "-p", String(pid)]);
+  // Zone and locale pinned: `lstart` is printed in local time, and a zone change must not turn a live owner into a stranger.
+  const r = await runFile("/usr/bin/env", [
+    "TZ=UTC",
+    "LC_ALL=C",
+    "/bin/ps",
+    "-o",
+    "lstart=",
+    "-p",
+    String(pid),
+  ]);
   if (r.code === null) return undefined;
   return r.code === 0 ? r.stdout.trim() : "";
 }
@@ -241,20 +252,21 @@ function realRunFile(file, args) {
   );
 }
 
-function realLock(path) {
+export function realLock(path, now = () => Date.now()) {
   let held = false;
   return {
     async acquire() {
       try {
-        const age = Date.now() - statSync(path).mtimeMs;
-        if (age < STALE_LOCK_MS) return false;
+        const age = now() - statSync(path).mtimeMs;
+        // Fresh: another run is working. Older than STALE_LOCK_MS, or dated in the future, is stale.
+        if (age >= -MAX_LOCK_SKEW_MS && age < STALE_LOCK_MS) return false;
         rmSync(path, { force: true });
       } catch {
         // no lock file
       }
       try {
         const fd = openSync(path, "wx", 0o600);
-        writeSync(fd, JSON.stringify({ pid: process.pid, at: Date.now() }));
+        writeSync(fd, JSON.stringify({ pid: process.pid, at: now() }));
         closeSync(fd);
         held = true;
         return true;

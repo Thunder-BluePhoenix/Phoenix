@@ -91,13 +91,25 @@ describe("pane id validation", () => {
       inMode: false,
       command: "claude",
     });
-    expect(parsePaneLine("%3 1 claude\n")).toEqual({ paneId: "%3", inMode: true, command: "claude" });
+    expect(parsePaneLine("%3 1 claude\n")).toEqual({
+      paneId: "%3",
+      inMode: true,
+      command: "claude",
+    });
     expect(parsePaneLine("%3 0 my tool\n")).toEqual({
       paneId: "%3",
       inMode: false,
       command: "my tool",
     });
-    for (const bad of ["%3\n", "%3 claude\n", "x 0 claude", "%3 2 claude", "%3 0 ", "%3  claude", ""])
+    for (const bad of [
+      "%3\n",
+      "%3 claude\n",
+      "x 0 claude",
+      "%3 2 claude",
+      "%3 0 ",
+      "%3  claude",
+      "",
+    ])
       expect(parsePaneLine(bad)).toBeNull();
   });
 });
@@ -370,7 +382,14 @@ describe("tmux resolution", () => {
       const { sys, outcome } = await deliverWith((p) => p === path);
       expect(outcome).toBe("sent");
       expect(sys.runs.map((x) => [x.file, ...x.args])).toEqual([
-        [path, "display-message", "-p", "-t", "%3", "#{pane_id} #{pane_in_mode} #{pane_current_command}"],
+        [
+          path,
+          "display-message",
+          "-p",
+          "-t",
+          "%3",
+          "#{pane_id} #{pane_in_mode} #{pane_current_command}",
+        ],
         [path, "send-keys", "-t", "%3", "-l", "continue"],
         [path, "send-keys", "-t", "%3", "Enter"],
       ]);

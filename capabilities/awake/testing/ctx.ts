@@ -85,10 +85,12 @@ export async function rig(options: RigOptions = {}): Promise<Rig> {
   let n = 0;
   const module = createAwakeCapability({
     env: sys.env,
-    battery: () => {
-      battery.reads += 1;
-      return Promise.resolve(battery.reading);
-    },
+    battery:
+      options.battery ??
+      (() => {
+        battery.reads += 1;
+        return Promise.resolve(battery.reading);
+      }),
     ...(options.noFeed ? {} : { feed: () => feed }),
     batteryPollMs: 60_000,
     newId: () => `awk_test${++n}`,

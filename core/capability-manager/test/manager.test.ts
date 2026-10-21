@@ -482,6 +482,62 @@ describe("commands", () => {
     permissions.resolveConfirmation(permissions.pendingConfirmations()[0]!.id, false);
   });
 
+  it("shows a property the command's schema flags x-phoenix-confirm, and only that command's", async () => {
+    const { manager, permissions } = setup();
+    const schema = (flag: boolean) => ({
+      type: "object",
+      additionalProperties: true,
+      properties: { minutes: { type: "integer", ...(flag ? { "x-phoenix-confirm": true } : {}) } },
+    });
+    manager.registerBuiltin(
+      builtin(
+        { commands: { hold: () => "ok", plain: () => "ok" } },
+        manifest({
+          commands: [
+            {
+              name: "hold",
+              description: "Hold",
+              side_effect: "production",
+              permissions: [],
+              input_schema: schema(true),
+            },
+            {
+              name: "plain",
+              description: "Plain",
+              side_effect: "production",
+              permissions: [],
+              input_schema: schema(false),
+            },
+          ],
+        }),
+      ),
+    );
+    await manager.enable("demo");
+    manager.invoke("demo", "hold", { minutes: 480, note: "x" });
+    await vi.waitFor(() => expect(permissions.pendingConfirmations()).toHaveLength(1));
+    const [shown] = permissions.pendingConfirmations();
+    expect(shown!.summary).toBe("Demo: Hold [minutes: 480]");
+    expect(shown!.summary).not.toContain("note");
+    permissions.resolveConfirmation(shown!.id, false);
+    await vi.waitFor(() => expect(permissions.pendingConfirmations()).toHaveLength(0));
+
+    // The same property name on a command that did not flag it stays hidden.
+    manager.invoke("demo", "plain", { minutes: 480 });
+    await vi.waitFor(() => expect(permissions.pendingConfirmations()).toHaveLength(1));
+    expect(permissions.pendingConfirmations()[0]!.summary).toBe("Demo: Plain");
+    permissions.resolveConfirmation(permissions.pendingConfirmations()[0]!.id, false);
+  });
+
+  it("commandTargets ignores a flag on a non-scalar value and without a schema", () => {
+    const schema = {
+      properties: { minutes: { "x-phoenix-confirm": true }, list: { "x-phoenix-confirm": true } },
+    };
+    expect(commandTargets({ minutes: 5, list: [1] }, schema)).toEqual({ minutes: "5" });
+    expect(commandTargets({ minutes: 5 })).toEqual({});
+    expect(commandTargets({ minutes: 5 }, { properties: null })).toEqual({});
+    expect(commandTargets({ minutes: 5 }, { properties: [] })).toEqual({});
+  });
+
   it("clips and redacts the target values it shows", () => {
     const lookalike = ["gh", "p_", "a1B2".repeat(8)].join("");
     const targets = commandTargets({

@@ -19,7 +19,11 @@ describe("runResultFromExec", () => {
   });
 
   it("never leaks a spawn error's message either, and a spawn failure has no exit code", () => {
-    const result = runResultFromExec(failure(`spawn /usr/sbin/networksetup ENOENT ${pw}`, "ENOENT"), "", "");
+    const result = runResultFromExec(
+      failure(`spawn /usr/sbin/networksetup ENOENT ${pw}`, "ENOENT"),
+      "",
+      "",
+    );
     expect(result).toEqual({ code: null, stdout: "", stderr: "exec_failed" });
   });
 

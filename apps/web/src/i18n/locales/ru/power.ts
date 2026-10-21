@@ -90,6 +90,12 @@ export const power: Record<keyof typeof enpower, string> = {
   "power.recovery.engagedSince": "Режим закрытой крышки включён с {time}.",
   "power.recovery.needsSession":
     "Сначала начните сеанс «Не засыпать»; режиму закрытой крышки он нужен.",
+  "power.recovery.journal.discard": "Отбросить эту запись",
+  "power.recovery.lockBlocked":
+    "Блокировку удерживает другой процесс восстановления, поэтому пока ничего не отменено. Изменение всё ещё ожидает отмены.",
+  "power.recovery.sleepUnjournaled":
+    "На этом компьютере отключён сон, но у Phoenix нет записи о том, что он его отключал. Это изменило что-то другое.",
+  "power.recovery.journalPath": "Журнал: {path}",
   "power.continuity.heading": "Непрерывность работы агентов",
   "power.continuity.intro":
     "Дополнения для долгих запусков агентов. Каждое из них выключено, пока вы его не включите, и ни одно не выбирает за вас сеть, терминал или программу.",

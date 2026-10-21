@@ -87,6 +87,12 @@ export const power: Record<keyof typeof enpower, string> = {
   "power.recovery.engagedSince": "O modo de tampa fechada está ligado desde {time}.",
   "power.recovery.needsSession":
     "Inicie primeiro uma sessão de manter ativo; o modo de tampa fechada precisa de uma.",
+  "power.recovery.journal.discard": "Descartar esta entrada",
+  "power.recovery.lockBlocked":
+    "Outro processo de recuperação detém o bloqueio, então nada foi desfeito ainda. A alteração continua pendente.",
+  "power.recovery.sleepUnjournaled":
+    "A suspensão está desativada neste computador, mas o Phoenix não tem registro de tê-la desativado. Outra coisa a alterou.",
+  "power.recovery.journalPath": "Diário: {path}",
   "power.continuity.heading": "Continuidade do agente",
   "power.continuity.intro":
     "Extras para execuções longas de agentes. Cada um fica desativado até você ativá-lo, e nenhum deles escolhe por você uma rede, um terminal ou um programa.",

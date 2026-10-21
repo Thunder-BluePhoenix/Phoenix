@@ -54,6 +54,24 @@ describe("awake in the capability manager", () => {
     expect(h.types("awake")).toEqual(["awake.session.started", "awake.session.ended"]);
   });
 
+  it("the confirmation prompt for start and extend names the minutes; end's prompt is unchanged", async () => {
+    const { h } = await ready();
+    const summaries: string[] = [];
+    const orig = h.permissions.authorize.bind(h.permissions);
+    h.permissions.authorize = (request, signal) => {
+      summaries.push(request.summary);
+      return orig(request, signal);
+    };
+    await h.run("awake", "start", { minutes: 480, reason: "build" });
+    await h.run("awake", "extend", { minutes: 90 });
+    await h.run("awake", "end");
+    expect(summaries).toHaveLength(3);
+    expect(summaries[0]).toMatch(/\[minutes: 480\]$/);
+    expect(summaries[0]).not.toContain("build");
+    expect(summaries[1]).toMatch(/\[minutes: 90\]$/);
+    expect(summaries[2]).not.toContain("[");
+  });
+
   it("status is a read: it runs without asking", async () => {
     const { h } = await ready();
     const op = h.manager.invoke("awake", "status", {});

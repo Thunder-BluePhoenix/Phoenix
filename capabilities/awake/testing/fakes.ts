@@ -107,6 +107,8 @@ export interface FakeSystemOptions {
   spawnThrows?: boolean;
   /** Children start without a pid (the OS refused to start them). */
   noPid?: boolean;
+  /** Core's pid as the hold sees it (macOS `caffeinate -w`). */
+  corePid?: number;
 }
 
 export type RunScript = (file: string, args: readonly string[]) => RunResult | undefined;
@@ -121,9 +123,11 @@ export class FakeSystem {
   noPid: boolean;
   private pid = 4000;
   readonly platform: Platform;
+  readonly corePid: number;
 
   constructor(options: FakeSystemOptions = {}) {
     this.platform = options.platform ?? "darwin";
+    this.corePid = options.corePid ?? 777;
     this.spawnThrows = options.spawnThrows ?? false;
     this.noPid = options.noPid ?? false;
   }
@@ -131,6 +135,7 @@ export class FakeSystem {
   get env(): AwakeEnv {
     return {
       platform: this.platform,
+      pid: this.corePid,
       clock: this.clock,
       spawn: (file, args) => {
         if (this.spawnThrows) throw new Error("spawn ENOENT");
@@ -173,8 +178,15 @@ export class FakeFeed implements AgentEventFeed {
     return this.handlers.size;
   }
 
-  /** Delivers to every subscriber whose patterns match, like the bus. */
-  async publish(event_type: string, payload: Record<string, unknown> = {}): Promise<void> {
+  /**
+   * Delivers to every subscriber whose patterns match, like the bus. `source` is the publishing
+   * capability: `agent.*` events come from "agents" and everything else from "core" unless told.
+   */
+  async publish(
+    event_type: string,
+    payload: Record<string, unknown> = {},
+    source: string = event_type.startsWith("agent.") ? "agents" : "core",
+  ): Promise<void> {
     for (const [id, handler] of [...this.handlers]) {
       const patterns = this.patterns.get(id) ?? [];
       const hit = patterns.some((p) =>
@@ -184,7 +196,7 @@ export class FakeFeed implements AgentEventFeed {
             ? event_type.startsWith(p.slice(0, -1))
             : p === event_type,
       );
-      if (hit) await handler({ event_type, payload });
+      if (hit) await handler({ event_type, source, payload });
     }
   }
 }

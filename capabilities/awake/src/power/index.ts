@@ -27,7 +27,7 @@ import {
   type BatteryReading,
   type TimerHandle,
 } from "../system";
-import type { Fields } from "./format";
+import type { Fields, PendingEntry } from "./format";
 import {
   FLOORS_CONFIG_SCHEMA,
   FloorWatcher,
@@ -58,7 +58,7 @@ import {
   type Reverter,
   type UndoReport,
 } from "./reconcile";
-import { SAFETY_VERSION, readSafety, writeSafety } from "./safety";
+import { SAFETY_TEXT_SHA256, SAFETY_VERSION, readSafety, writeSafety } from "./safety";
 import { readThermal } from "./thermal";
 
 export * from "./backstop";
@@ -77,6 +77,23 @@ const LOWPOWERMODE = "pmset.lowpowermode";
 const DEFAULT_POLL_MS = 5_000;
 const HELPER_PROBE_TTL_MS = 30_000;
 const STATUS_PENDING_LIMIT = 200;
+const PMSET_READ = "/usr/bin/pmset";
+const PMSET_READ_TIMEOUT_MS = 5_000;
+/** The longest `shutdown()` waits for the undo before it lets the host go on (the launchd backstop is the net). */
+export const SHUTDOWN_WAIT_MS = 10_000;
+
+/**
+ * One numeric setting from `pmset -g` output (read-only), or undefined when it is not listed or not
+ * a plain number. [INFERENCE] The exact key names (`SleepDisabled`, `lowpowermode`) are those macOS
+ * prints today; anything else reads as "unknown", never as "off".
+ */
+export function pmsetSetting(output: string, name: string): number | undefined {
+  for (const line of output.split("\n")) {
+    const m = /^\s*([A-Za-z]+)\s+(\d+)\s*$/.exec(line);
+    if (m && m[1]?.toLowerCase() === name.toLowerCase()) return Number(m[2]);
+  }
+  return undefined;
+}
 
 /** What the recovery module shares with the other Awake modules (Lid74), keyed by the init `deps`. */
 export interface PowerServices {
@@ -125,6 +142,7 @@ const EVENTS = [
   "awake.privileged.undo",
   "awake.recovery.pending",
   "awake.recovery.reconciled",
+  "awake.recovery.discarded",
   "awake.recovery.quit_refused",
   "awake.safety.acknowledged",
   "awake.floor.low_power_on",
@@ -150,6 +168,11 @@ function offArgv(kind: string, undo: Fields): readonly string[] {
     throw new Error("the recorded undo is not an allowed command");
   }
   return checked.command.argv;
+}
+
+/** An undo restored the machine only if it neither failed nor was blocked by a held recovery lock. */
+function restoredBy(report: UndoReport): boolean {
+  return report.failed.length === 0 && !report.locked;
 }
 
 function argvFor(setting: "disablesleep" | "lowpowermode", value: 0 | 1): readonly string[] {
@@ -179,6 +202,8 @@ interface Run {
   timer: TimerHandle | undefined;
   unsubscribe: (() => void) | undefined;
   stopped: boolean;
+  /** Set by shutdownRun: resolves when the shutdown undo finished or its wait cap passed. */
+  shuttingDown: Promise<void> | undefined;
   busy: Promise<void> | undefined;
 }
 
@@ -207,6 +232,31 @@ export function createRecoveryModule(options: RecoveryModuleOptions = {}): Awake
     } catch {
       // An undeclared or rejected event never stops recovery.
     }
+  }
+
+  /** `pmset -g` (read-only) through the injected Runner; undefined when it cannot be read. */
+  async function readPmset(r: Run): Promise<string | undefined> {
+    if (r.deps.env.platform !== "darwin") return undefined;
+    const result = await r.deps.env
+      .run(PMSET_READ, ["-g"], { timeoutMs: PMSET_READ_TIMEOUT_MS })
+      .catch(() => undefined);
+    return result && result.code === 0 ? result.stdout : undefined;
+  }
+
+  /**
+   * [INFERENCE: key names as macOS prints them] Whether `pmset -g` says sleep is disabled although
+   * the journal has no disablesleep entry and this instance did not turn it on: something outside
+   * Phoenix (anything running as this account can use the sudo rule) did. null = cannot tell.
+   */
+  async function sleepDisabledUnjournaled(
+    r: Run,
+    pending: readonly PendingEntry[],
+  ): Promise<boolean | null> {
+    const out = await readPmset(r);
+    if (out === undefined) return null;
+    const value = pmsetSetting(out, "SleepDisabled");
+    if (value === undefined) return null;
+    return value === 1 && r.engaged === null && !pending.some((e) => e.kind === DISABLESLEEP);
   }
 
   /** A journalled privileged change for the tracked session. */
@@ -251,10 +301,12 @@ export function createRecoveryModule(options: RecoveryModuleOptions = {}): Awake
     r.engaged = null;
     r.manager.markSessionEnded(engaged.sessionId);
     const report = await r.manager.undo((e) => e.kind === DISABLESLEEP);
-    emit(r, "awake.lid_closed.ended", report.failed.length > 0 ? "warning" : "info", {
+    // A held recovery lock means NOTHING was undone: that is not "restored" (and stays pending).
+    const restored = restoredBy(report);
+    emit(r, "awake.lid_closed.ended", restored ? "info" : "warning", {
       session_id: engaged.sessionId,
       why,
-      restored: report.failed.length === 0,
+      restored,
     });
     return report;
   }
@@ -366,18 +418,32 @@ export function createRecoveryModule(options: RecoveryModuleOptions = {}): Awake
         input_schema: NO_INPUT,
       },
       {
-        name: "safety.acknowledge",
+        name: "recovery.discard",
         description:
-          "Records that you read the lid-closed safety warning (do not carry the computer in a bag or case while it is on). Asks for confirmation.",
+          "Removes ONE pending recovery entry whose kind this version of Phoenix has no way to undo (for example a leftover or forged journal line that keeps the warning on). It changes nothing on the computer and is recorded in the audit log. Entries that can be undone are refused: use recovery.undo_now. Asks for confirmation.",
         side_effect: "write",
         permissions: ["filesystem_write"],
         input_schema: {
           type: "object",
           additionalProperties: false,
-          required: ["acknowledge", "version"],
+          required: ["id"],
+          properties: { id: { type: "string", minLength: 1, maxLength: 80 } },
+        },
+      },
+      {
+        name: "safety.acknowledge",
+        description:
+          "SAFETY ACKNOWLEDGEMENT, made in YOUR name: records that YOU read the lid-closed safety warning (a closed computer that stays awake can overheat: never carry it in a bag or case while it is on). Approve this ONLY if you yourself read the warning on screen; an agent or script must never approve it for you. The input carries the SHA-256 of the warning text, so the acknowledgement is bound to that wording. Asks for confirmation.",
+        side_effect: "write",
+        permissions: ["filesystem_write"],
+        input_schema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["acknowledge", "version", "text_sha256"],
           properties: {
             acknowledge: { const: true },
             version: { type: "integer", minimum: 1 },
+            text_sha256: { type: "string", minLength: 64, maxLength: 64 },
           },
         },
       },
@@ -386,6 +452,7 @@ export function createRecoveryModule(options: RecoveryModuleOptions = {}): Awake
       async "lid_closed.start"(input) {
         noInput(input);
         const r = need();
+        if (r.stopped) throw new AwakeError("unavailable", "The awake capability is shutting down");
         if (r.deps.env.platform !== "darwin") {
           throw new AwakeError("unavailable", "Lid-closed mode is available on macOS only");
         }
@@ -423,6 +490,10 @@ export function createRecoveryModule(options: RecoveryModuleOptions = {}): Awake
           await r.manager.undo((e) => e.kind === DISABLESLEEP).catch(() => undefined);
           throw new AwakeError("unavailable", "Lid-closed mode could not be turned on");
         }
+        if (r.stopped) {
+          // Shutdown began while the change was in flight; its undo is queued behind it and restores sleep.
+          throw new AwakeError("unavailable", "The awake capability is shutting down");
+        }
         r.engaged = { sessionId: session.id, since: r.deps.env.clock.now() };
         emit(r, "awake.lid_closed.started", "info", { session_id: session.id });
         return { engaged: true, session_id: session.id };
@@ -432,7 +503,7 @@ export function createRecoveryModule(options: RecoveryModuleOptions = {}): Awake
         const r = need();
         const was = r.engaged !== null;
         const report = await disengage(r, "user");
-        return { ended: was, restored: report ? report.failed.length === 0 : true };
+        return { ended: was, restored: report ? restoredBy(report) : true };
       },
       async "recovery.status"(input) {
         noInput(input);
@@ -443,12 +514,27 @@ export function createRecoveryModule(options: RecoveryModuleOptions = {}): Awake
         for (const e of parsed.pending.slice(0, STATUS_PENDING_LIMIT)) {
           const mine = e.owner.pid === self.pid && e.owner.started === self.started;
           const owner = mine ? "self" : (await r.probe.alive(e.owner)) ? "other" : "dead";
-          pending.push({ id: e.id, kind: e.kind, at: e.at, session: e.session, owner });
+          pending.push({
+            id: e.id,
+            kind: e.kind,
+            at: e.at,
+            session: e.session,
+            owner,
+            discardable: !r.manager.canUndo(e.kind),
+          });
         }
         const safety = readSafety(r.fs, r.safetyPath);
         const last = r.watcher.last;
+        const blocked = r.manager.lockBlocked();
         return {
           session_active: r.deps.session.active() !== null,
+          // The journal this Phoenix writes. Compare it with the WATCH line of install-helper.sh --print-plan.
+          journal_path: r.journal.path,
+          recovery_lock: {
+            blocked: blocked !== undefined,
+            since: blocked ? new Date(blocked.since).toISOString() : null,
+          },
+          sleep_disabled_unjournaled: await sleepDisabledUnjournaled(r, parsed.pending),
           journal: {
             pending,
             untrusted: parsed.untrusted,
@@ -478,8 +564,28 @@ export function createRecoveryModule(options: RecoveryModuleOptions = {}): Awake
                 }
               : null,
           },
-          safety,
+          safety: { ...safety, text_sha256: SAFETY_TEXT_SHA256 },
         };
+      },
+      async "recovery.discard"(input) {
+        const r = need();
+        if (!isRecord(input) || typeof input.id !== "string" || Object.keys(input).length !== 1) {
+          throw new AwakeError("invalid", "discard needs exactly { id }");
+        }
+        let discarded;
+        try {
+          discarded = await r.manager.discard(input.id);
+        } catch {
+          throw new AwakeError("unavailable", "The recovery journal cannot be written");
+        }
+        if (!discarded) {
+          throw new AwakeError(
+            "invalid",
+            "No such pending entry, or it can be undone (use recovery.undo_now): nothing was discarded",
+          );
+        }
+        r.ctx.logger.warn("recovery entry discarded", { id: discarded.id, kind: discarded.kind });
+        return { discarded: true, id: discarded.id, kind: discarded.kind };
       },
       async "recovery.undo_now"(input) {
         noInput(input);
@@ -497,8 +603,16 @@ export function createRecoveryModule(options: RecoveryModuleOptions = {}): Awake
       },
       "safety.acknowledge"(input) {
         const r = need();
-        if (!isRecord(input) || input.acknowledge !== true || input.version !== SAFETY_VERSION) {
-          throw new AwakeError("invalid", `acknowledge must be true and version ${SAFETY_VERSION}`);
+        if (
+          !isRecord(input) ||
+          input.acknowledge !== true ||
+          input.version !== SAFETY_VERSION ||
+          input.text_sha256 !== SAFETY_TEXT_SHA256
+        ) {
+          throw new AwakeError(
+            "invalid",
+            `acknowledge must be true, version ${SAFETY_VERSION} and the text_sha256 of the warning shown in recovery.status`,
+          );
         }
         const at = new Date(r.deps.env.clock.now()).toISOString();
         try {
@@ -506,7 +620,10 @@ export function createRecoveryModule(options: RecoveryModuleOptions = {}): Awake
         } catch {
           throw new AwakeError("unavailable", "The acknowledgement could not be saved");
         }
-        emit(r, "awake.safety.acknowledged", "info", { version: SAFETY_VERSION });
+        emit(r, "awake.safety.acknowledged", "info", {
+          version: SAFETY_VERSION,
+          text_sha256: SAFETY_TEXT_SHA256,
+        });
         return { acknowledged: true, version: SAFETY_VERSION, acknowledged_at: at };
       },
     },
@@ -534,6 +651,15 @@ export function createRecoveryModule(options: RecoveryModuleOptions = {}): Awake
         }),
         probe,
         reverters,
+        verifyNotApplied: async (entry) => {
+          // Read-only. Only the two pmset kinds can be checked; anything else (or an unreadable
+          // answer) is "not sure", so the entry stays pending.
+          const out = await readPmset(r);
+          if (out === undefined) return false;
+          if (entry.kind === DISABLESLEEP) return pmsetSetting(out, "SleepDisabled") === 0;
+          if (entry.kind === LOWPOWERMODE) return pmsetSetting(out, "lowpowermode") === 0;
+          return false;
+        },
         now: () => clock.now(),
         newId: options.newId ?? (() => `chg_${crypto.randomUUID().replaceAll("-", "")}`),
         emit: (type: RecoveryEvent, severity, payload) => emit(r, type, severity, payload),
@@ -572,6 +698,7 @@ export function createRecoveryModule(options: RecoveryModuleOptions = {}): Awake
         timer: undefined,
         unsubscribe: undefined,
         stopped: false,
+        shuttingDown: undefined,
         busy: undefined,
       };
       for (const kind of [DISABLESLEEP, LOWPOWERMODE]) {
@@ -622,18 +749,19 @@ export function createRecoveryModule(options: RecoveryModuleOptions = {}): Awake
           });
         });
       });
-      const onAbort = () => shutdownRun(r);
+      const onAbort = () => void shutdownRun(r);
       if (ctx.signal.aborted) onAbort();
       else ctx.signal.addEventListener("abort", onAbort, { once: true });
     },
-    shutdown() {
-      if (run) shutdownRun(run);
+    /** Stops and undoes; resolves when the undo is done or SHUTDOWN_WAIT_MS has passed (a caller may await it). */
+    shutdown(): Promise<void> {
+      return run ? shutdownRun(run) : Promise.resolve();
     },
   };
 
   /** Stops timers and starts the undo. The synchronous part is the journal mark the backstop reads. */
-  function shutdownRun(r: Run): void {
-    if (r.stopped) return;
+  function shutdownRun(r: Run): Promise<void> {
+    if (r.stopped) return r.shuttingDown ?? Promise.resolve();
     r.stopped = true;
     if (r.timer !== undefined) r.deps.env.clock.clearTimer(r.timer);
     r.unsubscribe?.();
@@ -642,10 +770,19 @@ export function createRecoveryModule(options: RecoveryModuleOptions = {}): Awake
     // Sync release is impossible for sudo. The mark above, the launchd backstop and the next
     // launch's reconcile are the net; the undo below is the fast path.
     r.tracked = null;
-    void (async () => {
-      r.engaged = null;
-      await r.manager.undo().catch(() => undefined);
-    })();
+    r.engaged = null;
+    // The undo queues behind any change still in flight (see RecoveryManager.change), so the OFF
+    // can never overtake an ON that is still running.
+    const undone = r.manager.undo().then(
+      () => undefined,
+      () => undefined,
+    );
+    const capped = Promise.withResolvers<void>();
+    const timer = r.deps.env.clock.setTimer(() => capped.resolve(), SHUTDOWN_WAIT_MS);
+    r.shuttingDown = Promise.race([undone, capped.promise]).then(() =>
+      r.deps.env.clock.clearTimer(timer),
+    );
+    return r.shuttingDown;
   }
 }
 

@@ -8,7 +8,7 @@ Phoenix is an open-source developer companion. It connects your developer tools,
 
 The first capability is **Kage**, which handles meeting capture, transcription, summaries and archiving.
 
-> Status: unreleased and in active development. Implementation spans well beyond Stage 1 (see the [phase tracker](docs/phases/TRACKER.md)); no release has been tagged, and many release gates are still open (see the [gap register](docs/gaps.md)). Phases 56–65 (agent approvals, the Fawkes island, wardrobe, attachments, more AI providers, dictation, the notetaker) are built and tested with fakes, but none was run against a real coding agent, cloud AI provider key, microphone, call, global hotkey or paste into another application; "Record a call" is disabled in the desktop app because the trusted consent dialog it needs does not exist yet.
+> Status: unreleased and in active development. Implementation spans well beyond Stage 1 (see the [phase tracker](docs/phases/TRACKER.md)); no release has been tagged, and many release gates are still open (see the [gap register](docs/gaps.md)). Phases 56–75 (agent approvals, the Fawkes island, wardrobe, attachments, more AI providers, dictation, the notetaker, the voice assistant, service integrations, the weekly recap, shortcuts and languages, the phone link, and the keep-awake, lid-closed and continuity features) are built and tested with fakes, but none was run against a real coding agent, cloud AI provider key, microphone, call, global hotkey, phone, Mac lid, privileged helper or paste into another application; "Record a call" is disabled in the desktop app because the trusted consent dialog it needs does not exist yet.
 
 ## Repository layout
 
@@ -67,6 +67,7 @@ Phoenix is local-first. Everything it stores lives in its data directory on your
 - [v1.0 verification plan](docs/release/v1-verification.md) and [v2.0 verification plan](docs/release/v2-verification.md) (plans and decisions, not releases)
 - [Capability SDK docs](docs/capabilities/) and the local [0.1.0 static docs snapshot](docs/capabilities/site/0.1.0/index.html) (not hosted or published)
 - [« OK Fawkes » voice assistant](docs/voice-assistant.md), [demo mode](docs/demo-mode.md) and the [interface languages](apps/web/src/i18n/README.md) (all non-English text is machine-generated and unreviewed)
+- [Phone link](docs/phone-link.md) (Core side only, no phone app exists), the [keep-awake helper and recovery journal](docs/awake-helper.md) and [lid-close actions](docs/awake-lid-actions.md) (built and tested with fakes and simulations; the helper was never installed or run with root)
 
 ## License
 

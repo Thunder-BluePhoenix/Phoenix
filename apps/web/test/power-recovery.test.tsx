@@ -32,6 +32,7 @@ type Outcome = { status: string; error?: { message: string } };
 
 const STATUS = "/api/capabilities/awake/commands/recovery.status";
 const HEADING = "Lid-closed mode and recovery";
+const HASH = "a".repeat(64);
 
 /** A `recovery.status` result that is healthy and ready to start lid-closed mode. */
 function status(over: Record<string, unknown> = {}): Record<string, unknown> {
@@ -51,7 +52,12 @@ function status(over: Record<string, unknown> = {}): Record<string, unknown> {
       low_power_active: false,
       last: null,
     },
-    safety: { acknowledged: true, version: 3, acknowledged_at: "2026-10-20T10:00:00Z" },
+    safety: {
+      acknowledged: true,
+      version: 3,
+      acknowledged_at: "2026-10-20T10:00:00Z",
+      text_sha256: HASH,
+    },
     ...over,
   };
 }
@@ -112,6 +118,7 @@ async function load(over: Record<string, unknown> = {}, extra: Routes = {}) {
     ...action("lid_closed.end"),
     ...action("recovery.undo_now"),
     ...action("safety.acknowledge"),
+    ...action("recovery.discard"),
     ...extra,
   });
   const sec = await section();
@@ -318,7 +325,7 @@ describe("Lid-closed mode and recovery glance", () => {
 
 describe("safety acknowledgement and starting", () => {
   const unacknowledged = {
-    safety: { acknowledged: false, version: 7, acknowledged_at: null },
+    safety: { acknowledged: false, version: 7, acknowledged_at: null, text_sha256: HASH },
   };
 
   it("keeps Start and Acknowledge off until the box is ticked, then acknowledges the shown version", async () => {
@@ -340,7 +347,7 @@ describe("safety acknowledgement and starting", () => {
     doubleClick(() => fireEvent.click(ack));
     await waitFor(() =>
       expect(bodies(api, "safety.acknowledge")).toEqual([
-        { input: { acknowledge: true, version: 7 } },
+        { input: { acknowledge: true, version: 7, text_sha256: HASH } },
       ]),
     );
   });
@@ -349,7 +356,11 @@ describe("safety acknowledgement and starting", () => {
     let acknowledged = false;
     const { api, sec } = await load(
       {},
-      recoveryStatus(() => status({ safety: { acknowledged, version: 7, acknowledged_at: null } })),
+      recoveryStatus(() =>
+        status({
+          safety: { acknowledged, version: 7, acknowledged_at: null, text_sha256: HASH },
+        }),
+      ),
     );
     expect(startButton(sec).disabled).toBe(true);
     fireEvent.click(within(sec).getByRole("checkbox", { name: "I understand" }));
@@ -402,6 +413,61 @@ describe("safety acknowledgement and starting", () => {
       fireEvent.click(within(sec).getByRole("button", { name: "End lid-closed mode" })),
     );
     await waitFor(() => expect(bodies(api, "lid_closed.end")).toEqual([{ input: {} }]));
+  });
+});
+
+describe("findings 3, 8, 9: lock, journal path, discard, hash-bound acknowledgement", () => {
+  it("keeps Acknowledge off when Core sent no warning hash, so nothing unbound is ever sent", async () => {
+    const { api, sec } = await load({
+      safety: { acknowledged: false, version: 7, acknowledged_at: null },
+    });
+    fireEvent.click(within(sec).getByRole("checkbox", { name: "I understand" }));
+    const ack = within(sec).getByRole("button", { name: "Acknowledge" }) as HTMLButtonElement;
+    expect(ack.disabled).toBe(true);
+    fireEvent.click(ack);
+    expect(bodies(api, "safety.acknowledge")).toHaveLength(0);
+  });
+
+  it("shows the journal path, a held recovery lock and unexplained disabled sleep", async () => {
+    const { sec } = await load({
+      journal_path: "/Users/me/.phoenix/dev/awake/recovery-journal.jsonl",
+      recovery_lock: { blocked: true, since: "2026-10-21T08:00:00Z" },
+      sleep_disabled_unjournaled: true,
+    });
+    expect(
+      within(sec).getByText("Journal: /Users/me/.phoenix/dev/awake/recovery-journal.jsonl"),
+    ).toBeTruthy();
+    expect(within(sec).getByText(/Another recovery process holds the lock/)).toBeTruthy();
+    expect(within(sec).getByText(/Phoenix has no record of turning it off/)).toBeTruthy();
+  });
+
+  it("shows none of them when the status does not report them", async () => {
+    const { sec } = await load();
+    expect(within(sec).queryByText(/Another recovery process/)).toBeNull();
+    expect(within(sec).queryByText(/no record of turning it off/)).toBeNull();
+    expect(within(sec).queryByText(/^Journal:/)).toBeNull();
+  });
+
+  it("offers Discard only for an entry Core says nothing can undo, and sends its id once", async () => {
+    const pending = [
+      {
+        id: "c1",
+        kind: "pmset.disablesleep",
+        at: 1,
+        session: null,
+        owner: "dead",
+        discardable: false,
+      },
+      { id: "x9", kind: "forged.kind", at: 1, session: null, owner: "dead", discardable: true },
+    ];
+    const { api, sec } = await load({
+      journal: { pending, untrusted: 0, partial_tail: false, size_bytes: 0 },
+      can_quit: false,
+    });
+    const discard = within(sec).getAllByRole("button", { name: "Discard this entry" });
+    expect(discard).toHaveLength(1);
+    doubleClick(() => fireEvent.click(discard[0]!));
+    await waitFor(() => expect(bodies(api, "recovery.discard")).toEqual([{ input: { id: "x9" } }]));
   });
 });
 

@@ -6,9 +6,23 @@
 // It is a small JSON file in the Core data dir (0600). The warning text lives in the web UI's
 // i18n (power.recovery.*); `SAFETY_VERSION` ties an acknowledgement to a wording: bump it when the
 // warning changes materially and everyone is asked again.
+import { createHash } from "node:crypto";
 import type { JournalFs } from "./journal";
 
 export const SAFETY_VERSION = 1;
+
+/**
+ * The canonical wording the acknowledgement is bound to (the UI shows a translation of it). The
+ * command carries its SHA-256, so an acknowledgement is a statement about THIS text: changing the
+ * wording changes the hash and everybody is asked again (bump SAFETY_VERSION with it).
+ *
+ * [Command contexts carry no actor, so Core's approval prompt cannot tell a person from an agent;
+ * the prompt text (the command description) and this hash are what distinguish the acknowledgement.]
+ */
+export const SAFETY_TEXT =
+  "A closed laptop that stays awake can overheat. Never carry it in a bag, case or any closed space while lid-closed mode is on, and keep the vents clear.";
+
+export const SAFETY_TEXT_SHA256 = createHash("sha256").update(SAFETY_TEXT).digest("hex");
 
 export interface SafetyAck {
   acknowledged: boolean;
