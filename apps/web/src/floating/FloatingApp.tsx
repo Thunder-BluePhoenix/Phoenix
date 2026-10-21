@@ -5,6 +5,7 @@ import { visualFor } from "@phoenix/pet-states";
 import { useCallback, useEffect, useState } from "react";
 import { tauriShortcuts, type ShortcutsShell } from "../commands/shortcuts-shell";
 import { FawkesAvatar } from "../components/FawkesAvatar";
+import { AwakeCountdown } from "../components/Awake";
 import { ActiveSourcePills } from "../components/SourcePills";
 import { useWornOutfit } from "../core/appearance";
 import { useDisplayedState } from "../core/context";
@@ -105,6 +106,7 @@ export function FloatingApp({
         onActivate={() => shell?.openInPhoenix(routeFor(state))}
       />
       <ActiveSourcePills />
+      <AwakeCountdown />
       {state.recording && (
         <span className="rec-pill" role="status">
           <span className="rec-dot" aria-hidden="true" /> {t("common.petState.RECORDING")}

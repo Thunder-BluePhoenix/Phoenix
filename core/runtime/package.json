@@ -24,6 +24,7 @@
     "@phoenix/api": "workspace:*",
     "@phoenix/capability-agents": "workspace:*",
     "@phoenix/capability-apple-music": "workspace:*",
+    "@phoenix/capability-awake": "workspace:*",
     "@phoenix/capability-calcom": "workspace:*",
     "@phoenix/capability-docker": "workspace:*",
     "@phoenix/capability-frappe": "workspace:*",

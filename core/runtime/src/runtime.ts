@@ -58,6 +58,7 @@ import { AgentRuntime } from "./agents";
 import { AgentApprovals } from "./agent-approvals";
 import { AgentLive, displayName } from "./agent-live";
 import { RecapRuntime } from "./recap";
+import { PhoneLink, type PhoneLinkTuning } from "./phone-link";
 import { AgentRelay } from "./agent-relay";
 import { AiRuntime } from "./ai";
 import { AutonomyRuntime } from "./autonomy";
@@ -156,6 +157,8 @@ export interface RuntimeOptions {
   /** Clock and IANA time zone of the weekly recap (tests inject them). */
   recapClock?: () => number;
   recapTimeZone?: string;
+  /** Phone link (Phase 71) tuning: tests inject the clock, the LAN addresses and a free port. */
+  phone?: PhoneLinkTuning;
   /**
    * Demo mode (Phase 70) tuning (tests inject the idle timer). `false` builds no demo service: the
    * demo's own runtime is built that way, so a demo can never start another demo.
@@ -245,6 +248,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly agentLive: AgentLive;
   /** Weekly recap (Phase 69): day counts only, kept past the events cap; local, no AI. */
   readonly recap: RecapRuntime;
+  /** Phone link (Phase 71): off by default; a separate pinned-TLS LAN listener with device keys. */
+  readonly phone: PhoneLink;
   /** Demo mode (Phase 70): a second, isolated in-memory runtime; absent inside the demo itself. */
   readonly demo: DemoRuntime | undefined;
   /**
@@ -522,6 +527,17 @@ export class PhoenixRuntime implements CoreServices {
       ...(options.recapClock ? { now: options.recapClock } : {}),
       ...(options.recapTimeZone ? { timeZone: options.recapTimeZone } : {}),
     });
+    this.phone = new PhoneLink({
+      db: this.db,
+      settings: this.settings,
+      bus: this.bus,
+      permissions: this.permissions,
+      agentApprovals: this.agentApprovals,
+      dataDir: this.config.dataDir,
+      logger: this.logger.child("phone-link"),
+      unavailable: options.demo === false,
+      ...options.phone,
+    });
     this.agentLive = new AgentLive({
       recap: this.recap,
       bus: this.bus,
@@ -655,6 +671,7 @@ export class PhoenixRuntime implements CoreServices {
       memory: this.memory,
       workflowHistory: this.workflows,
       recap: this.recap,
+      phone: this.phone,
       derived: () => this.derivedInventory(),
       externalAi: () => this.ai.describeExternalProcessing(),
     });
@@ -726,6 +743,7 @@ export class PhoenixRuntime implements CoreServices {
     });
     const address = await this.api.listen(this.config.port, this.config.host);
     if (this.options.startAgentRelay ?? true) await this.agentRelay.start();
+    await this.phone.start();
     if (this.options.writeTokenFile ?? true) this.writeTokenFile();
 
     this.ticker = setInterval(() => {
@@ -860,6 +878,13 @@ export class PhoenixRuntime implements CoreServices {
         count: this.recap.store.count(),
         deleted_with: 'recap (POST /api/privacy/delete {"data":"recap"} or DELETE /api/recap)',
       },
+      {
+        id: "phone_devices",
+        description:
+          'Phones paired with the phone link: a name, the phone\'s PUBLIC key and when it last connected. No pairing code and no private key is ever stored. Revoke one in Settings; "Delete all" for phone data also closes the listener and removes the certificate.',
+        count: this.phone.devicesStore.count(),
+        deleted_with: 'phone (POST /api/privacy/delete {"data":"phone"}) or revoke a device',
+      },
     ];
   }
 
@@ -960,6 +985,7 @@ export class PhoenixRuntime implements CoreServices {
       if (this.ticker) clearInterval(this.ticker);
       if (this.pruner) clearInterval(this.pruner);
       await this.agentRelay.stop();
+      await this.phone.close();
       await this.api?.close();
       await this.agents.close();
       await this.workflows.close();

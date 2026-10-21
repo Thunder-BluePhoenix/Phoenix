@@ -12,6 +12,7 @@ import type { ImprovementApi } from "./improvement-routes";
 import type { DemoApi } from "./demo-routes";
 import type { VoiceApi } from "./voice-routes";
 import type { RecapApi } from "./recap-routes";
+import type { PhoneApi } from "./phone-routes";
 import type { PhoenixConfig } from "@phoenix/config";
 import type { EventBus } from "@phoenix/event-bus";
 import type { Logger } from "@phoenix/logging";
@@ -1271,6 +1272,7 @@ export interface CoreServices {
   uiSettings?: UiSettingsApi;
   attachments?: AttachmentsApi;
   recap?: RecapApi;
+  phone?: PhoneApi;
   demo?: DemoApi;
   petSettings?(): unknown;
   setPetSettings?(input: unknown): unknown;

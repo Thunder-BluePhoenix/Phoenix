@@ -7,12 +7,16 @@ import { useAction, useKillSwitch } from "../core/hooks";
 import type { ActiveTask, PetState } from "../core/types";
 import { isMessageKey, useT } from "../i18n";
 import { AgentApprovals } from "./AgentApprovals";
+import { AwakeGlance } from "./Awake";
+import { ContinuityGlance } from "./Continuity";
+import { LidActionsGlance } from "./LidActions";
 import { FawkesDropTarget } from "./Attachments";
 import { Approvals } from "./Approvals";
 import { AgentsGlance, FrappeSites } from "./Integrations";
 import { MeetingsGlance } from "./Meetings";
 import { NowPlayingGlance } from "./NowPlaying";
 import { PortfolioGlance } from "./Portfolio";
+import { PowerRecoveryGlance } from "./PowerRecovery";
 import { CurrentTask } from "./TaskView";
 
 /** How many tasks the panel lists before "Show all": enough to see what is happening, few enough
@@ -85,6 +89,10 @@ export function Overview({ state, tasks }: { state: PetState; tasks: ActiveTask[
       <NowPlayingGlance />
       <PortfolioGlance />
       <MeetingsGlance />
+      <AwakeGlance />
+      <PowerRecoveryGlance />
+      <LidActionsGlance />
+      <ContinuityGlance />
       <QuickActions state={state} />
     </div>
   );

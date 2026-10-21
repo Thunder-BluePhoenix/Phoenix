@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 export * from "./database";
+export * from "./device-store";
 export * from "./event-store";
 export * from "./meeting-store";
 export * from "./recap-store";

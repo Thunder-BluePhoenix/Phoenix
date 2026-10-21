@@ -1194,4 +1194,22 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 29,
+    name: "paired_devices",
+    // Device public identities for the separately-bound Phone Link listener (Phase 71). The
+    // table intentionally holds only public SPKI material: pairing codes and private keys never
+    // enter SQLite or the audit log.
+    sql: `
+      CREATE TABLE paired_devices (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 80),
+        public_key TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_seen_at TEXT,
+        revoked_at TEXT
+      );
+      CREATE INDEX paired_devices_revoked ON paired_devices (revoked_at);
+    `,
+  },
 ];

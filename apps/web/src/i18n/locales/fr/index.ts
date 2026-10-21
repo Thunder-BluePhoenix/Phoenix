@@ -7,6 +7,8 @@ import { capture } from "./capture";
 import { common } from "./common";
 import { memory } from "./memory";
 import { pet } from "./pet";
+import { phone } from "./phone";
+import { power } from "./power";
 import { services } from "./services";
 import { settings } from "./settings";
 import { shell } from "./shell";
@@ -19,6 +21,8 @@ const messages: Messages = {
   ...capture,
   ...memory,
   ...pet,
+  ...phone,
+  ...power,
   ...services,
   ...settings,
 };

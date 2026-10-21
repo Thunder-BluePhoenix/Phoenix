@@ -24,8 +24,8 @@ function store() {
 }
 
 describe("migration 28 and RecapStore", () => {
-  it("is the head migration and the table holds counts only", () => {
-    expect(MIGRATIONS.at(-1)).toMatchObject({ version: 28, name: "recap_daily" });
+  it("is migration 28 and the table holds counts only", () => {
+    expect(MIGRATIONS.find((m) => m.version === 28)).toMatchObject({ name: "recap_daily" });
     const { db } = store();
     const columns = (db.prepare("PRAGMA table_info(recap_daily)").all() as { name: string }[])
       .map((c) => c.name)

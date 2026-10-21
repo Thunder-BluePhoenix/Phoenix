@@ -9,6 +9,8 @@ export * from "./attachment-routes";
 export * from "./demo-routes";
 export * from "./dictation-routes";
 export * from "./recap-routes";
+export * from "./phone-routes";
+export * from "./phone-listener";
 export * from "./notetaker-routes";
 export * from "./voice-routes";
 export { ATTACHMENT_BODY_MAX_BYTES, MAX_BODY_BYTES } from "./http";

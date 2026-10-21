@@ -26,6 +26,8 @@ const DEFAULT_RETENTION: Retention = { events: null, notifications: null, meetin
 
 /** Deletable through `deleteAll` but not a retained class and not listed under `data`. */
 const RECAP_KIND = "recap";
+/** Phone link data (paired device list, certificate); deletable but not a retained class. */
+const PHONE_KIND = "phone";
 
 const DESCRIPTIONS: Record<DataClass, string> = {
   events: "What capabilities reported: commands, builds, meetings, Git.",
@@ -65,6 +67,8 @@ export interface PrivacyDeps {
   workflowHistory: { deleteHistoryForPrivacy(): number };
   /** The weekly recap's day counts (numbers only); deleting reports how many rows went. */
   recap: { deleteAll(): { deleted: number } };
+  /** Paired phones (public keys only): deleting closes the listener and reports how many went. */
+  phone: { deleteAll(): { deleted: number } };
   /** Derived data to list in the inventory, counted now. */
   derived(): DerivedInventory[];
   /** One sentence about what is sent to AI providers, derived from the live AI settings. */
@@ -134,10 +138,14 @@ export class PrivacyService {
    * events because that is their purpose. The audit log records that it happened.
    */
   deleteAll(kind: unknown, confirm: unknown, by = "user"): { deleted: number } {
-    if (kind !== RECAP_KIND && !(DATA_CLASSES as readonly unknown[]).includes(kind)) {
+    if (
+      kind !== RECAP_KIND &&
+      kind !== PHONE_KIND &&
+      !(DATA_CLASSES as readonly unknown[]).includes(kind)
+    ) {
       throw new PhoenixError(
         ErrorCode.INVALID_REQUEST,
-        `"data" must be one of ${[...DATA_CLASSES, RECAP_KIND].join(", ")}`,
+        `"data" must be one of ${[...DATA_CLASSES, RECAP_KIND, PHONE_KIND].join(", ")}`,
       );
     }
     if (confirm !== true) {
@@ -159,7 +167,9 @@ export class PrivacyService {
             ? this.d.meetings.deleteBefore()
             : kind === RECAP_KIND
               ? this.d.recap.deleteAll().deleted
-              : this.d.memory.deleteAll();
+              : kind === PHONE_KIND
+                ? this.d.phone.deleteAll().deleted
+                : this.d.memory.deleteAll();
     this.d.audit.record({
       actor: by,
       action: "privacy.data.deleted",

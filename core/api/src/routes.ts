@@ -25,6 +25,7 @@ import { uiRoutes } from "./ui-routes";
 import { attachmentRoutes } from "./attachment-routes";
 import { demoRoutes } from "./demo-routes";
 import { recapRoutes } from "./recap-routes";
+import { phoneRoutes } from "./phone-routes";
 import type { CoreServices } from "./services";
 
 const notFound = (what: string) =>
@@ -362,5 +363,6 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...agentRelayRoutes(s),
     ...agentLiveRoutes(s),
     ...recapRoutes(s),
+    ...phoneRoutes(s),
   ];
 }

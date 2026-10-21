@@ -492,6 +492,22 @@ importers:
         specifier: workspace:*
         version: link:../../sdk/testing
 
+  capabilities/awake:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+      '@phoenix/service-kit':
+        specifier: workspace:*
+        version: link:../../sdk/service-kit
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
   capabilities/calcom:
     dependencies:
       '@phoenix/logging':
@@ -909,6 +925,9 @@ importers:
       '@phoenix/capability-apple-music':
         specifier: workspace:*
         version: link:../../capabilities/apple-music
+      '@phoenix/capability-awake':
+        specifier: workspace:*
+        version: link:../../capabilities/awake
       '@phoenix/capability-calcom':
         specifier: workspace:*
         version: link:../../capabilities/calcom

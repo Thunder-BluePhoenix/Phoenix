@@ -99,3 +99,22 @@ body {
   border-radius: 50%;
   background: var(--danger);
 }
+.awake-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--bubble-text, inherit);
+  background: var(--bubble-bg);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+}
+.awake-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}

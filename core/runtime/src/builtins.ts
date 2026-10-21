@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import { createAwakeCapability } from "@phoenix/capability-awake";
 import { createAgentsCapability, type AgentsServices } from "@phoenix/capability-agents";
 import { createAppleMusicCapability } from "@phoenix/capability-apple-music";
 import { createDockerCapability } from "@phoenix/capability-docker";
@@ -54,6 +55,7 @@ export function builtinCapabilities(
     createDockerCapability(),
     createFrappeCapability(),
     createAgentsCapability(agentsServices ? { services: agentsServices } : {}),
+    createAwakeCapability({ feed: () => agentsServices?.()?.events }),
     createIssuesCapability(),
     createPlanningCapability({ services: planningServices }),
     ...(env === "dev" ? [mockCapability] : []),

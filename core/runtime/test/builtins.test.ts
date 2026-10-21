@@ -31,6 +31,7 @@ describe("built-in capabilities", () => {
       [
         "agents",
         "apple-music",
+        "awake",
         "calcom",
         "capture-microphone",
         "capture-screen",

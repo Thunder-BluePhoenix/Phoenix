@@ -1995,3 +1995,172 @@ code.break {
   color: inherit;
   text-align: start;
 }
+
+/* Keep awake (Phase 72) */
+.awake-custom {
+  display: grid;
+  gap: 8px;
+  margin-block-start: 8px;
+}
+.awake-custom label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.awake-clock {
+  margin: 4px 0;
+  font-size: 28px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.awake-end {
+  margin-block-start: 8px;
+}
+.awake-hold {
+  position: relative;
+  user-select: none;
+  touch-action: none;
+}
+.awake-hold[data-holding="true"] {
+  border-color: var(--danger);
+  color: var(--danger-text);
+}
+.awake-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+}
+.awake-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* ── Phase 71: phone link ── */
+.phone-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.phone-code-text {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.phone-code {
+  margin: 8px 0;
+}
+.phone-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+}
+.phone-facts dd {
+  margin: 0;
+}
+.phone-devices {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.phone-warning ul {
+  margin: 4px 0 8px;
+  padding-inline-start: 20px;
+}
+
+.power-recovery-warning {
+  border: 1px solid var(--warning-text);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 8px 0;
+}
+.power-recovery-warning ul {
+  margin: 4px 0 8px;
+  padding-inline-start: 20px;
+}
+.power-recovery-safety {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+}
+.power-recovery-controls {
+  margin: 8px 0;
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+/* Agent continuity (Phase 75) */
+.continuity fieldset {
+  border: 1px solid var(--border, currentColor);
+  border-radius: 6px;
+  margin: 12px 0;
+  padding: 8px 12px;
+}
+.continuity-list ul,
+.continuity-browsers {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.continuity-add,
+.continuity-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 4px 0;
+}
+.continuity-disclosure,
+.continuity-confirm {
+  border: 1px solid var(--warning-text);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 8px 0;
+}
+.continuity-warning {
+  color: var(--warning-text);
+}
+
+/* Lid-close actions (Phase 74) */
+.lid-actions fieldset {
+  border: 1px solid var(--border, currentColor);
+  border-radius: 6px;
+  margin: 12px 0;
+  padding: 8px 12px;
+}
+.lid-list ul,
+.lid-protected,
+.lid-results {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.lid-protected {
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+}
+.lid-add,
+.lid-apps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 4px 0;
+}
+.lid-notice {
+  color: var(--warning-text);
+}

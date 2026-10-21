@@ -556,7 +556,7 @@ paths:
                     required: [data, confirm],
                     properties:
                       {
-                        data: { enum: [events, notifications, meetings, memory, recap] },
+                        data: { enum: [events, notifications, meetings, memory, recap, phone] },
                         confirm: { const: true },
                       },
                   },
@@ -719,6 +719,69 @@ paths:
       responses:
         "200": { description: "{ deleted: number }" }
         "409": { $ref: "#/components/responses/Error" }
+  /api/phone/status:
+    get:
+      summary: >-
+        Phone link (Phase 71) status: enabled (default false), whether the separate LAN HTTPS
+        listener is up, its address and port, the certificate SHA-256 fingerprint a phone must pin,
+        the require_user_verification setting (default true), the kill switch, whether a pairing
+        code is live (its expiry only, never the code), a pending pair request with the phone's key
+        fingerprint and the confirmation id to answer through POST /api/confirmations/{id}, and the
+        pairing lockout. The LAN listener is NOT part of this API; see docs/phone-link.md.
+      responses:
+        "200": { description: Status }
+  /api/phone/settings:
+    post:
+      summary: >-
+        Enable or disable the phone link, choose the LAN address, or set require_user_verification
+        (audited). Enabling starts a separate HTTPS listener on one LAN address (never the loopback
+        API port); refused while the kill switch is engaged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                enabled: { type: boolean }
+                require_user_verification: { type: boolean }
+                address: { type: [string, "null"] }
+      responses:
+        "200": { description: Status }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /api/phone/pairing:
+    post:
+      summary: >-
+        Start a pairing: returns the single-use, two-minute pairing code ONCE (shown only in the
+        desktop UI, never logged), the certificate fingerprint to compare on the phone, and a
+        phoenixphone:// URI. The phone then registers its public key; a person confirms
+        "Pair <name>?" in the desktop UI. Core cannot tell a person from a program holding the
+        session token (see docs/phone-link.md).
+      responses:
+        "201": { description: Pairing code }
+        "503": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Cancel the live pairing code and any pending pair request
+      responses:
+        "200": { description: "{ cancelled: true }" }
+  /api/phone/devices:
+    get:
+      summary: Paired phones (name, public-key fingerprint, created, last seen, revoked). Never a key or a code.
+      responses:
+        "200": { description: "{ devices: [...] }" }
+  /api/phone/devices/{id}:
+    delete:
+      summary: >-
+        Revoke a paired phone (audited). It fails on its next request, at once. Closes the Phase 45
+        device-revocation gap for the phone link ONLY; relay revocation is separate.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: "{ id, revoked: true }" }
+        "404": { $ref: "#/components/responses/Error" }
   /api/voice/status:
     get:
       summary: "« OK Fawkes » voice assistant (Phase 66): enabled, kill switch, on-device recogniser availability, the active session and its phase (waiting | awake | thinking), limits. audio_on_disk is always false."

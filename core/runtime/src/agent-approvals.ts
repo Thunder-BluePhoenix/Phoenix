@@ -182,12 +182,14 @@ function text(value: unknown, field: string, max: number, allowEmpty = false): s
 }
 
 /**
- * Control characters (\p{Cc}), bidi controls and zero-width characters let one string read as
- * another, so they are refused, never stripped. A command or description may still hold a newline
- * or tab (a multi-line script is a real command, and the chaining checks already treat a newline
- * as a separator); every other control character is refused there too.
+ * Control (\p{Cc}), format (\p{Cf}: bidi controls, zero-width, soft hyphen, U+061C, tag characters)
+ * and line/paragraph separator (\p{Zl}, \p{Zp}) characters let one string read as another, so they
+ * are refused, never stripped. A command or description may still hold a newline or tab (a
+ * multi-line script is a real command, and the chaining checks already treat a newline as a
+ * separator); every other control character is refused there too. Shared with the phone link's
+ * device-name check.
  */
-const HIDDEN_CHARS = /[\p{Cc}\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/u;
+export const HIDDEN_TEXT_CHARS = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 
 function displayText(
   value: unknown,
@@ -197,7 +199,7 @@ function displayText(
   multiline = false,
 ): string {
   const checked = text(value, field, max, allowEmpty);
-  if (HIDDEN_CHARS.test(multiline ? checked.replace(/[\n\t]/g, " ") : checked))
+  if (HIDDEN_TEXT_CHARS.test(multiline ? checked.replace(/[\n\t]/g, " ") : checked))
     throw invalid(`"${field}" must not contain control, bidirectional or zero-width characters`);
   return checked;
 }

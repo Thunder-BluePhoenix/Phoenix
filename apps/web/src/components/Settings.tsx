@@ -32,6 +32,9 @@ import { ProactiveSettingsSection } from "./ProactiveSettings";
 import { RetrievalSettingsSection } from "./RetrievalSettings";
 import { RegistrySettingsSection } from "./RegistrySettings";
 import { SyncSettingsSection } from "./SyncSettings";
+import { ContinuitySettings } from "./Continuity";
+import { LidActionsSettings } from "./LidActions";
+import { PhoneLink } from "./PhoneLink";
 import { FawkesAppearanceSection } from "./Wardrobe";
 
 /** Settings (PRD v2.0 §16, FR-014): Fawkes, notifications, capabilities, privacy, memory, AI. */
@@ -59,6 +62,9 @@ export function SettingsPage({ state }: { state: PetState }) {
       <ProactiveSettingsSection />
       <RegistrySettingsSection />
       <SyncSettingsSection />
+      <PhoneLink />
+      <LidActionsSettings />
+      <ContinuitySettings />
       <SupportSettings />
       <ShortcutSettings />
       <DemoSettingsSection />
