@@ -106,8 +106,18 @@ const validUrl = (value: unknown): value is string => {
   }
 };
 const copy = <T>(value: T): T => structuredClone(value);
+/** A refusal with a fixed, safe message; anything else thrown here is a fault, not a bad request. */
+export class ProfileError extends Error {
+  constructor(
+    message: string,
+    readonly missing = false,
+  ) {
+    super(message);
+    this.name = "ProfileError";
+  }
+}
 function requireValid(condition: boolean, message: string): asserts condition {
-  if (!condition) throw new Error(message);
+  if (!condition) throw new ProfileError(message, message.startsWith("Unknown "));
 }
 function bookmark(value: unknown): Bookmark {
   requireValid(
@@ -289,7 +299,7 @@ export class BrowserProfileManager {
   }
   private profile(state: State, id: string): BrowserProfile {
     const profile = state.profiles.find((candidate) => candidate.id === id);
-    if (!profile) throw new Error("Unknown browser profile");
+    if (!profile) throw new ProfileError("Unknown browser profile", true);
     return profile;
   }
   list(): BrowserProfile[] {

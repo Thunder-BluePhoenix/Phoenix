@@ -25,6 +25,7 @@ import { teamLinkRoutes } from "./team-link-routes";
 import { statusLightRoutes } from "./status-light-routes";
 import { scheduledAwakeRoutes } from "./scheduled-awake-routes";
 import { fawkesRebirthRoutes } from "./fawkes-rebirth-routes";
+import { browserProfileRoutes } from "./browser-profile-routes";
 import { chatApprovalRoutes } from "./chat-approval-routes";
 import { remoteRelayRoutes } from "./remote-relay-routes";
 import { engineeringSignalsRoutes } from "./engineering-signals-routes";
@@ -416,6 +417,7 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...(s.statusLights ? statusLightRoutes(s.statusLights) : []),
     ...(s.scheduledAwake ? scheduledAwakeRoutes(s.scheduledAwake) : []),
     ...(s.fawkesRebirth ? fawkesRebirthRoutes(s.fawkesRebirth) : []),
+    ...(s.browserProfiles ? browserProfileRoutes(s.browserProfiles) : []),
     ...(s.chatApprovals ? chatApprovalRoutes(s.chatApprovals) : []),
     ...(s.remoteRelay ? remoteRelayRoutes(s.remoteRelay) : []),
   ];

@@ -103,6 +103,7 @@ import { RemoteRelayService, type RemoteRelayServiceDeps } from "./remote-relay/
 import { TeamLinkService, type TeamLinkDependencies } from "./team-status/link";
 import { StatusLightProvisioning } from "./status-lights/provision";
 import { FawkesRebirthService } from "./fawkes-rebirth/service";
+import { BrowserProfilesService } from "./browser-profiles/service";
 import { ScheduledAwakeService, type ScheduledAwakeDependencies } from "./scheduled-awake/service";
 import { EventSourcePolicy } from "./event-source-policy";
 import { WorkflowsRuntime } from "./workflows";
@@ -140,6 +141,8 @@ export interface RuntimeOptions {
   teamLink?: Pick<TeamLinkDependencies, "fetcher" | "clock" | "sleep" | "heartbeat">;
   /** Scheduler tuning (tests inject a clock and a power source; production reads this machine). */
   scheduledAwake?: Pick<ScheduledAwakeDependencies, "clock" | "power" | "env">;
+  /** Signer id to Ed25519 public key (SPKI PEM) of who may sign browser extensions. Empty: none. */
+  extensionSigners?: Readonly<Record<string, string>>;
   /** Ollama base URL (loopback only). Defaults to http://127.0.0.1:11434. */
   ollamaUrl?: string;
   /** Anthropic base URL; tests only. */
@@ -306,6 +309,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly scheduledAwake: ScheduledAwakeService;
   /** Fawkes rebirth (Phase 91): turns a fixed build into a cosmetic celebration. Stores two switches. */
   readonly fawkesRebirth: FawkesRebirthService;
+  /** Browser profiles (Phase 96): data and policy only; there is no browser engine yet. */
+  readonly browserProfiles: BrowserProfilesService;
   /** The sharing choices and teammate view of {@link teamLink}, as the routes see them. */
   readonly teamStatus: TeamLinkService | undefined;
   /** Phoenix MCP server (Phase 76): off by default; a separate loopback listener with per-client tokens. */
@@ -910,6 +915,14 @@ export class PhoenixRuntime implements CoreServices {
     this.uiSettings = new UiSettingsRuntime(this.settings, this.bus);
     this.eventSourcePolicy = new EventSourcePolicy(this.settings, this.permissions.audit);
     this.sync = new SyncRuntime(this.settings, options.secrets, options.syncTransport);
+    this.browserProfiles = new BrowserProfilesService({
+      settings: this.settings,
+      secrets: options.secrets,
+      sync: this.sync,
+      permissions: this.permissions,
+      audit: this.permissions.audit,
+      ...(options.extensionSigners ? { signers: options.extensionSigners } : {}),
+    });
     this.demo =
       options.demo === false
         ? undefined
@@ -1234,6 +1247,14 @@ export class PhoenixRuntime implements CoreServices {
           "Status lights (Phase 88): the LAN address and port of each Key Light you added, in settings. Consent to use a light is a separate setting of the status-lights capability. Nothing is contacted until both exist and the capability is enabled; only fixed colours are ever sent.",
         count: this.statusLights.lights().length,
         deleted_with: "replace the list with an empty one (PUT /api/status-lights/devices)",
+      },
+      {
+        id: "browser_profiles",
+        description:
+          "Browser profiles (Phase 96): each profile's name, an isolation name for its future web storage, its bookmarks and visit history, and the extensions you installed, in settings. Credentials you save for a profile are only in the OS credential store. Nothing is synced unless account sync is on and you opted that profile in. There is no browser engine yet, so no page is opened and no cookies exist.",
+        count: this.browserProfiles.counts().profiles,
+        deleted_with:
+          "delete a profile (DELETE /api/browser/profiles/:id), which also deletes its bookmarks, history, extensions and saved credentials",
       },
       {
         id: "scheduled_awake",

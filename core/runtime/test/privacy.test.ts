@@ -142,6 +142,7 @@ describe("derived data in the inventory (Phases 35-45)", () => {
       "chat_approvals_config",
       "remote_relay",
       "status_lights_devices",
+      "browser_profiles",
       "scheduled_awake",
       "team_status",
     ]);
@@ -167,6 +168,7 @@ describe("derived data in the inventory (Phases 35-45)", () => {
       expect.objectContaining({ id: "chat_approvals_config", count: 0 }),
       expect.objectContaining({ id: "remote_relay", count: 0 }),
       expect.objectContaining({ id: "status_lights_devices", count: 0 }),
+      expect.objectContaining({ id: "browser_profiles", count: 0 }),
       expect.objectContaining({ id: "scheduled_awake", count: 0 }),
       expect.objectContaining({ id: "team_status", count: 0 }),
     ]);

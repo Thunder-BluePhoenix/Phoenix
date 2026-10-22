@@ -25,6 +25,7 @@ import type { TeamLinkApi } from "./team-link-routes";
 import type { StatusLightsApi } from "./status-light-routes";
 import type { ScheduledAwakeApi } from "./scheduled-awake-routes";
 import type { FawkesRebirthApi } from "./fawkes-rebirth-routes";
+import type { BrowserProfilesApi } from "./browser-profile-routes";
 import type { ChatApprovalsApi } from "./chat-approval-routes";
 import type { RemoteRelayApi } from "./remote-relay-routes";
 import type { PhoenixConfig } from "@phoenix/config";
@@ -1314,6 +1315,8 @@ export interface CoreServices {
   scheduledAwake?: ScheduledAwakeApi;
   /** Fawkes rebirth (Phase 91): opt-in milestones and high contrast; the celebration itself is pushed as an event. */
   fawkesRebirth?: FawkesRebirthApi;
+  /** Browser profiles (Phase 96): bookmarks, sync choices and extension approvals; absent without an OS secret store. */
+  browserProfiles?: BrowserProfilesApi;
   /** Chat approvals (Phase 86): the provider callback door; the capability is off until enabled. */
   chatApprovals?: ChatApprovalsApi;
   /** Remote access relay (Phase 87): off by default; absent without an OS secret store. */
