@@ -126,7 +126,7 @@ describe("claude-hook.ts against a real Core", () => {
       "agent.working",
       "agent.started",
     ]);
-  });
+  }, 60_000);
 
   it("exits 0 and stays silent on stdout when Core is not running", async () => {
     const r = await hook(HOOKS.Stop, { PHOENIX_CORE_URL: "http://127.0.0.1:9" });

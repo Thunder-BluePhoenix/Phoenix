@@ -192,13 +192,19 @@ async function rig(): Promise<Rig> {
   return { c, store, gateway: holder.gateway, calls, session: started.result as SessionView };
 }
 
+/**
+ * The block arrives line by line, so waiting for its opening line is not enough: wait for `includes`
+ * AND for the closing line, then return what the session received.
+ */
 const received = async (r: Rig, includes: string) => {
   let lines: string[] = [];
   await vi.waitFor(async () => {
     const detail = (await r.c.run("session.get", { session_id: r.session.id, output_lines: 200 }))
       .result as { output: { stdout: string[] } };
     lines = detail.output.stdout;
-    expect(lines.join("\n")).toContain(includes);
+    const all = lines.join("\n");
+    expect(all).toContain(includes);
+    expect(lines).toContain(`RECV PHOENIX-CONTEXT ${NONCE} END>>>`);
   });
   return lines.filter((l) => l.startsWith("RECV ")).join("\n");
 };
