@@ -96,6 +96,7 @@ import { ImprovementRuntime } from "./improvement";
 import { LocalRegistryRuntime, type LocalRegistryConfig } from "./registry";
 import { SyncRuntime, type SyncTransportFactory } from "./sync";
 import { DemoRuntime, type DemoTuning } from "./demo";
+import { TeamWebhooks, WEBHOOK_SETTINGS_KEY } from "./team-status/webhooks";
 import { WorkflowsRuntime } from "./workflows";
 
 export interface PetSettings {
@@ -213,6 +214,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly proactive: ProactiveRuntime;
   readonly calendar: CalendarService;
   readonly engineeringSignals: EngineeringSignalsRuntime;
+  /** Incoming webhooks (Phase 92): off by default; absent without an OS secret store. */
+  readonly teamWebhooks: TeamWebhooks | undefined;
   readonly digest: DailyDigestService;
   /** Knowledge graph and provenance (Phase 38). */
   readonly graph: GraphRuntime;
@@ -529,6 +532,16 @@ export class PhoenixRuntime implements CoreServices {
         () => this.memory.settings().allow_sensitive_meetings,
       ),
     });
+    // Per-source secrets must live in the OS credential store; without one nothing can be signed.
+    this.teamWebhooks = options.secrets
+      ? new TeamWebhooks({
+          settings: this.settings,
+          secrets: options.secrets,
+          bus: this.bus,
+          audit: this.permissions.audit,
+          clock: { now: Date.now },
+        })
+      : undefined;
     this.digest = new DailyDigestService({
       now: Date.now,
       repositories: () => {
@@ -1091,6 +1104,16 @@ export class PhoenixRuntime implements CoreServices {
         count: this.settings.get<string[]>(ENGINEERING_SIGNALS_ROOTS_KEY, []).length,
         deleted_with:
           'remove the folders (PUT /api/engineering-signals/watched-roots {"watchedRoots":[]})',
+      },
+      {
+        id: "team_webhook_sources",
+        description:
+          "Incoming webhook sources you created (Phase 92): each source's id, the event types it may send and its enabled state, in settings. Each source's signing secret is kept only in the OS credential store. Deliveries become local events; nothing is sent anywhere. Off by default.",
+        count: Object.keys(
+          this.settings.get<{ sources?: Record<string, unknown> }>(WEBHOOK_SETTINGS_KEY, {})
+            .sources ?? {},
+        ).length,
+        deleted_with: "revoke each source (DELETE /api/team/webhooks/sources/:source)",
       },
     ];
   }

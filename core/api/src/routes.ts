@@ -20,6 +20,7 @@ import { dictationRoutes } from "./dictation-routes";
 import { notetakerRoutes } from "./notetaker-routes";
 import { digestRoutes } from "./digest-routes";
 import { calendarRoutes } from "./calendar-routes";
+import { teamWebhookRoutes } from "./team-webhook-routes";
 import { engineeringSignalsRoutes } from "./engineering-signals-routes";
 import { multimodalRoutes } from "./multimodal-routes";
 import { improvementRoutes } from "./improvement-routes";
@@ -54,7 +55,7 @@ const isCoreOnlyEvent = (type: unknown): boolean =>
  * emit through `ctx.emit`, so `POST /api/events` refuses anything that claims to be one of them.
  */
 const IN_PROCESS_ONLY =
-  /^(vercel|stripe|n8n|resend|notion|calcom|calendar|spotify|apple_music|portfolio)(\.|$)/;
+  /^(vercel|stripe|n8n|resend|notion|calcom|calendar|spotify|apple_music|portfolio|webhook-[a-z0-9_-]+)(\.|$)/;
 const isInProcessOnly = (value: unknown): boolean =>
   typeof value === "string" && IN_PROCESS_ONLY.test(value);
 
@@ -387,5 +388,6 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...(s.digest ? digestRoutes(s.digest) : []),
     ...(s.calendar ? calendarRoutes(s.calendar) : []),
     ...(s.engineeringSignals ? engineeringSignalsRoutes(s.engineeringSignals) : []),
+    ...(s.teamWebhooks ? teamWebhookRoutes(s.teamWebhooks) : []),
   ];
 }

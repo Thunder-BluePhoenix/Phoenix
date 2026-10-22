@@ -82,13 +82,13 @@ A frame is accepted only if the sender is on the **local roster** (id, locally c
 
 ## Wiring the parent must do
 
-None of this is wired into `PhoenixRuntime`, `CoreServices`, `routes.ts` or the web UI (those are shared files).
+**Done (incoming webhooks only):** `PhoenixRuntime` constructs `TeamWebhooks` with the OS secret store (when one is supplied), `CoreServices.teamWebhooks` exposes it, `buildRoutes` registers `teamWebhookRoutes`, `ApiServer` already skips authentication for `route.public`, and `POST /api/events` refuses a `webhook-<source>` source. `core/runtime/test/team-webhooks-wiring.test.ts` drives it through the real server. The privacy inventory lists the sources as `team_webhook_sources`. Still open: nothing in the web UI creates a source, and the CORS allow-list needs no change because senders are servers.
 
-1. Construct `TeamWebhooks` with `{settings, secrets: <OS store>, bus, audit, clock}` and register `teamWebhookRoutes(service)` in `buildRoutes`. Export the module from `core/api/src/index.ts`.
-2. `ApiServer.onRequest` already skips `authenticate` for `route.public`; nothing else is needed for the ingest route. Check that `access-control-allow-headers` does not need `x-phoenix-*` (these callers are servers, not browsers).
-3. Construct `TeamSharing`, `TeamPresence` (roster from a pairing flow), `TeamStatus`; subscribe `bus.subscribe("team-status", ["deploy.*","agent_run.*","kage.meeting.*"], e => sharing.observe(e))`; call `status.broadcast()` on `sharing.subscribe` and on a timer shorter than 3 minutes; feed relay frames to `status.receive()`. Register `teamStatusRoutes`.
-4. Provide the identity private key from the OS store through `TeamStatusIdentity.privateKeyPem()` (the Phase 87 core identity can be reused or a separate key generated).
-5. Web UI and `useT()` strings for the consent and webhook screens (not part of this slice).
+**Not wired (team status):** `TeamSharing`, `TeamPresence` and `TeamStatus`, their routes and the web UI.
+
+1. Construct `TeamSharing`, `TeamPresence` (roster from a pairing flow), `TeamStatus`; subscribe `bus.subscribe("team-status", ["deploy.*","agent_run.*","kage.meeting.*"], e => sharing.observe(e))`; call `status.broadcast()` on `sharing.subscribe` and on a timer shorter than 3 minutes; feed relay frames to `status.receive()`. Register `teamStatusRoutes`.
+2. Provide the identity private key from the OS store through `TeamStatusIdentity.privateKeyPem()` (the Phase 87 core identity can be reused or a separate key generated).
+3. Web UI and `useT()` strings for the consent and webhook screens (not part of this slice).
 
 ## Limitations and unmet exit criteria
 

@@ -20,6 +20,7 @@ import type { PhoneApi } from "./phone-routes";
 import type { DigestService } from "./digest-routes";
 import type { CalendarApi } from "./calendar-routes";
 import type { EngineeringSignalsApi } from "./engineering-signals-routes";
+import type { TeamWebhookApi } from "./team-webhook-routes";
 import type { PhoenixConfig } from "@phoenix/config";
 import type { EventBus } from "@phoenix/event-bus";
 import type { Logger } from "@phoenix/logging";
@@ -1289,6 +1290,8 @@ export interface CoreServices {
   digest?: DigestService;
   calendar?: CalendarApi;
   engineeringSignals?: EngineeringSignalsApi;
+  /** Incoming webhooks (Phase 92); absent when no OS secret store is available. */
+  teamWebhooks?: TeamWebhookApi;
   petSettings?(): unknown;
   setPetSettings?(input: unknown): unknown;
   /** Persists the user's sleep preference. */
