@@ -165,6 +165,10 @@ describe("the written command really runs (real statusline.ts, real shell)", () 
           });
           const out: Buffer[] = [];
           child.stdout.on("data", (c: Buffer) => out.push(c));
+          // A command that never reads stdin (echo, printf) may exit first; that is not a failure.
+          child.stdin.on("error", (error: NodeJS.ErrnoException) => {
+            if (error.code !== "EPIPE") throw error;
+          });
           child.stdin.end(stdin);
           return new Promise<{ code: number | null; out: Buffer }>((resolve) =>
             child.on("close", (code) => resolve({ code, out: Buffer.concat(out) })),
