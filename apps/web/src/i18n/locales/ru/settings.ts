@@ -140,4 +140,11 @@ export const settings: Record<keyof typeof ensettings, string> = {
   "settings.privacy.telemetryLabel": "Телеметрия:",
   "settings.privacy.telemetryNone": "Phoenix не отправляет телеметрию.",
   "settings.privacy.externalAiLabel": "Внешний ИИ:",
+  "settings.eventSource.title": "События терминала от других программ",
+  "settings.eventSource.intro":
+    "Настоящие события терминала приходят от собственной возможности терминала Phoenix. Любая программа с вашим токеном сессии тоже может отправить событие, якобы пришедшее из терминала, и оно будет выглядеть так же в вашей активности, инженерных сигналах и сводке.",
+  "settings.eventSource.reserve": "Отклонять события, заявляющие, что они из терминала",
+  "settings.eventSource.note":
+    "По умолчанию выключено. Когда включено, симулятор событий Phoenix и другие локальные инструменты, отправляющие события терминала с вашим токеном сессии, отклоняются. События самой возможности терминала не затрагиваются.",
+  "settings.eventSource.loadFailed": "Не удалось загрузить этот параметр.",
 };

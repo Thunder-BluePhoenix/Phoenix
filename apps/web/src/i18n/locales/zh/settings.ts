@@ -123,4 +123,11 @@ export const settings: Record<keyof typeof ensettings, string> = {
   "settings.privacy.telemetryLabel": "遥测：",
   "settings.privacy.telemetryNone": "Phoenix 不发送任何遥测数据。",
   "settings.privacy.externalAiLabel": "外部 AI：",
+  "settings.eventSource.title": "来自其他程序的终端事件",
+  "settings.eventSource.intro":
+    "真正的终端事件来自 Phoenix 自己的终端能力。任何持有你会话令牌的程序也可以发布声称来自终端的事件，它在你的活动、工程信号和摘要中看起来完全一样。",
+  "settings.eventSource.reserve": "拒绝声称来自终端的事件",
+  "settings.eventSource.note":
+    "默认关闭。开启后，Phoenix 的事件模拟器以及其他使用你的会话令牌发布终端事件的本地工具会被拒绝。终端能力本身发出的事件不受影响。",
+  "settings.eventSource.loadFailed": "无法加载此设置。",
 };

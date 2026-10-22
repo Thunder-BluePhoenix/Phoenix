@@ -136,4 +136,11 @@ export const settings: Record<keyof typeof ensettings, string> = {
   "settings.privacy.telemetryLabel": "টেলিমেট্রি:",
   "settings.privacy.telemetryNone": "Phoenix কোনো টেলিমেট্রি পাঠায় না।",
   "settings.privacy.externalAiLabel": "বাহ্যিক AI:",
+  "settings.eventSource.title": "অন্য প্রোগ্রাম থেকে টার্মিনাল ইভেন্ট",
+  "settings.eventSource.intro":
+    "আসল টার্মিনাল ইভেন্ট আসে Phoenix-এর নিজস্ব টার্মিনাল সক্ষমতা থেকে। আপনার সেশন টোকেন থাকা যেকোনো প্রোগ্রাম এমন ইভেন্টও পাঠাতে পারে যা বলে সেটি টার্মিনাল থেকে এসেছে, এবং তা আপনার কার্যকলাপ, ইঞ্জিনিয়ারিং সিগন্যাল ও ডাইজেস্টে হুবহু একই দেখাবে।",
+  "settings.eventSource.reserve": "টার্মিনাল থেকে এসেছে দাবি করা ইভেন্ট প্রত্যাখ্যান করুন",
+  "settings.eventSource.note":
+    "ডিফল্টে বন্ধ। চালু করলে Phoenix-এর ইভেন্ট সিমুলেটর এবং আপনার সেশন টোকেন দিয়ে টার্মিনাল ইভেন্ট পাঠানো অন্য স্থানীয় টুল প্রত্যাখ্যাত হবে। টার্মিনাল সক্ষমতার নিজস্ব ইভেন্ট প্রভাবিত হয় না।",
+  "settings.eventSource.loadFailed": "এই সেটিং লোড করা যায়নি।",
 };

@@ -45,7 +45,7 @@ Proactive engineering signals from data Phoenix already collects.
 
 ### Security review
 
-A static read-only review by tools (not a human audit) was followed by fixes, each with tests. **Not fixed (open):** terminal events are forgeable by any session-token holder unless the user turns on the `terminal` reservation (`PUT /api/events/source-policy`, off by default, no settings screen yet), which can feed the history provider.
+A static read-only review by tools (not a human audit) was followed by fixes, each with tests. **Not fixed (open):** terminal events are forgeable by any session-token holder unless the user turns on the `terminal` reservation (Settings, or `PUT /api/events/source-policy`; off by default), which can feed the history provider.
 
 ### What was not built
 

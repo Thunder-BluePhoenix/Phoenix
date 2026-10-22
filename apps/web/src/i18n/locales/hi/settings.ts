@@ -135,4 +135,11 @@ export const settings: Record<keyof typeof ensettings, string> = {
   "settings.privacy.telemetryLabel": "टेलीमेट्री:",
   "settings.privacy.telemetryNone": "Phoenix कोई टेलीमेट्री नहीं भेजता।",
   "settings.privacy.externalAiLabel": "बाहरी AI:",
+  "settings.eventSource.title": "अन्य प्रोग्राम से टर्मिनल इवेंट",
+  "settings.eventSource.intro":
+    "असली टर्मिनल इवेंट Phoenix की अपनी टर्मिनल क्षमता से आते हैं। आपका सेशन टोकन रखने वाला कोई भी प्रोग्राम ऐसा इवेंट भी भेज सकता है जो कहता है कि वह टर्मिनल से आया है, और वह आपकी गतिविधि, इंजीनियरिंग सिग्नल और डाइजेस्ट में बिल्कुल वैसा ही दिखेगा।",
+  "settings.eventSource.reserve": "टर्मिनल से आने का दावा करने वाले इवेंट अस्वीकार करें",
+  "settings.eventSource.note":
+    "डिफ़ॉल्ट रूप से बंद। चालू होने पर Phoenix का इवेंट सिमुलेटर और आपके सेशन टोकन से टर्मिनल इवेंट भेजने वाले अन्य स्थानीय टूल अस्वीकार कर दिए जाते हैं। टर्मिनल क्षमता के अपने इवेंट प्रभावित नहीं होते।",
+  "settings.eventSource.loadFailed": "यह सेटिंग लोड नहीं हो सकी।",
 };

@@ -138,4 +138,11 @@ export const settings: Record<keyof typeof ensettings, string> = {
   "settings.privacy.telemetryLabel": "Telemetría:",
   "settings.privacy.telemetryNone": "Phoenix no envía telemetría.",
   "settings.privacy.externalAiLabel": "IA externa:",
+  "settings.eventSource.title": "Eventos de terminal de otros programas",
+  "settings.eventSource.intro":
+    "Los eventos de terminal reales provienen de la propia capacidad de terminal de Phoenix. Cualquier programa que tenga tu token de sesión también puede publicar un evento que diga venir de la terminal, y se vería igual en tu actividad, señales de ingeniería y resumen.",
+  "settings.eventSource.reserve": "Rechazar eventos que afirman venir de la terminal",
+  "settings.eventSource.note":
+    "Desactivado por defecto. Al activarlo, se rechazan el simulador de eventos de Phoenix y otras herramientas locales que publican eventos de terminal con tu token de sesión. Los eventos de la propia capacidad de terminal no se ven afectados.",
+  "settings.eventSource.loadFailed": "No se pudo cargar este ajuste.",
 };

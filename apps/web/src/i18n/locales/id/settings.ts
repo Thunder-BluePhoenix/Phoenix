@@ -131,4 +131,11 @@ export const settings: Record<keyof typeof ensettings, string> = {
   "settings.privacy.telemetryLabel": "Telemetri:",
   "settings.privacy.telemetryNone": "Phoenix tidak mengirim telemetri.",
   "settings.privacy.externalAiLabel": "AI eksternal:",
+  "settings.eventSource.title": "Peristiwa terminal dari program lain",
+  "settings.eventSource.intro":
+    "Peristiwa terminal yang asli berasal dari kemampuan terminal Phoenix sendiri. Program apa pun yang memegang token sesi Anda juga dapat mengirim peristiwa yang mengaku berasal dari terminal, dan akan terlihat sama di aktivitas, sinyal rekayasa, dan ringkasan Anda.",
+  "settings.eventSource.reserve": "Tolak peristiwa yang mengaku berasal dari terminal",
+  "settings.eventSource.note":
+    "Nonaktif secara default. Saat aktif, simulator peristiwa Phoenix dan alat lokal lain yang mengirim peristiwa terminal dengan token sesi Anda ditolak. Peristiwa dari kemampuan terminal itu sendiri tidak terpengaruh.",
+  "settings.eventSource.loadFailed": "Pengaturan ini tidak dapat dimuat.",
 };

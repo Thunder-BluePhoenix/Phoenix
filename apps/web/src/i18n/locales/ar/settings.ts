@@ -133,4 +133,11 @@ export const settings: Record<keyof typeof ensettings, string> = {
   "settings.privacy.telemetryLabel": "القياس عن بُعد:",
   "settings.privacy.telemetryNone": "لا يرسل Phoenix أي قياسات عن بُعد.",
   "settings.privacy.externalAiLabel": "الذكاء الاصطناعي الخارجي:",
+  "settings.eventSource.title": "أحداث الطرفية من برامج أخرى",
+  "settings.eventSource.intro":
+    "أحداث الطرفية الحقيقية تأتي من قدرة الطرفية الخاصة بـ Phoenix. يمكن لأي برنامج يملك رمز جلستك أن ينشر أيضًا حدثًا يزعم أنه جاء من الطرفية، وسيبدو مطابقًا في نشاطك وإشارات الهندسة والملخص.",
+  "settings.eventSource.reserve": "رفض الأحداث التي تزعم أنها من الطرفية",
+  "settings.eventSource.note":
+    "متوقف افتراضيًا. عند التفعيل يُرفض محاكي أحداث Phoenix وأي أدوات محلية أخرى تنشر أحداث الطرفية برمز جلستك. أحداث قدرة الطرفية نفسها لا تتأثر.",
+  "settings.eventSource.loadFailed": "تعذّر تحميل هذا الإعداد.",
 };

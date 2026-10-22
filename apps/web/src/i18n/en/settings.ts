@@ -146,4 +146,12 @@ export const settings = {
   "settings.privacy.telemetryLabel": "Telemetry:",
   "settings.privacy.telemetryNone": "Phoenix sends no telemetry.",
   "settings.privacy.externalAiLabel": "External AI:",
+
+  "settings.eventSource.title": "Terminal events from other programs",
+  "settings.eventSource.intro":
+    "Real terminal events come from Phoenix's own terminal capability. Any program that holds your session token can also post an event that says it came from the terminal, and it would look the same in your activity, engineering signals and digest.",
+  "settings.eventSource.reserve": "Refuse events that claim to come from the terminal",
+  "settings.eventSource.note":
+    "Off by default. When on, Phoenix's event simulator and other local tools that post terminal events with your session token are refused. Events from the terminal capability itself are not affected.",
+  "settings.eventSource.loadFailed": "Could not load this setting.",
 } as const;
