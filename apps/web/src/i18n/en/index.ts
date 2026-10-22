@@ -2,9 +2,13 @@
 // Copyright (C) 2026 Phoenix contributors
 import { agents } from "./agents";
 import { automation } from "./automation";
+import { calendar } from "./calendar";
 import { capture } from "./capture";
 import { common } from "./common";
+import { digest } from "./digest";
+import { focus } from "./focus";
 import { handoff } from "./handoff";
+import { machine } from "./machine";
 import { mcp } from "./mcp";
 import { memory } from "./memory";
 import { mission } from "./mission";
@@ -16,6 +20,7 @@ import { safety } from "./safety";
 import { services } from "./services";
 import { settings } from "./settings";
 import { shell } from "./shell";
+import { signals } from "./signals";
 
 /** Every English message: the source text, bundled with the app and the fallback for every key. */
 export const en = {
@@ -35,6 +40,11 @@ export const en = {
   ...mission,
   ...ports,
   ...handoff,
+  ...focus,
+  ...digest,
+  ...calendar,
+  ...signals,
+  ...machine,
 } as const;
 
 /** A message id, e.g. "common.button.save". A misspelt id is a compile error. */

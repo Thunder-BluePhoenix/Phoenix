@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+export const machine = {
+  "machine.title": "Состояние компьютера и локальные модели",
+  "machine.intro":
+    "Просмотр ресурсов и управление моделями только через локальные службы. Изменения требуют подтверждения.",
+  "machine.disabled": "Включите мониторинг компьютера для использования панели.",
+  "machine.refresh": "Проверить состояние",
+  "machine.disk": "Свободное место",
+  "machine.memory": "Доступная память",
+  "machine.cpu": "Загрузка ЦП",
+  "machine.battery": "Батарея",
+  "machine.thermal": "Температура",
+  "machine.unavailable": "Недоступно",
+  "machine.warning": "Предупреждения: {warnings}",
+  "machine.provider": "Локальная служба",
+  "machine.ollama": "Ollama",
+  "machine.lmstudio": "LM Studio",
+  "machine.models": "Установленные модели",
+  "machine.list": "Показать модели",
+  "machine.none": "Модели не найдены.",
+  "machine.name": "Идентификатор модели",
+  "machine.size": "Размер: {size} ГиБ",
+  "machine.loaded": "Загружена",
+  "machine.fit": "Проверить совместимость",
+  "machine.fit.ok": "Оценка места и памяти достаточна.",
+  "machine.fit.disk": "Недостаточно места на диске.",
+  "machine.fit.memory": "Недостаточно доступной памяти.",
+  "machine.fit.unknown": "Невозможно проверить место или память.",
+  "machine.download": "Скачать…",
+  "machine.remove": "Удалить…",
+  "machine.run": "Запустить…",
+  "machine.cancel": "Отмена",
+  "machine.confirm": "Разрешить {action} для {name}?",
+  "machine.note":
+    "Без достоверного размера модели загрузка запрещена. Локальный API LM Studio не удаляет скачанные модели.",
+  "machine.cleanup": "Предложить очистку",
+  "machine.cleanup.note":
+    "Предлагаются только установленные незагруженные модели; другие файлы и кеши не удаляются.",
+  "machine.failed": "Не удалось выполнить локальную операцию.",
+  "machine.done": "Локальная операция завершена. Обновите список моделей.",
+} as const;

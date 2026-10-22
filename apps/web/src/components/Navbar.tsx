@@ -58,6 +58,12 @@ export const Navbar = forwardRef<FawkesAvatarHandle, NavbarProps>(function Navba
         <a href="#/mission" aria-current={route === "/mission" ? "page" : undefined}>
           {t("mission.nav")}
         </a>
+        <a href="#/calendar" aria-current={route === "/calendar" ? "page" : undefined}>
+          {t("calendar.title")}
+        </a>
+        <a href="#/digest" aria-current={route.startsWith("/digest") ? "page" : undefined}>
+          {t("digest.title")}
+        </a>
         <a href="#/recap" aria-current={route === "/recap" ? "page" : undefined}>
           {t("shell.nav.recap")}
         </a>

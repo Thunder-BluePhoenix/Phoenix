@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+export const machine = {
+  "machine.title": "মেশিনের স্বাস্থ্য ও স্থানীয় মডেল",
+  "machine.intro":
+    "এই কম্পিউটারের সম্পদ দেখুন এবং শুধুমাত্র স্থানীয় পরিষেবা দিয়ে মডেল পরিচালনা করুন। পরিবর্তনে অনুমোদন প্রয়োজন।",
+  "machine.disabled": "প্যানেল ব্যবহার করতে মেশিন স্বাস্থ্য চালু করুন।",
+  "machine.refresh": "স্বাস্থ্য পরীক্ষা",
+  "machine.disk": "ফাঁকা ডিস্ক",
+  "machine.memory": "উপলব্ধ মেমরি",
+  "machine.cpu": "CPU চাপ",
+  "machine.battery": "ব্যাটারি",
+  "machine.thermal": "তাপমাত্রা",
+  "machine.unavailable": "অনুপলব্ধ",
+  "machine.warning": "সতর্কতা: {warnings}",
+  "machine.provider": "স্থানীয় পরিষেবা",
+  "machine.ollama": "Ollama",
+  "machine.lmstudio": "LM Studio",
+  "machine.models": "ইনস্টল করা মডেল",
+  "machine.list": "মডেল দেখুন",
+  "machine.none": "কোনো মডেল পাওয়া যায়নি।",
+  "machine.name": "মডেলের পরিচয়",
+  "machine.size": "আকার: {size} GiB",
+  "machine.loaded": "লোড করা",
+  "machine.fit": "সামঞ্জস্য পরীক্ষা",
+  "machine.fit.ok": "আনুমানিক ডিস্ক ও মেমরি যথেষ্ট।",
+  "machine.fit.disk": "ডিস্কে পর্যাপ্ত স্থান নেই।",
+  "machine.fit.memory": "পর্যাপ্ত মেমরি নেই।",
+  "machine.fit.unknown": "ডিস্ক বা মেমরি যাচাই করা যায়নি।",
+  "machine.download": "ডাউনলোড…",
+  "machine.remove": "সরান…",
+  "machine.run": "চালান…",
+  "machine.cancel": "বাতিল",
+  "machine.confirm": "{name}-এর {action} অনুমোদন করবেন?",
+  "machine.note":
+    "বিশ্বস্ত মডেল আকার ছাড়া ডাউনলোড প্রত্যাখ্যাত। LM Studio স্থানীয় API ডাউনলোড করা মডেল সরায় না।",
+  "machine.cleanup": "পরিষ্কারের পরামর্শ",
+  "machine.cleanup.note":
+    "শুধু ইনস্টল করা কিন্তু লোড না হওয়া মডেল সুপারিশ করা হয়; অন্য ফাইল বা ক্যাশ সরানো হয় না।",
+  "machine.failed": "স্থানীয় কাজ সম্পন্ন হয়নি।",
+  "machine.done": "স্থানীয় কাজ সম্পন্ন। সর্বশেষ অবস্থা দেখতে তালিকা রিফ্রেশ করুন।",
+} as const;

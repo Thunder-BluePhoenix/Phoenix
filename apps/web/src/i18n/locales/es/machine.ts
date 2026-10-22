@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+export const machine = {
+  "machine.title": "Estado del equipo y modelos locales",
+  "machine.intro":
+    "Consulta los recursos del equipo y gestiona modelos mediante servicios locales. Los cambios requieren aprobación.",
+  "machine.disabled": "Activa Estado del equipo para usar este panel.",
+  "machine.refresh": "Comprobar estado",
+  "machine.disk": "Disco libre",
+  "machine.memory": "Memoria disponible",
+  "machine.cpu": "Carga de CPU",
+  "machine.battery": "Batería",
+  "machine.thermal": "Temperatura",
+  "machine.unavailable": "No disponible",
+  "machine.warning": "Avisos: {warnings}",
+  "machine.provider": "Servicio local",
+  "machine.ollama": "Ollama",
+  "machine.lmstudio": "LM Studio",
+  "machine.models": "Modelos instalados",
+  "machine.list": "Listar modelos",
+  "machine.none": "No se encontraron modelos.",
+  "machine.name": "Identificador del modelo",
+  "machine.size": "Tamaño: {size} GiB",
+  "machine.loaded": "Cargado",
+  "machine.fit": "Comprobar capacidad",
+  "machine.fit.ok": "Hay espacio y memoria estimados suficientes.",
+  "machine.fit.disk": "No hay suficiente espacio libre.",
+  "machine.fit.memory": "No hay suficiente memoria disponible.",
+  "machine.fit.unknown": "No se puede verificar el espacio o la memoria.",
+  "machine.download": "Descargar…",
+  "machine.remove": "Eliminar…",
+  "machine.run": "Ejecutar…",
+  "machine.cancel": "Cancelar",
+  "machine.confirm": "¿Autorizar {action} de {name}?",
+  "machine.note":
+    "Se rechaza la descarga sin un tamaño verificado. La API local de LM Studio no permite eliminar modelos descargados.",
+  "machine.cleanup": "Sugerir limpieza",
+  "machine.cleanup.note":
+    "Solo se sugieren modelos instalados sin cargar; no se eliminan otros archivos ni cachés.",
+  "machine.failed": "No se pudo completar la operación local.",
+  "machine.done": "Operación local completada. Actualiza la lista de modelos.",
+} as const;

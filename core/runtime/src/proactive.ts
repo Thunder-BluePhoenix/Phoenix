@@ -53,6 +53,7 @@ export class ProactiveRuntime {
       notifications: NotificationService;
       bus: EventBus;
       killSwitchEngaged: () => boolean;
+      onPreferencesChanged?: () => void;
     },
   ) {}
   /** No polling is armed until a persisted opt-in includes an explicit cadence. */
@@ -154,11 +155,12 @@ export class ProactiveRuntime {
     }
     if (
       record.capabilities !== undefined &&
-      (!Array.isArray(record.capabilities) || record.capabilities.some((c) => c !== SOURCE))
+      (!Array.isArray(record.capabilities) ||
+        record.capabilities.some((c) => c !== SOURCE && c !== "engineering-signals"))
     )
       throw new PhoenixError(
         ErrorCode.INVALID_REQUEST,
-        "Only kage is a supported proactive source",
+        "Only kage and engineering-signals are supported proactive sources",
       );
     try {
       this.d.notifications.setProactivePreferences(
@@ -172,6 +174,7 @@ export class ProactiveRuntime {
       );
     }
     if (this.running) this.schedule();
+    this.d.onPreferencesChanged?.();
     return this.status();
   }
 

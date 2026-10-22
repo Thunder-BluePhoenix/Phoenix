@@ -142,4 +142,18 @@ describe("proactive policy", () => {
     ).toBeNull();
     reopened.close();
   });
+  it("keeps the cadence for an explicitly opted-in engineering source and clears it on revocation", () => {
+    const { service } = rig();
+    service.setProactivePreferences("alice", {
+      enabled: true,
+      capabilities: ["engineering-signals"],
+    });
+    expect(service.setProactivePreferences("alice", { cadenceMinutes: 60 }).cadenceMinutes).toBe(
+      60,
+    );
+    expect(
+      service.setProactivePreferences("alice", { capabilities: [] }).cadenceMinutes,
+    ).toBeNull();
+    expect(() => service.setProactivePreferences("alice", { cadenceMinutes: 60 })).toThrow();
+  });
 });

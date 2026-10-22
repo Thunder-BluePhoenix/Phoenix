@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+export const machine = {
+  "machine.title": "Saúde da máquina e modelos locais",
+  "machine.intro":
+    "Consulte os recursos e gerencie modelos apenas por serviços locais. Mudanças exigem aprovação.",
+  "machine.disabled": "Ative Saúde da máquina para usar este painel.",
+  "machine.refresh": "Verificar saúde",
+  "machine.disk": "Disco livre",
+  "machine.memory": "Memória disponível",
+  "machine.cpu": "Carga da CPU",
+  "machine.battery": "Bateria",
+  "machine.thermal": "Temperatura",
+  "machine.unavailable": "Indisponível",
+  "machine.warning": "Avisos: {warnings}",
+  "machine.provider": "Serviço local",
+  "machine.ollama": "Ollama",
+  "machine.lmstudio": "LM Studio",
+  "machine.models": "Modelos instalados",
+  "machine.list": "Listar modelos",
+  "machine.none": "Nenhum modelo encontrado.",
+  "machine.name": "Identificador do modelo",
+  "machine.size": "Tamanho: {size} GiB",
+  "machine.loaded": "Carregado",
+  "machine.fit": "Verificar capacidade",
+  "machine.fit.ok": "Disco e memória estimados suficientes.",
+  "machine.fit.disk": "Espaço em disco insuficiente.",
+  "machine.fit.memory": "Memória disponível insuficiente.",
+  "machine.fit.unknown": "Não foi possível verificar disco ou memória.",
+  "machine.download": "Baixar…",
+  "machine.remove": "Remover…",
+  "machine.run": "Executar…",
+  "machine.cancel": "Cancelar",
+  "machine.confirm": "Aprovar {action} de {name}?",
+  "machine.note":
+    "Download recusado sem tamanho confiável. A API local do LM Studio não exclui modelos baixados.",
+  "machine.cleanup": "Sugerir limpeza",
+  "machine.cleanup.note":
+    "Apenas modelos instalados e não carregados são sugeridos; nenhum outro arquivo ou cache é excluído.",
+  "machine.failed": "Não foi possível concluir a operação local.",
+  "machine.done": "Operação local concluída. Atualize a lista de modelos.",
+} as const;

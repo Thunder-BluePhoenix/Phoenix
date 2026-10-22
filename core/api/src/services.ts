@@ -17,6 +17,9 @@ import type { MissionApi } from "./mission-routes";
 import type { McpApi } from "./mcp-routes";
 import type { HandoffApi, SecretGuardApi } from "./handoff-routes";
 import type { PhoneApi } from "./phone-routes";
+import type { DigestService } from "./digest-routes";
+import type { CalendarApi } from "./calendar-routes";
+import type { EngineeringSignalsApi } from "./engineering-signals-routes";
 import type { PhoenixConfig } from "@phoenix/config";
 import type { EventBus } from "@phoenix/event-bus";
 import type { Logger } from "@phoenix/logging";
@@ -1283,6 +1286,9 @@ export interface CoreServices {
   secretGuard?: SecretGuardApi;
   phone?: PhoneApi;
   demo?: DemoApi;
+  digest?: DigestService;
+  calendar?: CalendarApi;
+  engineeringSignals?: EngineeringSignalsApi;
   petSettings?(): unknown;
   setPetSettings?(input: unknown): unknown;
   /** Persists the user's sleep preference. */

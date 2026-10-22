@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+export const machine = {
+  "machine.title": "Machine health and local models",
+  "machine.intro":
+    "Read this computer's resources and manage local models through loopback-only services. Changes require approval.",
+  "machine.disabled": "Enable Machine health to use this panel.",
+  "machine.refresh": "Check health",
+  "machine.disk": "Free disk",
+  "machine.memory": "Available memory",
+  "machine.cpu": "CPU load",
+  "machine.battery": "Battery",
+  "machine.thermal": "Temperature",
+  "machine.unavailable": "Unavailable",
+  "machine.warning": "Warnings: {warnings}",
+  "machine.provider": "Local service",
+  "machine.ollama": "Ollama",
+  "machine.lmstudio": "LM Studio",
+  "machine.models": "Installed models",
+  "machine.list": "List models",
+  "machine.none": "No models found.",
+  "machine.name": "Model identifier",
+  "machine.size": "Size: {size} GiB",
+  "machine.loaded": "Loaded",
+  "machine.fit": "Check fit",
+  "machine.fit.ok": "Fits estimated disk and available memory.",
+  "machine.fit.disk": "Not enough free disk.",
+  "machine.fit.memory": "Not enough available memory.",
+  "machine.fit.unknown": "Cannot verify space or memory.",
+  "machine.download": "Download…",
+  "machine.remove": "Remove…",
+  "machine.run": "Run…",
+  "machine.cancel": "Cancel",
+  "machine.confirm": "Approve {action} of {name}?",
+  "machine.note":
+    "Downloading is refused unless a trusted model size is available. LM Studio cannot delete downloaded models through its local API.",
+  "machine.cleanup": "Suggest cleanup",
+  "machine.cleanup.note":
+    "Only installed, unloaded models are suggested; no other files or caches are deleted.",
+  "machine.failed": "Could not complete the local operation.",
+  "machine.done": "Local operation completed. Refresh the model list to see the latest state.",
+} as const;

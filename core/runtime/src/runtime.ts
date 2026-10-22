@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import type { Viewer } from "@phoenix/ai-memory";
 import type { AgentDefinition } from "@phoenix/ai-orchestrator";
 import type { FetchLike } from "@phoenix/ai-models";
@@ -84,6 +84,14 @@ import { AppearanceRuntime, type KnownSource } from "./appearance";
 import { UiSettingsRuntime } from "./ui-settings";
 import { ProactiveRuntime } from "./proactive";
 import { RetrievalRuntime } from "./retrieval";
+import { DailyDigestService } from "./daily-digest/service";
+import { CalendarService, StoreMeetingPrepQuery } from "./calendar";
+import { assertDeployAllowed } from "./calendar/freeze";
+import { ENGINEERING_SIGNALS_ROOTS_KEY, EngineeringSignalsRuntime } from "./engineering-signals";
+import {
+  terminalHistorySource,
+  unavailableAdvisoryProvider,
+} from "./engineering-signals/providers";
 import { ImprovementRuntime } from "./improvement";
 import { LocalRegistryRuntime, type LocalRegistryConfig } from "./registry";
 import { SyncRuntime, type SyncTransportFactory } from "./sync";
@@ -203,6 +211,9 @@ export class PhoenixRuntime implements CoreServices {
   /** Review of meeting decisions and action items (Phase 35). */
   readonly meetingReview: MeetingReviewRuntime;
   readonly proactive: ProactiveRuntime;
+  readonly calendar: CalendarService;
+  readonly engineeringSignals: EngineeringSignalsRuntime;
+  readonly digest: DailyDigestService;
   /** Knowledge graph and provenance (Phase 38). */
   readonly graph: GraphRuntime;
   readonly sync: SyncRuntime;
@@ -325,6 +336,12 @@ export class PhoenixRuntime implements CoreServices {
       state: this.state,
       logger: this.logger,
       ...(options.secrets ? { secrets: options.secrets } : {}),
+      // A calendar deploy freeze (owner opt-in) holds production commands and Vercel redeploys.
+      preflight: async ({ capabilityId, command, sideEffect }) => {
+        if (sideEffect !== "production" && !(capabilityId === "vercel" && command === "redeploy"))
+          return;
+        assertDeployAllowed(await this.calendar.freezeSnapshot(), Date.now());
+      },
     });
     for (const [id, name, permission] of [
       ["capture-microphone", "Microphone capture", "microphone"],
@@ -483,6 +500,17 @@ export class PhoenixRuntime implements CoreServices {
         meetingsRevoked: () => this.graph.removeMeetingData(),
       },
     });
+    this.engineeringSignals = new EngineeringSignalsRuntime({
+      settings: this.settings,
+      notifications: this.notifications,
+      bus: this.bus,
+      userId: () => this.memory.agentContext().viewer.id,
+      killSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
+      // No capability manifest backs this source: the explicit Phase 52 opt-in is the gate.
+      capabilityEnabled: () => true,
+      advisories: unavailableAdvisoryProvider(),
+      history: terminalHistorySource(this.events),
+    });
     this.proactive = new ProactiveRuntime({
       meetings: this.meetings,
       review: this.meetingReview,
@@ -491,6 +519,32 @@ export class PhoenixRuntime implements CoreServices {
       notifications: this.notifications,
       bus: this.bus,
       killSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
+      onPreferencesChanged: () => this.engineeringSignals.consentChanged(),
+    });
+    this.calendar = new CalendarService({
+      capabilities: this.capabilities,
+      prep: new StoreMeetingPrepQuery(
+        this.meetings,
+        this.meetingReview.service.items,
+        () => this.memory.settings().allow_sensitive_meetings,
+      ),
+    });
+    this.digest = new DailyDigestService({
+      now: Date.now,
+      repositories: () => {
+        try {
+          const config = this.capabilities.get("git").config.repositories;
+          return Array.isArray(config)
+            ? config.filter((path): path is string => typeof path === "string" && isAbsolute(path))
+            : [];
+        } catch {
+          return [];
+        }
+      },
+      events: () => this.events.recent({ limit: 1_000 }).map((row) => row.event),
+      sessions: () => this.agentLive.sessions(),
+      meetingsAllowed: () => this.memory.settings().allow_sensitive_meetings,
+      meetings: () => this.meetings.list({ limit: 500 }),
     });
 
     const policyStore = new PolicyStore(this.db);
@@ -890,6 +944,7 @@ export class PhoenixRuntime implements CoreServices {
     this.syncTimer.unref();
     await this.capabilities.restore();
     this.proactive.startScheduler();
+    await this.engineeringSignals.startScheduler();
     // After the capabilities are back, so the tool catalog is complete when triggers arrive.
     this.workflows.start();
 
@@ -1029,6 +1084,14 @@ export class PhoenixRuntime implements CoreServices {
         count: this.handoff.store.count(),
         deleted_with: 'handoff (POST /api/privacy/delete {"data":"handoff"}) or delete the note',
       },
+      {
+        id: "engineering_signals_roots",
+        description:
+          "Absolute folder paths you chose for engineering signals (Phase 82). Only the paths are stored, in settings; findings are computed on demand and never saved. Nothing is scanned or notified unless you also opt in to engineering notifications.",
+        count: this.settings.get<string[]>(ENGINEERING_SIGNALS_ROOTS_KEY, []).length,
+        deleted_with:
+          'remove the folders (PUT /api/engineering-signals/watched-roots {"watchedRoots":[]})',
+      },
     ];
   }
 
@@ -1119,6 +1182,7 @@ export class PhoenixRuntime implements CoreServices {
     this.stopping ??= (async () => {
       await this.demo?.stop();
       this.proactive.stopScheduler();
+      this.engineeringSignals.stopScheduler();
       this.dictation.close();
       this.voice.close();
       this.recap.close();

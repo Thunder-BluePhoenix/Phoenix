@@ -524,6 +524,19 @@ importers:
         specifier: workspace:*
         version: link:../../sdk/testing
 
+  capabilities/calendar:
+    dependencies:
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+      '@phoenix/service-kit':
+        specifier: workspace:*
+        version: link:../../sdk/service-kit
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
   capabilities/docker:
     dependencies:
       '@phoenix/logging':
@@ -594,6 +607,16 @@ importers:
       '@phoenix/protocol':
         specifier: workspace:*
         version: link:../../protocol
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
+  capabilities/machine:
+    dependencies:
       '@phoenix/sdk':
         specifier: workspace:*
         version: link:../../sdk/capability
@@ -944,6 +967,9 @@ importers:
       '@phoenix/capability-calcom':
         specifier: workspace:*
         version: link:../../capabilities/calcom
+      '@phoenix/capability-calendar':
+        specifier: workspace:*
+        version: link:../../capabilities/calendar
       '@phoenix/capability-docker':
         specifier: workspace:*
         version: link:../../capabilities/docker
@@ -962,6 +988,9 @@ importers:
       '@phoenix/capability-kage':
         specifier: workspace:*
         version: link:../../capabilities/kage
+      '@phoenix/capability-machine':
+        specifier: workspace:*
+        version: link:../../capabilities/machine
       '@phoenix/capability-manager':
         specifier: workspace:*
         version: link:../capability-manager

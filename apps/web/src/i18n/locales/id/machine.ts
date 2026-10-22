@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+export const machine = {
+  "machine.title": "Kesehatan mesin dan model lokal",
+  "machine.intro":
+    "Lihat sumber daya komputer dan kelola model lewat layanan lokal saja. Perubahan memerlukan persetujuan.",
+  "machine.disabled": "Aktifkan Kesehatan mesin untuk memakai panel ini.",
+  "machine.refresh": "Periksa kesehatan",
+  "machine.disk": "Ruang disk kosong",
+  "machine.memory": "Memori tersedia",
+  "machine.cpu": "Beban CPU",
+  "machine.battery": "Baterai",
+  "machine.thermal": "Suhu",
+  "machine.unavailable": "Tidak tersedia",
+  "machine.warning": "Peringatan: {warnings}",
+  "machine.provider": "Layanan lokal",
+  "machine.ollama": "Ollama",
+  "machine.lmstudio": "LM Studio",
+  "machine.models": "Model terpasang",
+  "machine.list": "Daftar model",
+  "machine.none": "Tidak ada model.",
+  "machine.name": "Identitas model",
+  "machine.size": "Ukuran: {size} GiB",
+  "machine.loaded": "Dimuat",
+  "machine.fit": "Periksa kecocokan",
+  "machine.fit.ok": "Perkiraan disk dan memori mencukupi.",
+  "machine.fit.disk": "Ruang disk tidak cukup.",
+  "machine.fit.memory": "Memori tersedia tidak cukup.",
+  "machine.fit.unknown": "Disk atau memori tidak dapat diverifikasi.",
+  "machine.download": "Unduh…",
+  "machine.remove": "Hapus…",
+  "machine.run": "Jalankan…",
+  "machine.cancel": "Batal",
+  "machine.confirm": "Setujui {action} untuk {name}?",
+  "machine.note":
+    "Unduhan ditolak tanpa ukuran model tepercaya. API lokal LM Studio tidak dapat menghapus model unduhan.",
+  "machine.cleanup": "Sarankan pembersihan",
+  "machine.cleanup.note":
+    "Hanya model terpasang yang tidak dimuat disarankan; berkas atau cache lain tidak dihapus.",
+  "machine.failed": "Operasi lokal gagal diselesaikan.",
+  "machine.done": "Operasi lokal selesai. Segarkan daftar model.",
+} as const;

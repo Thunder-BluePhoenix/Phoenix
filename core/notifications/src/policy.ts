@@ -4,7 +4,15 @@ import type { SettingsStore } from "@phoenix/persistence";
 
 export interface ProactiveInsight {
   id: string;
-  kind: "deploy_window_risk" | "related_incident" | "unassigned_action" | "dependency_update";
+  kind:
+    | "deploy_window_risk"
+    | "related_incident"
+    | "unassigned_action"
+    | "dependency_update"
+    | "advisory"
+    | "flaky_test"
+    | "duration_trend"
+    | "config_drift";
   capabilityId: string;
   title: string;
   body: string;
@@ -54,6 +62,9 @@ const empty = (): PolicyState => ({
 const key = (user: string) => `notifications.proactive.${user}`;
 const stateKey = (user: string) => `notifications.proactive.state.${user}`;
 const validId = (id: string) => typeof id === "string" && /^[a-zA-Z0-9_.:-]{1,160}$/.test(id);
+/** Only built-in sources with a scheduler may opt in to a cadence. */
+const scheduledSource = (capabilities: readonly string[]) =>
+  capabilities.includes("kage") || capabilities.includes("engineering-signals");
 const minute = (value: string): number => {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value))
     throw new Error("quiet hours require HH:mm in 24-hour time");
@@ -91,7 +102,7 @@ export class ProactiveNotificationPolicy {
     if (
       prefs.enabled !== true ||
       !Array.isArray(prefs.capabilities) ||
-      !prefs.capabilities.includes("kage") ||
+      !scheduledSource(prefs.capabilities) ||
       ![15, 30, 60, 1440].includes(prefs.cadenceMinutes as number)
     )
       prefs.cadenceMinutes = null;
@@ -138,10 +149,10 @@ export class ProactiveNotificationPolicy {
     if (
       input.cadenceMinutes !== undefined &&
       input.cadenceMinutes !== null &&
-      (!next.enabled || !next.capabilities.includes("kage"))
+      (!next.enabled || !scheduledSource(next.capabilities))
     )
-      throw new Error("proactive cadence requires Kage opt-in");
-    if (!next.enabled || !next.capabilities.includes("kage")) next.cadenceMinutes = null;
+      throw new Error("proactive cadence requires a scheduled source opt-in");
+    if (!next.enabled || !scheduledSource(next.capabilities)) next.cadenceMinutes = null;
     else if (next.cadenceMinutes !== null && ![15, 30, 60, 1440].includes(next.cadenceMinutes))
       throw new Error("invalid proactive cadence");
     this.settings.set(key(user), next);

@@ -120,6 +120,7 @@ describe("events", () => {
   it("refuses events that claim to come from a built-in service capability, by type or by source", async () => {
     const { api, runtime } = await start();
     const families = [
+      "calendar",
       "vercel",
       "stripe",
       "n8n",
@@ -143,6 +144,18 @@ describe("events", () => {
     for (const type of ["vercelish.deploy.failed", "build.vercel.failed", "notionx.page"]) {
       expect([type, (await api("POST", "/api/events", event(type))).status]).toEqual([type, 202]);
     }
+  });
+
+  it("refuses forged provider events at the public event ingestion endpoint", async () => {
+    const { api } = await start();
+    for (const family of ["github", "issues"]) {
+      const bySource = await api("POST", "/api/events", event("build.failed", { source: family }));
+      expect(bySource.status, family).toBe(403);
+      const byType = await api("POST", "/api/events", event(`${family}.ci.failed`));
+      expect(byType.status, family).toBe(403);
+    }
+    expect((await api("GET", "/api/events?source=github")).json.events).toEqual([]);
+    expect((await api("GET", "/api/events?source=issues")).json.events).toEqual([]);
   });
 
   it("rejects malformed requests", async () => {

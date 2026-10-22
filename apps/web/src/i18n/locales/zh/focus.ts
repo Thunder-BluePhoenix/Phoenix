@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+import type { focus as enFocus } from "../../en/focus";
+
+/** Machine-translated; unreviewed. */
+export const focus: Record<keyof typeof enFocus, string> = {
+  "focus.title": "专注模式",
+  "focus.start": "开始专注",
+  "focus.stop": "结束专注",
+  "focus.minutes": "分钟（留空则不限时）",
+  "focus.remaining": "剩余分钟：{count}",
+  "focus.active": "专注中",
+  "focus.inactive": "专注已关闭",
+  "focus.held": "暂存通知：{count}",
+  "focus.osDnd": "系统勿扰模式已开启",
+  "focus.osUnknown": "无法获取系统勿扰状态",
+  "focus.refresh": "刷新系统专注状态",
+  "focus.screenshot.title": "截图创建问题",
+  "focus.screenshot.capture": "选择屏幕区域…",
+  "focus.screenshot.permission": "需要屏幕录制权限。",
+  "focus.screenshot.error": "请求失败：{error}",
+  "focus.screenshot.box": "方框",
+  "focus.screenshot.arrow": "箭头",
+  "focus.screenshot.text": "文字",
+  "focus.screenshot.redact": "永久遮盖",
+  "focus.screenshot.annotationText": "标注文字",
+  "focus.screenshot.project": "仓库或项目",
+  "focus.screenshot.issueTitle": "问题标题",
+  "focus.screenshot.body": "问题描述",
+  "focus.screenshot.preview": "预览草稿",
+  "focus.screenshot.create": "请求批准并创建问题",
+  "focus.screenshot.draft": "问题草稿（尚未创建）",
+  "focus.screenshot.attachment": "支持时附加截图",
+  "focus.screenshot.noAttachment": "此平台不支持截图附件；不会发送图片。",
+  "focus.screenshot.created": "已创建问题：{url}",
+  "focus.screenshot.declined": "未获批准；未发送任何内容。",
+  "focus.screenshot.tracker": "问题跟踪器",
+  "focus.screenshot.tracker.github": "GitHub",
+  "focus.screenshot.tracker.linear": "Linear",
+  "focus.screenshot.tracker.jira": "Jira",
+};

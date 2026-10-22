@@ -38,6 +38,8 @@ import { LidActionsSettings } from "./LidActions";
 import { McpClients } from "./McpClients";
 import { PhoneLink } from "./PhoneLink";
 import { PortRadar } from "./PortRadar";
+import { MachineHealth } from "./MachineHealth";
+import { EngineeringSignals } from "./EngineeringSignals";
 import { FawkesAppearanceSection } from "./Wardrobe";
 
 /** Settings (PRD v2.0 §16, FR-014): Fawkes, notifications, capabilities, privacy, memory, AI. */
@@ -71,6 +73,8 @@ export function SettingsPage({ state }: { state: PetState }) {
       <LidActionsSettings />
       <ContinuitySettings />
       <PortRadar />
+      <MachineHealth />
+      <EngineeringSignals />
       <SupportSettings />
       <ShortcutSettings />
       <DemoSettingsSection />

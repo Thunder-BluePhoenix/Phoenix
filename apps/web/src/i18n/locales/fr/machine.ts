@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+export const machine = {
+  "machine.title": "Santé de la machine et modèles locaux",
+  "machine.intro":
+    "Consultez les ressources et gérez les modèles via des services locaux uniquement. Les modifications nécessitent une approbation.",
+  "machine.disabled": "Activez Santé de la machine pour utiliser ce panneau.",
+  "machine.refresh": "Vérifier la santé",
+  "machine.disk": "Espace disque libre",
+  "machine.memory": "Mémoire disponible",
+  "machine.cpu": "Charge CPU",
+  "machine.battery": "Batterie",
+  "machine.thermal": "Température",
+  "machine.unavailable": "Indisponible",
+  "machine.warning": "Alertes : {warnings}",
+  "machine.provider": "Service local",
+  "machine.ollama": "Ollama",
+  "machine.lmstudio": "LM Studio",
+  "machine.models": "Modèles installés",
+  "machine.list": "Lister les modèles",
+  "machine.none": "Aucun modèle trouvé.",
+  "machine.name": "Identifiant du modèle",
+  "machine.size": "Taille : {size} Gio",
+  "machine.loaded": "Chargé",
+  "machine.fit": "Vérifier la capacité",
+  "machine.fit.ok": "Disque et mémoire estimés suffisants.",
+  "machine.fit.disk": "Espace disque insuffisant.",
+  "machine.fit.memory": "Mémoire disponible insuffisante.",
+  "machine.fit.unknown": "Impossible de vérifier le disque ou la mémoire.",
+  "machine.download": "Télécharger…",
+  "machine.remove": "Supprimer…",
+  "machine.run": "Exécuter…",
+  "machine.cancel": "Annuler",
+  "machine.confirm": "Approuver {action} de {name} ?",
+  "machine.note":
+    "Téléchargement refusé sans taille vérifiée. L’API locale de LM Studio ne permet pas de supprimer les modèles téléchargés.",
+  "machine.cleanup": "Suggérer un nettoyage",
+  "machine.cleanup.note":
+    "Seuls les modèles installés non chargés sont proposés ; aucun autre fichier ni cache n’est supprimé.",
+  "machine.failed": "Impossible de terminer l’opération locale.",
+  "machine.done": "Opération locale terminée. Actualisez la liste des modèles.",
+} as const;

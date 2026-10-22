@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+import type { focus as enFocus } from "../../en/focus";
+
+/** Machine-translated; unreviewed. */
+export const focus: Record<keyof typeof enFocus, string> = {
+  "focus.title": "وضع التركيز",
+  "focus.start": "بدء التركيز",
+  "focus.stop": "إنهاء التركيز",
+  "focus.minutes": "الدقائق (اتركه فارغًا بلا مؤقت)",
+  "focus.remaining": "الدقائق المتبقية: {count}",
+  "focus.active": "التركيز نشط",
+  "focus.inactive": "التركيز متوقف",
+  "focus.held": "الإشعارات المؤجلة: {count}",
+  "focus.osDnd": "وضع عدم الإزعاج في النظام نشط",
+  "focus.osUnknown": "حالة عدم الإزعاج غير متاحة",
+  "focus.refresh": "تحديث حالة تركيز النظام",
+  "focus.screenshot.title": "لقطة شاشة إلى مشكلة",
+  "focus.screenshot.capture": "اختر منطقة الشاشة…",
+  "focus.screenshot.permission": "يلزم إذن تسجيل الشاشة.",
+  "focus.screenshot.error": "تعذر إكمال الطلب: {error}",
+  "focus.screenshot.box": "مربع",
+  "focus.screenshot.arrow": "سهم",
+  "focus.screenshot.text": "نص",
+  "focus.screenshot.redact": "حجب نهائي",
+  "focus.screenshot.annotationText": "نص التعليق",
+  "focus.screenshot.project": "المستودع أو المشروع",
+  "focus.screenshot.issueTitle": "عنوان المشكلة",
+  "focus.screenshot.body": "وصف المشكلة",
+  "focus.screenshot.preview": "معاينة المسودة",
+  "focus.screenshot.create": "طلب الموافقة وإنشاء المشكلة",
+  "focus.screenshot.draft": "مسودة مشكلة (لم تنشأ)",
+  "focus.screenshot.attachment": "إرفاق اللقطة إذا كان مدعومًا",
+  "focus.screenshot.noAttachment": "لا يدعم هذا النظام إرفاق الصور؛ لن ترسل الصورة.",
+  "focus.screenshot.created": "أُنشئت المشكلة: {url}",
+  "focus.screenshot.declined": "لم تتم الموافقة؛ لم يُرسل شيء.",
+  "focus.screenshot.tracker": "متتبع المشكلات",
+  "focus.screenshot.tracker.github": "GitHub",
+  "focus.screenshot.tracker.linear": "Linear",
+  "focus.screenshot.tracker.jira": "Jira",
+};

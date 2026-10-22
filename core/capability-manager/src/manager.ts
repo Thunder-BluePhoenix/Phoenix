@@ -46,6 +46,11 @@ export interface CapabilityManagerOptions {
   defaultHealthTimeoutMs?: number;
   /** OS secret storage for capability credentials (ctx.secret). */
   secrets?: SecretStore;
+  /**
+   * Runs after the user's approval and immediately before a command is dispatched. Throwing refuses
+   * the command with that error; used for host-owned holds such as a calendar deploy freeze.
+   */
+  preflight?(command: { capabilityId: string; command: string; sideEffect: string }): Promise<void>;
 }
 
 const SECRET_NAME = /^[a-z][a-z0-9_]{0,63}$/;
@@ -568,6 +573,7 @@ export class CapabilityManager {
         );
         if (controller.signal.aborted)
           throw new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Command cancelled");
+        await this.o.preflight?.({ capabilityId: id, command, sideEffect: spec.side_effect });
         this.update(op, { status: "running" });
         const timeout = spec.timeout_ms ?? this.callTimeoutMs;
         let result: unknown;

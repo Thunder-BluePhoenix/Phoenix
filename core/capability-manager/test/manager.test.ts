@@ -15,7 +15,14 @@ import {
 } from "@phoenix/protocol";
 import { StateEngine } from "@phoenix/state-engine";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CapabilityManager, commandTargets, type CapabilityModule } from "../src";
+import {
+  CapabilityManager,
+  commandTargets,
+  type CapabilityManagerOptions,
+  type CapabilityModule,
+} from "../src";
+
+type PreflightCommand = Parameters<NonNullable<CapabilityManagerOptions["preflight"]>>[0];
 
 const managers: CapabilityManager[] = [];
 const children: ChildProcess[] = [];
@@ -24,7 +31,10 @@ afterEach(async () => {
   for (const c of children.splice(0)) c.kill("SIGKILL");
 });
 
-function setup(db: Database = openDatabase(":memory:")) {
+function setup(
+  db: Database = openDatabase(":memory:"),
+  options: Partial<CapabilityManagerOptions> = {},
+) {
   const events = new EventStore(db);
   const bus = new EventBus({ store: events, retryDelayMs: 0 });
   const published: PhoenixEvent[] = [];
@@ -40,6 +50,7 @@ function setup(db: Database = openDatabase(":memory:")) {
     state,
     callTimeoutMs: 300,
     defaultHealthIntervalMs: 60_000,
+    ...options,
   });
   managers.push(manager);
   const types = () => published.map((e) => e.event_type);
@@ -635,6 +646,124 @@ describe("commands", () => {
   });
 });
 
+describe("command preflight", () => {
+  const handlers = (order: string[]): CapabilityModule["commands"] => ({
+    status: () => {
+      order.push("dispatch:status");
+      return { ok: true };
+    },
+    deploy: () => {
+      order.push("dispatch:deploy");
+      return "deployed";
+    },
+  });
+
+  it("runs after user approval and immediately before dispatch, with the command's side effect", async () => {
+    const order: string[] = [];
+    const preflight = vi.fn(async (_c: PreflightCommand) => void order.push("preflight"));
+    const { manager, permissions } = setup(undefined, { preflight });
+    manager.registerBuiltin(builtin({ commands: handlers(order) }));
+    await manager.enable("demo");
+    const op = manager.invoke("demo", "deploy");
+    await vi.waitFor(() => expect(permissions.pendingConfirmations()).toHaveLength(1));
+    // Still waiting for the user: neither the hook nor the capability has run.
+    expect(preflight).not.toHaveBeenCalled();
+    expect(order).toEqual([]);
+    permissions.resolveConfirmation(permissions.pendingConfirmations()[0]!.id, true);
+    await vi.waitFor(() => expect(op.status).toBe("succeeded"));
+    expect(order).toEqual(["preflight", "dispatch:deploy"]);
+    expect(preflight).toHaveBeenCalledTimes(1);
+    expect(preflight).toHaveBeenCalledWith({
+      capabilityId: "demo",
+      command: "deploy",
+      sideEffect: "production",
+    });
+  });
+
+  it("never runs the hook or dispatches when the user denies the confirmation", async () => {
+    const order: string[] = [];
+    const preflight = vi.fn(async (_c: PreflightCommand) => void order.push("preflight"));
+    const { manager, permissions } = setup(undefined, { preflight });
+    manager.registerBuiltin(builtin({ commands: handlers(order) }));
+    await manager.enable("demo");
+    const op = manager.invoke("demo", "deploy");
+    await vi.waitFor(() => expect(permissions.pendingConfirmations()).toHaveLength(1));
+    permissions.resolveConfirmation(permissions.pendingConfirmations()[0]!.id, false);
+    await vi.waitFor(() => expect(op.status).toBe("failed"));
+    expect(op.error?.code).toBe(ErrorCode.PERMISSION_DENIED);
+    expect(preflight).not.toHaveBeenCalled();
+    expect(order).toEqual([]);
+  });
+
+  it("a rejecting hook fails the approved operation with its error and never dispatches", async () => {
+    const order: string[] = [];
+    const preflight = vi.fn(async (_c: PreflightCommand) => {
+      order.push("preflight");
+      throw new PhoenixError(ErrorCode.SECURITY_POLICY_BLOCKED, "Deploy freeze is active");
+    });
+    const { manager, permissions, bus, types } = setup(undefined, { preflight });
+    manager.registerBuiltin(builtin({ commands: handlers(order) }));
+    await manager.enable("demo");
+    const op = manager.invoke("demo", "deploy");
+    await vi.waitFor(() => expect(permissions.pendingConfirmations()).toHaveLength(1));
+    permissions.resolveConfirmation(permissions.pendingConfirmations()[0]!.id, true);
+    await vi.waitFor(() => expect(op.status).toBe("failed"));
+    expect(op.error).toMatchObject({
+      code: ErrorCode.SECURITY_POLICY_BLOCKED,
+      message: "Deploy freeze is active",
+    });
+    expect(op.outcomeUnknown).toBeUndefined();
+    expect(order).toEqual(["preflight"]);
+    await bus.drain();
+    expect(types()).toContain("capability.command.failed");
+    expect(types()).not.toContain("capability.command.completed");
+    expect(
+      permissions.audit.list({ limit: 100 }).find((e) => e.action === "action.failed")?.details,
+    ).toMatchObject({ operation_id: op.id, error: "Deploy freeze is active" });
+  });
+
+  it("fails closed when the hook throws something that is not a PhoenixError", async () => {
+    const order: string[] = [];
+    const preflight = vi.fn(async (_c: PreflightCommand) => {
+      throw new Error("calendar unreachable");
+    });
+    const { manager } = setup(undefined, { preflight });
+    manager.registerBuiltin(builtin({ commands: handlers(order) }));
+    await manager.enable("demo");
+    const op = await manager.invokeAndWait("demo", "status");
+    expect(op.status).toBe("failed");
+    expect(op.error).toBeDefined();
+    expect(order).toEqual([]);
+  });
+
+  it("read commands are unaffected when the hook only refuses other side effects", async () => {
+    const order: string[] = [];
+    const preflight = vi.fn(async (c: PreflightCommand) => {
+      if (c.sideEffect !== "read") {
+        throw new PhoenixError(ErrorCode.SECURITY_POLICY_BLOCKED, "Deploy freeze is active");
+      }
+    });
+    const { manager, permissions } = setup(undefined, { preflight });
+    manager.registerBuiltin(builtin({ commands: handlers(order) }));
+    await manager.enable("demo");
+
+    const read = await manager.invokeAndWait("demo", "status");
+    expect(read).toMatchObject({ status: "succeeded", result: { ok: true } });
+    expect(preflight).toHaveBeenCalledWith({
+      capabilityId: "demo",
+      command: "status",
+      sideEffect: "read",
+    });
+
+    const deploy = manager.invoke("demo", "deploy");
+    await vi.waitFor(() => expect(permissions.pendingConfirmations()).toHaveLength(1));
+    permissions.resolveConfirmation(permissions.pendingConfirmations()[0]!.id, true);
+    await vi.waitFor(() => expect(deploy.status).toBe("failed"));
+    expect(deploy.error?.code).toBe(ErrorCode.SECURITY_POLICY_BLOCKED);
+    expect(order).toEqual(["dispatch:status"]);
+  });
+});
+
 describe("health", () => {
   it("emits availability transitions only once each", async () => {
     const { manager, types, state, bus } = setup();
@@ -770,5 +899,42 @@ describe("external capabilities (separate process)", () => {
     const b = await spawnExternal();
     const { capability } = await second.manager.registerExternal(extManifest(), b.endpoint);
     expect(capability.status).toBe("enabled");
+  });
+
+  it("runs the hook before an external command is sent and sends nothing when it rejects", async () => {
+    const { endpoint } = await spawnExternal();
+    const commandCalls = async () =>
+      ((await (await fetch(`${endpoint}/__calls`)).json()) as { url: string }[])
+        .map((c) => c.url)
+        .filter((u) => u.startsWith("/commands/"));
+    const seenByHook: string[][] = [];
+    let refuse = false;
+    const preflight = vi.fn(async (_c: PreflightCommand) => {
+      seenByHook.push(await commandCalls());
+      if (refuse) throw new PhoenixError(ErrorCode.SECURITY_POLICY_BLOCKED, "Deploy freeze");
+    });
+    const { manager } = setup(undefined, { preflight });
+    await manager.registerExternal(extManifest(), endpoint);
+    await manager.enable("ext");
+
+    expect(await manager.invokeAndWait("ext", "echo", { n: 1 })).toMatchObject({
+      status: "succeeded",
+      result: { echoed: { n: 1 } },
+    });
+    expect(preflight).toHaveBeenCalledWith({
+      capabilityId: "ext",
+      command: "echo",
+      sideEffect: "read",
+    });
+    expect(seenByHook).toEqual([[]]);
+    expect(await commandCalls()).toEqual(["/commands/echo"]);
+
+    refuse = true;
+    expect(await manager.invokeAndWait("ext", "echo", { n: 2 })).toMatchObject({
+      status: "failed",
+      error: { code: ErrorCode.SECURITY_POLICY_BLOCKED, message: "Deploy freeze" },
+    });
+    expect(preflight).toHaveBeenCalledTimes(2);
+    expect(await commandCalls()).toEqual(["/commands/echo"]);
   });
 });

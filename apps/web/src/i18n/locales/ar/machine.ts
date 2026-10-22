@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+export const machine = {
+  "machine.title": "صحة الجهاز والنماذج المحلية",
+  "machine.intro":
+    "اطلع على موارد هذا الجهاز وأدر النماذج عبر خدمات محلية فقط. تتطلب التغييرات الموافقة.",
+  "machine.disabled": "فعّل صحة الجهاز لاستخدام هذه اللوحة.",
+  "machine.refresh": "فحص الصحة",
+  "machine.disk": "مساحة القرص الحرة",
+  "machine.memory": "الذاكرة المتاحة",
+  "machine.cpu": "حمل المعالج",
+  "machine.battery": "البطارية",
+  "machine.thermal": "درجة الحرارة",
+  "machine.unavailable": "غير متاح",
+  "machine.warning": "تحذيرات: {warnings}",
+  "machine.provider": "خدمة محلية",
+  "machine.ollama": "Ollama",
+  "machine.lmstudio": "LM Studio",
+  "machine.models": "النماذج المثبتة",
+  "machine.list": "عرض النماذج",
+  "machine.none": "لم يُعثر على نماذج.",
+  "machine.name": "معرّف النموذج",
+  "machine.size": "الحجم: {size} GiB",
+  "machine.loaded": "محمّل",
+  "machine.fit": "فحص الملاءمة",
+  "machine.fit.ok": "المساحة والذاكرة المقدرتان كافيتان.",
+  "machine.fit.disk": "مساحة القرص غير كافية.",
+  "machine.fit.memory": "الذاكرة المتاحة غير كافية.",
+  "machine.fit.unknown": "تعذر التحقق من المساحة أو الذاكرة.",
+  "machine.download": "تنزيل…",
+  "machine.remove": "إزالة…",
+  "machine.run": "تشغيل…",
+  "machine.cancel": "إلغاء",
+  "machine.confirm": "هل توافق على {action} لـ {name}؟",
+  "machine.note":
+    "يُرفض التنزيل دون حجم موثوق للنموذج. لا تدعم واجهة LM Studio المحلية حذف النماذج المنزلة.",
+  "machine.cleanup": "اقتراح تنظيف",
+  "machine.cleanup.note":
+    "تُقترح النماذج المثبتة غير المحملة فقط؛ لن تُحذف ملفات أخرى أو ذاكرات مؤقتة.",
+  "machine.failed": "تعذر إكمال العملية المحلية.",
+  "machine.done": "اكتملت العملية المحلية. حدّث قائمة النماذج لرؤية الحالة.",
+} as const;

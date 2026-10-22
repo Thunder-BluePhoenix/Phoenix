@@ -18,6 +18,9 @@ import { syncRoutes } from "./sync-routes";
 import { registryRoutes } from "./registry-routes";
 import { dictationRoutes } from "./dictation-routes";
 import { notetakerRoutes } from "./notetaker-routes";
+import { digestRoutes } from "./digest-routes";
+import { calendarRoutes } from "./calendar-routes";
+import { engineeringSignalsRoutes } from "./engineering-signals-routes";
 import { multimodalRoutes } from "./multimodal-routes";
 import { improvementRoutes } from "./improvement-routes";
 import { appearanceRoutes } from "./appearance-routes";
@@ -51,7 +54,7 @@ const isCoreOnlyEvent = (type: unknown): boolean =>
  * emit through `ctx.emit`, so `POST /api/events` refuses anything that claims to be one of them.
  */
 const IN_PROCESS_ONLY =
-  /^(vercel|stripe|n8n|resend|notion|calcom|spotify|apple_music|portfolio)(\.|$)/;
+  /^(vercel|stripe|n8n|resend|notion|calcom|calendar|spotify|apple_music|portfolio)(\.|$)/;
 const isInProcessOnly = (value: unknown): boolean =>
   typeof value === "string" && IN_PROCESS_ONLY.test(value);
 
@@ -126,10 +129,10 @@ export function buildRoutes(s: CoreServices): Route[] {
     }),
     route("POST", "/api/events", async ({ body, res }) => {
       const event = await body();
-      // "core" is reserved for events Phoenix itself emits, and "agents" for the agents capability
-      // (its `agent.*` events drive keep-awake grace, safety nets and handoff notes).
+      // Provider identities belong to their enabled capabilities, not arbitrary API clients.
+      // CapabilityManager ingests these through manifest-scoped ctx.emit or token ingestion.
       const postedSource = expectObject(event).source;
-      if (postedSource === "core" || postedSource === "agents") {
+      if (["core", "agents", "github", "issues"].includes(String(postedSource))) {
         throw new PhoenixError(
           ErrorCode.SECURITY_POLICY_BLOCKED,
           `Source "${String(postedSource)}" is reserved`,
@@ -146,7 +149,11 @@ export function buildRoutes(s: CoreServices): Route[] {
       // These capabilities only ever emit through their own in-process `ctx.emit`; a copy posted
       // here would be indistinguishable from a real deployment, payment or booking.
       const posted = expectObject(event);
-      if (isInProcessOnly(posted.event_type) || isInProcessOnly(posted.source)) {
+      if (
+        isInProcessOnly(posted.event_type) ||
+        isInProcessOnly(posted.source) ||
+        /^(github|issues)(\.|$)/.test(String(posted.event_type))
+      ) {
         throw new PhoenixError(
           ErrorCode.SECURITY_POLICY_BLOCKED,
           "Events of the built-in service capabilities cannot be posted",
@@ -377,5 +384,8 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...mcpRoutes(s),
     ...handoffRoutes(s),
     ...phoneRoutes(s),
+    ...(s.digest ? digestRoutes(s.digest) : []),
+    ...(s.calendar ? calendarRoutes(s.calendar) : []),
+    ...(s.engineeringSignals ? engineeringSignalsRoutes(s.engineeringSignals) : []),
   ];
 }

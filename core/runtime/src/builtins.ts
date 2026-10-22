@@ -6,11 +6,13 @@ import { createAppleMusicCapability } from "@phoenix/capability-apple-music";
 import { createDockerCapability } from "@phoenix/capability-docker";
 import { createFrappeCapability } from "@phoenix/capability-frappe";
 import { createCalcomCapability } from "@phoenix/capability-calcom";
+import { createCalendarCapability } from "@phoenix/capability-calendar";
 import { createGitCapability } from "@phoenix/capability-git";
 import { createGithubCapability } from "@phoenix/capability-github";
 import { createIssuesCapability } from "@phoenix/capability-issues";
 import { createKageCapability } from "@phoenix/capability-kage";
 import { createN8nCapability } from "@phoenix/capability-n8n";
+import { createMachineCapability } from "@phoenix/capability-machine";
 import { mockCapability } from "@phoenix/capability-mock";
 import { createNotionCapability } from "@phoenix/capability-notion";
 import { createPlanningCapability, type PlanningServices } from "@phoenix/capability-planning";
@@ -49,12 +51,14 @@ export function builtinCapabilities(
     createResendCapability(),
     createNotionCapability(),
     createCalcomCapability(),
+    createCalendarCapability(),
     createSpotifyCapability(),
     createAppleMusicCapability(),
     createPortfolioCapability(),
     terminalCapability,
     createDockerCapability(),
     createFrappeCapability(),
+    createMachineCapability(),
     createAgentsCapability(agentsServices ? { services: agentsServices } : {}),
     createAwakeCapability({ feed: () => agentsServices?.()?.events }),
     createIssuesCapability(),

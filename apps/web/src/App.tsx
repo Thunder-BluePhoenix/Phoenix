@@ -16,6 +16,12 @@ import { PlanPage } from "./components/Plans";
 import { ProvenanceNode, ProvenancePage } from "./components/Provenance";
 import { RecapPage } from "./components/Recap";
 import { MissionPage } from "./components/MissionControl";
+import {
+  DailyDigestCommitPage,
+  DailyDigestEventPage,
+  DailyDigestPage,
+} from "./components/DailyDigest";
+import { CalendarPrepPage } from "./components/CalendarPrep";
 import { SettingsPage } from "./components/Settings";
 import { WorkflowDetailPage, WorkflowRunPage, WorkflowsPage } from "./components/Workflows";
 import { isTabId, PetPanel, type TabId } from "./components/PetPanel";
@@ -173,6 +179,14 @@ export function App() {
           <RecapPage />
         ) : connection !== "unauthenticated" && route === "/mission" ? (
           <MissionPage />
+        ) : connection !== "unauthenticated" && route === "/calendar" ? (
+          <CalendarPrepPage />
+        ) : connection !== "unauthenticated" && route === "/digest" ? (
+          <DailyDigestPage />
+        ) : connection !== "unauthenticated" && route.startsWith("/digest/event/") ? (
+          <DailyDigestEventPage id={decodeURIComponent(route.slice("/digest/event/".length))} />
+        ) : connection !== "unauthenticated" && route.startsWith("/digest/commit/") ? (
+          <DailyDigestCommitPage sha={decodeURIComponent(route.slice("/digest/commit/".length))} />
         ) : (
           <Home connection={connection} />
         )}

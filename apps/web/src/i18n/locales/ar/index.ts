@@ -3,9 +3,13 @@
 import type { Messages } from "../../en";
 import { agents } from "./agents";
 import { automation } from "./automation";
+import { calendar } from "./calendar";
 import { capture } from "./capture";
 import { common } from "./common";
+import { digest } from "./digest";
+import { focus } from "./focus";
 import { handoff } from "./handoff";
+import { machine } from "./machine";
 import { mcp } from "./mcp";
 import { memory } from "./memory";
 import { mission } from "./mission";
@@ -17,6 +21,7 @@ import { safety } from "./safety";
 import { services } from "./services";
 import { settings } from "./settings";
 import { shell } from "./shell";
+import { signals } from "./signals";
 
 const messages: Messages = {
   ...common,
@@ -35,6 +40,11 @@ const messages: Messages = {
   ...mission,
   ...ports,
   ...handoff,
+  ...focus,
+  ...digest,
+  ...calendar,
+  ...signals,
+  ...machine,
 };
 
 export default messages;
