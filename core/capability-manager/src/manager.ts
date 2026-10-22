@@ -935,6 +935,8 @@ const secretRef = (id: string, name: string) => `capability.${id}.${name}`;
 
 const TARGET_PROPERTY = /(_id|^id|^project|^target)$/;
 const MAX_TARGET_CHARS = 80;
+const UNSHOWN_CHARS = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+const TAIL_TARGET = "command";
 /**
  * A command's `input_schema` property may carry `"x-phoenix-confirm": true` to have its value shown
  * in the approval prompt like a target (for example how long a keep-awake session lasts). Opt-in
@@ -960,7 +962,9 @@ function showsInPrompt(name: string, schema: Record<string, unknown> | undefined
  * The string/number values of a command input that name what is acted on (`*_id`, `id`, `project`,
  * `target`, plus any property its `input_schema` flags with `x-phoenix-confirm`), redacted and
  * clipped, so an approval request can say which deployment, execution or workflow a command is
- * about. Nothing else of the input is included.
+ * about. Nothing else of the input is included. Control and format characters are removed. A
+ * long `command` (an executable path) keeps its END with a leading ellipsis, so the executable name
+ * is what the user reads; every other value keeps its start.
  */
 export function commandTargets(
   input: unknown,
@@ -972,7 +976,13 @@ export function commandTargets(
     if (!showsInPrompt(name, inputSchema)) continue;
     if (typeof value !== "string" && typeof value !== "number") continue;
     // Redact the whole value first: clipping first could leave the start of a secret unmasked.
-    targets[name] = String(redact(String(value))).slice(0, MAX_TARGET_CHARS);
+    // Control and format characters (newlines, bidi overrides, zero-width) would let a value
+    // forge or hide text in the prompt; they go first so they cannot split a secret from the redactor.
+    const shown = String(redact(String(value).replace(UNSHOWN_CHARS, "")));
+    targets[name] =
+      name === TAIL_TARGET && shown.length > MAX_TARGET_CHARS
+        ? `…${shown.slice(shown.length - (MAX_TARGET_CHARS - 1))}`
+        : shown.slice(0, MAX_TARGET_CHARS);
   }
   return targets;
 }

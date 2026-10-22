@@ -25,6 +25,10 @@ import { uiRoutes } from "./ui-routes";
 import { attachmentRoutes } from "./attachment-routes";
 import { demoRoutes } from "./demo-routes";
 import { recapRoutes } from "./recap-routes";
+import { missionRoutes } from "./mission-routes";
+import { safetyRoutes } from "./safety-routes";
+import { mcpRoutes } from "./mcp-routes";
+import { handoffRoutes } from "./handoff-routes";
 import { phoneRoutes } from "./phone-routes";
 import type { CoreServices } from "./services";
 
@@ -38,7 +42,7 @@ const notFound = (what: string) =>
  * ones would fake it.
  */
 const CORE_ONLY_EVENT =
-  /^(agent\.(session\.step|usage\.updated)|dictation\.(listening|idle)|voice\.(listening|idle)|notetaker\.(recording|idle|meeting\.updated))$/;
+  /^(agent\.(session\.step|usage\.(updated|warning)|safety\.(loop|stall|checkpoint))|dictation\.(listening|idle)|voice\.(listening|idle)|notetaker\.(recording|idle|meeting\.updated))$/;
 const isCoreOnlyEvent = (type: unknown): boolean =>
   typeof type === "string" && CORE_ONLY_EVENT.test(type);
 
@@ -122,9 +126,14 @@ export function buildRoutes(s: CoreServices): Route[] {
     }),
     route("POST", "/api/events", async ({ body, res }) => {
       const event = await body();
-      // "core" is reserved for events Phoenix itself emits.
-      if (expectObject(event).source === "core") {
-        throw new PhoenixError(ErrorCode.SECURITY_POLICY_BLOCKED, 'Source "core" is reserved');
+      // "core" is reserved for events Phoenix itself emits, and "agents" for the agents capability
+      // (its `agent.*` events drive keep-awake grace, safety nets and handoff notes).
+      const postedSource = expectObject(event).source;
+      if (postedSource === "core" || postedSource === "agents") {
+        throw new PhoenixError(
+          ErrorCode.SECURITY_POLICY_BLOCKED,
+          `Source "${String(postedSource)}" is reserved`,
+        );
       }
       // The live agent-session signals are Core's own: a durable copy from another source would
       // be stored, replayed after reconnect and shown as a real step or usage reading.
@@ -363,6 +372,10 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...agentRelayRoutes(s),
     ...agentLiveRoutes(s),
     ...recapRoutes(s),
+    ...safetyRoutes(s),
+    ...missionRoutes(s),
+    ...mcpRoutes(s),
+    ...handoffRoutes(s),
     ...phoneRoutes(s),
   ];
 }

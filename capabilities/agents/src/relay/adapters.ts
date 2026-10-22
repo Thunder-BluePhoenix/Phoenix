@@ -8,7 +8,7 @@
 import { existsSync, statSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { codexHooksConfig } from "../approval-codex";
-import { APPROVAL_TIMEOUT } from "../approval-map";
+import { APPROVAL_TIMEOUT, approvalHookTimeoutSeconds } from "../approval-map";
 import { claudeHooksConfig } from "../claude";
 import { isRecord } from "../guards";
 import { claudeStatusLine } from "./statusline-hook";
@@ -168,7 +168,15 @@ const claudeSpec = (ctx: AdapterContext): HookSpec => {
     command: ctx.commands.approval("claude-code", APPROVAL_TIMEOUT.default),
     timeoutMs: APPROVAL_TIMEOUT.default,
   });
-  return grouped(isRecord(config.hooks) ? (config.hooks as Record<string, unknown[]>) : {});
+  const hooks = isRecord(config.hooks) ? (config.hooks as Record<string, unknown[]>) : {};
+  // Phase 79: the secret guard runs for EVERY PreToolUse (no matcher) next to the AskUserQuestion
+  // approval group. Both are Phoenix's, so install/repair/uninstall treat them as one set.
+  const guard = group({
+    type: "command",
+    command: ctx.commands.guard("claude-code", APPROVAL_TIMEOUT.default),
+    timeout: approvalHookTimeoutSeconds(APPROVAL_TIMEOUT.default),
+  });
+  return grouped({ ...hooks, PreToolUse: [...(hooks.PreToolUse ?? []), ...guard] });
 };
 
 const codexSpec = (ctx: AdapterContext): HookSpec => {
@@ -184,6 +192,14 @@ const codexSpec = (ctx: AdapterContext): HookSpec => {
     Stop: observe,
     SessionEnd: observe,
     PermissionRequest: permission,
+    // Phase 79: Codex's PreToolUse takes the same deny shape (developers.openai.com/codex/hooks).
+    // No matcher: the guard reads every tool's input. UNVERIFIED against a real Codex.
+    PreToolUse: group({
+      type: "command",
+      command: ctx.commands.guard("codex", APPROVAL_TIMEOUT.default),
+      timeout: approvalHookTimeoutSeconds(APPROVAL_TIMEOUT.default),
+      statusMessage: "Checking for secrets",
+    }),
   });
 };
 

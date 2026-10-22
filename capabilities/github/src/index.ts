@@ -449,8 +449,18 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
             additionalProperties: false,
             required: ["repository", "title", "idempotency_key"],
             properties: {
-              repository: { type: "string", pattern: REPOSITORY_PATTERN },
-              title: { type: "string", minLength: 1, maxLength: MAX_ISSUE_TITLE },
+              // Flagged so the confirmation card names where the issue goes and what it is called.
+              repository: {
+                type: "string",
+                pattern: REPOSITORY_PATTERN,
+                "x-phoenix-confirm": true,
+              },
+              title: {
+                type: "string",
+                minLength: 1,
+                maxLength: MAX_ISSUE_TITLE,
+                "x-phoenix-confirm": true,
+              },
               body: { type: "string", maxLength: MAX_ISSUE_BODY },
               labels: {
                 type: "array",

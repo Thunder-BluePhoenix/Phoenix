@@ -45,6 +45,7 @@ import {
 import { StateEngine } from "@phoenix/state-engine";
 import {
   AGENT_ADAPTERS,
+  type ActiveAgent,
   execFocus,
   focuserFor,
   type AgentsServices,
@@ -58,7 +59,12 @@ import { AgentRuntime } from "./agents";
 import { AgentApprovals } from "./agent-approvals";
 import { AgentLive, displayName } from "./agent-live";
 import { RecapRuntime } from "./recap";
+import { AgentUsageRuntime } from "./agent-usage";
+import { AgentSafety } from "./agent-safety";
 import { PhoneLink, type PhoneLinkTuning } from "./phone-link";
+import { createMcpBackends, McpServer, type McpTuning } from "./mcp";
+import { HandoffNotes, type CreatedIssue } from "./handoff-notes";
+import { SecretGuard } from "./secret-guard";
 import { AgentRelay } from "./agent-relay";
 import { AiRuntime } from "./ai";
 import { AutonomyRuntime } from "./autonomy";
@@ -159,6 +165,8 @@ export interface RuntimeOptions {
   recapTimeZone?: string;
   /** Phone link (Phase 71) tuning: tests inject the clock, the LAN addresses and a free port. */
   phone?: PhoneLinkTuning;
+  /** MCP server (Phase 76) tuning: tests inject the clock, rate limits and a free port. */
+  mcp?: McpTuning;
   /**
    * Demo mode (Phase 70) tuning (tests inject the idle timer). `false` builds no demo service: the
    * demo's own runtime is built that way, so a demo can never start another demo.
@@ -248,8 +256,18 @@ export class PhoenixRuntime implements CoreServices {
   readonly agentLive: AgentLive;
   /** Weekly recap (Phase 69): day counts only, kept past the events cap; local, no AI. */
   readonly recap: RecapRuntime;
+  /** Agent cost meter and mission control (Phase 78): reported tokens/cost, budgets, the board. */
+  readonly mission: AgentUsageRuntime;
+  /** Agent safety net (Phase 77): checkpoints, rollback with approval, loop and stall warnings. */
+  readonly agentSafety: AgentSafety;
   /** Phone link (Phase 71): off by default; a separate pinned-TLS LAN listener with device keys. */
   readonly phone: PhoneLink;
+  /** Phoenix MCP server (Phase 76): off by default; a separate loopback listener with per-client tokens. */
+  readonly mcp: McpServer;
+  /** Session handoff notes (Phase 79): deterministic notes, optional local summary, attach with preview. */
+  readonly handoff: HandoffNotes;
+  /** Secret guard results (Phase 79): what the guard hook reports, kinds and locations only. */
+  readonly secretGuard: SecretGuard;
   /** Demo mode (Phase 70): a second, isolated in-memory runtime; absent inside the demo itself. */
   readonly demo: DemoRuntime | undefined;
   /**
@@ -538,8 +556,34 @@ export class PhoenixRuntime implements CoreServices {
       unavailable: options.demo === false,
       ...options.phone,
     });
+    this.mission = new AgentUsageRuntime({
+      db: this.db,
+      settings: this.settings,
+      bus: this.bus,
+      audit: this.permissions.audit,
+      events: this.events,
+      agents: {
+        reports: async () => {
+          const op = await this.capabilities.invokeAndWait("agents", "list", {}, "mission");
+          if (op.status !== "succeeded") throw new Error("agents capability unavailable");
+          return (op.result as { agents?: ActiveAgent[] } | undefined)?.agents ?? [];
+        },
+        orchestrated: async () => {
+          const op = await this.capabilities.invokeAndWait("agents", "session.list", {}, "mission");
+          if (op.status !== "succeeded") throw new Error("agents capability unavailable");
+          return (op.result as { sessions?: SessionView[] } | undefined)?.sessions ?? [];
+        },
+      },
+      liveSessions: () => this.agentLive.sessions(),
+      aiPrices: () => this.ai.aiSettings().prices ?? {},
+      isKillSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
+      logger: this.logger.child("agent-usage"),
+      ...(options.recapClock ? { now: options.recapClock } : {}),
+      ...(options.recapTimeZone ? { timeZone: options.recapTimeZone } : {}),
+    });
     this.agentLive = new AgentLive({
       recap: this.recap,
+      tokens: this.mission,
       bus: this.bus,
       permissions: this.permissions,
       settings: this.settings,
@@ -572,6 +616,15 @@ export class PhoenixRuntime implements CoreServices {
       ...(focuser ? { focuser } : {}),
       ...(options.gitExec ? { git: options.gitExec } : {}),
     });
+    this.agentSafety = new AgentSafety({
+      db: this.db,
+      settings: this.settings,
+      bus: this.bus,
+      permissions: this.permissions,
+      notifications: this.notifications,
+      state: this.state,
+      logger: this.logger.child("agent-safety"),
+    });
     this.toolGateway = new ToolGateway({
       host: this.capabilities,
       registry,
@@ -579,6 +632,59 @@ export class PhoenixRuntime implements CoreServices {
       audit: this.permissions.audit,
       approver: approverFromPermissions(this.permissions),
       logger: this.logger,
+    });
+    this.mcp = new McpServer({
+      db: this.db,
+      settings: this.settings,
+      bus: this.bus,
+      permissions: this.permissions,
+      approvals: this.agentApprovals,
+      state: this.state,
+      backends: createMcpBackends({
+        agentLive: this.agentLive,
+        store: this.memory.store,
+        graph: this.graph.graph,
+        gateway: this.toolGateway,
+        meetingsAllowed: () => this.memory.settings().allow_sensitive_meetings,
+        now: () => new Date(),
+      }),
+      logger: this.logger.child("mcp"),
+      version: PHOENIX_VERSION,
+      unavailable: options.demo === false,
+      ...options.mcp,
+    });
+    this.secretGuard = new SecretGuard({
+      db: this.db,
+      bus: this.bus,
+      audit: this.permissions.audit,
+      logger: this.logger.child("secret-guard"),
+    });
+    this.handoff = new HandoffNotes({
+      dataDir: this.config.dataDir,
+      settings: this.settings,
+      bus: this.bus,
+      audit: this.permissions.audit,
+      logger: this.logger.child("handoff"),
+      live: this.agentLive,
+      approvals: this.agentApprovals,
+      ai: this.ai.service,
+      createIssue: async (input) => {
+        // The github capability asks for its own confirmation (side effect `external`).
+        const op = await this.capabilities.invokeAndWait(
+          "github",
+          "issue.create",
+          input,
+          "handoff",
+        );
+        if (op.status !== "succeeded") {
+          throw new PhoenixError(
+            ErrorCode.CAPABILITY_UNAVAILABLE,
+            op.error?.message ?? "GitHub did not create the issue",
+          );
+        }
+        return op.result as CreatedIssue;
+      },
+      isKillSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
     });
     this.voice = new VoiceRuntime({
       settings: this.settings,
@@ -672,6 +778,10 @@ export class PhoenixRuntime implements CoreServices {
       workflowHistory: this.workflows,
       recap: this.recap,
       phone: this.phone,
+      mcp: this.mcp,
+      agentUsage: this.mission,
+      agentCheckpoints: this.agentSafety,
+      handoff: this.handoff,
       derived: () => this.derivedInventory(),
       externalAi: () => this.ai.describeExternalProcessing(),
     });
@@ -744,15 +854,18 @@ export class PhoenixRuntime implements CoreServices {
     const address = await this.api.listen(this.config.port, this.config.host);
     if (this.options.startAgentRelay ?? true) await this.agentRelay.start();
     await this.phone.start();
+    await this.mcp.start();
     if (this.options.writeTokenFile ?? true) this.writeTokenFile();
 
     this.ticker = setInterval(() => {
       this.state.tick();
+      this.agentSafety.tick();
       this.attachments.purgeExpired();
     }, this.options.tickMs ?? 1_000);
     this.ticker.unref();
     this.privacy.prune();
     this.recap.maintain();
+    void this.agentSafety.maintain();
     // Not awaited: reading a large docs folder must not delay the API coming up.
     void this.memory.maintain().then(() => {
       this.graph.ingestMemory();
@@ -762,6 +875,7 @@ export class PhoenixRuntime implements CoreServices {
     this.pruner = setInterval(() => {
       this.privacy.prune();
       this.recap.maintain();
+      void this.agentSafety.maintain();
       void this.memory.maintain().then(() => this.graph.ingestMemory());
     }, 3_600_000);
     this.pruner.unref();
@@ -885,6 +999,36 @@ export class PhoenixRuntime implements CoreServices {
         count: this.phone.devicesStore.count(),
         deleted_with: 'phone (POST /api/privacy/delete {"data":"phone"}) or revoke a device',
       },
+      {
+        id: "mcp_clients",
+        description:
+          'Clients allowed to use the Phoenix MCP server: a name, what you granted and when it last called. Only a SHA-256 of each client token is stored, never the token. Revoke one in Settings; "Delete all" for MCP data also closes the listener.',
+        count: this.mcp.clientStore.count(),
+        deleted_with: 'mcp (POST /api/privacy/delete {"data":"mcp"}) or revoke a client',
+      },
+      {
+        id: "agent_checkpoints",
+        description:
+          "Metadata of the snapshots taken before a coding agent's first edit: the agent, the session id, the project folder and when it expires. The snapshot itself is a commit under refs/phoenix/checkpoints/ in the project's own git repository (it holds the file contents the project had, including untracked files but not ignored ones). \"Delete all\" for agent checkpoints removes the records and those refs; the unreferenced objects are removed by git's own garbage collection.",
+        count: this.agentSafety.store.count(),
+        deleted_with:
+          'agent_checkpoints (POST /api/privacy/delete {"data":"agent_checkpoints"}) or the retention setting',
+      },
+      {
+        id: "agent_usage",
+        description:
+          'Token and cost numbers coding agents reported about their own sessions, per day, session, agent and model, with the project folder name. No prompts, outputs, commands or file names. A cost is stored only when the agent reported one or you entered a price for the model. Deleted only with "Delete all" for agent usage.',
+        count: this.mission.store.count(),
+        deleted_with:
+          'agent_usage (POST /api/privacy/delete {"data":"agent_usage"} or DELETE /api/mission/usage)',
+      },
+      {
+        id: "handoff_notes",
+        description:
+          "Handoff notes written from what a coding agent reported about a session: the project folder name, changed file names with line counts, redacted commands and open questions, plus an optional model summary. Owner-only files under the Phoenix data folder, newest 50 kept. Nothing is sent anywhere unless you attach a note to a GitHub issue or copy it.",
+        count: this.handoff.store.count(),
+        deleted_with: 'handoff (POST /api/privacy/delete {"data":"handoff"}) or delete the note',
+      },
     ];
   }
 
@@ -978,6 +1122,9 @@ export class PhoenixRuntime implements CoreServices {
       this.dictation.close();
       this.voice.close();
       this.recap.close();
+      this.mission.close();
+      this.agentSafety.close();
+      this.handoff.close();
       this.notetaker.close();
       this.attachments.close();
       this.agentApprovals.close();
@@ -986,6 +1133,7 @@ export class PhoenixRuntime implements CoreServices {
       if (this.pruner) clearInterval(this.pruner);
       await this.agentRelay.stop();
       await this.phone.close();
+      await this.mcp.close();
       await this.api?.close();
       await this.agents.close();
       await this.workflows.close();

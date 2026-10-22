@@ -1,0 +1,80 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+import type { mcp as enmcp } from "../../en/mcp";
+
+/** Machine-translated; unreviewed (see ../../README.md). */
+export const mcp: Record<keyof typeof enmcp, string> = {
+  "mcp.title": "خادم MCP الخاص بـ Phoenix",
+  "mcp.intro":
+    "يتيح لوكلاء البرمجة وعملاء MCP الآخرين على هذا الحاسوب قراءة سياق Phoenix وطلب موافقتك. يبقى متوقفًا حتى تشغّله، ولا يحصل أي عميل على شيء حتى تمنحه الإذن.",
+  "mcp.unavailable": "تعذّر تحميل إعدادات خادم MCP.",
+  "mcp.demoUnavailable": "خادم MCP غير متاح في وضع العرض التجريبي.",
+  "mcp.warning.title": "قبل التشغيل",
+  "mcp.warning.local":
+    "يفتح مستمعًا منفصلًا على هذا الحاسوب فقط (127.0.0.1). لا تستطيع الحواسيب الأخرى ولا صفحات الويب الوصول إليه.",
+  "mcp.warning.token":
+    "لكل عميل رمزه الخاص، ويُعرض مرة واحدة فقط. يمكن لأي برنامج يحمل الرمز استخدام ما منحته لذلك العميل.",
+  "mcp.warning.untrusted":
+    "ما يعيده Phoenix موسوم كبيانات غير موثوقة، لكن النموذج الذي يقرؤه قد يُضلَّل بالنص الموجود فيه. امنح فقط ما يلزم.",
+  "mcp.warning.approval":
+    "تظهر الموافقة التي يطلبها العميل مع موافقات الوكلاء الأخرى. أنت وحدك، هنا أو على هاتف مقترن، من يستطيع الرد عليها.",
+  "mcp.enable.label": "السماح لعملاء MCP على هذا الحاسوب بالاتصال",
+  "mcp.saved.on": "خادم MCP قيد التشغيل.",
+  "mcp.saved.off": "خادم MCP متوقف.",
+  "mcp.port.label": "المنفذ",
+  "mcp.port.save": "حفظ المنفذ",
+  "mcp.port.saved": "تم حفظ المنفذ.",
+  "mcp.killSwitch":
+    "الإيقاف الطارئ مفعّل: خادم MCP مغلق. شغّله هنا مرة أخرى بعد إلغاء الإيقاف الطارئ.",
+  "mcp.notListening": "خادم MCP مفعّل لكنه لا يستمع. تحقق من أن المنفذ غير مستخدم.",
+  "mcp.listening.url": "العنوان",
+  "mcp.new.title": "إضافة عميل",
+  "mcp.new.name": "اسم العميل",
+  "mcp.new.create": "إنشاء عميل",
+  "mcp.new.created": "تم إنشاء العميل. ليست لديه أي أذونات بعد.",
+  "mcp.token.title": "انسخ هذا الرمز الآن",
+  "mcp.token.note":
+    "يُعرض مرة واحدة فقط ولا يحتفظ Phoenix إلا ببصمته. ضعه في بيئة العميل باسم PHOENIX_MCP_TOKEN، ولا تضعه أبدًا في سطر الأوامر.",
+  "mcp.token.label": "رمز العميل",
+  "mcp.token.copy": "نسخ الرمز",
+  "mcp.token.copied": "تم نسخ الرمز.",
+  "mcp.token.copyFailed": "تعذّر النسخ. حدّد الرمز وانسخه يدويًا.",
+  "mcp.token.done": "لقد حفظته",
+  "mcp.clients.title": "العملاء",
+  "mcp.clients.none": "لا يوجد عملاء بعد.",
+  "mcp.client.created": "أُنشئ في {date}",
+  "mcp.client.id": "معرّف العميل {id} (يظهر على بطاقات الموافقة الخاصة بهذا العميل)",
+  "mcp.client.lastUsed": "آخر استخدام {when}",
+  "mcp.client.neverUsed": "لم يُستخدم قط",
+  "mcp.client.revokedOn": "أُلغي في {date}",
+  "mcp.client.noGrants": "بلا أذونات: يمكن لهذا العميل الاتصال لكن يُرفض كل شيء.",
+  "mcp.grants.title": "ما الذي يمكن لـ {name} فعله",
+  "mcp.grants.tools": "أدوات القراءة",
+  "mcp.grants.tool.phoenix_activity": "جلسات الوكلاء الأخيرة",
+  "mcp.grants.tool.phoenix_meetings": "قرارات الاجتماعات وملخصاتها",
+  "mcp.grants.tool.phoenix_graph_query": "أسئلة الرسم البياني المعرفي",
+  "mcp.grants.tool.phoenix_ci_git_state": "حالة Git وCI",
+  "mcp.grants.tool.phoenix_memory_search": "البحث في الذاكرة",
+  "mcp.grants.actions": "الإجراءات",
+  "mcp.grants.requestApproval": "أن يطلب موافقتي",
+  "mcp.grants.notify": "أن يخبر Fawkes بحالته (يعمل، ينتظر، انتهى)",
+  "mcp.grants.memory": "الذاكرة التي يمكنه قراءتها",
+  "mcp.grants.memory.note":
+    "البحث في الذاكرة والرسم البياني والاجتماعات لا ترى إلا النطاقات أدناه، وليس كل ما تراه أنت.",
+  "mcp.grants.memory.none": "لم يُمنح أي نطاق ذاكرة.",
+  "mcp.grants.memory.scope": "النطاق",
+  "mcp.grants.memory.sensitivity": "أعلى حساسية",
+  "mcp.grants.memory.add": "إضافة نطاق",
+  "mcp.grants.memory.remove": "إزالة النطاق {scope}",
+  "mcp.grants.memory.invalid": "النطاق هو *، أو global، أو repo: أو path: أو meeting: متبوعًا بنص.",
+  "mcp.sensitivity.public": "عام",
+  "mcp.sensitivity.internal": "داخلي",
+  "mcp.sensitivity.sensitive": "حساس (اجتماعات)",
+  "mcp.grants.save": "حفظ الأذونات",
+  "mcp.grants.saved": "تم حفظ الأذونات.",
+  "mcp.revoke": "إلغاء {name}",
+  "mcp.revoke.ask": "إلغاء {name}؟ يُرفض فورًا، حتى في منتصف استدعاء.",
+  "mcp.revoke.yes": "نعم، ألغِ",
+  "mcp.revoke.no": "أبقِ",
+  "mcp.revoke.done": "تم إلغاء العميل.",
+};

@@ -556,7 +556,20 @@ paths:
                     required: [data, confirm],
                     properties:
                       {
-                        data: { enum: [events, notifications, meetings, memory, recap, phone] },
+                        data:
+                          {
+                            enum:
+                              [
+                                events,
+                                notifications,
+                                meetings,
+                                memory,
+                                recap,
+                                phone,
+                                mcp,
+                                agent_usage,
+                              ],
+                          },
                         confirm: { const: true },
                       },
                   },
@@ -719,6 +732,45 @@ paths:
       responses:
         "200": { description: "{ deleted: number }" }
         "409": { $ref: "#/components/responses/Error" }
+  /api/mission:
+    get:
+      summary: >-
+        Mission control (Phase 78): every agent session by state (working, waiting, finished,
+        stuck; mapping in docs/mission-control.md) with its reported tokens and cost, and tokens and
+        cost per day, agent, project and session over the last `days` local days, budget progress.
+        Everything is what the agents themselves reported, not verified against a provider's bill;
+        a cost is null (never zero) when unknown.
+      parameters:
+        - {
+            name: days,
+            in: query,
+            description: "1-90, default 14",
+            schema: { type: integer, minimum: 1, maximum: 90 },
+          }
+      responses:
+        "200": { description: Mission }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/mission/config:
+    get:
+      summary: Budgets, the user's own agent prices (USD per million tokens; none are built in), the stall limit and the alert thresholds
+      responses:
+        "200": { description: Config }
+    post:
+      summary: >-
+        Replace any of `budgets` (daily or session, tokens or cost, at most 20), `prices` (keyed by
+        the model id an agent reports) and `stuck_after_min` (5-1440). The whole request is checked
+        first; a bad part saves nothing.
+      responses:
+        "200": { description: Config }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/mission/usage:
+    delete:
+      summary: Delete all stored agent token and cost numbers (audited; same as POST /api/privacy/delete {data:agent_usage})
+      parameters:
+        - { name: confirm, in: query, required: true, schema: { type: string, enum: ["true"] } }
+      responses:
+        "200": { description: "{ deleted: number }" }
+        "409": { $ref: "#/components/responses/Error" }
   /api/phone/status:
     get:
       summary: >-
@@ -777,6 +829,132 @@ paths:
       summary: >-
         Revoke a paired phone (audited). It fails on its next request, at once. Closes the Phase 45
         device-revocation gap for the phone link ONLY; relay revocation is separate.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: "{ id, revoked: true }" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/handoff/notes:
+    get:
+      summary: >-
+        Handoff notes (Phase 79), newest first, without their text. Stored under <dataDir>/handoff
+        (0600, at most 50). docs/handoff-and-secret-guard.md.
+      responses:
+        "200": { description: "{ notes }" }
+    post:
+      summary: >-
+        Build a note from a live agent session ({ session_id }) with rules only; no model. 404 when
+        the session is unknown, refused while the emergency stop is engaged.
+      responses:
+        "201": { description: The note with its text }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/handoff/notes/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      summary: One note with its text.
+      responses:
+        "200": { description: The note }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Delete one note (audited).
+      responses:
+        "200": { description: "{ id, deleted: true }" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/handoff/notes/{id}/summary:
+    post:
+      summary: >-
+        Add a model summary. Local only (data class sensitive) unless allow_cloud is on, and then the
+        user's AI grants still apply. A non-local answer is discarded while cloud is not allowed.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: The note with its summary }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/handoff/notes/{id}/attach:
+    post:
+      summary: >-
+        Attach a note to commit_message, pr_description (both copy only, not wired) or task (a GitHub
+        issue through the permission gateway). Without confirm_hash it is a preview and writes
+        nothing; with the preview's hash it applies. A stale or foreign hash is refused.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: A preview or the applied result }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/handoff/settings:
+    get:
+      summary: "{ auto, allow_cloud }. Automatic notes default on; cloud summaries default off."
+      responses:
+        "200": { description: Handoff settings }
+    post:
+      summary: Change auto and/or allow_cloud (booleans). Audited.
+      responses:
+        "200": { description: Handoff settings }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/secret-guard:
+    get:
+      summary: >-
+        Secret guard counts (blocked, overridden, allowed) and the most recent rows, read from the
+        audit log. Kinds and places only, never a secret.
+      responses:
+        "200": { description: Secret guard status }
+  /api/secret-guard/result:
+    post:
+      summary: >-
+        The guard hook reports a block, an override or a clean commit/push. Refuses a payload that
+        holds a secret; an override is recorded only if the audit log shows the owner allowed a
+        SecretGuard approval carrying the same content hash.
+      responses:
+        "200": { description: Recorded }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/mcp/status:
+    get:
+      summary: >-
+        Phoenix MCP server (Phase 76): enabled, listening, port, the loopback URL while listening, kill
+        switch, number of active clients. Off by default; docs/mcp-server.md.
+      responses:
+        "200": { description: MCP server status }
+  /api/mcp/settings:
+    post:
+      summary: >-
+        Turn the MCP listener on or off and/or change its port (1024-65535). The listener binds
+        127.0.0.1 only. Audited. Refused while the emergency stop is engaged.
+      responses:
+        "200": { description: MCP server status }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/mcp/clients:
+    get:
+      summary: MCP clients with their grants and last use. Never carries a token or its hash.
+      responses:
+        "200": { description: "{ clients }" }
+    post:
+      summary: >-
+        Add a client by name. Answers 201 with { client, token } and Cache-Control no-store; the
+        token is shown ONCE and only its SHA-256 is stored. A new client has no grants.
+      responses:
+        "201": { description: "{ client, token }" }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/mcp/clients/{id}/grants:
+    post:
+      summary: >-
+        Replace a client's grants { tools, memory, request_approval, notify }. Strictly validated;
+        takes effect on the client's next call. Audited.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: The client }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/mcp/clients/{id}:
+    delete:
+      summary: Revoke a client (audited). It is refused on its very next request, even mid-call.
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:

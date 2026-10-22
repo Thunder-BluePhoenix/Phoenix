@@ -31,6 +31,7 @@ import {
   windowTitle,
   validateStep,
   validateUsage,
+  isTokenUsageBody,
   execGit,
   type FiredState,
   type GitExec,
@@ -40,6 +41,7 @@ import {
   type StepEvent,
   type TerminalFocuser,
   type UsageSample,
+  UNSEEN,
   type UsageWarning,
 } from "@phoenix/capability-agents";
 import type { EventBus } from "@phoenix/event-bus";
@@ -106,6 +108,16 @@ export interface AgentLiveDeps {
   now?: () => number;
   /** Where the weekly recap's counts go (Phase 69); absent = nothing is counted. */
   recap?: RecapSink;
+  /** Where token/cost reports go (Phase 78); absent = such a report is refused. */
+  tokens?: TokenSink;
+}
+
+/** Receives one token/cost report; `projectOf` names the folder of a session Core knows from its steps. */
+export interface TokenSink {
+  recordTokens(
+    body: unknown,
+    projectOf: (agent: string, sessionId: string) => string,
+  ): { accepted: number };
 }
 
 const notFound = (what: string) => new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, what);
@@ -117,11 +129,7 @@ const inside = (parent: string, child: string): boolean => {
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 };
 
-// eslint-disable-next-line no-control-regex
-const UNSEEN =
-  /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb]/g;
-
-/** A name from a hook, safe to show in a confirmation: no control, bidi or zero-width characters, at most 80. */
+/** A name from a hook, safe to show in a confirmation: no control, format, bidi or zero-width characters, at most 80. */
 export function displayName(raw: string): string {
   const clean = raw.replace(UNSEEN, "").trim();
   return clean.length > 80 ? `${clean.slice(0, 79)}…` : clean;
@@ -201,6 +209,14 @@ export class AgentLive implements AgentLiveApi {
   }
 
   recordUsage(body: unknown): { accepted: number } {
+    // Phase 78: a body with a session id reports tokens or cost, not a plan window.
+    if (isTokenUsageBody(body)) {
+      if (!this.d.tokens) throw invalid(["token usage is not accepted here"]);
+      return this.d.tokens.recordTokens(body, (agent, id) => {
+        const known = this.sessionsByKey[`${agent}:${id}`];
+        return known ? displayName(basename(known.project)) : "";
+      });
+    }
     const result = validateUsage(body, this.now());
     if (!result.ok) throw invalid(result.problems);
     const accepted = result.samples.filter((sample) => this.acceptUsage(sample)).length;
@@ -528,10 +544,33 @@ export class AgentLive implements AgentLiveApi {
     });
   }
 
+  /**
+   * Like `resolve`, but for an action on ONE terminal: `<agent>:<id>` picks that agent's session,
+   * and a bare id that live sessions of more than one agent answer to is refused instead of
+   * landing on whichever came first.
+   */
+  private async resolveForAction(id: string): Promise<{ live: LiveSession[] }> {
+    if (PH_ID.test(id) || !LIVE_ID.test(id)) return this.resolve(id);
+    const scoped = this.sessionsByKey[id];
+    if (scoped) return { live: [scoped] };
+    const resolved = await this.resolve(id);
+    if (new Set(resolved.live.map((s) => s.agent)).size > 1) {
+      throw invalid([
+        "More than one agent has a session with this id; name the agent as <agent>:<id>",
+      ]);
+    }
+    return resolved;
+  }
+
   // ── Jump to terminal ──────────────────────────────────────────────────────
 
+  /**
+   * `id` is a session id, or `<agent>:<id>` (the board's key) to name the agent. Two agents may
+   * use the same session id; a bare id that more than one live session answers to is refused, so
+   * an action never lands on the wrong agent's terminal.
+   */
   async focusTerminal(id: string): Promise<{ focused: true; method: string }> {
-    const { live } = await this.resolve(id);
+    const { live } = await this.resolveForAction(id);
     const target = live.find((s) => s.tty !== undefined) ?? live[0];
     if (!target) {
       throw new PhoenixError(

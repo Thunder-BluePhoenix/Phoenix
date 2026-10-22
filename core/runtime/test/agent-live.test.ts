@@ -432,6 +432,25 @@ describe("focusTerminal asks first, then focuses", () => {
     expect(r.outcomes).toEqual(["failed"]);
   });
 
+  it("two agents with the same session id: <agent>:<id> picks one, a bare id is refused", async () => {
+    const r = rig();
+    const a = project();
+    const b = project();
+    r.live.recordStep(step(a, { agent: "claude-code", tty: "/dev/ttys001", pid: 11 }));
+    r.live.recordStep(step(b, { agent: "codex", tty: "/dev/ttys002", pid: 22 }));
+    await expect(r.live.focusTerminal(LIVE)).rejects.toMatchObject({
+      code: ErrorCode.INVALID_REQUEST,
+    });
+    expect(r.authorized).toEqual([]);
+    await r.live.focusTerminal(`codex:${LIVE}`);
+    expect(r.focused).toEqual([{ project: b, pid: 22, tty: "/dev/ttys002" }]);
+    await r.live.focusTerminal(`claude-code:${LIVE}`);
+    expect(r.focused.at(-1)).toEqual({ project: a, pid: 11, tty: "/dev/ttys001" });
+    await expect(r.live.focusTerminal(`gemini:${LIVE}`)).rejects.toMatchObject({
+      code: ErrorCode.RESOURCE_NOT_FOUND,
+    });
+  });
+
   it("explains an unsupported system and an unknown session without asking anything", async () => {
     const r = rig({ focuser: null });
     r.live.recordStep(step(project()));

@@ -1,0 +1,83 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+import type { ports as enports } from "../../en/ports";
+
+/** Machine-translated; unreviewed (see ../../README.md). */
+export const ports: Record<keyof typeof enports, string> = {
+  "ports.title": "Радар портов",
+  "ports.intro":
+    "Показывает, какие программы слушают сетевые порты на этом компьютере, в каком проекте они работают и как долго. Сканирование только читает; ничего не меняется, пока вы не остановите программу и не подтвердите это.",
+  "ports.disabled":
+    "Радар портов выключен. Включите возможность «Радар портов и процессов», чтобы пользоваться им.",
+  "ports.scan": "Сканировать сейчас",
+  "ports.scanning": "Сканирование…",
+  "ports.notScanned": "Ничего ещё не сканировалось. Выберите «Сканировать сейчас».",
+  "ports.empty": "Ни одна программа не слушает порты.",
+  "ports.loadError": "Не удалось прочитать порты.",
+  "ports.scannedAt": "Просканировано в {time}",
+  "ports.count":
+    "{count, plural, one {# слушающий порт} few {# слушающих порта} many {# слушающих портов} other {# слушающего порта}}",
+  "ports.table.caption": "Слушающие порты",
+  "ports.col.port": "Порт",
+  "ports.col.process": "Программа",
+  "ports.col.project": "Проект",
+  "ports.col.age": "Работает",
+  "ports.col.notes": "Примечания",
+  "ports.col.actions": "Действия",
+  "ports.pid": "процесс {pid}",
+  "ports.age.unknown": "неизвестно",
+  "ports.age.minutes":
+    "{count, plural, one {# минуту} few {# минуты} many {# минут} other {# минуты}}",
+  "ports.age.hours": "{count, plural, one {# час} few {# часа} many {# часов} other {# часа}}",
+  "ports.age.days": "{count, plural, one {# день} few {# дня} many {# дней} other {# дня}}",
+  "ports.project.none": "нет проекта",
+  "ports.exposure.all": "доступен из сети",
+  "ports.exposure.loopback": "только этот компьютер",
+  "ports.exposure.interface": "один сетевой адрес",
+  "ports.flag.forgotten": "Возможно, забыт",
+  "ports.flag.heavy": "Тяжёлый",
+  "ports.flag.core": "Сам Phoenix",
+  "ports.usage": "ЦП {percent}%, память {mb} МБ",
+  "ports.help.forgotten":
+    "Возможно, забыт: работает в папке проекта уже более {hours, plural, one {# часа} few {# часов} many {# часов} other {# часа}}. Phoenix не может узнать, пользуется ли им ещё кто-нибудь.",
+  "ports.help.heavy":
+    "Тяжёлый: ЦП {cpu}% или больше либо память {mb} МБ или больше по данным ps (среднее значение, а не показание в реальном времени).",
+  "ports.open": "Открыть в браузере",
+  "ports.open.label": "Открыть {name} на порту {port} в браузере по умолчанию",
+  "ports.openNote":
+    "Ссылки открывают http://127.0.0.1 в браузере по умолчанию. Собственного браузера у Phoenix пока нет.",
+  "ports.stop": "Остановить…",
+  "ports.stop.label": "Остановить {name} на порту {port}",
+  "ports.refusal.self": "Это сам Phoenix, он никогда не останавливает себя.",
+  "ports.refusal.other_user": "Он принадлежит другому пользователю.",
+  "ports.refusal.system": "Это системный процесс.",
+  "ports.refusal.not_dev_tool": "Это не инструмент разработчика, который Phoenix может остановить.",
+  "ports.refusal.unsupported": "Остановка недоступна в этой системе.",
+  "ports.refusal.unknown":
+    "Phoenix не смог проверить этот процесс, поэтому не будет его останавливать.",
+  "ports.confirm.title": "Остановить {name} на порту {port}?",
+  "ports.confirm.body":
+    "После вашего подтверждения Phoenix попросит {name} (процесс {pid}) завершиться. Программа может потерять несохранённую работу.",
+  "ports.confirm.go": "Попросить остановиться",
+  "ports.confirm.cancel": "Отмена",
+  "ports.stop.waiting": "Ожидание вашего подтверждения в разделе «Подтверждения»…",
+  "ports.stop.exited": "{name} остановлен.",
+  "ports.stop.stillRunning":
+    "{name} попросили завершиться, но он всё ещё работает. Принудительная остановка завершает его немедленно, её нельзя отменить, и данные могут быть потеряны.",
+  "ports.force": "Принудительно остановить…",
+  "ports.force.label": "Принудительно остановить {name} на порту {port}",
+  "ports.force.hint":
+    "Phoenix отказывает в принудительной остановке в первые секунды после просьбы завершиться.",
+  "ports.force.confirm": "Принудительно остановить",
+  "ports.restart.note":
+    "Перезапуск недоступен: Phoenix не может безопасно восстановить исходную команду программы.",
+  "ports.watch.label": "Обновлять автоматически, пока Phoenix открыт",
+  "ports.watch.help":
+    "По умолчанию выключено. Если включить, Phoenix читает список портов каждые 15 секунд, только пока открыто окно Phoenix.",
+  "ports.noProcessTable":
+    "Не удалось прочитать список процессов, поэтому время работы и остановка недоступны.",
+  "ports.parseWarnings":
+    "Некоторые строки списка процессов или портов системы не удалось разобрать, и они пропущены (имя программы может содержать переводы строки). Некоторые программы могут отсутствовать или не останавливаться здесь; при остановке всё проверяется заново.",
+  "ports.windows.note":
+    "В Windows радар показывает только порты и названия программ; время работы, проекты и остановка недоступны.",
+};

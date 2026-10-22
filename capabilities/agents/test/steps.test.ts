@@ -9,9 +9,11 @@ import {
 import {
   MAX_STEPS,
   MAX_TARGET,
+  MAX_WORD_RUN,
   StepLog,
   lineDelta,
   mapClaudeStep,
+  redactSecrets,
   validateStep,
 } from "../src/steps";
 import { CWD, HOOKS, SESSION } from "./fixtures";
@@ -147,6 +149,30 @@ describe("mapClaudeStep", () => {
       for (const secret of secrets) expect(target, command).not.toContain(secret);
       expect(target, command).toContain("[REDACTED]");
     }
+  });
+
+  it("an attacker-sized run of word characters is cut and redacted in linear time (F6)", () => {
+    const run = (text: string) => redactSecrets(text);
+    // Shapes that made the old patterns backtrack: one huge name, a flag repeated, a key word repeated.
+    for (const [text, marker] of [
+      ["a".repeat(200_000), "a"],
+      ["--api-key".repeat(22_000), "--"],
+      ["token".repeat(40_000), "tok"],
+      ["-".repeat(200_000), "-"],
+    ] as const) {
+      const out = run(text);
+      expect(out.length, marker).toBeLessThan(text.length / 10);
+      expect(out.startsWith("…") || out.includes("[REDACTED]"), marker).toBe(true);
+    }
+  });
+
+  it("a secret assignment is still masked after a long name or value, and a long name is not an assignment", () => {
+    const value = ["s3", "cr3t", "val"].join("");
+    expect(redactSecrets(`API_TOKEN=${value} run`)).not.toContain(value);
+    expect(redactSecrets(`${"x".repeat(100)}_password=${value}`)).not.toContain(value);
+    const huge = `${"a".repeat(MAX_WORD_RUN + 50)}_token=${value}`;
+    expect(redactSecrets(huge)).not.toContain(value);
+    expect(redactSecrets("name=plain other=plain2")).toBe("name=plain other=plain2");
   });
 
   it("keeps ordinary commands readable", () => {

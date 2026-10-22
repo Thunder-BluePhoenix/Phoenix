@@ -14,6 +14,7 @@ import { createN8nCapability } from "@phoenix/capability-n8n";
 import { mockCapability } from "@phoenix/capability-mock";
 import { createNotionCapability } from "@phoenix/capability-notion";
 import { createPlanningCapability, type PlanningServices } from "@phoenix/capability-planning";
+import { createPortsCapability } from "@phoenix/capability-ports";
 import { createResendCapability } from "@phoenix/capability-resend";
 import { createPortfolioCapability } from "@phoenix/capability-portfolio";
 import { createStripeCapability } from "@phoenix/capability-stripe";
@@ -58,6 +59,7 @@ export function builtinCapabilities(
     createAwakeCapability({ feed: () => agentsServices?.()?.events }),
     createIssuesCapability(),
     createPlanningCapability({ services: planningServices }),
+    createPortsCapability(),
     ...(env === "dev" ? [mockCapability] : []),
   ];
 }

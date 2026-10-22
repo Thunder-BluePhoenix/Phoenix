@@ -38,6 +38,7 @@
     "@phoenix/capability-notion": "workspace:*",
     "@phoenix/capability-planning": "workspace:*",
     "@phoenix/capability-portfolio": "workspace:*",
+    "@phoenix/capability-ports": "workspace:*",
     "@phoenix/capability-resend": "workspace:*",
     "@phoenix/capability-spotify": "workspace:*",
     "@phoenix/capability-stripe": "workspace:*",

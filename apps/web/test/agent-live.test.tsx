@@ -575,6 +575,22 @@ describe("Plan usage", () => {
     ).toBe("40");
   });
 
+  it("ignores an agent.usage.warning that does not come from core, and reacts to one from core", async () => {
+    let current = [usage({ used_pct: 40 })];
+    const { api, ws } = openLive(LIVE, {
+      "GET /api/agent/usage": () => ({ usage: current, thresholds: [80, 95], unsupported: [] }),
+    });
+    await screen.findByRole("meter", { name: "Claude Code 5-hour plan usage" });
+    const before = getsOf(api, "/api/agent/usage");
+    current = [usage({ used_pct: 96, level: "critical" })];
+    const warning = { agent: "claude-code", window: "5h", threshold: 95, used_pct: 96 };
+    pushEvent(ws, "agent.usage.warning", warning, "terminal");
+    await flushPromises();
+    expect(getsOf(api, "/api/agent/usage")).toBe(before);
+    pushEvent(ws, "agent.usage.warning", warning);
+    await waitFor(() => expect(getsOf(api, "/api/agent/usage")).toBeGreaterThan(before));
+  });
+
   it("is silent when Core has no usage route", async () => {
     openLive(LIVE, {
       "GET /api/agent/usage": () => json({ code: "RESOURCE_NOT_FOUND", message: "Not found" }, 404),

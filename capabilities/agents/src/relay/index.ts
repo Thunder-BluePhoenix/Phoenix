@@ -9,3 +9,5 @@ export * from "./installer";
 export * from "./protocol";
 export * from "./self-test";
 export * from "./server";
+export * from "./guard-scan";
+export * from "./guard-git";

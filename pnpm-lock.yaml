@@ -672,6 +672,19 @@ importers:
         specifier: workspace:*
         version: link:../../sdk/testing
 
+  capabilities/ports:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
   capabilities/resend:
     dependencies:
       '@phoenix/logging':
@@ -967,6 +980,9 @@ importers:
       '@phoenix/capability-portfolio':
         specifier: workspace:*
         version: link:../../capabilities/portfolio
+      '@phoenix/capability-ports':
+        specifier: workspace:*
+        version: link:../../capabilities/ports
       '@phoenix/capability-resend':
         specifier: workspace:*
         version: link:../../capabilities/resend

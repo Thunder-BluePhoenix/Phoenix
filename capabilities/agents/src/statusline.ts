@@ -9,7 +9,8 @@
 //   statusline.ts [--then <previous statusLine command>]
 //
 // It (1) reads the JSON, (2) forwards ONLY the documented `rate_limits.five_hour` and
-// `rate_limits.seven_day` windows to Core, and (3) runs the user's previous statusLine command
+// `rate_limits.seven_day` windows and (Phase 78) the documented session cost `cost.total_cost_usd`
+// with the session id, model id and project folder name to Core, and (3) runs the user's previous statusLine command
 // (`--then`, or $PHOENIX_STATUSLINE_THEN) with the SAME stdin bytes and prints that command's
 // stdout byte for byte. The previous command gets a 1 second budget; a slow one is killed and
 // prints nothing. A previous command that fails makes this one exit with the same code and the
@@ -17,7 +18,12 @@
 // a Phoenix-only status line is empty by design. The status line is never held up by Core: the
 // forward runs in parallel and has its own, shorter budget.
 import { spawn } from "node:child_process";
-import { extractClaudeUsage } from "./usage";
+import {
+  extractClaudeCost,
+  extractClaudeUsage,
+  type TokenUsageReport,
+  type UsageSample,
+} from "./usage";
 import { sendLive, type LiveSendOptions } from "./live-send";
 
 export const THEN_BUDGET_MS = 1_000;
@@ -101,13 +107,27 @@ export function parseStatuslineArgs(
   return command && command.trim() !== "" ? { then: command } : {};
 }
 
-/** Usage to forward, parsed from the status JSON bytes; [] for anything that is not usable JSON. */
-function usageFrom(stdin: Buffer, nowMs: number) {
-  if (stdin.length === 0 || stdin.length > MAX_STDIN_BYTES) return [];
+/** What to forward, parsed from the status JSON bytes; nothing for anything that is not usable JSON. */
+function usageFrom(
+  stdin: Buffer,
+  nowMs: number,
+): { samples: UsageSample[]; cost: TokenUsageReport | null } {
+  if (stdin.length === 0 || stdin.length > MAX_STDIN_BYTES) return { samples: [], cost: null };
   try {
-    return extractClaudeUsage(JSON.parse(stdin.toString("utf8")), nowMs);
+    const json: unknown = JSON.parse(stdin.toString("utf8"));
+    return { samples: extractClaudeUsage(json, nowMs), cost: extractClaudeCost(json) };
   } catch {
-    return [];
+    return { samples: [], cost: null };
+  }
+}
+
+/** Sends one body to Core; a failure only warns. Never rejects. */
+async function forwardOne(deps: StatuslineDeps, body: unknown): Promise<void> {
+  try {
+    const r = await deps.send(body);
+    if (!r.ok) deps.warn(`phoenix: usage not reported (${r.message ?? "failed"})`);
+  } catch {
+    deps.warn("phoenix: usage not reported");
   }
 }
 
@@ -117,16 +137,12 @@ export async function runStatusline(
   stdin: Buffer,
   deps: StatuslineDeps,
 ): Promise<StatuslineOutcome> {
-  const samples = usageFrom(stdin, deps.now());
-  const forward =
-    samples.length > 0
-      ? deps
-          .send({ agent: "claude-code", samples })
-          .then((r) => {
-            if (!r.ok) deps.warn(`phoenix: usage not reported (${r.message ?? "failed"})`);
-          })
-          .catch(() => deps.warn("phoenix: usage not reported"))
-      : Promise.resolve();
+  const { samples, cost } = usageFrom(stdin, deps.now());
+  const forward = Promise.all([
+    samples.length > 0 ? forwardOne(deps, { agent: "claude-code", samples }) : undefined,
+    // Phase 78: the session cost Claude Code shows (a running total), as a token report.
+    cost ? forwardOne(deps, cost) : undefined,
+  ]);
   const previous = args.then
     ? deps
         .runThen(args.then, stdin, THEN_BUDGET_MS)

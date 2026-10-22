@@ -46,6 +46,7 @@ describe("built-in capabilities", () => {
         "notion",
         "portfolio",
         "plans",
+        "ports",
         "resend",
         "spotify",
         "stripe",

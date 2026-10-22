@@ -15,6 +15,7 @@ import { VoiceBanner } from "./components/Voice";
 import { PlanPage } from "./components/Plans";
 import { ProvenanceNode, ProvenancePage } from "./components/Provenance";
 import { RecapPage } from "./components/Recap";
+import { MissionPage } from "./components/MissionControl";
 import { SettingsPage } from "./components/Settings";
 import { WorkflowDetailPage, WorkflowRunPage, WorkflowsPage } from "./components/Workflows";
 import { isTabId, PetPanel, type TabId } from "./components/PetPanel";
@@ -170,6 +171,8 @@ export function App() {
           <AgentSessionDetail key={agentId} sessionId={decodeURIComponent(agentId)} />
         ) : connection !== "unauthenticated" && route === "/recap" ? (
           <RecapPage />
+        ) : connection !== "unauthenticated" && route === "/mission" ? (
+          <MissionPage />
         ) : (
           <Home connection={connection} />
         )}

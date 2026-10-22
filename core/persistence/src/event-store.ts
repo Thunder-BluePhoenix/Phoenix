@@ -91,6 +91,22 @@ export class EventStore {
     return Number(this.db.prepare("DELETE FROM events WHERE source = ?").run(source).changes);
   }
 
+  /**
+   * Deletes the events of one type whose payload has `payloadKey` (letters and underscores only).
+   * For events that share a type but are told apart by a payload field, such as the budget
+   * warnings (`agent.usage.warning` with a `budget_id`) next to the plan-usage ones without it.
+   */
+  deleteByTypeWithPayloadKey(type: string, payloadKey: string): number {
+    if (!/^[a-z_]{1,40}$/.test(payloadKey)) throw new Error("invalid payload key");
+    return Number(
+      this.db
+        .prepare(
+          "DELETE FROM events WHERE event_type = ? AND json_extract(envelope, '$.payload.' || ?) IS NOT NULL",
+        )
+        .run(type, payloadKey).changes,
+    );
+  }
+
   count(): number {
     return (this.db.prepare("SELECT COUNT(*) AS n FROM events").get() as { n: number }).n;
   }

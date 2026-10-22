@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 describe("POST /api/events and the live agent-session types", () => {
-  it.each(["agent.session.step", "agent.usage.updated"])(
+  it.each(["agent.session.step", "agent.usage.updated", "agent.usage.warning"])(
     "refuses %s from a non-core source and stores nothing",
     async (type) => {
       core = await startCore();
@@ -34,6 +34,18 @@ describe("POST /api/events and the live agent-session types", () => {
     const res = await core.api("POST", "/api/events", event("agent.something.else"));
     expect(res.status).toBe(202);
   });
+
+  it.each(["agent.ended", "agent.waiting"])(
+    "refuses %s posted as source agents, which only the agents capability may emit",
+    async (type) => {
+      core = await startCore();
+      const res = await core.api("POST", "/api/events", event(type, { source: "agents" }));
+      expect(res.status).toBe(403);
+      expect(res.json.code).toBe("SECURITY_POLICY_BLOCKED");
+      const stored = await core.api("GET", `/api/events?type=${type}`);
+      expect(stored.json.events).toEqual([]);
+    },
+  );
 });
 
 describe("WebSocket pass-through of ephemeral live events", () => {

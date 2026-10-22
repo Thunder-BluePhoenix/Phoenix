@@ -1212,4 +1212,69 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX paired_devices_revoked ON paired_devices (revoked_at);
     `,
   },
+  {
+    version: 30,
+    name: "mcp_clients",
+    // Per-client access for the Phoenix MCP server (Phase 76). A client token is 256 random bits
+    // shown once; only its SHA-256 is stored, so a read of this table cannot be replayed. `grants`
+    // is a JSON list of the read tools and memory scopes the owner allowed; a new client has none.
+    sql: `
+      CREATE TABLE mcp_clients (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 80),
+        token_hash TEXT NOT NULL UNIQUE CHECK (length(token_hash) = 64),
+        grants TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_used_at TEXT,
+        revoked_at TEXT
+      );
+      CREATE INDEX mcp_clients_revoked ON mcp_clients (revoked_at);
+    `,
+  },
+  {
+    version: 31,
+    name: "agent_checkpoints",
+    // Metadata for agent-session checkpoints (Phase 77). The snapshot itself is a commit under
+    // refs/phoenix/checkpoints/<id> in the project's own repository; it never touches the user's
+    // branches, index or stashes. No file content is stored here.
+    sql: `
+      CREATE TABLE agent_checkpoints (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL CHECK (length(session_id) BETWEEN 1 AND 120),
+        agent TEXT NOT NULL CHECK (length(agent) BETWEEN 1 AND 24),
+        project TEXT NOT NULL CHECK (length(project) BETWEEN 1 AND 1024),
+        ref TEXT NOT NULL,
+        commit_id TEXT NOT NULL CHECK (length(commit_id) BETWEEN 7 AND 64),
+        head_id TEXT,
+        file_count INTEGER NOT NULL CHECK (file_count >= 0),
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        rolled_back_at TEXT
+      );
+      CREATE INDEX agent_checkpoints_session ON agent_checkpoints (session_id);
+      CREATE INDEX agent_checkpoints_expiry ON agent_checkpoints (expires_at);
+    `,
+  },
+  {
+    version: 32,
+    name: "agent_usage",
+    // Token and cost totals per day, session, agent and model (Phase 78), from what the agent
+    // itself reports. `cost_micro` is NULL when the user has supplied no price for the model:
+    // unknown is never stored as zero. Names only (project is a folder name, never a path).
+    sql: `
+      CREATE TABLE agent_usage (
+        day TEXT NOT NULL CHECK (length(day) = 10),
+        session_id TEXT NOT NULL CHECK (length(session_id) BETWEEN 1 AND 120),
+        agent TEXT NOT NULL CHECK (length(agent) BETWEEN 1 AND 24),
+        project TEXT NOT NULL DEFAULT '' CHECK (length(project) <= 120),
+        model TEXT NOT NULL DEFAULT '' CHECK (length(model) <= 120),
+        input_tokens INTEGER NOT NULL CHECK (input_tokens >= 0),
+        output_tokens INTEGER NOT NULL CHECK (output_tokens >= 0),
+        cost_micro INTEGER CHECK (cost_micro IS NULL OR cost_micro >= 0),
+        PRIMARY KEY (day, session_id, agent, model)
+      );
+      CREATE INDEX agent_usage_day ON agent_usage (day);
+      CREATE INDEX agent_usage_session ON agent_usage (agent, session_id);
+    `,
+  },
 ];

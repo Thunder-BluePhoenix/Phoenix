@@ -553,6 +553,27 @@ describe("commands", () => {
     expect(commandTargets([1, 2])).toEqual({});
   });
 
+  it("a long command keeps its END (the executable) with a leading ellipsis; other values keep their start", () => {
+    const schema = { properties: { command: { "x-phoenix-confirm": true } } };
+    const path = `/Users/ada/${"deep/".repeat(40)}bin/node`;
+    const shown = commandTargets({ command: path, project: path }, schema);
+    expect(shown.command).toHaveLength(80);
+    expect(shown.command?.startsWith("…")).toBe(true);
+    expect(shown.command?.endsWith("/bin/node")).toBe(true);
+    expect(shown.project).toBe(path.slice(0, 80));
+    expect(commandTargets({ command: "/bin/node" }, schema).command).toBe("/bin/node");
+  });
+
+  it("strips control and format characters (newline, bidi override, zero-width) from the shown values", () => {
+    const schema = { properties: { command: { "x-phoenix-confirm": true } } };
+    const shown = commandTargets(
+      { command: "/bin/no\nde\u202E\u200B", project: "a\u2028b\u0007c" },
+      schema,
+    );
+    expect(shown.command).toBe("/bin/node");
+    expect(shown.project).toBe("abc");
+  });
+
   it("validates input, rejects unknown commands and disabled capabilities", async () => {
     const { manager } = setup();
     manager.registerBuiltin(

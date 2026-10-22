@@ -39,6 +39,7 @@ import type {
   UsageView,
 } from "../core/types";
 import { useT, type MessageKey, type Translate } from "../i18n";
+import { AgentSafety } from "./AgentSafety";
 import { Approvals } from "./Approvals";
 import { Feedback } from "./Feedback";
 
@@ -692,6 +693,7 @@ export function AgentSessionsPage() {
         />
       )}
       <LiveSessionsList />
+      <AgentSafety />
       {enabled && (
         <>
           {error && (

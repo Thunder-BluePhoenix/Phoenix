@@ -1174,6 +1174,6 @@ export function useAgentUsage(): UsageSummary {
     }),
     NO_USAGE,
     (t, source) =>
-      (t === "agent.usage.updated" && source === "core") || t === "agent.usage.warning",
+      (t === "agent.usage.updated" || t === "agent.usage.warning") && source === "core",
   ).data;
 }

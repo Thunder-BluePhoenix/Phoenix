@@ -16,6 +16,7 @@ import type { CapabilityView, JsonSchema, OrchestratedSessionList, PetState } fr
 import { formatNumber } from "../core/format";
 import { isMessageKey, useT, type MessageKey, type Translate } from "../i18n";
 import { AgentInstallersSection } from "./AgentInstallers";
+import { HandoffNotesSection } from "./HandoffNotes";
 import { ApprovalRulesSection } from "./ApprovalRules";
 import { AutomationSettings } from "./AutomationSettings";
 import { AiSettings, MemorySettingsSection } from "./MemorySettings";
@@ -34,7 +35,9 @@ import { RegistrySettingsSection } from "./RegistrySettings";
 import { SyncSettingsSection } from "./SyncSettings";
 import { ContinuitySettings } from "./Continuity";
 import { LidActionsSettings } from "./LidActions";
+import { McpClients } from "./McpClients";
 import { PhoneLink } from "./PhoneLink";
+import { PortRadar } from "./PortRadar";
 import { FawkesAppearanceSection } from "./Wardrobe";
 
 /** Settings (PRD v2.0 §16, FR-014): Fawkes, notifications, capabilities, privacy, memory, AI. */
@@ -59,12 +62,15 @@ export function SettingsPage({ state }: { state: PetState }) {
       <AutomationSettings />
       <ApprovalRulesSection />
       <AgentInstallersSection />
+      <HandoffNotesSection />
       <ProactiveSettingsSection />
       <RegistrySettingsSection />
       <SyncSettingsSection />
       <PhoneLink />
+      <McpClients />
       <LidActionsSettings />
       <ContinuitySettings />
+      <PortRadar />
       <SupportSettings />
       <ShortcutSettings />
       <DemoSettingsSection />

@@ -16,6 +16,7 @@
 //
 // Warnings fire BEFORE the limit, once per window per threshold (`UsageTracker`).
 import { isRecord } from "./guards";
+import { AGENT_ID_PATTERN } from "./report";
 import { LIVE_AGENT_PATTERN } from "./steps";
 
 export const USAGE_WINDOWS = ["5h", "weekly"] as const;
@@ -332,4 +333,160 @@ export class UsageTracker {
       })
       .sort((a, b) => a.agent.localeCompare(b.agent) || a.window.localeCompare(b.window));
   }
+}
+
+// ── Token and cost reports (Phase 78) ───────────────────────────────────────────────────────────
+//
+// What an agent says it has used in one session, as running TOTALS for that session (not
+// increments): `{agent, session_id, model?, project?, input_tokens?, output_tokens?, cost_usd?}`.
+// Core turns successive totals into per-day increments (core/runtime/src/agent-usage).
+//
+// Only one source is read from Claude Code's status line, and only fields the public documentation
+// lists (https://code.claude.com/docs/en/statusline): `session_id`, `model.id`,
+// `workspace.project_dir` / `workspace.current_dir` / `cwd` (reduced to a folder NAME) and
+// `cost.total_cost_usd`, which the documentation calls an estimate computed client-side that "may
+// differ from your actual bill". Its `context_window.total_*_tokens` are NOT read: the
+// documentation says they count what is currently in the context window (the output tokens are
+// those of the most recent response only), so they are not session totals. Claude's cumulative
+// token fields are therefore not available to Phoenix; agents that report totals themselves use
+// this same body on `POST /api/agent/live/usage` or the relay's `usage` op. Codex delivers
+// nothing to Phoenix today.
+
+/** Largest running token total one report may claim; beyond it the report is refused. */
+export const MAX_REPORTED_TOKENS = 1_000_000_000_000;
+/** Largest running cost (USD) one report may claim; beyond it the report is refused. */
+export const MAX_REPORTED_COST_USD = 100_000;
+const MAX_PROJECT_NAME = 120;
+const TOKEN_REPORT_KEYS: Record<string, true> = {
+  agent: true,
+  session_id: true,
+  model: true,
+  project: true,
+  input_tokens: true,
+  output_tokens: true,
+  cost_usd: true,
+};
+const MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,99}$/;
+/**
+ * Characters a name must not carry: control, format (bidi, zero-width, soft hyphen), line and
+ * paragraph separators, and the unassigned slots of the invisible-operators block. Used here for
+ * project names and by Core (`displayName` in agent-live.ts), so a name is cleaned by one rule
+ * wherever it is shown. Only for `replace` (the `g` flag makes `test` stateful).
+ */
+export const UNSEEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u180e\u2060-\u206f]/gu;
+
+export interface TokenUsageReport {
+  agent: string;
+  session_id: string;
+  /** '' when the agent did not name a model. */
+  model: string;
+  /** A folder NAME (never a path); '' when unknown. */
+  project: string;
+  /** Running total for the session; absent = not reported (never zero). */
+  input_tokens?: number;
+  output_tokens?: number;
+  cost_usd?: number;
+}
+
+export type TokenUsageResult =
+  { ok: true; report: TokenUsageReport } | { ok: false; problems: string[] };
+
+/** The last path segment (either separator), without control, format or bidi characters, at most 120. */
+export function folderName(path: string): string {
+  const parts = path.split(/[\\/]+/).filter((p) => p !== "");
+  return (parts[parts.length - 1] ?? "").replace(UNSEEN, "").slice(0, MAX_PROJECT_NAME);
+}
+
+/** True for a body that carries a session id: a token report, not a plan-window sample. */
+export function isTokenUsageBody(input: unknown): boolean {
+  return isRecord(input) && "session_id" in input;
+}
+
+const wholeTokens = (value: unknown): number | undefined =>
+  typeof value === "number" &&
+  Number.isSafeInteger(value) &&
+  value >= 0 &&
+  value <= MAX_REPORTED_TOKENS
+    ? value
+    : undefined;
+
+const costUsd = (value: unknown): number | undefined =>
+  typeof value === "number" &&
+  Number.isFinite(value) &&
+  value >= 0 &&
+  value <= MAX_REPORTED_COST_USD
+    ? value
+    : undefined;
+
+/** Strict: unknown fields, non-integers, negatives and values past the caps are refused. */
+export function validateTokenUsage(input: unknown): TokenUsageResult {
+  if (!isRecord(input)) return { ok: false, problems: ["usage must be an object"] };
+  const problems: string[] = [];
+  for (const key of Object.keys(input))
+    if (!Object.hasOwn(TOKEN_REPORT_KEYS, key))
+      problems.push(`unknown field "${key.slice(0, 40)}"`);
+  const { agent, session_id: sessionId, model, project } = input;
+  if (typeof agent !== "string" || !LIVE_AGENT_PATTERN.test(agent))
+    problems.push("agent is invalid");
+  if (typeof sessionId !== "string" || !AGENT_ID_PATTERN.test(sessionId))
+    problems.push("session_id is invalid");
+  if (model !== undefined && (typeof model !== "string" || !MODEL_PATTERN.test(model)))
+    problems.push("model is invalid");
+  if (project !== undefined && (typeof project !== "string" || project.length > 1_000))
+    problems.push("project is invalid");
+  const inTokens = input.input_tokens === undefined ? undefined : wholeTokens(input.input_tokens);
+  const outTokens =
+    input.output_tokens === undefined ? undefined : wholeTokens(input.output_tokens);
+  const cost = input.cost_usd === undefined ? undefined : costUsd(input.cost_usd);
+  if (input.input_tokens !== undefined && inTokens === undefined)
+    problems.push("input_tokens must be a whole number from 0 to 1e12");
+  if (input.output_tokens !== undefined && outTokens === undefined)
+    problems.push("output_tokens must be a whole number from 0 to 1e12");
+  if (input.cost_usd !== undefined && cost === undefined)
+    problems.push("cost_usd must be a number from 0 to 100000");
+  if (
+    inTokens === undefined &&
+    outTokens === undefined &&
+    cost === undefined &&
+    problems.length === 0
+  )
+    problems.push("input_tokens, output_tokens or cost_usd is required");
+  if (problems.length > 0) return { ok: false, problems };
+  return {
+    ok: true,
+    report: {
+      agent: agent as string,
+      session_id: sessionId as string,
+      model: typeof model === "string" ? model : "",
+      project: typeof project === "string" ? folderName(project) : "",
+      ...(inTokens === undefined ? {} : { input_tokens: inTokens }),
+      ...(outTokens === undefined ? {} : { output_tokens: outTokens }),
+      ...(cost === undefined ? {} : { cost_usd: cost }),
+    },
+  };
+}
+
+/**
+ * The session cost Claude Code's status line shows (`cost.total_cost_usd`), with the session id,
+ * model id and project folder name. Null when the session id or the cost is missing or unusable.
+ * Never throws; reads no other field.
+ */
+export function extractClaudeCost(statusJson: unknown): TokenUsageReport | null {
+  if (!isRecord(statusJson) || !isRecord(statusJson.cost)) return null;
+  const cost = costUsd(statusJson.cost.total_cost_usd);
+  const sessionId = statusJson.session_id;
+  if (cost === undefined || typeof sessionId !== "string" || !AGENT_ID_PATTERN.test(sessionId))
+    return null;
+  const modelId = isRecord(statusJson.model) ? statusJson.model.id : undefined;
+  const workspace = isRecord(statusJson.workspace) ? statusJson.workspace : {};
+  const dir = [workspace.project_dir, workspace.current_dir, statusJson.cwd].find(
+    (v): v is string => typeof v === "string" && v !== "",
+  );
+  return {
+    agent: "claude-code",
+    session_id: sessionId,
+    model: typeof modelId === "string" && MODEL_PATTERN.test(modelId) ? modelId : "",
+    project: dir ? folderName(dir) : "",
+    cost_usd: cost,
+  };
 }

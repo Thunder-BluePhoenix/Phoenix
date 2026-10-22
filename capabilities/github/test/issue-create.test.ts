@@ -374,6 +374,23 @@ describe("confirmation and permission gates", () => {
       h!.permissions.resolveConfirmation(c.id, false);
   });
 
+  it("the confirmation card names the repository and the title", async () => {
+    await ready();
+    h!.manager.invoke("github", "issue.create", {
+      repository: REPO,
+      title: "Agent handoff: shop (claude-code)",
+      idempotency_key: KEY,
+    });
+    await vi.waitFor(() => expect(h!.permissions.pendingConfirmations()).toHaveLength(1));
+    const card = h!.permissions.pendingConfirmations()[0]!;
+    expect(card.summary).toContain(`repository: ${REPO}`);
+    expect(card.summary).toContain("title: Agent handoff: shop (claude-code)");
+    expect(card.summary).not.toContain(KEY);
+    expect(gh!.requests).toEqual([]);
+    for (const c of h!.permissions.pendingConfirmations())
+      h!.permissions.resolveConfirmation(c.id, false);
+  });
+
   it("is unreachable while the capability is disabled", async () => {
     await ready();
     await h!.manager.disable("github");

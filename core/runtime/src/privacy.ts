@@ -28,6 +28,14 @@ const DEFAULT_RETENTION: Retention = { events: null, notifications: null, meetin
 const RECAP_KIND = "recap";
 /** Phone link data (paired device list, certificate); deletable but not a retained class. */
 const PHONE_KIND = "phone";
+/** MCP clients (Phase 76; token hashes and grants); deletable but not a retained class. */
+const MCP_KIND = "mcp";
+/** Agent token/cost reports (Phase 78); deletable but not a retained class. */
+const AGENT_USAGE_KIND = "agent_usage";
+/** Agent-session checkpoints (Phase 77); refs under refs/phoenix/checkpoints/ are deleted with them. */
+const AGENT_CHECKPOINTS_KIND = "agent_checkpoints";
+/** Handoff notes (Phase 79); owner-only files under <dataDir>/handoff are deleted with them. */
+const HANDOFF_KIND = "handoff";
 
 const DESCRIPTIONS: Record<DataClass, string> = {
   events: "What capabilities reported: commands, builds, meetings, Git.",
@@ -69,6 +77,14 @@ export interface PrivacyDeps {
   recap: { deleteAll(): { deleted: number } };
   /** Paired phones (public keys only): deleting closes the listener and reports how many went. */
   phone: { deleteAll(): { deleted: number } };
+  /** MCP clients (token hashes only): deleting closes the listener and reports how many went. */
+  mcp: { deleteAll(): { deleted: number } };
+  /** What agents reported about tokens and cost (numbers and names only). */
+  agentUsage: { deleteAll(): { deleted: number } };
+  /** Agent-session checkpoints (metadata and the refs they named). */
+  agentCheckpoints: { deleteAll(): { deleted: number } };
+  /** Handoff notes (Phase 79): files under <dataDir>/handoff. */
+  handoff: { deleteAll(): { deleted: number } };
   /** Derived data to list in the inventory, counted now. */
   derived(): DerivedInventory[];
   /** One sentence about what is sent to AI providers, derived from the live AI settings. */
@@ -141,11 +157,15 @@ export class PrivacyService {
     if (
       kind !== RECAP_KIND &&
       kind !== PHONE_KIND &&
+      kind !== MCP_KIND &&
+      kind !== AGENT_USAGE_KIND &&
+      kind !== AGENT_CHECKPOINTS_KIND &&
+      kind !== HANDOFF_KIND &&
       !(DATA_CLASSES as readonly unknown[]).includes(kind)
     ) {
       throw new PhoenixError(
         ErrorCode.INVALID_REQUEST,
-        `"data" must be one of ${[...DATA_CLASSES, RECAP_KIND, PHONE_KIND].join(", ")}`,
+        `"data" must be one of ${[...DATA_CLASSES, RECAP_KIND, PHONE_KIND, MCP_KIND, AGENT_USAGE_KIND, AGENT_CHECKPOINTS_KIND, HANDOFF_KIND].join(", ")}`,
       );
     }
     if (confirm !== true) {
@@ -169,7 +189,15 @@ export class PrivacyService {
               ? this.d.recap.deleteAll().deleted
               : kind === PHONE_KIND
                 ? this.d.phone.deleteAll().deleted
-                : this.d.memory.deleteAll();
+                : kind === MCP_KIND
+                  ? this.d.mcp.deleteAll().deleted
+                  : kind === AGENT_USAGE_KIND
+                    ? this.d.agentUsage.deleteAll().deleted
+                    : kind === AGENT_CHECKPOINTS_KIND
+                      ? this.d.agentCheckpoints.deleteAll().deleted
+                      : kind === HANDOFF_KIND
+                        ? this.d.handoff.deleteAll().deleted
+                        : this.d.memory.deleteAll();
     this.d.audit.record({
       actor: by,
       action: "privacy.data.deleted",

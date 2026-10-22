@@ -59,28 +59,52 @@ const MASK = "[REDACTED]";
 /** A quoted value (an unterminated quote runs to the end) or one unquoted word. */
 const VALUE = String.raw`"[^"]*"?|'[^']*'?|\S+`;
 const SECRET_WORD = String.raw`(?:token|secret|passw(?:or)?d|pwd|key|auth|credential)`;
-/** An assignment-like name: `API_TOKEN`, `db_password`, `MYSQL_PWD`, `DB_PASS`, `--api-key`. */
-const SECRET_NAME = String.raw`[\w.-]*${SECRET_WORD}[\w.-]*|(?:[\w.-]*[_-])?pass`;
+/** Longest assignment name or flag name looked at: every pattern below is bounded, so work is linear. */
+const MAX_NAME = 128;
+const MAX_FLAG_PART = 40;
+const SECRET_WORD_TEST = new RegExp(SECRET_WORD, "i");
+/**
+ * An assignment-like name: `API_TOKEN`, `db_password`, `MYSQL_PWD`, `DB_PASS`, `--api-key`. The
+ * pattern finds any `name=` (bounded, so a long run of word characters cannot backtrack) and the
+ * name is judged here, not inside the regex.
+ */
+const isSecretName = (name: string): boolean => SECRET_WORD_TEST.test(name) || /pass$/i.test(name);
 
 const PEM_BLOCK =
   /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g;
 const SECRET_FLAG = new RegExp(
-  String.raw`(--?[\w-]*(?:passw(?:or)?d|pwd|token|secret|api[-_]?key|auth|credential)[\w-]*)(=|\s+)(?!\[REDACTED\])(?:${VALUE})`,
+  String.raw`(--?[\w-]{0,${MAX_FLAG_PART}}(?:passw(?:or)?d|pwd|token|secret|api[-_]?key|auth|credential)[\w-]{0,${MAX_FLAG_PART}})(=|\s+)(?!\[REDACTED\])(?:${VALUE})`,
   "gi",
 );
-const SECRET_ASSIGNMENT = new RegExp(
-  String.raw`((?:${SECRET_NAME})=)(?!\[REDACTED\])(?:${VALUE})`,
-  "gi",
-);
+const NAME_EQUALS = new RegExp(String.raw`[\w.-]{1,${MAX_NAME}}=`, "g");
+const VALUE_AT = new RegExp(String.raw`(?!\[REDACTED\])(?:${VALUE})`, "y");
+
+/** Masks the value of every `secret_name=value`; the scan only moves forward. */
+function maskAssignments(text: string): string {
+  let out = "";
+  let from = 0;
+  NAME_EQUALS.lastIndex = 0;
+  for (let m = NAME_EQUALS.exec(text); m !== null; m = NAME_EQUALS.exec(text)) {
+    const end = m.index + m[0].length;
+    if (!isSecretName(m[0].slice(0, -1))) continue;
+    VALUE_AT.lastIndex = end;
+    const value = VALUE_AT.exec(text);
+    if (value === null) continue;
+    out += `${text.slice(from, end)}${MASK}`;
+    from = end + value[0].length;
+    NAME_EQUALS.lastIndex = from;
+  }
+  return out + text.slice(from);
+}
 const CURL_LONG_USER = new RegExp(String.raw`(\s--(?:proxy-)?user(?:=|\s+))(?:${VALUE})`, "g");
-const CURL_SHORT_USER = /(\bcurl\b[^|;&]*?\s-[uU]\s*)(?:"[^"]*"?|'[^']*'?|\S+)/g;
+const CURL_SHORT_USER = /(\bcurl\b[^|;&]{0,500}?\s-[uU]\s*)(?:"[^"]*"?|'[^']*'?|\S+)/g;
 const AUTH_HEADER =
   /\b((?:proxy-)?authorization|x-api-key|x-auth-token|set-cookie|cookie)(\s*[:=]\s*)[^"'\n]*/gi;
 const QUERY_SECRET = new RegExp(
-  String.raw`([?&][\w.-]*(?:${SECRET_WORD}|signature|sig)[\w.-]*=)[^&\s"'#]*`,
+  String.raw`([?&][\w.-]{0,${MAX_NAME}}(?:${SECRET_WORD}|signature|sig)[\w.-]{0,${MAX_NAME}}=)[^&\s"'#]*`,
   "gi",
 );
-const MYSQL_P = /(\bmysql\w*\b[^|;&]*?\s-p)("[^"]*"?|'[^']*'?|\S+)/g;
+const MYSQL_P = /(\bmysql\w*\b[^|;&]{0,500}?\s-p)("[^"]*"?|'[^']*'?|\S+)/g;
 const URL_TOKEN = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/gi;
 
 /** The password inside `scheme://user:password@host/…`, even when it holds an encoded or raw `/` or `@`. */
@@ -100,13 +124,26 @@ function maskUrlPassword(url: string): string {
 }
 
 /**
+ * Longest run of word characters (`[\w.+-]`) that reaches the redactors. A run longer than this is
+ * not an assignment name, a flag or a URL scheme; the regular expressions of `redactText` (the
+ * terminal capability's, not ours to change) scan such a run once per starting position, so a
+ * 200 KB run would cost seconds. The START of an over-long run is dropped (the last MAX_WORD_RUN
+ * characters stay, so `<very long name>_token=value` is still recognised by its end): this only
+ * ever shortens text, so it cannot expose anything.
+ */
+export const MAX_WORD_RUN = 256;
+const LONG_RUN = new RegExp(String.raw`[\w.+-]{${MAX_WORD_RUN + 1},}`, "g");
+const capRuns = (text: string): string =>
+  text.replace(LONG_RUN, (run) => `…${run.slice(run.length - MAX_WORD_RUN)}`);
+
+/**
  * `redactText` (the terminal capability's) plus what a command line or a diff still leaks through
  * it: private-key blocks, `-u user:pass`, auth headers of any scheme, lower-case and `export`ed
  * assignments, query-string credentials, quoted values with spaces, `mysql -pSECRET`, and URL
  * passwords holding `/` or `@`. A heuristic: it masks what it recognises and claims nothing more.
  */
 export function redactSecrets(text: string): string {
-  const masked = text
+  const masked = capRuns(text)
     .replace(PEM_BLOCK, MASK)
     .replace(AUTH_HEADER, `$1$2${MASK}`)
     .replace(CURL_LONG_USER, `$1${MASK}`)
@@ -114,9 +151,8 @@ export function redactSecrets(text: string): string {
     .replace(MYSQL_P, `$1${MASK}`)
     .replace(URL_TOKEN, maskUrlPassword)
     .replace(QUERY_SECRET, `$1${MASK}`)
-    .replace(SECRET_FLAG, `$1$2${MASK}`)
-    .replace(SECRET_ASSIGNMENT, `$1${MASK}`);
-  return redactText(masked);
+    .replace(SECRET_FLAG, `$1$2${MASK}`);
+  return redactText(maskAssignments(masked));
 }
 
 /** Flattens control characters, redacts secrets, cuts to `max` characters (the last is `…`). */

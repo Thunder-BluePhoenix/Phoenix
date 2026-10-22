@@ -2164,3 +2164,173 @@ code.break {
 .lid-notice {
   color: var(--warning-text);
 }
+
+/* Phase 80 */
+.port-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+.port-table th,
+.port-table td {
+  text-align: start;
+  vertical-align: top;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.port-mono {
+  font-family: ui-monospace, monospace;
+}
+.port-notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.port-flag,
+.port-warning {
+  color: var(--warning-text);
+}
+.port-confirm {
+  margin: 8px 0;
+  border-color: var(--warning);
+}
+
+/* Phase 76 */
+.mcp-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+.mcp-token-text {
+  user-select: all;
+}
+.mcp-warning ul {
+  margin: 4px 0 8px;
+  padding-inline-start: 20px;
+}
+.mcp-port,
+.mcp-new,
+.mcp-add-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+}
+.mcp-list,
+.mcp-scopes {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.mcp-client {
+  border: 1px solid var(--border, currentColor);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.mcp-grants {
+  border: 1px solid var(--border, currentColor);
+  border-radius: 6px;
+  margin: 8px 0;
+  padding: 8px 12px;
+}
+.mcp-token {
+  margin: 8px 0;
+  border-color: var(--warning);
+}
+
+/* Phase 78 */
+.mission-filters {
+  align-items: center;
+  margin: 8px 0;
+}
+.mission-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+.mission-column {
+  border: 1px solid var(--border, currentColor);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.mission-waiting h3 {
+  color: var(--warning-text);
+}
+.mission-stuck h3 {
+  color: var(--danger-text);
+}
+.mission-working h3 {
+  color: var(--info-text);
+}
+.mission-finished h3 {
+  color: var(--success-text);
+}
+.mission-list {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.mission-card p {
+  margin: 2px 0;
+}
+.mission-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 12px;
+}
+.mission-table th,
+.mission-table td {
+  text-align: start;
+  padding: 2px 8px;
+}
+
+/* Phase 77 */
+.agent-safety .safety-files {
+  list-style: none;
+  margin: 4px 0 8px;
+  padding: 0;
+  font-size: 13px;
+}
+.agent-safety .safety-diff {
+  max-height: 260px;
+  overflow: auto;
+  font-size: 12px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  white-space: pre;
+}
+.agent-safety .safety-warning {
+  color: var(--warning-text);
+}
+
+/* Phase 79 */
+.handoff-notes fieldset {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 8px 0;
+}
+.handoff-notes .handoff-warning {
+  color: var(--warning-text);
+}
+.handoff-notes .handoff-summary {
+  border-inline-start: 3px solid var(--border);
+  padding-inline-start: 8px;
+  margin: 8px 0;
+}
+.handoff-notes .handoff-counts {
+  margin: 4px 0;
+  padding-inline-start: 18px;
+}
+.handoff-notes pre.memory-text {
+  max-height: 280px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
