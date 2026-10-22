@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 import { once } from "node:events";
 import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { connect, type AddressInfo, type Socket } from "node:net";
 import { AuditLog } from "@phoenix/permissions";
 import { EventBus } from "@phoenix/event-bus";
 import { MemorySecretStore, SettingsStore, openDatabase } from "@phoenix/persistence";
@@ -30,7 +30,9 @@ import {
 const SESSION_TOKEN = "session-token-for-this-test-only";
 const NOW = Date.parse("2026-10-22T12:00:00Z");
 const servers: Server[] = [];
+const sockets: Socket[] = [];
 afterEach(async () => {
+  for (const socket of sockets.splice(0)) socket.destroy();
   for (const server of servers.splice(0)) {
     server.closeAllConnections();
     server.close();
@@ -270,6 +272,25 @@ describe("team webhook routes: body, schema, replay, limits", () => {
       } as RequestInit,
     );
     expect(chunked.status).toBe(413);
+  });
+
+  it("cuts off a sender that announces a body and then stalls", async () => {
+    const { hooks } = await rig();
+    const base = await serve(teamWebhookRoutes(hooks, { bodyTimeoutMs: 50 }));
+    const { port } = new URL(base);
+    const socket = connect({ host: "127.0.0.1", port: Number(port) });
+    sockets.push(socket);
+    await once(socket, "connect");
+    socket.write(
+      "POST /api/webhooks/in/ci-main HTTP/1.1\r\nhost: x\r\ncontent-type: application/json\r\n" +
+        "content-length: 100\r\n\r\n{",
+    );
+    // The sender never finishes. Core must answer and close instead of waiting indefinitely.
+    const chunks: Buffer[] = [];
+    socket.on("data", (chunk: Buffer) => chunks.push(chunk));
+    await once(socket, "close");
+    const reply = Buffer.concat(chunks).toString("utf8");
+    expect(reply === "" || /^HTTP\/1\.1 4\d\d/.test(reply)).toBe(true);
   });
 
   it("requires a JSON content type", async () => {

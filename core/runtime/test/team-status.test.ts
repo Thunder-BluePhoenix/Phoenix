@@ -510,17 +510,17 @@ describe("incoming webhooks: validation and limits", () => {
     };
     const at = Math.floor(clock.now() / 1000);
     const raw = body({ event_id: "in-flight-1" });
-    const pending = hooks
-      .accept({
+    const pending = refusal(
+      hooks.accept({
         sourceId: "ci-main",
         timestamp: String(at),
         signature: signWebhook(secret, at, raw),
         body: raw,
-      })
-      .catch((error: unknown) => error);
+      }),
+    );
     await hooks.revoke("ci-main");
     release.resolve();
-    expect(((await pending) as { code: string }).code).toBe("UNAUTHENTICATED");
+    expect((await pending).code).toBe("UNAUTHENTICATED");
     await bus.drain();
     expect(received.filter((e) => e.event_id.startsWith("evt_wh_"))).toEqual([]);
   });

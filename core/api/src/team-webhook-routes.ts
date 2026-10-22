@@ -42,8 +42,18 @@ function header(req: IncomingMessage, name: string): string | undefined {
 }
 
 const WEBHOOK_BODY_TIMEOUT_MS = 10_000;
+
+export interface TeamWebhookRouteOptions {
+  /** Longest an unauthenticated sender may take to finish sending its body. */
+  bodyTimeoutMs?: number;
+}
+
 /** Reads the raw bytes (the HMAC is over bytes, not over re-serialized JSON) up to the cap. */
-async function readRawBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
+async function readRawBody(
+  req: IncomingMessage,
+  maxBytes: number,
+  timeoutMs: number,
+): Promise<Buffer> {
   const type = req.headers["content-type"] ?? "";
   if (!type.startsWith("application/json")) {
     req.resume();
@@ -63,7 +73,7 @@ async function readRawBody(req: IncomingMessage, maxBytes: number): Promise<Buff
     chunks.length = 0;
     req.destroy();
     done.reject(new PhoenixError(ErrorCode.INVALID_REQUEST, "Webhook body timed out"));
-  }, WEBHOOK_BODY_TIMEOUT_MS);
+  }, timeoutMs);
   timer.unref();
   req.on("data", (chunk: Buffer) => {
     if (finished) return;
@@ -116,13 +126,20 @@ function onlyKeys(body: Record<string, unknown>, allowed: readonly string[]): vo
  * A session token sent to this route is not read and grants nothing. Every other route below is
  * authenticated with the session token as usual.
  */
-export function teamWebhookRoutes(service: TeamWebhookApi): Route[] {
+export function teamWebhookRoutes(
+  service: TeamWebhookApi,
+  options: TeamWebhookRouteOptions = {},
+): Route[] {
   return [
     route(
       "POST",
       `${WEBHOOK_INGEST_PREFIX}:source`,
       async ({ req, res, params }) => {
-        const body = await readRawBody(req, WEBHOOK_BODY_MAX_BYTES);
+        const body = await readRawBody(
+          req,
+          WEBHOOK_BODY_MAX_BYTES,
+          options.bodyTimeoutMs ?? WEBHOOK_BODY_TIMEOUT_MS,
+        );
         let outcome: WebhookOutcome;
         try {
           outcome = await service.accept({

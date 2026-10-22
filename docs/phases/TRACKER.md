@@ -12,7 +12,9 @@ Unreleased prerequisites still begin with **Phase 14 — floating desktop Fawkes
 
 Phases 81–85 (machine health and local models, engineering signals, calendar awareness and meeting prep, standup and daily digest, focus mode and screenshot-to-issue) are built with injected fakes, temporary directories and an in-memory database; nothing ran against a real Ollama or LM Studio, calendar account, display or screen capture, and the exit criteria of all five are unmet or met only as a simulation. Specific limits: model download fails closed in production (no trusted size catalog); the engineering-signals advisory provider is always unavailable and no screen can opt in; no calendar adapter is wired in production; the digest cannot send to Slack or Teams; focus mode and screenshot-to-issue are not wired or mounted. The static security reviews of 81–85 were tool reviews, not an independent human audit (see [gaps](../gaps.md)).
 
-New parity track (2026-10-15): the [Coucou & Insomnia audit](../audits/coucou-insomnia-audit.md) maps every feature of both projects to Phoenix and adds **Stage 12 (phases 56–71)** and **Stage 13 (phases 72–75)**. Build order started with **Phase 56 — agent approvals from Fawkes** (phases 56–75 are now built; none has all its exit criteria met). Stages 14–15 (2026-10-15) add [Phoenix originals and the Phoenix browser](../audits/phoenix-originals-and-browser.md): phases 76–96; phases 76–85 are now built (none has all its exit criteria met), phases 86–96 are not started.
+Phases 86–96 (chat-app approvals, the remote access relay, status lights and Stream Deck, the `phoenix` CLI, scheduled awake windows, Fawkes rebirth and skins, team status and incoming webhooks, the mini browser, YouTube Music and site connectors, the browsing assistant, browser profiles and sync) now have code slices built with injected fakes, loopback servers and in-memory databases. **None is wired into the runtime, routes or UI, and nothing ran against a real Slack, Discord or Teams workspace, phone, relay host, light, Stream Deck, watch, calendar, OS power setting, webview or browser; every exit criterion of all eleven is unmet or met only as a simulation.** Specific limits: the relay has no phone app, hosting or pairing UI; the Teams integration is notify-only; the CLI has no watch app, browser extension, `ask` or `awake`; **no browser exists** (Phase 93 is only a TypeScript policy engine, so Phases 94–96 have no host); the browsing assistant has no injection suite in `ai/evaluation`. The three static security reviews of 86–96 were tool reviews, not an independent human audit (see [gaps](../gaps.md)).
+
+New parity track (2026-10-15): the [Coucou & Insomnia audit](../audits/coucou-insomnia-audit.md) maps every feature of both projects to Phoenix and adds **Stage 12 (phases 56–71)** and **Stage 13 (phases 72–75)**. Build order started with **Phase 56 — agent approvals from Fawkes** (phases 56–75 are now built; none has all its exit criteria met). Stages 14–15 (2026-10-15) add [Phoenix originals and the Phoenix browser](../audits/phoenix-originals-and-browser.md): phases 76–96; phases 76–96 are now built (none has all its exit criteria met; 86–96 are simulated only and unwired).
 
 ## Summary
 
@@ -223,13 +225,13 @@ Features neither Coucou nor Insomnia has, built on Phoenix's own platform. Ratio
 | 83 | [Calendar Awareness & Meeting Prep](phase-83-calendar-and-meeting-prep.md) | post-v2.0 | High | 65, 35 | 🟨 | | Adapters and deploy-freeze preflight built with fake clients only; no adapter wired in production; no real calendar read; reminders not turned into notifications |
 | 84 | [Standup & End-of-Day Digest](phase-84-standup-and-daily-digest.md) | post-v2.0 | Medium | 69 | 🟨 | | Deterministic local digest with source links built; simulated only; Slack/Teams send not built; no real day checked |
 | 85 | [Focus Mode & Screenshot-to-Issue](phase-85-focus-mode-and-screenshot-to-issue.md) | post-v2.0 | Medium | 26 | 🟨 | | Controller and screenshot draft built as injectable components, not wired or mounted; no OS DND reader, capture adapter or issue client; nothing real captured |
-| 86 | [Approvals in Slack, Discord & Teams](phase-86-chat-app-approvals.md) | post-v2.0 | High | 56, 87 | ⬜ | | |
-| 87 | [Remote Access Relay](phase-87-remote-access-relay.md) | post-v2.0 | Medium | 71 | ⬜ | | |
-| 88 | [Physical Status Lights & Stream Deck](phase-88-status-lights-and-stream-deck.md) | post-v2.0 | Low | 13 | ⬜ | | |
-| 89 | [Apple Watch, Browser Extension & phoenix CLI](phase-89-watch-extension-cli.md) | post-v2.0 | Low | 71 | ⬜ | | |
-| 90 | [Scheduled Awake Windows & Power-Aware Scheduling](phase-90-scheduled-awake-and-power-aware.md) | post-v2.0 | Medium | 73 | ⬜ | | |
-| 91 | [Fawkes Rebirth, Milestones, Skin Packs & Accessibility](phase-91-fawkes-rebirth-and-skins.md) | post-v2.0 | Low | 59, 42 | ⬜ | | |
-| 92 | [Team Status & Incoming Webhooks](phase-92-team-status-and-webhooks.md) | post-v2.0 | Low | 87 | ⬜ | | |
+| 86 | [Approvals in Slack, Discord & Teams](phase-86-chat-app-approvals.md) | post-v2.0 | High | 56, 87 | 🟨 | | Slack/Discord callback verification and Teams notify-only link built; simulated only; no runtime route, host adapter or `phoenix://` handler; nothing approved from a real Slack |
+| 87 | [Remote Access Relay](phase-87-remote-access-relay.md) | post-v2.0 | Medium | 71 | 🟨 | | `@phoenix/relay` and Core client built; simulated only; no phone app, real network/TLS, hosting, Dockerfile or pairing UI; runtime does not construct the client |
+| 88 | [Physical Status Lights & Stream Deck](phase-88-status-lights-and-stream-deck.md) | post-v2.0 | Low | 13 | 🟨 | | Event-to-colour mapping, consent and Stream Deck approve-key restrictions built; simulated only; transports injected, no real light or Stream Deck plugin; not in builtins |
+| 89 | [Apple Watch, Browser Extension & phoenix CLI](phase-89-watch-extension-cli.md) | post-v2.0 | Low | 71 | 🟨 | | `phoenix` CLI (status, approvals, events tail) built; simulated only; no Apple Watch app, browser extension, `phoenix ask` or `phoenix awake` |
+| 90 | [Scheduled Awake Windows & Power-Aware Scheduling](phase-90-scheduled-awake-and-power-aware.md) | post-v2.0 | Medium | 73 | 🟨 | | Schedules, DST-safe time, power policy and queue built over injected controller and power source; simulated only; no store, wake scheduler, real power source, routes or UI |
+| 91 | [Fawkes Rebirth, Milestones, Skin Packs & Accessibility](phase-91-fawkes-rebirth-and-skins.md) | post-v2.0 | Low | 59, 42 | 🟨 | | Celebration gate, skin installer and component built; simulated only; no real CI adapter, registry skin-pack kind, consent UI or speech; component not mounted |
+| 92 | [Team Status & Incoming Webhooks](phase-92-team-status-and-webhooks.md) | post-v2.0 | Low | 87 | 🟨 | | Signed incoming-webhook route and team presence built; simulated only; routes not registered, no roster UI, relay cannot reach teammates |
 
 **Stage gate:** any MCP-capable agent can request an approval through Phoenix (76), and any agent session can be rolled back (77).
 
@@ -239,10 +241,10 @@ A small private browser that belongs to Fawkes: Brave-like blocking on the syste
 
 | # | Phase | Release | Priority | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|---|
-| 93 | [Phoenix Mini Browser](phase-93-phoenix-mini-browser.md) | post-v2.0 | High | 14 | ⬜ | | |
-| 94 | [YouTube Music & Site Connectors](phase-94-youtube-music-and-site-connectors.md) | post-v2.0 | High | 93, 68 | ⬜ | | |
-| 95 | [Fawkes Browsing Assistant](phase-95-fawkes-browsing-assistant.md) | post-v2.0 | Medium | 93, 30 | ⬜ | | |
-| 96 | [Browser Profiles, Sync & Extensions](phase-96-browser-profiles-sync-extensions.md) | post-v2.0 | Low | 93, 45 | ⬜ | | |
+| 93 | [Phoenix Mini Browser](phase-93-phoenix-mini-browser.md) | post-v2.0 | High | 14 | 🟨 | | TypeScript policy engine only (navigation, adblock subset, permissions); no browser, webview or UI exists; DNS rebinding needs Rust |
+| 94 | [YouTube Music & Site Connectors](phase-94-youtube-music-and-site-connectors.md) | post-v2.0 | High | 93, 68 | 🟨 | | Visible-player policy and search URLs built; simulated only; no embedded player (needs Phase 93 host) |
+| 95 | [Fawkes Browsing Assistant](phase-95-fawkes-browsing-assistant.md) | post-v2.0 | Medium | 93, 30 | 🟨 | | Page-as-data approval and audit flow built; simulated only; no page reader, gateway tools, approval UI or injection suite |
+| 96 | [Browser Profiles, Sync & Extensions](phase-96-browser-profiles-sync-extensions.md) | post-v2.0 | Low | 93, 45 | 🟨 | | Profiles, sync, bookmark import and signed extension manifests built; simulated only (fake relay); no browser engine, extension sandbox, revocation or UI |
 
 **Stage gate:** browser data is isolated from the user's main browser, YouTube playback follows YouTube's terms, and the prompt-injection suite passes (95).
 
