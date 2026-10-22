@@ -22,6 +22,9 @@ import { services } from "./services";
 import { settings } from "./settings";
 import { shell } from "./shell";
 import { signals } from "./signals";
+import { browserProfiles } from "./browser-profiles";
+import { awakeSchedule } from "./awake-schedule";
+import { teamStatus } from "./team-status";
 
 /** Every English message: the source text, bundled with the app and the fallback for every key. */
 export const en = {
@@ -45,6 +48,9 @@ export const en = {
   ...digest,
   ...calendar,
   ...signals,
+  ...browserProfiles,
+  ...awakeSchedule,
+  ...teamStatus,
   ...machine,
   ...fawkesRebirth,
 } as const;

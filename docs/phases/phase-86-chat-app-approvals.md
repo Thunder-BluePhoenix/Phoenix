@@ -5,7 +5,7 @@
 | Stage | Stage 14 — Phoenix originals |
 | Release target | Post-v2.0 track |
 | Priority | High |
-| Status | 🟨 Built as code with injected fakes; every check is simulated. **Not wired:** no runtime route for provider callbacks, no live host adapter, nothing calls `postPending`, no `phoenix://` handler. No real Slack, Discord or Teams workspace was contacted; the exit criterion is not met |
+| Status | 🟨 Built as code and wired into Core; every check is simulated (fakes, loopback servers). Core has a public provider-callback route and a bus subscription that posts cards. **Not done:** no `phoenix://` handler, no Teams inbound approval, no channel or DM digests. No real Slack, Discord or Teams workspace was contacted; the exit criterion is not met |
 | Depends on | [Phase 56 — Agent Approvals & Questions from Fawkes](phase-56-agent-approvals-from-fawkes.md), [Phase 87 — Remote Access Relay](phase-87-remote-access-relay.md) |
 | Unblocks | — |
 
@@ -15,19 +15,20 @@ Answer an agent or Phoenix approval from the chat tool you are already in.
 
 ## Tasks
 
-- [ ] Slack, Discord and Teams apps that post approval cards with Allow / Deny. Slack and Discord cards are built; **Teams is notify-only** (a signed deep link, no inbound approval). Simulated. Unticked: no real workspace, and nothing calls `postPending`.
-- [ ] Decisions go through the same audited path as Phase 56 and are bound to the exact request. Decisions are bound to the Core-computed `request_hash`; the audit actor is `chat:<provider>:<user>`. Simulated. Unticked: no runtime route delivers callbacks to it.
+- [ ] Slack, Discord and Teams apps that post approval cards with Allow / Deny. Slack and Discord cards are built and posted by a bus subscription for projects the user switched on; **Teams is notify-only** (a signed deep link, no inbound approval). Simulated. Unticked: no real workspace.
+- [ ] Decisions go through the same audited path as Phase 56 and are bound to the exact request. Decisions reuse the phone link's `requestHash`/`previewHash`; the audit actor is `chat:<provider>:<user>`; single-use, expiring, confirm-gated. `POST /api/chat-approvals/callback/:provider` delivers callbacks. Simulated. Unticked: no real provider sent a callback.
 - [ ] Notifications and digests to a channel or DM (opt-in). Only the Teams notify-only deep link exists; no channel or DM digest was built.
 - [ ] Bot tokens in the OS keychain; least-privilege scopes. Secrets are read through `ctx.secret`; no real token or scope was exercised. Unticked.
 
 ## Deliverables
 
-- `capabilities/chat-approvals` (`@phoenix/capability-chat-approvals`): Slack and Discord approval cards and callback verification, Teams notify-only link. Built, not wired; simulated evidence only. See [chat-approvals.md](../chat-approvals.md).
-- Not built: `capabilities/slack`, `discord` and `teams` as separate packages, a live host adapter, a runtime route for callbacks.
+- `capabilities/chat-approvals` (`@phoenix/capability-chat-approvals`): Slack and Discord approval cards and callback verification, Teams notify-only link. Wired into Core: `core/runtime/src/chat-approvals/{index,service}.ts`, route `core/api/src/chat-approval-routes.ts`, shared bounded body reader `core/api/src/raw-body.ts`. The capability is registered (installed, disabled) and absent in the demo runtime. Privacy row `chat_approvals_config`. Simulated evidence only. See [chat-approvals.md](../chat-approvals.md).
+- Tests: `core/runtime/test/chat-approvals-wiring.test.ts` (7) and `chat-approvals-service.test.ts` (3), through a real running Core.
+- Not built: `capabilities/slack`, `discord` and `teams` as separate packages, a `phoenix://` handler, channel and DM digests.
 
 ## Exit criteria
 
-- [ ] A real agent request is approved from Slack. **Unmet.** Nothing was sent to or received from a real Slack workspace, and the capability is not reachable from the running app.
+- [ ] A real agent request is approved from Slack. **Unmet.** Nothing was sent to or received from a real Slack workspace. The capability is reachable from the running Core but ships disabled and was only driven by fakes.
 
 ## Implementation notes
 
@@ -51,7 +52,7 @@ A static read-only review by tools (not a human audit) found that the audit row 
 
 ### What was not built
 
-A runtime route for provider callbacks, a live host adapter, any caller of `postPending`, a `phoenix://` handler, and Teams inbound approval.
+Teams inbound approval, a `phoenix://` handler, channel and DM digests, and a UI to enter the secrets. Wiring status: `POST /api/chat-approvals/callback/:provider` (public, authenticated by the provider signature; 503 while the capability is disabled or the kill switch is on; no redirects, https POST only to slack.com, hooks.slack.com, discord.com and Teams webhook hosts, 15 s timeout, 64 KiB response cap) and the bus subscription on `security.confirmation.requested` / `agent.approval.requested` now exist.
 
 ### What was not run
 

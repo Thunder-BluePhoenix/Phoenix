@@ -7,9 +7,10 @@ Installed, never auto-enabled. Permission: `network` (lights are reached over a 
 is off until you consent to that light**; nothing is discovered, scanned or contacted on its own.
 
 **Verification status: simulated only.** Everything below is proven against recording fakes (a fake event feed, fake transports, a fake
-deck surface). No real Hue bridge, Key Light, Luxafor, LIFX bulb or Stream Deck was driven, so the Phase 88 exit criterion "a real light
-follows Fawkes through IDLE, WORKING, ERROR and RECORDING" is **not met**. The Hue request, Key Light request, Luxafor report and LIFX
-frame are built from the vendors' documented formats and checked only for their shape.
+deck surface) and, for the wired Key Light transport, a fake Key Light on loopback. No real Hue bridge, Key Light, Luxafor, LIFX bulb or
+Stream Deck was driven, so the Phase 88 exit criterion "a real light follows Fawkes through IDLE, WORKING, ERROR and RECORDING" is
+**not met**. The Hue request, Key Light request, Luxafor report and LIFX frame are built from the vendors' documented formats and
+checked only for their shape.
 
 ## Colours
 
@@ -81,6 +82,10 @@ in `stream_deck.approve_capabilities` (empty by default: it approves nothing). D
 
 ## Integration (host side)
 
+The capability is now in `core/runtime/src/builtins.ts` (installed, never enabled). `builtinCapabilities(env, agents, planning, host)`
+takes a `BuiltinHost` whose `statusLights` options give the lights and the event feed; `core/runtime/src/main.ts` passes the
+provisioned lights and Core's bus.
+
 ```ts
 const statusLights = createStatusLightsCapability({
   devices: () => provisionedDevices, // Device[] with injected DeviceTransport; ids are host-provisioned
@@ -90,16 +95,29 @@ const statusLights = createStatusLightsCapability({
 });
 ```
 
-Add to `core/runtime/src/builtins.ts`, subscribe `statusLights.refresh()` to focus changes and to pending-confirmation changes, and
-supply the real `DeviceTransport`s (Hue bridge HTTPS with its key from the OS secret store, Key Light LAN PUT, Luxafor USB HID report,
-LIFX UDP) and the Stream Deck plugin bridge in the host. Those are deliberately outside this package: it contains no socket, HID or
-plugin code.
+- **Provisioning** (`core/runtime/src/status-lights/provision.ts`, `StatusLightProvisioning`). A provisioned light is `{id, kind:
+"key-light", address, port}`. The `address` must be an IPv4 literal that is private, link-local or loopback; a hostname is never
+  accepted. The port defaults to 9123. The list is stored in settings key `status-lights.provisioned` and re-validated on every
+  read: a stored entry that no longer validates is dropped. Privacy row `status_lights_devices`.
+- **Routes** (session token only): `GET /api/status-lights/devices` and `PUT /api/status-lights/devices`. `PUT` replaces the whole
+  list (at most 16) and is audited as `status_lights.provisioned`.
+- **Transport.** `keyLightTransport` does `PUT http://<ip>:<port>/elgato/lights` with no redirects and a 5 s timeout. Only the Elgato
+  Key Light has a transport. It was exercised only against a fake Key Light on loopback.
+- **Consent is separate.** The `devices` setting of the status-lights capability config lists the lights you allow. Provisioning alone
+  never lights anything.
+- **Trusted events.** Only events with source `agents` (and `core` for `notetaker.*`) drive colours.
+- **Settings section:** see `apps/web/src/components/StatusLightsSettings.tsx`.
+- **Test.** `core/runtime/test/status-lights-wiring.test.ts`, with a fake Key Light on loopback.
+
+`main.ts` passes only `devices` and `feed`; the `focusMode` option and the `deck` ports in the snippet above are not supplied by Core.
 
 ## Not done
 
-- No real transport, bridge pairing, discovery, or Stream Deck plugin (manifest, property inspector, artwork). The deck is a port.
-- No real-device run, so the exit criterion is unmet; Hue colour accuracy, LIFX frame acceptance and Luxafor colour order are unchecked.
-- No Settings UI for the `devices`, `quiet_hours` and `stream_deck` config yet (web strings and nine locales would be needed).
+- Hue (needs bridge pairing and a key), Luxafor (USB HID) and LIFX (UDP) transports, bridge pairing, discovery, and the Stream Deck
+  plugin (manifest, property inspector, artwork). The deck is a port with no host surface.
+- No real-device run, so the exit criterion is unmet; the Key Light transport was never run against a real light; Hue colour accuracy,
+  LIFX frame acceptance and Luxafor colour order are unchecked.
+- No Settings UI for `quiet_hours` and the deck yet (web strings and nine locales would be needed).
 - Key icons are names (`state-working`, `approve`, ...); Phoenix's own artwork for them is not drawn. Nothing from Coucou is used.
 
 ## Tests

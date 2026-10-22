@@ -1,8 +1,8 @@
 # Browser profiles, sync and extensions (Phase 96)
 
-Module: `core/runtime/src/browser-profiles/index.ts` (`BrowserProfileManager`). Tests: `core/runtime/test/browser-profiles.test.ts`.
+Module: `core/runtime/src/browser-profiles/index.ts` (`BrowserProfileManager`). Tests: `core/runtime/test/browser-profiles.test.ts` (manager) and `core/runtime/test/browser-profiles-wiring.test.ts` (10, through a real running Core, two Cores sharing a fake relay).
 
-This is local-first policy and data logic. It performs no network, browser, OS or cloud operation: the host webview, the sync relay and the sandbox that would run extension code are all injected or left to the host.
+The manager is local-first policy and data logic. It performs no network, browser or OS operation of its own. Core now wires it (see "How it is wired"); the host webview and the sandbox that would run extension code do not exist.
 
 ## Profiles and isolation
 
@@ -40,16 +40,24 @@ Small API: `pageAction` and `contentScript`, each tied to declared exact origins
 
 The `contentScript` text is data. Only a host-side sandbox that has received a positive `authorize` may run it.
 
-## Hooks for the host (not wired here)
+## How it is wired
 
-- Construct `BrowserProfileManager(settings, secrets, syncAdapter, trustedSigners, permissionDecision)` in the runtime; bind `syncAdapter` to the shared `SyncRuntime`, and `permissionDecision` to the `PermissionGateway` (so decisions are audited).
-- Expose routes/UI for profile CRUD, sync opt-in, preview/accept/adopt, import, and extension approval.
-- Honor `partition` in the webview and purge it on `remove`.
-- Provide the trusted signer key map from Phoenix-controlled configuration.
+`BrowserProfilesService` (`core/runtime/src/browser-profiles/service.ts`) constructs the manager in the runtime. It needs the OS secret store (without one the routes answer 503). `ProfileError` was added to the manager so a bad request is a 400 or 404 rather than a fault.
+
+- **Routes** (`core/api/src/browser-profile-routes.ts`, session token only), under `/api/browser/*`: profile CRUD, per-profile sync opt-in, bookmark HTML import (256 KiB body limit), history, write-only credentials `PUT/DELETE …/credentials/:name`, publish, `POST /api/browser/sync/pull`, sync preview / accept / adopt, and extension list / approval / uninstall.
+- **Sync** reuses the Phase 45 `SyncRuntime`, and only runs after account sync is configured **and** the profile opted in. The relay holds only sealed envelopes.
+- **Credentials** never come back from any route and are deleted with the profile.
+- **Delete** returns `purge_partition`: Core cannot clear a webview store that does not exist, so the host must purge the partition named by the profile.
+- **Extension signers** come only from `RuntimeOptions.extensionSigners` (default none). No route can add one, so by default no extension can be installed. Installing checks the Ed25519 signature (`POST …/extensions`).
+- **Approval.** Approving an extension asks the user through the permission gateway and the request blocks. Withdrawing approval and uninstalling never ask. Every `authorize()` is decided by the gateway; it fails closed, and the kill switch makes it answer no.
+- **Privacy.** Profiles, bookmarks, history and credential names are privacy row `browser_profiles`.
+- **Settings section:** Settings UI in progress (`apps/web/src/components/BrowserProfilesSettings.tsx` does not exist yet).
+
+Still the host's job: honor `partition` in a webview and purge it on delete, and provide the signer key map from Phoenix-controlled configuration.
 
 ## Limitations
 
-- Evidence is simulated: two in-memory devices through a fake relay using the real `SyncRuntime` crypto. The exit criterion "bookmarks round-trip between two devices encrypted end to end" is demonstrated only in that simulation, not on real devices or a real relay.
-- No browser engine, extension sandbox, key distribution/revocation service, or UI exists here.
+- Evidence is simulated: two Cores in one test process share a fake relay and use the real `SyncRuntime` crypto. The exit criterion "bookmarks round-trip between two devices encrypted end to end" is demonstrated only in that simulation, not on real devices or a real relay.
+- No browser engine, partition purge, extension sandbox (extension scripts are stored as data and never run), or signer distribution/revocation service exists.
 - Sync stores one item per profile (last writer wins after a user-confirmed accept); there is no per-bookmark merge.
 - The sync item value is limited by `SyncRuntime` to about 32 KB serialized, so very large profiles cannot be published.

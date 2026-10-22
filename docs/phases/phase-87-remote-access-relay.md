@@ -5,7 +5,7 @@
 | Stage | Stage 14 — Phoenix originals |
 | Release target | Post-v2.0 track |
 | Priority | Medium |
-| Status | 🟨 Built as code and tested with loopback servers and fakes; every check is simulated. **Not built:** no phone app, no real network or TLS, no hosted instance, no Dockerfile, no pairing UI, and the runtime does not construct `RemoteRelayClient`. Neither exit criterion is met |
+| Status | 🟨 Built as code and wired into Core (`RemoteRelayService`, session-token routes under `/api/remote-relay`); tested with loopback servers and fakes, so every check is simulated. **Not built:** no phone app, no real network or TLS, no hosted instance, no Dockerfile, no pairing UI. Neither exit criterion is met |
 | Depends on | [Phase 71 — Phone Link & Mobile Companions](phase-71-phone-link-and-mobile.md) |
 | Unblocks | [Phase 86 — Approvals in Slack, Discord & Teams](phase-86-chat-app-approvals.md), [Phase 92 — Team Status & Incoming Webhooks](phase-92-team-status-and-webhooks.md) |
 
@@ -23,7 +23,8 @@ Reach Phoenix from your phone or chat away from home, without exposing it.
 ## Deliverables
 
 - `relay/` (`@phoenix/relay`): the stateless forwarder; added to `pnpm-workspace.yaml` and the root `tsconfig` include. Built; simulated evidence only.
-- Core relay client and device protocol in `core/runtime/src/remote-relay`: built but not constructed by the runtime. See [remote-relay.md](../remote-relay.md).
+- Core relay client and device protocol in `core/runtime/src/remote-relay` (`service.ts` `RemoteRelayService`, `stream.ts` shared SSE reader, reconnect loop with 1 s → 60 s backoff and `relayUrl` validation), constructed by the runtime when a secret store exists (absent in the demo runtime). Routes in `core/api/src/remote-relay-routes.ts`: `GET/POST/DELETE /api/remote-relay` and `POST /api/remote-relay/devices/:id/approvals` (session token only). Privacy row `remote_relay`. Test `core/runtime/test/remote-relay-wiring.test.ts` (8) against a real `createRelayServer`. See [remote-relay.md](../remote-relay.md).
+- The relay server (`relay/src/server.ts`) also accepts a third peer kind `tm_<12 hex>` for teammates ([Phase 92](phase-92-team-status-and-webhooks.md)); a team address talks only to team addresses, never to `core` or `dev_…`. Tests in `relay/test/server.test.ts`.
 
 ## Exit criteria
 
@@ -48,7 +49,11 @@ A static read-only review by tools (not a human audit) found that a backpressure
 
 ### What was not built
 
-A phone app, real network and TLS, a hosted instance, a Dockerfile, a pairing UI, and runtime construction of `RemoteRelayClient`. Frames carry no version negotiation and the recipient key is static (see the [gap register](../gaps.md)).
+A phone app, real network and TLS, a hosted instance, a Dockerfile and a pairing UI. Frames carry no version negotiation and the recipient key is static (see the [gap register](../gaps.md)).
+
+### How the runtime wires it
+
+Enabling validates the URL (https, or http on loopback; no credentials, query or hash), creates a random route id and Core's relay identity. The private key is only in the OS secret store (`remote-relay.core-private-key`), never in settings or any response; it is discarded on disable, on the kill switch (bus hook) or when a new route is enabled. It resumes on boot.
 
 ### What was not run
 

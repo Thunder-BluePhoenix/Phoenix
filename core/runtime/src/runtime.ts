@@ -104,6 +104,7 @@ import { TeamLinkService, type TeamLinkDependencies } from "./team-status/link";
 import { StatusLightProvisioning } from "./status-lights/provision";
 import { FawkesRebirthService } from "./fawkes-rebirth/service";
 import { BrowserProfilesService } from "./browser-profiles/service";
+import { MusicConnectorsService } from "./music-connectors/service";
 import { ScheduledAwakeService, type ScheduledAwakeDependencies } from "./scheduled-awake/service";
 import { EventSourcePolicy } from "./event-source-policy";
 import { WorkflowsRuntime } from "./workflows";
@@ -311,6 +312,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly fawkesRebirth: FawkesRebirthService;
   /** Browser profiles (Phase 96): data and policy only; there is no browser engine yet. */
   readonly browserProfiles: BrowserProfilesService;
+  /** Music site opt-in (Phase 94): a list of allowed sites in settings; nothing is fetched or played. */
+  readonly musicConnectors: MusicConnectorsService;
   /** The sharing choices and teammate view of {@link teamLink}, as the routes see them. */
   readonly teamStatus: TeamLinkService | undefined;
   /** Phoenix MCP server (Phase 76): off by default; a separate loopback listener with per-client tokens. */
@@ -712,6 +715,10 @@ export class PhoenixRuntime implements CoreServices {
     });
     this.fawkesRebirth = new FawkesRebirthService({
       bus: this.bus,
+      settings: this.settings,
+      audit: this.permissions.audit,
+    });
+    this.musicConnectors = new MusicConnectorsService({
       settings: this.settings,
       audit: this.permissions.audit,
     });
@@ -1247,6 +1254,13 @@ export class PhoenixRuntime implements CoreServices {
           "Status lights (Phase 88): the LAN address and port of each Key Light you added, in settings. Consent to use a light is a separate setting of the status-lights capability. Nothing is contacted until both exist and the capability is enabled; only fixed colours are ever sent.",
         count: this.statusLights.lights().length,
         deleted_with: "replace the list with an empty one (PUT /api/status-lights/devices)",
+      },
+      {
+        id: "music_connectors",
+        description:
+          "Music sites (Phase 94): which of YouTube, SoundCloud, Bandcamp and Spotify Web you allowed, in settings. Nothing is fetched, opened or played from Core, and no listening history is kept.",
+        count: this.musicConnectors.enabledCount(),
+        deleted_with: "turn each site off (PUT /api/music/connectors/:site)",
       },
       {
         id: "browser_profiles",

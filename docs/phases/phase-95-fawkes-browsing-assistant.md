@@ -5,7 +5,7 @@
 | Stage | Stage 15 — Phoenix browser |
 | Release target | Post-v2.0 track |
 | Priority | Medium |
-| Status | 🟨 Built as code with fakes; every check is simulated. **Not wired:** no `PageReader`, no gateway tools, no approval UI, and no injection suite in `ai/evaluation`. No real page was read or acted on; neither exit criterion is met |
+| Status | 🟨 Built as code with fakes; every check is simulated. **Not wired:** no `PageReader`, no gateway tools, no approval UI, and no injection suite in `ai/evaluation`. It was reviewed again after the Phases 86-96 wiring and not wired: it needs a `PageReader` from a browser, registered browser tools and an approval UI, none of which exist, so no Core piece would be real. No real page was read or acted on; neither exit criterion is met |
 | Depends on | [Phase 93 — Phoenix Mini Browser](phase-93-phoenix-mini-browser.md), [Phase 30 — Policy Gateway & Tool Gateway](phase-30-policy-and-tool-gateway.md) |
 | Unblocks | — |
 

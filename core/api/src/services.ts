@@ -26,6 +26,7 @@ import type { StatusLightsApi } from "./status-light-routes";
 import type { ScheduledAwakeApi } from "./scheduled-awake-routes";
 import type { FawkesRebirthApi } from "./fawkes-rebirth-routes";
 import type { BrowserProfilesApi } from "./browser-profile-routes";
+import type { MusicConnectorsApi } from "./music-connector-routes";
 import type { ChatApprovalsApi } from "./chat-approval-routes";
 import type { RemoteRelayApi } from "./remote-relay-routes";
 import type { PhoenixConfig } from "@phoenix/config";
@@ -1317,6 +1318,8 @@ export interface CoreServices {
   fawkesRebirth?: FawkesRebirthApi;
   /** Browser profiles (Phase 96): bookmarks, sync choices and extension approvals; absent without an OS secret store. */
   browserProfiles?: BrowserProfilesApi;
+  /** Music site opt-in (Phase 94): which sites are allowed. No playback: there is no browser surface yet. */
+  musicConnectors?: MusicConnectorsApi;
   /** Chat approvals (Phase 86): the provider callback door; the capability is off until enabled. */
   chatApprovals?: ChatApprovalsApi;
   /** Remote access relay (Phase 87): off by default; absent without an OS secret store. */

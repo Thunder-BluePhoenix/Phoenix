@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+import type { teamStatus as enTeamStatus } from "../../en/team-status";
+
+/** Machine-translated; unreviewed. */
+export const teamStatus: Record<keyof typeof enTeamStatus, string> = {
+  "teamStatus.title": "团队在线状态",
+  "teamStatus.intro":
+    "团队在线状态默认关闭。开启后，Phoenix 只会把您勾选的状态类型（正在部署、正在运行代理、正在开会）以加密帧发送给您添加的队友，并且绝不会提及仓库、分支或个人。",
+  "teamStatus.notAvailable":
+    "团队在线状态不可用：此 Phoenix Core 没有可用来保存您密钥的操作系统密钥存储。",
+  "teamStatus.loadFailed": "无法加载团队在线状态。",
+  "teamStatus.listSeparator": "、",
+  "teamStatus.kind.deploying": "正在部署",
+  "teamStatus.kind.agentRun": "正在运行代理",
+  "teamStatus.kind.meeting": "正在开会",
+  "teamStatus.relay.label": "中继地址",
+  "teamStatus.route.label": "路由（可选）",
+  "teamStatus.route.hint": "留空路由即可创建新团队。在此粘贴路由可加入队友所在的团队。",
+  "teamStatus.route.shown": "中继路由",
+  "teamStatus.turnOn": "开启",
+  "teamStatus.resume": "重新开启",
+  "teamStatus.pause": "暂停",
+  "teamStatus.leave": "离开团队",
+  "teamStatus.leave.ask": "离开团队并忘记所有人？",
+  "teamStatus.state.line": "连接：{state}",
+  "teamStatus.state.connected": "已连接",
+  "teamStatus.state.connecting": "连接中",
+  "teamStatus.state.paused": "已暂停",
+  "teamStatus.lastError": "上次错误：{error}",
+  "teamStatus.self.id": "您的团队 ID",
+  "teamStatus.self.publicKey": "您的公钥",
+  "teamStatus.self.hint": "请把两者交给队友，以便他们添加您。您的私钥绝不会离开这台电脑。",
+  "teamStatus.sharing.title": "我分享的内容",
+  "teamStatus.sharing.master": "向团队分享我的状态",
+  "teamStatus.sharing.deploying": "正在部署",
+  "teamStatus.sharing.agentRun": "长时间运行代理",
+  "teamStatus.sharing.meeting": "正在开会",
+  "teamStatus.outgoing.now": "队友此刻看到：{kinds}。",
+  "teamStatus.outgoing.none": "队友此刻看不到您的任何状态。",
+  "teamStatus.members.title": "队友",
+  "teamStatus.members.none": "您还没有添加队友。",
+  "teamStatus.members.removeLabel": "移除 {label}",
+  "teamStatus.members.id": "队友的团队 ID",
+  "teamStatus.members.label": "显示名称",
+  "teamStatus.members.publicKey": "队友的公钥",
+  "teamStatus.members.add": "添加队友",
+  "teamStatus.presence.title": "谁在线",
+  "teamStatus.presence.none": "没有可显示的队友。",
+  "teamStatus.presence.nothing": "未分享任何内容",
+};

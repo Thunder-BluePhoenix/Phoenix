@@ -3,7 +3,7 @@
 
 # Fawkes rebirth, milestones, skin packs and accessibility (Phase 91)
 
-Three injectable pieces. All evidence is simulated: tests use injected fakes, no real CI provider, registry, network, speech engine or OS setting is touched.
+Three injectable pieces. All evidence is simulated: tests use injected fakes, a real running Core fed by fake GitHub events, and rendered components; no real CI provider, registry, network, speech engine or OS setting is touched. The gate and the component are now wired (see "How it is wired").
 
 ## Celebration gate — `core/runtime/src/fawkes-rebirth/events.ts`
 
@@ -31,14 +31,22 @@ Wraps the existing `FawkesAvatar`. Props: `celebration` (`{kind, id}` from the g
 
 ## Tests
 
-`core/runtime/test/fawkes-rebirth.test.ts`, `apps/web/test/fawkes-rebirth.test.tsx`.
+`core/runtime/test/fawkes-rebirth.test.ts`, `apps/web/test/fawkes-rebirth.test.tsx`; wiring: `core/runtime/test/fawkes-rebirth-wiring.test.ts` (6) and `apps/web/test/rebirth-mount.test.tsx` (7).
 
-## Host wiring still required
+## How it is wired
 
-- Feed CI/PR adapter outcomes into one `createCelebrationGate` per authenticated session and map results to `FawkesCelebration` with a monotonic `id`.
-- Settings toggles for milestones, high contrast, spoken changes; pass `reducedMotion` from the pet reduced-motion setting; supply a `speak` backed by an OS/web speech engine.
-- A `SkinInstaller` implemented over `RegistryService.preview`, the gateway-checked artifact fetch (audited), `validateOutfitPack`, and the outfit import route; a UI showing licence + signer before consent.
-- Import `FawkesRebirth` where `FawkesAvatar` is mounted.
+- **Core.** `FawkesRebirthService` (`core/runtime/src/fawkes-rebirth/service.ts`) subscribes to the GitHub capability's `github.ci.passed`, `github.ci.failed`, `github.pr.merged` and `github.pr.closed`. It only accepts events with `source === "github"`, which `POST /api/events` refuses to accept. A pipeline is keyed by a hash of repository + workflow + branch, so a red feature branch is not fixed by green main. Outcomes go into `createCelebrationGate`.
+- **Event.** A celebration is published as an **ephemeral** core event `fawkes.celebration` with payload `{kind, id}` only: no repository, branch, workflow, title or person, and never stored in history. `core/api/src/websocket.ts` lists it in `LIVE_EPHEMERAL`.
+- **Settings.** Settings key `fawkes.rebirth` holds `{milestones, highContrast}`, both default false (rebirth itself has no switch). `GET/PUT /api/fawkes/rebirth`; changes are audited as `fawkes.rebirth.settings.changed`.
+- **Web.** `apps/web/src/core/rebirth.ts` (hooks); `RebirthAvatar.tsx` wraps `FawkesAvatar` in the navbar, floating and island views; Settings section: see `apps/web/src/components/FawkesRebirthSettings.tsx` (mounted in Settings). Strings are in namespace `fawkesRebirth`, including `fawkesRebirth.settings.*`, in all ten locales (nine machine-translated, unreviewed).
+
+## Still not done
+
+- Any CI adapter other than GitHub.
+- A skin-pack registry kind and an install UI with licence and signer consent. `installSkin` is only exercised with fakes.
+- Spoken announcements: `speak` is not supplied.
+- Real artwork beyond the CSS pulse.
+- A real CI run: rebirth has only been fed by fake GitHub events.
 
 ## Limitations
 

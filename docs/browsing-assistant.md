@@ -4,6 +4,8 @@ Package: `ai/browsing` (`@phoenix/ai-browsing`). Evidence for this slice is **si
 inject a fake page reader, fake local model, fake gateway, fake approval and an in-memory audit sink.
 No browser, network, model or device is touched, and no real test site has been exercised.
 
+This slice was reviewed again after the Core wiring of Phases 86 to 96 and was deliberately not wired: it needs a `PageReader` from a browser, registered browser tools and an approval UI, none of which exist, so no Core piece would be real without them. The injection suite is also not in `ai/evaluation`.
+
 ## What it does
 
 `BrowsingAssistant` has three operations:

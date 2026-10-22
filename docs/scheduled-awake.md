@@ -3,9 +3,9 @@
 
 # Scheduled awake windows and power-aware scheduling (Phase 90)
 
-Code: `core/runtime/src/scheduled-awake/`. Tests: `core/runtime/test/scheduled-awake.test.ts`.
+Code: `core/runtime/src/scheduled-awake/` (scheduler, `service.ts`, `system-power.ts`). Tests: `core/runtime/test/scheduled-awake.test.ts` (scheduler) and `core/runtime/test/scheduled-awake-wiring.test.ts` (13, through a real running Core with a fake machine and clock from `capabilities/awake/testing/fakes.ts`).
 
-**Status: simulated.** Everything runs against injected fakes (clock, power source, awake controller, wake scheduler, store). Nothing here has held a real machine awake, called `pmset`, `caffeinate`, `launchctl`, `rtcwake` or `schtasks`, read a real battery, or registered an OS wake. The Phase 90 exit criterion ("a scheduled overnight window keeps a real machine awake and releases it on time") is **unmet**. The module is also not wired into Core yet (see "Host wiring").
+**Status: simulated.** Everything runs against injected fakes (clock, power source, awake controller, wake scheduler, store). Nothing here has held a real machine awake, called `pmset`, `caffeinate`, `launchctl`, `rtcwake` or `schtasks`, read a real battery, or registered an OS wake. The Phase 90 exit criterion ("a scheduled overnight window keeps a real machine awake and releases it on time") is **unmet**. The module is now wired into Core (see "Host wiring"); that wiring is exercised only with fakes.
 
 ## What it does
 
@@ -71,18 +71,30 @@ For `wake: true` schedules the scheduler asks an injected `WakeScheduler` to wak
 
 ### Persistence
 
-The optional `ScheduleStore` gets `{ version: 1, enabled, schedules, skips }` after each accepted change and its `load()` result is treated as untrusted: every schedule is re-validated, invalid or oversized entries are dropped and reported (`store.dropped`), a wrong version or unreadable store starts empty and off, a failing save is reported (`store.error`) and the scheduler keeps working in memory. No store implementation ships.
+The optional `ScheduleStore` gets `{ version: 1, enabled, schedules, skips }` after each accepted change and its `load()` result is treated as untrusted: every schedule is re-validated, invalid or oversized entries are dropped and reported (`store.dropped`), a wrong version or unreadable store starts empty and off, a failing save is reported (`store.error`) and the scheduler keeps working in memory. Core's store is the settings key `scheduled-awake.state` (privacy row `scheduled_awake`), re-validated on load.
 
 ### Audit events
 
 `emit(ScheduleEvent)` receives `enabled`, `disabled`, `schedule.saved`, `schedule.removed`, `window.skipped`, `window.unskipped`, `hold.started`, `hold.extended`, `hold.released`, `hold.waiting`, `wake.scheduled`, `wake.cancelled`, `wake.failed`, `store.error`, `store.dropped`. The detail holds only ids, counts, reason codes and times: never labels or error messages. A sink that throws is ignored.
 
-## Host wiring (not done)
+## Host wiring
 
-- `awakeControllerFromSession(sessionController)` adapts the Phase 72 `SessionController` (timed mode). It only ends or extends the session it started and yields (`busy`) when the user already has one. Core does not currently expose the capability's `SessionController` outside `createAwakeCapability`; the parent must expose it (or a port with the same four methods).
-- Every command (`setEnabled`, `upsertSchedule`, `removeSchedule`, `skipWindow`, `unskipWindow`, `cancelCurrent`) is a side effect: the host must put the permission gateway and audit in front of it, as Phase 72 does for `start`. The scheduler's own `emit` is not a substitute for the gateway.
-- A real `PowerSource` (reuse the Phase 72/73 battery readers and the Phase 73 Low Power Mode reading), a `ScheduleStore` in Core's data directory, an optional `WakeScheduler`, and a route/UI for schedules are not built. Call `refresh()` on wake-from-sleep and on power-source change events.
-- "Keep awake from the phone" (Phase 71) is not built. It would call the same gateway-guarded commands.
+`ScheduledAwakeService` (`core/runtime/src/scheduled-awake/service.ts`) wraps the scheduler for Core. The awake capability gained an `onSession` hook (`capabilities/awake/src/index.ts`), and `core/runtime/src/main.ts` passes it through `builtinCapabilities` so Core binds the live Phase 72 `SessionController`. If the keep-awake capability is disabled, a window waits with reason `start_failed` and the status says `awakeAvailable: false`.
+
+Routes (`core/api/src/scheduled-awake-routes.ts`, session token only): `GET/PUT /api/scheduled-awake` (`{enabled}`), `POST /api/scheduled-awake/schedules`, `DELETE /api/scheduled-awake/schedules/:id`, `POST /api/scheduled-awake/skips`, `DELETE /api/scheduled-awake/skips/:key`, `POST /api/scheduled-awake/cancel-current`.
+
+- **What asks.** Turning scheduling **on** and saving a schedule each go through the permission gateway and ask the user. The HTTP request blocks until the user answers (default confirmation timeout 5 minutes). The hold that a schedule later starts does **not** ask again.
+- **What never asks.** Turning off, deleting a schedule, skipping, unskipping and cancel-current only shorten awake time. They are audited as `scheduled_awake.<change>` and never ask.
+- **Emergency stop.** It turns scheduling off (bus hook). A start guard refuses to start a hold while it is engaged, and turning scheduling back on is refused (403) while it is engaged.
+- **Persistence.** Schedules are in settings key `scheduled-awake.state`, re-validated on load.
+- **Power source.** `SystemPowerSource` reads the Phase 72 battery reader and, on macOS only, `lowpowermode` from `pmset -g`. The parsing is unit-tested; **the real `pmset` command was not run for this phase**. Elsewhere, or on failure, Low Power Mode is "unknown", which never blocks.
+- **Settings section:** see `apps/web/src/components/ScheduledAwakeSettings.tsx`.
+
+**Still not done:**
+
+- A `WakeScheduler`: no OS wake is registered; `wake: true` is stored and the status says `wakeAvailable: false`.
+- Any real `caffeinate` or `pmset` run.
+- "Keep awake from the phone" (Phase 71). It would call the same gateway-guarded commands.
 
 ## Known limits
 

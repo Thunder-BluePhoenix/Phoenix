@@ -5,9 +5,10 @@ Package: `capabilities/chat-approvals` (`@phoenix/capability-chat-approvals`, ca
 `chat-approvals`). Builds on the audited path of [Phase 56](phases/phase-56-agent-approvals-from-fawkes.md)
 and the request binding of [phone-link.md](phone-link.md) / [remote-relay.md](remote-relay.md).
 
-**Simulated evidence only.** Every test uses signed fake callbacks and an injected HTTP transport. No
-Slack workspace, Discord application or Teams tenant was contacted, and nothing here is wired into the
-runtime. **The exit criterion "a real agent request is approved from Slack" is UNMET.**
+**Simulated evidence only.** Every test uses signed fake callbacks and an injected HTTP transport or a
+loopback server. No Slack workspace, Discord application or Teams tenant was contacted. The capability
+is now wired into Core (see [How it is wired](#how-it-is-wired)), but only exercised through a running
+Core with fakes. **The exit criterion "a real agent request is approved from Slack" is UNMET.**
 
 ## Security model
 
@@ -106,23 +107,34 @@ names only for projects switched on). Both default off. Commands `post_pending` 
 }
 ```
 
-## Hooks the runtime must provide (not done here)
+## How it is wired
 
-`createChatApprovals({ host, audit, transport, now?, config? })`:
+`createChatApprovals({ host, audit, transport, now?, config? })` is constructed by the runtime
+(`core/runtime/src/chat-approvals/{index,service}.ts`). The capability `chat-approvals` is registered
+(installed, **disabled**) and is absent from the demo runtime (no sockets).
 
-- `host.pending()`: `ApprovalSnapshot[]` from `PhoneLink.pendingViews()` equivalent (needs `project` for
-  agent rows; `request_hash` from `requestHash`). `host.decide({source,id,decision,requestHash,actor})`:
-  the `PhoneLink.decide` body with the hash recheck, `actor` instead of `device:<id>`. `PhoneLink.decide`
-  currently takes a `PhoneIdentity` and hard-codes `device:` and the biometric rule; a shared helper or an
-  actor parameter is needed.
-- `audit`: `permissions.audit.record` (map `ChatAuditEntry`).
-- `transport`: a real `fetch` wrapper (https only) with timeouts.
-- `config`: a live reader of the stored capability config (the manager freezes config at enable time).
-- HTTP routes `POST /chat/slack` and `POST /chat/discord` on a public-facing listener or the relay,
-  passing the **raw body bytes** and headers to `handleCallback`; Slack needs a 200 within 3 s (the
-  follow-up is posted to `response_url`). Not on the loopback API port.
-- A `phoenix://approvals/open` handler calling `openTeamsLink`, and a UI to enter the secrets.
-- Something calling `postPending` when an approval is created (an event subscription or poll).
+- **Callback route.** `POST /api/chat-approvals/callback/:provider` (`slack` or `discord`) in
+  `core/api/src/chat-approval-routes.ts`. It is a **public** route: it is authenticated by the provider
+  signature, not the session token. The raw body bytes and headers go to `handleCallback`; the body is
+  read by the shared bounded reader `core/api/src/raw-body.ts`. It answers 503 while the capability is
+  disabled or the kill switch is on.
+- **Posting cards.** A bus subscription on `security.confirmation.requested` and
+  `agent.approval.requested` posts a card for projects the user switched on.
+- **Decisions.** They reuse the phone link's `requestHash`/`previewHash`, the actor
+  `chat:<provider>:<user>`, single use, expiry and the confirm step, through the same gateway and
+  `AgentApprovals` path.
+- **Outbound transport.** No redirects; https POST only to `slack.com`, `hooks.slack.com`,
+  `discord.com` and Teams webhook hosts; 15 s timeout; 64 KiB response cap.
+- **Privacy.** The stored config is listed as privacy row `chat_approvals_config`.
+- **Tests.** `core/runtime/test/chat-approvals-wiring.test.ts` (7, real running Core, guards
+  mutation-checked) and `chat-approvals-service.test.ts` (3).
+
+## Still not done
+
+- A `phoenix://approvals/open` handler calling `openTeamsLink`.
+- Teams inbound approval (Teams stays notify-only).
+- A real Slack/Discord workspace; channel and DM digests.
+- A UI to enter the secrets.
 
 ## Limitations
 

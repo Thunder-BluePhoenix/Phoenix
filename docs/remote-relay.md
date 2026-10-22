@@ -7,16 +7,17 @@ device-side protocol and the shared crypto).
 
 **Simulated evidence only.** Everything below was exercised with a Node fake device and a relay on
 `127.0.0.1`. No phone, mobile network, hosted instance or container image was involved (see
-[What is not built](#what-is-not-built)).
+[What is not built](#what-is-not-built)). Core's side is now wired into the runtime (see
+[How Core is wired](#how-core-is-wired)); that wiring is tested against a real `createRelayServer` only.
 
 ## Trust model
 
-| Party                      | Trusted for                                 | Can see                                                    |
-| -------------------------- | ------------------------------------------- | ---------------------------------------------------------- |
-| Core                       | everything: it owns the approval gateway    | plaintext decisions, after verifying them                  |
-| Paired device              | speaking for itself, with its own P-256 key | Core's signed messages                                     |
-| Relay (self-hosted/hosted) | delivering bytes, nothing else              | route id, peer address (`core` / `dev_…`), frame size/time |
-| Anyone on the Internet     | nothing                                     | only what the relay URL space exposes                      |
+| Party                      | Trusted for                                 | Can see                                                             |
+| -------------------------- | ------------------------------------------- | ------------------------------------------------------------------- |
+| Core                       | everything: it owns the approval gateway    | plaintext decisions, after verifying them                           |
+| Paired device              | speaking for itself, with its own P-256 key | Core's signed messages                                              |
+| Relay (self-hosted/hosted) | delivering bytes, nothing else              | route id, peer address (`core` / `dev_…` / `tm_…`), frame size/time |
+| Anyone on the Internet     | nothing                                     | only what the relay URL space exposes                               |
 
 The relay is **untrusted** and **stateless**: no queue, no key, no device roster, no log, no
 persistence. It imports only `node:http` (a test pins this). A post with nobody listening is refused
@@ -25,7 +26,7 @@ persistence. It imports only `node:http` (a test pins this). A post with nobody 
 ## Keys are pinned at pairing
 
 Pairing is the [phone link](phone-link.md) pairing (code + desktop confirmation). Core's relay
-identity (`newCoreIdentity()`: P-256 key pair; the private key belongs in the OS secret store, never
+identity (`newCoreIdentity()`: P-256 key pair; the private key lives only in the OS secret store, never
 in settings) is given to the device at pairing and **pinned** by it; Core pins the device's SPKI (the
 `paired_devices` row). The relay never participates in key exchange, so it cannot substitute a key.
 The 128-bit random route id is an address, **not** an authenticator.
@@ -34,7 +35,8 @@ The 128-bit random route id is an address, **not** an authenticator.
 
 Every frame the relay forwards is `{sender, ephemeral_key, iv, ciphertext, tag}` and nothing else
 (the relay rejects extra fields, non-base64 fields, wrong `iv`/`tag` lengths, oversize bodies at
-32 KiB, non-JSON content types, and wrong direction: Core → `dev_…` and `dev_…` → Core only).
+32 KiB, non-JSON content types, and wrong direction: Core → `dev_…` and `dev_…` → Core only; a team
+address `tm_<12 hex>` may talk only to other team addresses and never to `core` or `dev_…`).
 
 - **Encryption** (`crypto.ts`): per-message ephemeral P-256 ECDH to the recipient's pinned key →
   HKDF-SHA256 (salt = `sha256(route)`, info binds sender and recipient) → AES-256-GCM. The AAD binds
@@ -88,11 +90,11 @@ import { createRelayServer } from "@phoenix/relay";
 createRelayServer().listen(8787, "0.0.0.0"); // behind your own TLS terminator
 ```
 
-Routes (all other paths/methods: `404`): `GET /v1/routes/<32 hex>/peers/<core|dev_12hex>`
+Routes (all other paths/methods: `404`): `GET /v1/routes/<32 hex>/peers/<core|dev_12hex|tm_12hex>`
 opens a server-sent-event stream (4 per peer, 256 total; keep-alive every 20 s);
 `POST` the same path with `application/json` delivers one frame to the open streams (`202`).
 
-`RemoteRelayClient` requires `https:` (plain `http:` only for loopback), no credentials in the URL.
+Core's client requires `https:` (plain `http:` only for loopback), no credentials, query or hash in the URL.
 TLS to the relay protects metadata only; the payload protection does not depend on it.
 
 ## Self-hosting
@@ -116,21 +118,38 @@ audit log; the wire carries no plaintext (request text, hash, decision, tool nam
 revoked/unknown devices are refused, audited, and cannot be sent to; replayed frames and reused
 nonces, stale/future stamps and per-device capacity; a hash from another request, an edited
 body or another key are refused with the request left pending; frames do not open under another
-route/recipient/bit-flip; a device rejects unsigned/forged/late/replayed Core messages.
+route/recipient/bit-flip; a device rejects unsigned/forged/late/replayed Core messages. The `tm_`
+direction rule is covered in `relay/test/server.test.ts`. The runtime wiring is covered by
+`core/runtime/test/remote-relay-wiring.test.ts` (8, against a real `createRelayServer`).
+
+## How Core is wired
+
+`RemoteRelayService` (`core/runtime/src/remote-relay/service.ts`) owns Core's side; shared stream helpers
+are in `core/runtime/src/remote-relay/stream.ts` (SSE reader, a reconnect loop with 1 s → 60 s backoff,
+and `relayUrl` validation). It is also the transport for [team presence](team-status.md).
+
+- **Routes** (`core/api/src/remote-relay-routes.ts`, session token only): `GET`, `POST` and `DELETE
+/api/remote-relay`, and `POST /api/remote-relay/devices/:id/approvals`.
+- **Enabling** validates the URL (https, or http on loopback; no credentials, query or hash), creates a
+  random route id and Core's relay identity. It resumes on boot.
+- **Private key.** Stored only in the OS secret store under `remote-relay.core-private-key`; never in
+  settings and never in any response. It is discarded on disable, on the kill switch (bus hook) and when
+  a new route is enabled.
+- **Secret store required.** The service is absent in the demo runtime.
+- **Privacy.** The stored route and URL are privacy row `remote_relay`.
 
 ## What is not built
 
 - **Exit criterion "a phone on mobile data approves a request through the relay" is UNMET.** No
   phone app, no mobile network, no hosted relay. Only a Node fake device over loopback.
-- Core is **not wired into the runtime**: nothing constructs `RemoteRelayClient` at startup, there
-  is no settings/route/UI to enable it, store `corePrivateKey` in the secret store, hand the key to
-  a device at pairing, create a route, or run `receive()` with reconnect/abort-on-revoke.
+- No phone app, no pairing UI/URI, no TLS exercised, no hosting, no Dockerfile.
 - Pairing a device _for the relay_ reuses the Phase 71 pairing; the device learns Core's relay public
   key out of band in these tests. No pairing UI/URI carries it yet.
 - Device list/revoke is the phone-link list/revoke (`/api/phone/devices`); there is no relay-specific
   device list.
-- Resilience: no TLS to the relay is exercised, no reconnect, no rate limiting per client address, no
-  presence/offline queueing by design (a device must be online to receive).
+- Resilience: no TLS to the relay is exercised, no rate limiting per client address, no
+  presence/offline queueing by design (a device must be online to receive). The reconnect loop is
+  tested against a loopback relay only.
 - No forward-secrecy beyond per-message ephemeral keys on the sender side (the long-term recipient
   key is static); a stolen device or Core key reveals past captured frames to that recipient.
 - Hosted instance and container image are not provided.

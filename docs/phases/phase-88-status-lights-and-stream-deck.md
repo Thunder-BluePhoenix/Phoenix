@@ -5,7 +5,7 @@
 | Stage | Stage 14 — Phoenix originals |
 | Release target | Post-v2.0 track |
 | Priority | Low |
-| Status | 🟨 Built as code with injected transports; every check is simulated. **Not wired:** no real Hue, Key Light, Luxafor or LIFX transport, no Stream Deck plugin, and the capability is not in `builtins.ts`. No real light or Stream Deck was driven; the exit criterion is not met |
+| Status | 🟨 Built as code and wired into Core for the Elgato Key Light only; every check is simulated (fakes and a fake Key Light on loopback). The capability is in `builtins.ts` (installed, never enabled). **Not done:** Hue, Luxafor and LIFX transports, the Stream Deck plugin. No real light or Stream Deck was driven; the exit criterion is not met |
 | Depends on | [Phase 13 — Capability SDK, Mock Capability & Event Simulator](phase-13-capability-sdk-mock-simulator.md) |
 | Unblocks | — |
 
@@ -15,14 +15,16 @@ Fawkes' state in the physical world.
 
 ## Tasks
 
-- [ ] Lights: Philips Hue, Elgato Key Light, Luxafor/busy lights, LIFX; map states to colours (red while recording). The event-to-colour mapping is built; transports are injected and request formats are checked for shape only. Simulated. Unticked: no real transport and no real light.
+- [ ] Lights: Philips Hue, Elgato Key Light, Luxafor/busy lights, LIFX; map states to colours (red while recording). The event-to-colour mapping is built and a Key Light transport is wired (`PUT http://<ip>:<port>/elgato/lights`, no redirects, 5 s timeout); Hue, Luxafor and LIFX request formats are checked for shape only. Simulated. Unticked: no real light was driven.
 - [ ] Stream Deck plugin: approve/deny, start recording, keep awake, state icons. **No plugin exists.** Only the approve key's restrictions are built: a denylist of sensitive permissions, an empty allow-list by default, and off unless enabled.
-- [ ] Respects focus mode and quiet hours. Quiet hours and focus darken the lights (fail dark). Simulated. Unticked: not connected to the real focus mode.
+- [ ] Respects focus mode and quiet hours. Quiet hours and focus darken the lights (fail dark). Simulated. Unticked: Core does not pass `focusMode` to the capability, and there is no Settings UI for quiet hours.
 
 ## Deliverables
 
-- `capabilities/status-lights` (`@phoenix/capability-status-lights`): mapping, consent, quiet hours, serialized writes. Built, not added to `builtins.ts`; simulated evidence only. See [status-lights.md](../status-lights.md).
-- Not built: real light transports and the Stream Deck plugin.
+- `capabilities/status-lights` (`@phoenix/capability-status-lights`): mapping, consent, quiet hours, serialized writes. Now in `core/runtime/src/builtins.ts` via `createStatusLightsCapability` (installed, never enabled); `builtinCapabilities(env, agents, planning, host)` takes a `BuiltinHost` with `statusLights` options and `onAwakeSession`. Simulated evidence only. See [status-lights.md](../status-lights.md).
+- `core/runtime/src/status-lights/provision.ts` (`StatusLightProvisioning`): provisioned lights (id, kind `key-light`, IPv4 `address` that must be private, link-local or loopback and never a hostname, `port` default 9123) in settings key `status-lights.provisioned`, re-validated on read (an entry that no longer validates is dropped). `keyLightTransport` does `PUT http://<ip>:<port>/elgato/lights`. Routes `GET/PUT /api/status-lights/devices` (`PUT` replaces the list, at most 16, audited as `status_lights.provisioned`). Privacy row `status_lights_devices`. Test `core/runtime/test/status-lights-wiring.test.ts` (fake Key Light on loopback).
+- Consent is a separate capability setting (`devices` in the status-lights capability config); provisioning alone never lights anything. Only events with source `agents` (and `core` for `notetaker.*`) drive colours.
+- Not built: Hue (needs bridge pairing and a key), Luxafor (USB HID) and LIFX (UDP) transports, the Stream Deck plugin and deck surface. Settings section: see `apps/web/src/components/StatusLightsSettings.tsx`; quiet hours and the deck still have no Settings UI.
 
 ## Exit criteria
 
@@ -45,11 +47,11 @@ Fawkes' state in the physical world.
 
 ### What was not built
 
-Real Hue, Key Light, Luxafor and LIFX transports, the Stream Deck plugin, and registration in `builtins.ts`.
+Hue, Luxafor and LIFX transports (Hue needs bridge pairing and a key, Luxafor USB HID, LIFX UDP), the Stream Deck plugin and deck surface, any real light, and a Settings UI for quiet hours and the deck.
 
 ### What was not run
 
-Any real light, bridge or Stream Deck. Open items are in the [gap register](../gaps.md).
+Any real light, bridge or Stream Deck, including the Key Light transport. Open items are in the [gap register](../gaps.md).
 
 ## Notes & risks
 

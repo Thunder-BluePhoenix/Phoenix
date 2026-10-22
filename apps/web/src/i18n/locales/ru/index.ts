@@ -23,6 +23,9 @@ import { services } from "./services";
 import { settings } from "./settings";
 import { shell } from "./shell";
 import { signals } from "./signals";
+import { browserProfiles } from "./browser-profiles";
+import { awakeSchedule } from "./awake-schedule";
+import { teamStatus } from "./team-status";
 
 const messages: Messages = {
   ...common,
@@ -45,6 +48,9 @@ const messages: Messages = {
   ...digest,
   ...calendar,
   ...signals,
+  ...browserProfiles,
+  ...awakeSchedule,
+  ...teamStatus,
   ...machine,
   ...fawkesRebirth,
 };

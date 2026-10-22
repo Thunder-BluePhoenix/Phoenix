@@ -14,6 +14,8 @@ What exists is a tested TypeScript **policy engine** in `apps/web/src/core/brows
   browser" (Phase 93 exit criteria). Both need a real webview and are **unmet**. All evidence here is unit tests on injected
   inputs; no network, window, or OS call was made.
 
+This slice was reviewed again after the Core wiring of Phases 86 to 96 and was deliberately not wired: a policy running in page JavaScript would protect nothing, so enforcement has to live in Rust, and no webview or Rust/Tauri change exists.
+
 `MiniBrowser.tsx` was deliberately not written: a React component that draws an address bar and an `<iframe>` would be a fake
 browser (iframes cannot be sandboxed to the degree required, are blocked by most sites' `X-Frame-Options`, and share
 Phoenix's origin policy). It needs the native webview below.

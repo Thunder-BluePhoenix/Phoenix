@@ -5,7 +5,7 @@
 | Stage | Stage 15 — Phoenix browser |
 | Release target | Post-v2.0 track |
 | Priority | High |
-| Status | 🟨 Only a TypeScript policy engine exists (80 tests). **No browser exists:** no webview, tabs, address bar or `MiniBrowser.tsx`, and no Rust or Tauri change. Neither exit criterion is met |
+| Status | 🟨 Only a TypeScript policy engine exists (80 tests). **No browser exists:** no webview, tabs, address bar or `MiniBrowser.tsx`, and no Rust or Tauri change. It was reviewed again after the Phases 86-96 wiring and not wired: a policy running in page JavaScript would protect nothing, so enforcement must be in Rust. Neither exit criterion is met |
 | Depends on | [Phase 14 — Floating Desktop Fawkes](phase-14-floating-desktop-fawkes.md) |
 | Unblocks | [Phase 94 — YouTube Music & Site Connectors](phase-94-youtube-music-and-site-connectors.md), [Phase 95 — Fawkes Browsing Assistant](phase-95-fawkes-browsing-assistant.md), [Phase 96 — Browser Profiles, Sync & Extensions](phase-96-browser-profiles-sync-extensions.md) |
 

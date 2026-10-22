@@ -5,7 +5,7 @@
 | Stage | Stage 15 — Phoenix browser |
 | Release target | Post-v2.0 track |
 | Priority | High |
-| Status | 🟨 Only a visible-player policy and search URL builders exist (22 tests). **No embedded player exists** (it needs the Phase 93 host). Neither exit criterion is met |
+| Status | 🟨 A visible-player policy and search URL builders exist (22 tests), and Core now keeps the per-site opt-in and builds search URLs through routes (5 wiring tests). **No embedded player exists** (it needs the Phase 93 host); nothing fetches, opens a page or plays. Neither exit criterion is met |
 | Depends on | [Phase 93 — Phoenix Mini Browser](phase-93-phoenix-mini-browser.md), [Phase 68 — Media & Portfolio Capabilities](phase-68-media-and-portfolio.md) |
 | Unblocks | — |
 
@@ -25,7 +25,8 @@
 ## Deliverables
 
 - `capabilities/youtube-music` (`@phoenix/capability-youtube-music`): visible-player policy, exact-host opt-in connectors, search URL building. Built, 22 tests, simulated evidence only. See [youtube-music.md](../youtube-music.md).
-- Not built: an embedded player and a connector framework with real playback.
+- `core/runtime/src/music-connectors/service.ts` (`MusicConnectorsService`) and routes `GET /api/music/connectors`, `PUT /api/music/connectors/:site` (`{enabled}`, audited `music_connectors.changed`), `POST /api/music/connectors/:site/search` (`{query}` → `{url}` only for an allowed site, 403 otherwise). Enabled sites are in settings key `music-connectors.enabled` (privacy row `music_connectors`). `core/runtime/package.json` gained the workspace edge `@phoenix/capability-youtube-music`. Test: `core/runtime/test/music-connectors-wiring.test.ts` (5). Settings UI in progress (`MusicSitesSettings.tsx` does not exist yet).
+- Not built: an embedded player and a connector framework with real playback; the `YouTubeMusicConnector` playback side still needs the Phase 93 host.
 
 ## Exit criteria
 
@@ -39,7 +40,7 @@
 - **Visible-player policy:** exact-host opt-in connectors; a 200 × 200 minimum visible viewport; pause before hiding; forced pause if playing while hidden; an ad-blocking exemption only for an enabled YouTube connector.
 - **Search** builds a URL and selects nothing.
 - SoundCloud, Bandcamp and Spotify Web: policy and search URL only.
-- 22 tests. Documentation: [youtube-music.md](../youtube-music.md).
+- 22 tests, plus 5 wiring tests for the Core routes. Documentation: [youtube-music.md](../youtube-music.md).
 
 ### What was not built
 

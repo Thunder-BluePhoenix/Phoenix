@@ -1076,6 +1076,9 @@ importers:
       '@phoenix/capability-vercel':
         specifier: workspace:*
         version: link:../../capabilities/vercel
+      '@phoenix/capability-youtube-music':
+        specifier: workspace:*
+        version: link:../../capabilities/youtube-music
       '@phoenix/config':
         specifier: workspace:*
         version: link:../config

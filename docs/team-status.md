@@ -5,8 +5,8 @@
 Two independent features that share one rule: **nothing happens until the user opts in, and untrusted
 input is data, never an instruction.**
 
-- `core/runtime/src/team-status/` – the logic (no I/O of its own; the clock, secret store, bus, audit log and relay sender are injected).
-- `core/api/src/team-webhook-routes.ts` – the HTTP surface.
+- `core/runtime/src/team-status/` – the logic. `link.ts` (`TeamLinkService`) wires it to the Phase 87 relay; the rest does no I/O of its own (the clock, secret store, bus, audit log and relay sender are injected).
+- `core/api/src/team-webhook-routes.ts` and `core/api/src/team-link-routes.ts` (plus the existing `teamStatusRoutes`) – the HTTP surface.
 
 ## Incoming webhooks
 
@@ -80,23 +80,32 @@ A frame is accepted only if the sender is on the **local roster** (id, locally c
 
 `summary()` aggregates **only** members who are rostered, report `sharing: true` and were heard from in the last 3 minutes. The output is the member id, the **local** label, kinds, minute-rounded starts and per-kind counts – no remote string is ever displayed or interpreted, and a member who is not sharing does not appear at all (not even as "offline"). Removing a member forgets everything they sent.
 
-## Wiring the parent must do
+## How it is wired
 
-**Done (incoming webhooks only):** `PhoenixRuntime` constructs `TeamWebhooks` with the OS secret store (when one is supplied), `CoreServices.teamWebhooks` exposes it, `buildRoutes` registers `teamWebhookRoutes`, `ApiServer` already skips authentication for `route.public`, and `POST /api/events` refuses a `webhook-<source>` source. `core/runtime/test/team-webhooks-wiring.test.ts` drives it through the real server. The privacy inventory lists the sources as `team_webhook_sources`. Still open: nothing in the web UI creates a source, and the CORS allow-list needs no change because senders are servers.
+**Incoming webhooks:** `PhoenixRuntime` constructs `TeamWebhooks` with the OS secret store (when one is supplied), `CoreServices.teamWebhooks` exposes it, `buildRoutes` registers `teamWebhookRoutes`, `ApiServer` already skips authentication for `route.public`, and `POST /api/events` refuses a `webhook-<source>` source. `core/runtime/test/team-webhooks-wiring.test.ts` drives it through the real server. The privacy inventory lists the sources as `team_webhook_sources`. Still open: nothing in the web UI creates a source, and the CORS allow-list needs no change because senders are servers.
 
-**Not wired (team status):** `TeamSharing`, `TeamPresence` and `TeamStatus`, their routes and the web UI.
+**Team presence:** `TeamLinkService` (`core/runtime/src/team-status/link.ts`) constructs `TeamSharing`, `TeamPresence` and `TeamStatus` and uses the [Phase 87 relay](remote-relay.md) as transport with `tm_<12 hex>` addresses (the relay now accepts that peer kind; a team address talks only to team addresses, never to `core` or `dev_…`). Frames are sealed to the recipient and signed by the sender (unchanged `team-status-v1`). It needs a secret store and is absent from the demo runtime (no sockets).
 
-1. Construct `TeamSharing`, `TeamPresence` (roster from a pairing flow), `TeamStatus`; subscribe `bus.subscribe("team-status", ["deploy.*","agent_run.*","kage.meeting.*"], e => sharing.observe(e))`; call `status.broadcast()` on `sharing.subscribe` and on a timer shorter than 3 minutes; feed relay frames to `status.receive()`. Register `teamStatusRoutes`.
-2. Provide the identity private key from the OS store through `TeamStatusIdentity.privateKeyPem()` (the Phase 87 core identity can be reused or a separate key generated).
-3. Web UI and `useT()` strings for the consent and webhook screens (not part of this slice).
+Routes (`core/api/src/team-link-routes.ts` and `teamStatusRoutes`, session token only): `GET/POST/DELETE /api/team/link`, `POST /api/team/link/pause`, `GET /api/team/status`, `PUT /api/team/sharing`, `POST /api/team/members`, `DELETE /api/team/members/:id`.
+
+- **Identity.** The private key is only in the OS secret store (`team-status.private-key`). The roster (id, label, pinned public key) is in settings `team-status.roster`; the link config is in settings `team-status.link`. Privacy row `team_status` (counts roster entries).
+- **Roster.** Adding a member whose id is already on the roster is refused (remove first), so a pinned key is never silently swapped. Your own id or key is refused.
+- **Inbound.** Frames are rate-limited per sender. Only a rostered sender with a verifying signature is shown. `webhook-*` sources are never observed as the user's status.
+- **Kill switch.** It pauses the link and keeps the roster and identity.
+- **Leaving** sends a final "not sharing" frame, then forgets identity, route and roster.
+- **Heartbeat.** Status is refreshed every 60 s; a member counts as stale after 3 min.
+- **Settings section:** see `apps/web/src/components/TeamSettings.tsx`.
+- **Tests.** `core/runtime/test/team-link-wiring.test.ts` (10) runs two real Cores through a real `createRelayServer` on loopback.
+
+**Still not done:** a pairing flow beyond copying the id and public key by hand; a web screen to create webhook sources; any real teammate or relay host; relay `write()`-false backpressure beyond the test seam.
 
 ## Limitations and unmet exit criteria
 
-- **"Two Phoenix installs see each other's shared state" is only shown in-process**: two `TeamStatus` objects exchange real encrypted, signed frames through an injected `send`. No relay server, no second machine, no pairing/roster exchange UI was involved.
+- **"Two Phoenix installs see each other's shared state" is only shown on loopback**: two real Cores exchange sealed, signed frames through a real `createRelayServer` in tests (`team-link-wiring.test.ts`). No second machine, no real relay host and no pairing/roster exchange UI was involved.
 - **"A webhook from a real service drives Fawkes" is not met.** The tests POST locally signed requests to the route handlers over loopback HTTP and check the event reaches an `EventBus` subscriber. No real third-party service signs with `x-phoenix-signature` (real services use their own header schemes; an adapter or a small forwarder would be needed), and Fawkes' state engine was not run.
 - The signature scheme is Phoenix's own (`v1=` HMAC over `timestamp.body`), not GitHub's or Stripe's.
 - Replay and dedupe state is in memory: a Core restart forgets event ids, so a captured delivery can be replayed for the rest of its 5 minute window after a restart. The pre-auth and per-source rate limits also reset.
 - The rate-limited audit means a sustained flood is summarized, not individually recorded.
-- Team roster/pairing, key exchange and the relay transport for team frames are not implemented; `send` and the roster are injected. The Phase 87 relay's route/peer addressing currently only allows `core` and `dev_…` peers, so teammates cannot use it unmodified.
+- Roster exchange is by hand (copy the member id and public key). The `tm_` relay addressing is tested on loopback only.
 - Webhook events are untrusted: they appear on the bus and in the activity feed like any event, but downstream consumers must keep treating `metadata.untrusted` events as data.
-- No web UI, i18n strings or settings screen were added.
+- Web UI for webhook sources does not exist. Team presence has no pairing flow; see the Settings note above.

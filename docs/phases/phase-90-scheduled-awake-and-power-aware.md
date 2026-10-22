@@ -5,7 +5,7 @@
 | Stage | Stage 14 — Phoenix originals |
 | Release target | Post-v2.0 track |
 | Priority | Medium |
-| Status | 🟨 Built as code with injected power source and controller; every check is simulated. **Not wired:** no schedule store, wake scheduler or real power source, no routes or UI, and the awake capability does not expose `SessionController`. No real machine was kept awake or released; the exit criterion is not met |
+| Status | 🟨 Built as code and wired into Core (`ScheduledAwakeService`, `/api/scheduled-awake` routes, settings-backed schedules, a power source that reads the Phase 72 battery reader and, on macOS, `pmset -g`); every check is simulated. **Not done:** `WakeScheduler` (no OS wake), any real `caffeinate` or `pmset` run, keep-awake from the phone. No real machine was kept awake or released; the exit criterion is not met |
 | Depends on | [Phase 73 — Lid-Closed Mode, Recovery & Power Floors](phase-73-lid-closed-mode-and-recovery.md) |
 | Unblocks | — |
 
@@ -15,15 +15,18 @@ Plan when the machine stays awake and when heavy work runs.
 
 ## Tasks
 
-- [ ] Scheduled awake windows (e.g. 23:00–07:00) for overnight agent runs. Opt-in schedules (5 min–12 h windows, at most 16 schedules, overlap merge capped at 24 h), DST-safe local time via `Intl`, skip and cancel. Simulated. Unticked: not wired.
-- [ ] Wake on a schedule to start a job (`pmset schedule` on macOS, RTC wake on Linux, Task Scheduler on Windows). **Not built:** no `WakeScheduler`.
-- [ ] Power-aware queue: heavy agent or batch jobs wait for the charger. A `PowerQueue` and a battery / Low Power Mode policy (fail closed on an unreadable battery) are built against an injected power source. Simulated. Unticked: no real power source.
+- [ ] Scheduled awake windows (e.g. 23:00–07:00) for overnight agent runs. Opt-in schedules (5 min–12 h windows, at most 16 schedules, overlap merge capped at 24 h), DST-safe local time via `Intl`, skip and cancel. Wired into Core with routes and persistence. Simulated. Unticked: no real machine was held awake.
+- [ ] Wake on a schedule to start a job (`pmset schedule` on macOS, RTC wake on Linux, Task Scheduler on Windows). **Not built:** no `WakeScheduler`; `wake: true` is stored and the status says `wakeAvailable: false`.
+- [ ] Power-aware queue: heavy agent or batch jobs wait for the charger. A `PowerQueue` and a battery / Low Power Mode policy (fail closed on an unreadable battery) are built. Core's `SystemPowerSource` reads the Phase 72 battery reader and, on macOS only, `lowpowermode` from `pmset -g` (parsing unit-tested; the real command was not run). Simulated. Unticked.
 - [ ] Keep awake from the phone (Phase 71). Not built.
 
 ## Deliverables
 
-- `core/runtime/src/scheduled-awake`: schedules, DST-safe time, power policy, `PowerQueue`, a controller driver over the Phase 72 `SessionController`. Built, 84 tests, not wired. See [scheduled-awake.md](../scheduled-awake.md).
-- Not built: `ScheduleStore`, `WakeScheduler`, a real `PowerSource`, routes and UI.
+- `core/runtime/src/scheduled-awake`: schedules, DST-safe time, power policy, `PowerQueue`, a controller driver over the Phase 72 `SessionController`; `service.ts` (`ScheduledAwakeService`) and `system-power.ts` (`SystemPowerSource`) wire it into Core. The awake capability gained an `onSession` hook (`capabilities/awake/src/index.ts`) so Core binds the live `SessionController`. See [scheduled-awake.md](../scheduled-awake.md).
+- Routes in `core/api/src/scheduled-awake-routes.ts` (session token only): `GET/PUT /api/scheduled-awake` (`{enabled}`), `POST /api/scheduled-awake/schedules`, `DELETE …/schedules/:id`, `POST …/skips`, `DELETE …/skips/:key`, `POST …/cancel-current`.
+- Schedules persist in settings key `scheduled-awake.state` (re-validated on load). Privacy row `scheduled_awake`.
+- Test: `core/runtime/test/scheduled-awake-wiring.test.ts` (13; fake machine and clock from `capabilities/awake/testing/fakes.ts`).
+- Not built: `WakeScheduler`, any real `caffeinate`/`pmset` run, keep-awake from the phone. Settings section: see `apps/web/src/components/ScheduledAwakeSettings.tsx`.
 
 ## Exit criteria
 
@@ -41,15 +44,22 @@ Plan when the machine stays awake and when heavy work runs.
 
 ### Deviations
 
-- The code lives in `core/runtime/src/scheduled-awake`, not in `capabilities/awake` as the deliverable said; the awake capability does not expose `SessionController`.
+- The scheduler code lives in `core/runtime/src/scheduled-awake`, not in `capabilities/awake` as the deliverable said; the awake capability only gained the `onSession` hook.
+
+### How the runtime wires it
+
+- Turning scheduling **on** and saving a schedule each go through the permission gateway and ask the user. The HTTP request blocks until answered (default confirmation timeout 5 minutes). The hold a schedule later starts does not ask again.
+- Turning off, deleting, skipping, unskipping and cancel-current only shorten awake time; they are audited (`scheduled_awake.<change>`) and never ask.
+- The emergency stop turns scheduling off (bus hook); a start guard refuses to start a hold while it is engaged, and turning scheduling on is refused (403) while it is engaged.
+- If the keep-awake capability is disabled, a window waits with reason `start_failed` and status `awakeAvailable: false`.
 
 ### What was not built
 
-A `ScheduleStore`, a `WakeScheduler`, a real `PowerSource`, routes, UI, and phone-initiated keep awake.
+A `WakeScheduler`, any real `caffeinate`/`pmset` run, and phone-initiated keep awake.
 
 ### What was not run
 
-Any real machine kept awake or released, any OS wake scheduling, any real battery reading. Open items are in the [gap register](../gaps.md).
+Any real machine kept awake or released, any OS wake scheduling, any real battery reading, and the real `pmset -g` command. Open items are in the [gap register](../gaps.md).
 
 ## Notes & risks
 
