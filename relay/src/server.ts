@@ -12,7 +12,8 @@ export const KEEPALIVE_MS = 20_000;
 
 const ROUTE = /^[a-f0-9]{32}$/;
 const DEVICE = /^dev_[a-f0-9]{12}$/;
-const PEER = /^(core|dev_[a-f0-9]{12})$/;
+const TEAM = /^tm_[a-f0-9]{12}$/;
+const PEER = /^(core|dev_[a-f0-9]{12}|tm_[a-f0-9]{12})$/;
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 const FRAME_KEYS = "ciphertext,ephemeral_key,iv,sender,tag";
 
@@ -43,8 +44,18 @@ function field(frame: Record<string, unknown>, name: string, max: number, length
   );
 }
 
+/**
+ * Direction is routing metadata too. Core talks to its phones and phones talk to Core; teammates
+ * (Phase 92) talk only to teammates. A team address never reaches Core or a phone, or the reverse.
+ */
+function allowedDirection(sender: string, peer: string): boolean {
+  if (sender === "core") return DEVICE.test(peer);
+  if (DEVICE.test(sender)) return peer === "core";
+  return TEAM.test(sender) && TEAM.test(peer);
+}
+
 /** The frame is opaque: shape and size only. The relay holds no key and cannot read the payload. */
-function validFrame(frame: unknown): frame is Record<string, string> {
+function validFrame(frame: unknown): frame is Record<string, string> & { sender: string } {
   if (typeof frame !== "object" || frame === null || Array.isArray(frame)) return false;
   const record = frame as Record<string, unknown>;
   return (
@@ -131,7 +142,7 @@ export function createRelayServer(options: RelayOptions = {}): Server {
       return;
     }
     // Direction is routing metadata too: Core talks to devices, devices talk to Core.
-    if (!validFrame(frame) || (frame.sender === "core") !== DEVICE.test(peer)) {
+    if (!validFrame(frame) || !allowedDirection(frame.sender, peer)) {
       res.writeHead(400).end();
       return;
     }

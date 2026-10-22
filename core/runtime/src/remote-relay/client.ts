@@ -7,6 +7,7 @@ import type { PhoneDeviceApi } from "@phoenix/api";
 import { signedRequestText } from "../phone-link";
 import { open, seal, signCoreMessage, type RelayFrame } from "./crypto";
 import { ReplayWindow, SIGNATURE_WINDOW_MS } from "./replay";
+import { readRelayStream } from "./stream";
 
 const TARGET = "/remote/v1/decision";
 
@@ -189,30 +190,15 @@ export class RemoteRelayClient {
 
   /** Starts a server-sent event connection; close the abort controller on shutdown/revocation. */
   async receive(signal: AbortSignal, onError: (error: unknown) => void): Promise<void> {
-    const response = await this.fetcher(this.address("core"), {
-      headers: { accept: "text/event-stream" },
+    await readRelayStream(
+      this.fetcher,
+      this.address("core"),
       signal,
-    });
-    if (!response.ok || !response.body) throw new Error(`Relay stream failed (${response.status})`);
-    const decoder = new TextDecoder();
-    let pending = "";
-    const reader = response.body.getReader();
-    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
-      pending += decoder.decode(chunk.value, { stream: true });
-      if (pending.length > 64 * 1024) throw new Error("Relay event too large");
-      let end: number;
-      while ((end = pending.indexOf("\n\n")) >= 0) {
-        const event = pending.slice(0, end).replace(/\r/g, "");
-        pending = pending.slice(end + 2);
-        const line = event.split("\n").find((row) => row.startsWith("data: "));
-        if (!line) continue;
-        try {
-          this.accept(JSON.parse(line.slice(6)) as RelayFrame);
-        } catch (error) {
-          onError(error);
-        }
-      }
-    }
+      (frame) => {
+        this.accept(frame as RelayFrame);
+      },
+      onError,
+    );
   }
 
   static newRoute(): string {

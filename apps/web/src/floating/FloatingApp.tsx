@@ -4,7 +4,7 @@ import type { DragEvent, SoundPlayer } from "@phoenix/pet-runtime";
 import { visualFor } from "@phoenix/pet-states";
 import { useCallback, useEffect, useState } from "react";
 import { tauriShortcuts, type ShortcutsShell } from "../commands/shortcuts-shell";
-import { FawkesAvatar } from "../components/FawkesAvatar";
+import { RebirthAvatar } from "../components/RebirthAvatar";
 import { AwakeCountdown } from "../components/Awake";
 import { ActiveSourcePills } from "../components/SourcePills";
 import { useWornOutfit } from "../core/appearance";
@@ -94,7 +94,7 @@ export function FloatingApp({
           </p>
         )}
       </div>
-      <FawkesAvatar
+      <RebirthAvatar
         state={state}
         size={FLOATING_SIZE}
         draggable

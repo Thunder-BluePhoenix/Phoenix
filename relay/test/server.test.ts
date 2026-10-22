@@ -182,6 +182,30 @@ describe("what the relay refuses", () => {
     expect((await post(peerUrl(base, DEVICE), JSON.stringify(frame(DEVICE)))).status).toBe(400);
   });
 
+  it("lets teammates talk to teammates and keeps team addresses apart from Core and phones", async () => {
+    const base = await start();
+    const ana = "tm_aaaaaaaaaaaa";
+    const bo = "tm_bbbbbbbbbbbb";
+    const listener = await listen(peerUrl(base, bo));
+    await listener.until(": connected");
+    const sent = frame(ana);
+    expect((await post(peerUrl(base, bo), JSON.stringify(sent))).status).toBe(202);
+    await listener.until(/data: .*\n\n/);
+    // A teammate cannot post to Core or a phone, and Core or a phone cannot post to a teammate.
+    expect((await post(peerUrl(base, "core"), JSON.stringify(frame(ana)))).status).toBe(400);
+    expect((await post(peerUrl(base, DEVICE), JSON.stringify(frame(ana)))).status).toBe(400);
+    expect((await post(peerUrl(base, bo), JSON.stringify(frame("core")))).status).toBe(400);
+    expect((await post(peerUrl(base, bo), JSON.stringify(frame(DEVICE)))).status).toBe(400);
+    // Only the exact shape is an address.
+    for (const peer of [
+      "tm_AAAAAAAAAAAA",
+      "tm_aaaaaaaaaaa",
+      "tm_aaaaaaaaaaaaa",
+      "team_aaaaaaaaaaaa",
+    ])
+      expect((await fetch(peerUrl(base, peer))).status).toBe(404);
+  });
+
   it("requires JSON and caps the body", async () => {
     const base = await start();
     const url = peerUrl(base, DEVICE);

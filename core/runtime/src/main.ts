@@ -60,6 +60,13 @@ try {
         reviewContext: (id: string) =>
           runtime.planning.reviewContext(id, runtime.memory.settings().allow_sensitive_meetings),
       }),
+      {
+        statusLights: {
+          devices: () => runtime.statusLights.devices(),
+          feed: () => runtime.bus,
+        },
+        onAwakeSession: (session) => runtime.scheduledAwake.bindSession(session),
+      },
     ),
   });
 } catch (err) {

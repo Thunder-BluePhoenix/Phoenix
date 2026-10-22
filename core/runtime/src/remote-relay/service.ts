@@ -12,11 +12,10 @@ import type { DeviceStore, SecretStore, SettingsStore } from "@phoenix/persisten
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
 import { RemoteRelayClient } from "./client";
 import { newCoreIdentity } from "./crypto";
+import { defaultSleep, keepStreamOpen, relayUrl, type RelaySleep } from "./stream";
 
 export const RELAY_SETTINGS_KEY = "remote-relay.config";
 export const RELAY_KEY_SECRET = "remote-relay.core-private-key";
-const MIN_BACKOFF_MS = 1_000;
-const MAX_BACKOFF_MS = 60_000;
 
 interface RelayConfig {
   enabled: boolean;
@@ -47,24 +46,8 @@ export interface RemoteRelayServiceDeps {
   killSwitchEngaged: () => boolean;
   fetcher?: typeof fetch;
   clock?: () => number;
-  /** Tests make waits instant; production waits the backoff on a real timer. */
-  sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
+  sleep?: RelaySleep;
 }
-
-const defaultSleep = (ms: number, signal: AbortSignal): Promise<void> => {
-  const done = Promise.withResolvers<void>();
-  const timer = setTimeout(done.resolve, ms);
-  timer.unref();
-  signal.addEventListener(
-    "abort",
-    () => {
-      clearTimeout(timer);
-      done.resolve();
-    },
-    { once: true },
-  );
-  return done.promise;
-};
 
 function parseConfig(value: unknown): RelayConfig {
   if (value === null || typeof value !== "object") return OFF;
@@ -186,27 +169,25 @@ export class RemoteRelayService {
     this.running = this.run(this.client, abort.signal);
   }
 
-  private async run(client: RemoteRelayClient, signal: AbortSignal): Promise<void> {
-    const sleep = this.d.sleep ?? defaultSleep;
-    let backoff = MIN_BACKOFF_MS;
-    while (!signal.aborted) {
-      try {
+  private run(client: RemoteRelayClient, signal: AbortSignal): Promise<void> {
+    return keepStreamOpen({
+      signal,
+      sleep: this.d.sleep ?? defaultSleep,
+      halted: () => this.d.killSwitchEngaged(),
+      open: () => {
         this.connected = true;
-        await client.receive(signal, (error) => {
+        return client.receive(signal, (error) => {
           // A refused frame is audited by the client; only the kind of failure is kept here.
           this.lastError = error instanceof Error ? error.message.slice(0, 120) : "refused frame";
         });
-        backoff = MIN_BACKOFF_MS;
-      } catch (error) {
-        if (signal.aborted) break;
-        this.lastError = error instanceof Error ? error.message.slice(0, 120) : "stream failed";
-      } finally {
-        this.connected = false;
-      }
-      if (signal.aborted || this.d.killSwitchEngaged()) break;
-      await sleep(backoff, signal);
-      backoff = Math.min(MAX_BACKOFF_MS, backoff * 2);
-    }
+      },
+      connected: (on) => {
+        this.connected = on;
+      },
+      failed: (message) => {
+        this.lastError = message;
+      },
+    });
   }
 
   private async stopLoop(): Promise<void> {
@@ -216,23 +197,4 @@ export class RemoteRelayService {
     await this.running;
     this.connected = false;
   }
-}
-
-/** HTTPS only, plus plain http on loopback for a relay you run on this machine. */
-function relayUrl(input: unknown): string {
-  const raw = input !== null && typeof input === "object" && "url" in input ? input.url : undefined;
-  if (typeof raw !== "string" || raw.length === 0 || raw.length > 300)
-    throw new PhoenixError(ErrorCode.INVALID_REQUEST, '"url" must be the relay address');
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new PhoenixError(ErrorCode.INVALID_REQUEST, '"url" must be a URL');
-  }
-  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback))
-    throw new PhoenixError(ErrorCode.INVALID_REQUEST, "The relay must use HTTPS");
-  if (url.username || url.password || url.search || url.hash)
-    throw new PhoenixError(ErrorCode.INVALID_REQUEST, "The relay URL cannot carry credentials");
-  return url.toString().replace(/\/$/, "");
 }

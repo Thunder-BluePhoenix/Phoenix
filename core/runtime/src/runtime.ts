@@ -100,6 +100,10 @@ import { TeamWebhooks, WEBHOOK_SETTINGS_KEY } from "./team-status/webhooks";
 import { ChatApprovalsService, CHAT_APPROVALS_CAPABILITY } from "./chat-approvals/service";
 import type { HttpTransport } from "@phoenix/capability-chat-approvals";
 import { RemoteRelayService, type RemoteRelayServiceDeps } from "./remote-relay/service";
+import { TeamLinkService, type TeamLinkDependencies } from "./team-status/link";
+import { StatusLightProvisioning } from "./status-lights/provision";
+import { FawkesRebirthService } from "./fawkes-rebirth/service";
+import { ScheduledAwakeService, type ScheduledAwakeDependencies } from "./scheduled-awake/service";
 import { EventSourcePolicy } from "./event-source-policy";
 import { WorkflowsRuntime } from "./workflows";
 
@@ -132,6 +136,10 @@ export interface RuntimeOptions {
   chatTransport?: HttpTransport;
   /** Relay tuning (tests inject a fetcher, a clock and an instant sleep). */
   relay?: Pick<RemoteRelayServiceDeps, "fetcher" | "clock" | "sleep">;
+  /** Team link tuning (tests inject a fetcher, a clock, an instant sleep and a hand-driven heartbeat). */
+  teamLink?: Pick<TeamLinkDependencies, "fetcher" | "clock" | "sleep" | "heartbeat">;
+  /** Scheduler tuning (tests inject a clock and a power source; production reads this machine). */
+  scheduledAwake?: Pick<ScheduledAwakeDependencies, "clock" | "power" | "env">;
   /** Ollama base URL (loopback only). Defaults to http://127.0.0.1:11434. */
   ollamaUrl?: string;
   /** Anthropic base URL; tests only. */
@@ -290,6 +298,16 @@ export class PhoenixRuntime implements CoreServices {
   readonly phone: PhoneLink;
   /** Remote access relay (Phase 87): off by default; absent without an OS secret store. */
   readonly remoteRelay: RemoteRelayService | undefined;
+  /** Team presence (Phase 92): off by default; absent without an OS secret store or in the demo. */
+  readonly teamLink: TeamLinkService | undefined;
+  /** Status lights (Phase 88): the lights Core can reach. Contacting one still needs capability consent. */
+  readonly statusLights: StatusLightProvisioning;
+  /** Scheduled awake windows (Phase 90): off by default; holds Phase 72's one session. */
+  readonly scheduledAwake: ScheduledAwakeService;
+  /** Fawkes rebirth (Phase 91): turns a fixed build into a cosmetic celebration. Stores two switches. */
+  readonly fawkesRebirth: FawkesRebirthService;
+  /** The sharing choices and teammate view of {@link teamLink}, as the routes see them. */
+  readonly teamStatus: TeamLinkService | undefined;
   /** Phoenix MCP server (Phase 76): off by default; a separate loopback listener with per-client tokens. */
   readonly mcp: McpServer;
   /** Session handoff notes (Phase 79): deterministic notes, optional local summary, attach with preview. */
@@ -668,6 +686,33 @@ export class PhoenixRuntime implements CoreServices {
             ...(options.relay ?? {}),
           })
         : undefined;
+    this.teamLink =
+      options.secrets && options.demo !== false
+        ? new TeamLinkService({
+            settings: this.settings,
+            secrets: options.secrets,
+            audit: this.permissions.audit,
+            bus: this.bus,
+            killSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
+            ...(options.teamLink ?? {}),
+          })
+        : undefined;
+    this.teamStatus = this.teamLink;
+    this.statusLights = new StatusLightProvisioning(this.settings, this.permissions.audit);
+    this.scheduledAwake = new ScheduledAwakeService({
+      settings: this.settings,
+      permissions: this.permissions,
+      audit: this.permissions.audit,
+      ...(options.scheduledAwake ?? {}),
+    });
+    this.fawkesRebirth = new FawkesRebirthService({
+      bus: this.bus,
+      settings: this.settings,
+      audit: this.permissions.audit,
+    });
+    this.bus.subscribe("scheduled-awake", "security.kill_switch.engaged", () => {
+      void this.scheduledAwake.stopForKillSwitch();
+    });
     this.bus.subscribe("remote-relay", "security.kill_switch.engaged", () => {
       void this.remoteRelay?.disable("kill_switch");
     });
@@ -971,6 +1016,8 @@ export class PhoenixRuntime implements CoreServices {
     if (this.options.startAgentRelay ?? true) await this.agentRelay.start();
     await this.phone.start();
     await this.remoteRelay?.start();
+    await this.teamLink?.start();
+    await this.scheduledAwake.start();
     await this.mcp.start();
     if (this.options.writeTokenFile ?? true) this.writeTokenFile();
 
@@ -1181,6 +1228,29 @@ export class PhoenixRuntime implements CoreServices {
         deleted_with:
           "turn the relay off (DELETE /api/remote-relay), which discards the route and key",
       },
+      {
+        id: "status_lights_devices",
+        description:
+          "Status lights (Phase 88): the LAN address and port of each Key Light you added, in settings. Consent to use a light is a separate setting of the status-lights capability. Nothing is contacted until both exist and the capability is enabled; only fixed colours are ever sent.",
+        count: this.statusLights.lights().length,
+        deleted_with: "replace the list with an empty one (PUT /api/status-lights/devices)",
+      },
+      {
+        id: "scheduled_awake",
+        description:
+          "Scheduled keep-awake (Phase 90): the windows you saved (a name, days or a date, start and end times, a time zone, and your battery and charger rules) and the windows you skipped, in settings. Off until you turn it on, and turning it on and saving a window each ask you first. Battery level and Low Power Mode are read on this computer and never stored.",
+        count: this.scheduledAwake.scheduleCount(),
+        deleted_with:
+          "delete a schedule (DELETE /api/scheduled-awake/schedules/:id); turning scheduling off keeps them but holds nothing",
+      },
+      {
+        id: "team_status",
+        description:
+          "Team presence (Phase 92): your team relay address and route id, your team id and public key, and the teammates you added (id, the label you chose, their public key), in settings; your sharing choices; and the last state each teammate sent, held in memory only. Your team private key is only in the OS credential store. Off by default; sharing is a second, separate opt-in per item.",
+        count: this.teamLink?.memberCount() ?? 0,
+        deleted_with:
+          "remove a teammate (DELETE /api/team/members/:id), or leave the team (DELETE /api/team/link), which forgets the identity, route and roster",
+      },
     ];
   }
 
@@ -1301,6 +1371,9 @@ export class PhoenixRuntime implements CoreServices {
       if (this.pruner) clearInterval(this.pruner);
       await this.agentRelay.stop();
       await this.phone.close();
+      this.fawkesRebirth.close();
+      await this.scheduledAwake.close();
+      await this.teamLink?.close();
       await this.remoteRelay?.close();
       await this.mcp.close();
       await this.api?.close();

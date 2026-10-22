@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { createAwakeCapability } from "@phoenix/capability-awake";
+import { createAwakeCapability, type SessionController } from "@phoenix/capability-awake";
 import { createAgentsCapability, type AgentsServices } from "@phoenix/capability-agents";
 import { createAppleMusicCapability } from "@phoenix/capability-apple-music";
 import { createDockerCapability } from "@phoenix/capability-docker";
@@ -19,12 +19,24 @@ import { createPlanningCapability, type PlanningServices } from "@phoenix/capabi
 import { createPortsCapability } from "@phoenix/capability-ports";
 import { createResendCapability } from "@phoenix/capability-resend";
 import { createPortfolioCapability } from "@phoenix/capability-portfolio";
+import {
+  createStatusLightsCapability,
+  type StatusLightsOptions,
+} from "@phoenix/capability-status-lights";
 import { createStripeCapability } from "@phoenix/capability-stripe";
 import { createSpotifyCapability } from "@phoenix/capability-spotify";
 import { terminalCapability } from "@phoenix/capability-terminal";
 import { createVercelCapability } from "@phoenix/capability-vercel";
 import type { CapabilityModule } from "@phoenix/capability-manager";
 import type { PhoenixConfig } from "@phoenix/config";
+
+/** What the runtime lends to capabilities that need to reach back into Core. */
+export interface BuiltinHost {
+  /** Phase 88: the lights Core can reach and the event feed they follow. */
+  statusLights?: StatusLightsOptions;
+  /** Phase 90: told about the live keep-awake session so the scheduler can hold the same one. */
+  onAwakeSession?: (session: SessionController | undefined) => void;
+}
 
 /**
  * The first-party capabilities Core installs at startup. They are installed, never enabled: each
@@ -40,6 +52,7 @@ export function builtinCapabilities(
   env: PhoenixConfig["env"],
   agentsServices?: () => AgentsServices | undefined,
   planningServices?: () => PlanningServices | undefined,
+  host: BuiltinHost = {},
 ): CapabilityModule[] {
   return [
     createKageCapability(),
@@ -60,10 +73,14 @@ export function builtinCapabilities(
     createFrappeCapability(),
     createMachineCapability(),
     createAgentsCapability(agentsServices ? { services: agentsServices } : {}),
-    createAwakeCapability({ feed: () => agentsServices?.()?.events }),
+    createAwakeCapability({
+      feed: () => agentsServices?.()?.events,
+      ...(host.onAwakeSession ? { onSession: host.onAwakeSession } : {}),
+    }),
     createIssuesCapability(),
     createPlanningCapability({ services: planningServices }),
     createPortsCapability(),
+    createStatusLightsCapability(host.statusLights),
     ...(env === "dev" ? [mockCapability] : []),
   ];
 }

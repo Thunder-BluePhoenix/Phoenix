@@ -41,6 +41,7 @@ import { PortRadar } from "./PortRadar";
 import { MachineHealth } from "./MachineHealth";
 import { EngineeringSignals } from "./EngineeringSignals";
 import { EventSourcePolicySection } from "./EventSourcePolicy";
+import { FawkesRebirthSettingsSection } from "./FawkesRebirthSettings";
 import { FawkesAppearanceSection } from "./Wardrobe";
 
 /** Settings (PRD v2.0 §16, FR-014): Fawkes, notifications, capabilities, privacy, memory, AI. */
@@ -76,6 +77,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <PortRadar />
       <MachineHealth />
       <EngineeringSignals />
+      <FawkesRebirthSettingsSection />
       <EventSourcePolicySection />
       <SupportSettings />
       <ShortcutSettings />

@@ -1064,6 +1064,9 @@ importers:
       '@phoenix/capability-spotify':
         specifier: workspace:*
         version: link:../../capabilities/spotify
+      '@phoenix/capability-status-lights':
+        specifier: workspace:*
+        version: link:../../capabilities/status-lights
       '@phoenix/capability-stripe':
         specifier: workspace:*
         version: link:../../capabilities/stripe

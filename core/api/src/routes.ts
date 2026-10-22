@@ -20,7 +20,11 @@ import { dictationRoutes } from "./dictation-routes";
 import { notetakerRoutes } from "./notetaker-routes";
 import { digestRoutes } from "./digest-routes";
 import { calendarRoutes } from "./calendar-routes";
-import { teamWebhookRoutes } from "./team-webhook-routes";
+import { teamStatusRoutes, teamWebhookRoutes } from "./team-webhook-routes";
+import { teamLinkRoutes } from "./team-link-routes";
+import { statusLightRoutes } from "./status-light-routes";
+import { scheduledAwakeRoutes } from "./scheduled-awake-routes";
+import { fawkesRebirthRoutes } from "./fawkes-rebirth-routes";
 import { chatApprovalRoutes } from "./chat-approval-routes";
 import { remoteRelayRoutes } from "./remote-relay-routes";
 import { engineeringSignalsRoutes } from "./engineering-signals-routes";
@@ -407,6 +411,11 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...(s.calendar ? calendarRoutes(s.calendar) : []),
     ...(s.engineeringSignals ? engineeringSignalsRoutes(s.engineeringSignals) : []),
     ...(s.teamWebhooks ? teamWebhookRoutes(s.teamWebhooks) : []),
+    ...(s.teamStatus ? teamStatusRoutes(s.teamStatus) : []),
+    ...(s.teamLink ? teamLinkRoutes(s.teamLink) : []),
+    ...(s.statusLights ? statusLightRoutes(s.statusLights) : []),
+    ...(s.scheduledAwake ? scheduledAwakeRoutes(s.scheduledAwake) : []),
+    ...(s.fawkesRebirth ? fawkesRebirthRoutes(s.fawkesRebirth) : []),
     ...(s.chatApprovals ? chatApprovalRoutes(s.chatApprovals) : []),
     ...(s.remoteRelay ? remoteRelayRoutes(s.remoteRelay) : []),
   ];

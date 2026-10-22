@@ -20,7 +20,11 @@ import type { PhoneApi } from "./phone-routes";
 import type { DigestService } from "./digest-routes";
 import type { CalendarApi } from "./calendar-routes";
 import type { EngineeringSignalsApi } from "./engineering-signals-routes";
-import type { TeamWebhookApi } from "./team-webhook-routes";
+import type { TeamStatusApi, TeamWebhookApi } from "./team-webhook-routes";
+import type { TeamLinkApi } from "./team-link-routes";
+import type { StatusLightsApi } from "./status-light-routes";
+import type { ScheduledAwakeApi } from "./scheduled-awake-routes";
+import type { FawkesRebirthApi } from "./fawkes-rebirth-routes";
 import type { ChatApprovalsApi } from "./chat-approval-routes";
 import type { RemoteRelayApi } from "./remote-relay-routes";
 import type { PhoenixConfig } from "@phoenix/config";
@@ -1300,6 +1304,16 @@ export interface CoreServices {
   engineeringSignals?: EngineeringSignalsApi;
   /** Incoming webhooks (Phase 92); absent when no OS secret store is available. */
   teamWebhooks?: TeamWebhookApi;
+  /** Team presence (Phase 92): sharing choices and the consented teammate view; off until opted in. */
+  teamStatus?: TeamStatusApi;
+  /** Team link (Phase 92): relay address, identity and roster; absent without an OS secret store. */
+  teamLink?: TeamLinkApi;
+  /** Status lights (Phase 88): where the owner's lights are; consent is the capability's own setting. */
+  statusLights?: StatusLightsApi;
+  /** Scheduled awake windows (Phase 90): saving one asks the user; the scheduler is off by default. */
+  scheduledAwake?: ScheduledAwakeApi;
+  /** Fawkes rebirth (Phase 91): opt-in milestones and high contrast; the celebration itself is pushed as an event. */
+  fawkesRebirth?: FawkesRebirthApi;
   /** Chat approvals (Phase 86): the provider callback door; the capability is off until enabled. */
   chatApprovals?: ChatApprovalsApi;
   /** Remote access relay (Phase 87): off by default; absent without an OS secret store. */

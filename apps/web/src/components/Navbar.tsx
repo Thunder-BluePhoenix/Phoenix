@@ -5,7 +5,8 @@ import { forwardRef } from "react";
 import type { ConnectionStatus, PetState } from "../core/types";
 import { useWornOutfit, WARDROBE_ROUTE } from "../core/appearance";
 import { usePetSettings } from "../core/hooks";
-import { FawkesAvatar, type FawkesAvatarHandle } from "./FawkesAvatar";
+import type { FawkesAvatarHandle } from "./FawkesAvatar";
+import { RebirthAvatar } from "./RebirthAvatar";
 import { NotificationCenter } from "./NotificationCenter";
 import { isMessageKey, useT, type MessageKey } from "../i18n";
 
@@ -96,7 +97,7 @@ export const Navbar = forwardRef<FawkesAvatarHandle, NavbarProps>(function Navba
           </span>
         )}
         {connection === "online" && <NotificationCenter />}
-        <FawkesAvatar
+        <RebirthAvatar
           ref={ref}
           state={state}
           expanded={panelOpen}

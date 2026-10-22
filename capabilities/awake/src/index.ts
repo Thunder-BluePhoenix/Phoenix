@@ -155,6 +155,12 @@ export interface AwakeCapabilityOptions {
   newId?: () => string;
   /** Replaces MODULES (tests). */
   modules?: readonly AwakeModule[];
+  /**
+   * Told about the live session controller each time the capability is enabled, and with
+   * `undefined` when it stops. The host uses it to let the Phase 90 scheduler hold the same one
+   * session; nothing else is exposed.
+   */
+  onSession?: (session: SessionController | undefined) => void;
 }
 
 const SESSION_EVENTS = [
@@ -349,6 +355,7 @@ export function createAwakeCapability(options: AwakeCapabilityOptions = {}): Cap
         },
       });
       ref.controller = controller;
+      options.onSession?.(controller);
       // Disable and Core exit abort the capability's signal: release then, not only in shutdown().
       const onAbort = () => controller.end("disabled");
       if (ctx.signal.aborted) onAbort();
@@ -372,6 +379,7 @@ export function createAwakeCapability(options: AwakeCapabilityOptions = {}): Cap
     shutdown(ctx) {
       stopSignal?.();
       stopSignal = undefined;
+      options.onSession?.(undefined);
       composed.shutdown(ctx);
     },
   });

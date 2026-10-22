@@ -4,7 +4,7 @@ import type { SoundPlayer } from "@phoenix/pet-runtime";
 import { visualFor } from "@phoenix/pet-states";
 import { useEffect, useState, type CSSProperties } from "react";
 import { tauriShortcuts, type ShortcutsShell } from "../commands/shortcuts-shell";
-import { FawkesAvatar } from "../components/FawkesAvatar";
+import { RebirthAvatar } from "../components/RebirthAvatar";
 import { AwakeCountdown } from "../components/Awake";
 import { ActiveSourcePills } from "../components/SourcePills";
 import { useWornOutfit } from "../core/appearance";
@@ -126,7 +126,7 @@ export function IslandApp({
         <>
           <div className="island-bar">
             <div className="island-ear island-ear-left">
-              <FawkesAvatar
+              <RebirthAvatar
                 state={state}
                 size={expanded ? EXPANDED_AVATAR_SIZE : ISLAND_AVATAR_SIZE}
                 expanded={expanded}
