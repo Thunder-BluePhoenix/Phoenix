@@ -13,7 +13,13 @@ export interface SitePolicy {
 }
 
 const SITES: Readonly<Record<Site, readonly string[]>> = {
-  youtube: ["youtube.com", "www.youtube.com", "music.youtube.com", "youtube-nocookie.com", "www.youtube-nocookie.com"],
+  youtube: [
+    "youtube.com",
+    "www.youtube.com",
+    "music.youtube.com",
+    "youtube-nocookie.com",
+    "www.youtube-nocookie.com",
+  ],
   soundcloud: ["soundcloud.com", "www.soundcloud.com", "w.soundcloud.com"],
   bandcamp: ["bandcamp.com", "www.bandcamp.com"],
   "spotify-web": ["open.spotify.com"],
@@ -40,16 +46,21 @@ export class ConnectorPolicy {
       hosts: SITES[site],
       enabled: this.enabled.has(site),
       adBlocking: site === "youtube" && this.enabled.has(site) ? "exempt" : "normal",
-      reason: site === "youtube"
-        ? "YouTube's own ads must not be blocked in its official embedded player. The exemption applies only while this connector is enabled."
-        : "Normal browser blocking remains enabled.",
+      reason:
+        site === "youtube"
+          ? "YouTube's own ads must not be blocked in its official embedded player. The exemption applies only while this connector is enabled."
+          : "Normal browser blocking remains enabled.",
     };
   }
 
   /** Returns undefined for non-HTTPS, credentials, unusual ports, or unrelated origins. */
   forUrl(value: string): SitePolicy | undefined {
     let url: URL;
-    try { url = new URL(value); } catch { return undefined; }
+    try {
+      url = new URL(value);
+    } catch {
+      return undefined;
+    }
     if (url.protocol !== "https:" || url.username || url.password || url.port) return undefined;
     for (const site of Object.keys(SITES) as Site[]) {
       if (this.enabled.has(site) && SITES[site].includes(url.hostname.toLowerCase())) {
@@ -70,6 +81,28 @@ export interface VisiblePlayerHost {
   pause(): Promise<void>;
   /** Open official site search visibly; host MUST NOT autoplay a result or scrape the page. */
   openSearch(url: string): Promise<void>;
+  /** Host MUST await callback before hiding/minimizing/detaching the playback viewport. */
+  beforeHide(callback: () => Promise<void>): () => void;
+}
+
+/** Builds a site's own search page URL. Pure: performs no I/O. */
+export function searchUrl(site: Site, query: string): string {
+  if (!Object.hasOwn(SITES, site)) throw new Error("Unknown connector");
+  const normalized = query.trim();
+  if (!normalized || normalized.length > 200) throw new Error("Search must be 1–200 characters");
+  const text = encodeURIComponent(normalized);
+  switch (site) {
+    case "youtube":
+      return `https://www.youtube.com/results?search_query=${text}`;
+    case "soundcloud":
+      return `https://soundcloud.com/search?q=${text}`;
+    case "bandcamp":
+      return `https://bandcamp.com/search?q=${text}`;
+    case "spotify-web":
+      return `https://open.spotify.com/search/${text}`;
+  }
+}
+
 /** Opens a site's own search in a visible browser surface; never scrapes, autoplays or fetches. */
 export async function searchSite(
   site: Site,
@@ -78,20 +111,7 @@ export async function searchSite(
   openVisiblePage: (url: string) => Promise<void>,
 ): Promise<void> {
   if (!policy.describe(site).enabled) throw new Error(`${site} connector is disabled`);
-  const normalized = query.trim();
-  if (!normalized || normalized.length > 200) throw new Error("Search must be 1–200 characters");
-  const text = encodeURIComponent(normalized);
-  const urls: Record<Site, string> = {
-    youtube: `https://www.youtube.com/results?search_query=${text}`,
-    soundcloud: `https://soundcloud.com/search?q=${text}`,
-    bandcamp: `https://bandcamp.com/search?q=${text}`,
-    "spotify-web": `https://open.spotify.com/search/${text}`,
-  };
-  await openVisiblePage(urls[site]);
-}
-
-  /** Host MUST await callback before hiding/minimizing/detaching the playback viewport. */
-  beforeHide(callback: () => Promise<void>): () => void;
+  await openVisiblePage(searchUrl(site, query));
 }
 
 export interface MediaSelection {
@@ -114,7 +134,10 @@ export class YouTubeMusicConnector {
   private state: MediaSnapshot["state"] = "stopped";
   private readonly unsubscribe: () => void;
 
-  constructor(private readonly host: VisiblePlayerHost, private readonly policy: ConnectorPolicy) {
+  constructor(
+    private readonly host: VisiblePlayerHost,
+    private readonly policy: ConnectorPolicy,
+  ) {
     this.unsubscribe = host.beforeHide(async () => {
       if (this.state === "playing") {
         await host.pause();
@@ -124,14 +147,17 @@ export class YouTubeMusicConnector {
   }
 
   snapshot(): MediaSnapshot {
-    return { site: "youtube", state: this.state, ...(this.current ? { current: this.current } : {}), queued: [...this.upcoming] };
+    return {
+      site: "youtube",
+      state: this.state,
+      ...(this.current ? { current: this.current } : {}),
+      queued: [...this.upcoming],
+    };
   }
 
   async search(query: string): Promise<void> {
     this.requireEnabled();
-    const normalized = query.trim();
-    if (!normalized || normalized.length > 200) throw new Error("Search must be 1–200 characters");
-    await this.host.openSearch(`https://www.youtube.com/results?search_query=${encodeURIComponent(normalized)}`);
+    await this.host.openSearch(searchUrl("youtube", query));
   }
 
   /** A person selects a concrete video ID from the visible official site/player. */
@@ -177,21 +203,22 @@ export class YouTubeMusicConnector {
   }
 
   /** Host calls this when the official iframe reports playback state, including user controls and end. */
-  onPlayerState(state: "playing" | "paused" | "ended"): void {
+  async onPlayerState(state: "playing" | "paused" | "ended"): Promise<void> {
     if (state === "playing" && (!this.policy.describe("youtube").enabled || !this.isVisible())) {
-      void this.host.pause();
       this.state = "paused";
+      await this.host.pause();
       return;
     }
     this.state = state === "ended" ? "stopped" : state;
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
     this.unsubscribe();
-    if (this.state === "playing") void this.host.pause();
+    const wasPlaying = this.state === "playing";
     this.state = "stopped";
     this.current = undefined;
     this.upcoming.length = 0;
+    if (wasPlaying) await this.host.pause();
   }
 
   private requireEnabled(): void {
@@ -204,12 +231,15 @@ export class YouTubeMusicConnector {
   }
 
   private requireVisible(): void {
-    if (!this.isVisible()) throw new Error("Visible video viewport of at least 200 × 200 CSS pixels required");
+    if (!this.isVisible())
+      throw new Error("Visible video viewport of at least 200 × 200 CSS pixels required");
   }
 }
 
 function validateSelection(selection: MediaSelection): void {
   if (!/^[A-Za-z0-9_-]{11}$/.test(selection.videoId)) throw new Error("Invalid YouTube video ID");
-  if (selection.title !== undefined && (selection.title.length > 300 || !selection.title.trim())) throw new Error("Invalid title");
-  if (selection.artist !== undefined && (selection.artist.length > 300 || !selection.artist.trim())) throw new Error("Invalid artist");
+  if (selection.title !== undefined && (selection.title.length > 300 || !selection.title.trim()))
+    throw new Error("Invalid title");
+  if (selection.artist !== undefined && (selection.artist.length > 300 || !selection.artist.trim()))
+    throw new Error("Invalid artist");
 }

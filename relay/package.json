@@ -1,0 +1,11 @@
+{
+  "name": "@phoenix/relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "description": "Stateless end-to-end-encrypted forwarder between Phoenix Core and paired devices (node:http only).",
+  "exports": {
+    ".": "./src/server.ts"
+  }
+}

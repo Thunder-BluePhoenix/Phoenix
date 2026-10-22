@@ -1,0 +1,14 @@
+{
+  "name": "@phoenix/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "description": "The phoenix command line: status, approvals and the event feed, over the loopback Core API.",
+  "bin": {
+    "phoenix": "./src/main.ts"
+  },
+  "exports": {
+    ".": "./src/cli.ts"
+  }
+}

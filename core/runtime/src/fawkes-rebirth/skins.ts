@@ -38,19 +38,32 @@ export interface SkinInstaller<T extends SkinPack> {
  * module. Host must show `license` and provenance before calling this function after explicit consent.
  */
 export async function installSkin<T extends SkinPack>(
-  id: string, version: string, expectedLicense: string, host: SkinInstaller<T>,
+  id: string,
+  version: string,
+  expectedLicense: string,
+  host: SkinInstaller<T>,
 ): Promise<T> {
   const entry = await host.preview(id, version);
-  if (entry.id !== id || entry.version !== version || entry.provenance.signature_status !== "verified" ||
-      !entry.provenance.signer_key_id || !/^[0-9a-f]{64}$/i.test(entry.provenance.index_sha256) ||
-      !entry.license || entry.license !== expectedLicense ||
-      !/^[0-9a-f]{64}$/i.test(entry.artifact.sha256) ||
-      !Number.isSafeInteger(entry.artifact.size) || entry.artifact.size < 1 || entry.artifact.size > 100_000) {
+  if (
+    entry.id !== id ||
+    entry.version !== version ||
+    entry.provenance.signature_status !== "verified" ||
+    !entry.provenance.signer_key_id ||
+    !/^[0-9a-f]{64}$/i.test(entry.provenance.index_sha256) ||
+    !entry.license ||
+    entry.license !== expectedLicense ||
+    !/^[0-9a-f]{64}$/i.test(entry.artifact.sha256) ||
+    !Number.isSafeInteger(entry.artifact.size) ||
+    entry.artifact.size < 1 ||
+    entry.artifact.size > 100_000
+  ) {
     throw new Error("Skin registry provenance or licence does not match consent");
   }
   const bytes = await host.fetch(entry);
-  if (bytes.byteLength !== entry.artifact.size ||
-      createHash("sha256").update(bytes).digest("hex") !== entry.artifact.sha256.toLowerCase()) {
+  if (
+    bytes.byteLength !== entry.artifact.size ||
+    createHash("sha256").update(bytes).digest("hex") !== entry.artifact.sha256.toLowerCase()
+  ) {
     throw new Error("Skin artifact verification failed");
   }
   let raw: unknown;
@@ -60,7 +73,12 @@ export async function installSkin<T extends SkinPack>(
     throw new Error("Skin artifact is not UTF-8 JSON");
   }
   const pack = host.validate(raw);
-  if (pack.id !== id || pack.license !== entry.license || pack.format !== "phoenix-outfit" || pack.version !== 1) {
+  if (
+    pack.id !== id ||
+    pack.license !== entry.license ||
+    pack.format !== "phoenix-outfit" ||
+    pack.version !== 1
+  ) {
     throw new Error("Skin identity or licence does not match verified registry entry");
   }
   await host.install(pack);

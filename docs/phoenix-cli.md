@@ -1,0 +1,133 @@
+# phoenix CLI (Phase 89, terminal slice)
+
+`apps/phoenix-cli` (`@phoenix/cli`, bin `phoenix`) is a command line for the loopback Core API. It uses
+only `node:*` modules and the global `fetch`; it has no runtime dependency and imports no workspace
+package. This build ships **status, approvals and an event tail**. `phoenix ask` and `phoenix awake`
+are **not built** (see [What is not built](#what-is-not-built)).
+
+```
+phoenix status [--json]
+phoenix approvals list [--json]
+phoenix approvals approve <id> [--ref <ref>]
+phoenix approvals deny <id> [--ref <ref>]
+phoenix events tail [-n <count>] [--follow] [--source <name>] [--type <type>] [--json]
+```
+
+Global options: `--url` (default `http://127.0.0.1:4870` or `PHOENIX_CORE_URL`), `--data-dir` (or
+`PHOENIX_DATA_DIR`), `--json`. Run it from the repo with `npx tsx apps/phoenix-cli/src/main.ts …` (the
+`bin` entry is a TypeScript file with a `tsx` shebang, like `phoenix-simulate`; there is no build step
+or published artifact yet).
+
+Exit codes: `0` ok, `1` failed (Core rejected the token or the request, unexpected answer), `2` usage
+(bad flag, no token file, non-loopback URL), `3` Core unreachable, `4` refused (a decision the CLI
+would not send, or that Core no longer accepts).
+
+## How it authenticates
+
+Core writes its per-run session token to `<data dir>/session.token` (mode `0600`) and deletes it on
+shutdown (`core/runtime/src/runtime.ts`, `writeTokenFile`). The CLI looks for it, in order, in:
+`PHOENIX_SESSION_TOKEN`, `--data-dir`, `PHOENIX_DATA_DIR`, `./.phoenix/<env>/`, `~/.phoenix/<env>/`
+(`PHOENIX_ENV`, default `dev`), the same order as `resolveSessionToken` in the capability SDK. Every
+request carries `Authorization: Bearer <token>` and `X-Phoenix-Client: phoenix-cli`.
+
+- The token is **never printed**: not on success, not in `--json`, not in an error. Any string that
+  contains it (a Core error message, a network error) is redacted before it reaches stderr.
+- A token file readable by other users produces a warning that names the file, not the value.
+- The Core URL must be `http://` on `127.0.0.1`, `localhost` or `[::1]`, with no credentials, query or
+  fragment. Anything else exits `2` before a request is made, so the token cannot be sent to another
+  host or over a channel that is not the loopback interface. Redirects are not followed
+  (`redirect: "error"`), so a hostile listener on the port cannot bounce the token elsewhere.
+- Requests time out after 10 s; a response over 4 MiB is refused.
+
+## Approvals
+
+`phoenix approvals list` merges the two places Core keeps requests that wait for a person, through
+routes that already exist:
+
+| Source         | Listed from                | Decided through                          |
+| -------------- | -------------------------- | ---------------------------------------- |
+| `confirmation` | `GET /api/confirmations`   | `POST /api/confirmations/:id {approve}`  |
+| `agent`        | `GET /api/agent-approvals` | `POST /api/agent-approvals/:id/decision` |
+
+Both are the same audited paths the web UI uses (`PermissionGateway.resolveConfirmation` and
+`AgentApprovals.decide`, which write the audit log and publish their events). The CLI adds no route and
+no new way to approve. Agent **questions** are left out of the list: they need a text answer, not
+allow/deny. A Core without the agent-approval service answers `404` there; that counts as "none".
+
+### A decision is bound to the request
+
+Each listed request has a **ref**: the first 16 hex characters of
+`sha256("phoenix-cli-approval-v1\n" + canonicalJson({source, …every field Core listed}))`. It covers the
+id, the requester, the command or summary, permissions, risk, target and expiry. Deciding re-reads the
+pending list and:
+
+1. refuses (`4`) if the id is no longer waiting (decided elsewhere, expired, never existed);
+2. refuses if a quoted `--ref` does not equal the ref of the request **as it is now**;
+3. refuses if the request has expired by the CLI's clock;
+4. for **approve** without `--ref`, prints the full request and asks `Approve this request? [y/N]` on
+   an interactive terminal; with no terminal it exits `2` rather than approving blind;
+5. sends only `{"approve": true|false}` or `{"behavior": "allow"|"deny"}`. It never creates an "always
+   allow" rule, never attaches a message, and there is no approve-all.
+
+**deny** needs no ref (refusing is always safe), but a quoted ref that no longer matches still stops it.
+If Core answers `404`/`409` to the decision (someone else decided first) the CLI reports "refused", not
+a crash.
+
+The check in 2 is a TOCTOU guard performed by the client: between the re-read and the `POST` the request
+could in principle change, and the two Core routes take no request hash (the phone-link route does, see
+[phone-link.md](phone-link.md)). The window is one local round trip, and a changed request has a new id
+or (for confirmations) cannot change at all; this is a limit, not a proof.
+
+### Untrusted text
+
+Commands, paths, summaries, event descriptions and capability ids come from other programs. The CLI
+prints them as one line each, replacing control, format and line-separator characters (including ESC,
+BEL and NEL) and collapsing whitespace, and truncating long values. A command that contains a newline
+and a fake "Approved by user" line cannot start a line of its own.
+
+## Events
+
+`phoenix events tail` reads `GET /api/events` (newest first on the wire, printed oldest first).
+`-n` (0..1000, default 20) is the count of past events; `--source` and `--type` filter on the server.
+With `--follow` it polls every 2 s using `after_seq`, starting after the newest event in the **whole**
+history (so a filtered tail does not replay old events). If Core goes away while following, it warns
+once on stderr, keeps retrying, and says when Core is back; a rejected token (Core restarted and issued
+a new one) or a malformed answer ends the tail with exit `1`. `SIGINT`/`SIGTERM` end it with `0`.
+This is polling, not the WebSocket (`/api/ws`): a burst of more than 1000 events between polls is
+reported as skipped.
+
+## Status
+
+`phoenix status` combines `GET /api/health`, `GET /api/pet/state` and the pending-approval count:
+Core version, environment and uptime, Fawkes state and its explanation, active tasks, approvals waiting,
+the kill switch, and any **enabled** capability whose health is not `healthy`. `--json` prints a single
+document with the same facts.
+
+## Tests
+
+`apps/phoenix-cli/test/` runs the real CLI entry (`run`) against:
+
+- a local fake Core (`fake-core.ts`, `node:http` on port 0) for the boundary cases: wrong or rotated
+  token, non-JSON answers, redirects, outages while following, a request that changes after it was
+  listed, an expired or already-decided request, hostile text;
+- the real `PhoenixRuntime` on a loopback port for one confirmation, one agent approval and the event
+  history, checking the audit entry and the `phoenix-cli` client label in Core.
+
+Time, sleeping and the fetch function are injected; no test waits on a real timer.
+
+## What is not built
+
+- `phoenix ask "…"` and `phoenix awake 2h`: not built in this slice. There is no dedicated Core
+  route for asking a question. Keep-awake is a capability command
+  (`POST /api/capabilities/awake/commands/start`, which asks for approval), but the CLI does not call
+  it yet; no stand-in was written.
+- No `phoenix approve` shortcut (the command is `phoenix approvals approve <id>`).
+- No packaged binary, npm publish, shell completion, or WebSocket-based tail.
+- **Core cannot tell the CLI from a person.** Any program on the machine that can read
+  `session.token` can run these commands, including approving, exactly as it could call the routes
+  directly. The ref and the interactive confirmation make a decision about a specific request that a
+  human reviewed in the normal use; they do not stop a hostile local process that already holds the
+  token. This is the existing session-token gap recorded in [gaps.md](gaps.md), unchanged by this
+  slice.
+- Verified only against a fake Core and an in-process `PhoenixRuntime` in tests. Not run on Windows
+  (the token-file permission warning is skipped there) and not exercised in a real terminal session.

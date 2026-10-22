@@ -12,6 +12,10 @@
     "sdk/*/test/**/*.ts",
     "capabilities/*/src/**/*.ts",
     "capabilities/*/test/**/*.ts",
+    "relay/src/**/*.ts",
+    "relay/test/**/*.ts",
+    "apps/phoenix-cli/src/**/*.ts",
+    "apps/phoenix-cli/test/**/*.ts",
     "scripts/**/*.ts"
   ],
   "exclude": ["**/node_modules/**", "**/dist/**"]

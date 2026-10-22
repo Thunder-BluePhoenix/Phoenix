@@ -1,0 +1,102 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+
+# Team status and incoming webhooks (Phase 92)
+
+Two independent features that share one rule: **nothing happens until the user opts in, and untrusted
+input is data, never an instruction.**
+
+- `core/runtime/src/team-status/` – the logic (no I/O of its own; the clock, secret store, bus, audit log and relay sender are injected).
+- `core/api/src/team-webhook-routes.ts` – the HTTP surface.
+
+## Incoming webhooks
+
+A source is a name (`ci-main`), a list of event types it may send, and a secret. The sender POSTs to
+`/api/webhooks/in/<source>`.
+
+### Authentication is not the session token
+
+`POST /api/webhooks/in/:source` is the **only** route in this module marked `public`, and "public" means
+only that it skips the Core session-token check, because the caller is an external service that must
+never hold that token. The route authenticates every request itself:
+
+```
+x-phoenix-timestamp: <unix seconds, 10 digits>
+x-phoenix-signature: v1=<hex HMAC-SHA256(secret, "<timestamp>." + raw body bytes)>
+content-type: application/json
+```
+
+An `Authorization: Bearer <session token>` header sent to this route is not read and grants nothing. A
+valid signature needs no session token. `signWebhook(secret, timestamp, body)` is the reference
+signer. Every other route below (`/api/team/...`) is an ordinary session-token route.
+
+### What is checked, in order
+
+1. **Body size** – at most 16 KiB (`WEBHOOK_BODY_MAX_BYTES`), by `Content-Length` and again while streaming; the connection is dropped with `413`. The signature is over the raw bytes, so there is no re-serialization step to disagree about.
+2. **Pre-authentication rate limit** – per claimed source; every unknown source id shares one bucket, so guessing ids neither grows memory nor spends a real source's budget. Costs nothing but a map lookup, before any secret is read.
+3. **Opt-in** – the master switch (default **off**) and the per-source switch must both be on. A stored source that does not say `enabled: true` is disabled.
+4. **Format** – timestamp is 10 digits, signature is `v1=` + 64 hex.
+5. **Replay window** – the timestamp must be within ±5 minutes of Core's clock (`WEBHOOK_WINDOW_SECONDS`). This is checked before the secret is fetched.
+6. **Signature** – recomputed from the per-source secret and compared with `timingSafeEqual` on equal-length buffers. The secret comes from the injected `SecretStore` (`team-webhook.<source>`), is 32 random bytes (base64url), and is returned **once**, in the response to creating or rotating the source. It is never in settings, status views, events or the audit log. A stored secret shorter than 32 characters is refused rather than used.
+7. **Per-source rate limit** (token bucket, injected clock) – `429` with `Retry-After`.
+8. **Strict payload schema** – exactly these keys, nothing else: `event_id` (8–128 of `A-Za-z0-9_.:-`), `event_type`, optional `severity`, `subject` (≤200), `message` (≤280), `data` (≤16 keys, `lower_snake_case`, string ≤200 / finite number / boolean, no nesting). Text may not contain control, line-separator, bidi or zero-width characters. Unknown fields are rejected, not ignored. `source`, `timestamp`, `version`, `data_classification` and every other envelope field are chosen by Core, never by the sender.
+9. **Event-type grant** – the type must be one the source was created with, and every type must be in a closed set of namespaces (`build test deploy ci alert monitor release task webhook`). A webhook can therefore never produce `dictation.idle`, `agent.*`, `security.*`, `pet.*`, `stripe.*`, `github.*` and so on.
+10. **Dedupe** – `(source, event_id)` is remembered for twice the window. A repeat is `409 EVENT_DUPLICATE`. If the table is full the delivery is refused (`429`) rather than evicting an id that could still be replayed. A delivery refused later (for example by the bus's secret scan) releases its id so the sender can retry the corrected payload.
+11. **Publish** – the validated fields become an event on the bus: `source: "webhook-<id>"`, `event_id: "evt_wh_<hash of source+id>"` (so sources cannot pre-empt each other's ids), `data_classification: "internal"`, `metadata.untrusted: true`, `provenance.kind: "incoming_webhook"`. The bus still runs the v1 envelope schema and the no-secrets rule; a body containing a credential-shaped value is `403`.
+
+Authentication failures (steps 3–6, including an unknown source) all answer the same `401 UNAUTHENTICATED "Webhook authentication failed"` with `WWW-Authenticate: Phoenix-HMAC-SHA256`, so a caller cannot tell an unknown source from a disabled one or a wrong secret. (A non-JSON content type or an oversize body is refused with `400`/`413` before any lookup, and says nothing about the source.) Specific errors (`400`, `403`, `409`, `429`) are returned only after the signature verified. The audit log records the real reason (`unknown_source`, `source_disabled`, `bad_signature`, …); refusals are themselves rate limited (5 per minute per source key, with a `suppressed` count) so an unauthenticated flood cannot fill the audit table.
+
+### Managing sources (session-token routes)
+
+| Method and path                                      | Effect                                                                                       |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `GET /api/team/webhooks`                             | master switch, sources with their path, types, enabled flag, last accepted time. No secrets. |
+| `PUT /api/team/webhooks` `{enabled}`                 | master switch                                                                                |
+| `POST /api/team/webhooks/sources` `{id, eventTypes}` | create; `201` with the secret, once                                                          |
+| `POST /api/team/webhooks/sources/:id/rotate`         | new secret; the old one stops working immediately                                            |
+| `PUT /api/team/webhooks/sources/:id` `{enabled}`     | disable / enable one source                                                                  |
+| `DELETE /api/team/webhooks/sources/:id`              | revoke: config removed, dedupe state dropped, secret deleted                                 |
+
+At most 16 sources. Creating, rotating, toggling and revoking are audited with the actor `team-webhooks`.
+
+## Team status
+
+Share a few chosen states with teammates. Off by default; every item is a separate consent.
+
+### Outgoing – `TeamSharing`
+
+- `enabled` (master) is **off** by default and each kind – `deploying`, `agent_run`, `meeting` – is **off** by default. A malformed stored value reads as off.
+- States are learned from `deploy.started/succeeded/failed`, `agent_run.*` and `kage.meeting.*` events by **event type and correlation key only; the payload is never read**. Events whose source starts with `webhook-` are ignored, so an incoming POST cannot make me appear to be deploying or in a meeting.
+- An agent run is shared only after it has run for 10 minutes ("long agent run"). An activity with no end event stops being shared after 6 hours.
+- The unit of sharing is `{kind, since}` with `since` rounded down to the minute. No repository, branch, prompt, meeting title or attendee can be expressed. `view().outgoing` is exactly what a teammate would receive, so the UI can show it before and while sharing.
+- Unknown consent kinds are rejected (a typo cannot silently consent).
+
+### Transport – `sealTeamFrame` / `openTeamFrame`
+
+Each update is a separate frame per teammate: ECDH (P-256) + AES-256-GCM to that teammate's pinned public key, using the same sealing primitive as the Phase 87 relay under a distinct domain label (`team-status-v1`), so a relay sees only opaque ciphertext. Sealing alone does not authenticate the sender (anyone can encrypt to a public key), so the plaintext also carries an ECDSA signature over `sender, recipient, body` that is verified against the key pinned for that sender. `TeamStatus.broadcast()` sends via an injected `send(recipientId, frame)`; it sends nothing while sharing has never been on, and one final "not sharing" frame after it is turned off.
+
+### Incoming – `TeamPresence`
+
+A frame is accepted only if the sender is on the **local roster** (id, locally chosen label, pinned key), the signature verifies, the body has exactly the keys `v, sentAt, sharing, items` with closed-set kinds, `sentAt` is within ±2 minutes, and `sentAt` is newer than the last accepted one (replay counter). Failures return a reason with no detail about why decryption or verification failed.
+
+`summary()` aggregates **only** members who are rostered, report `sharing: true` and were heard from in the last 3 minutes. The output is the member id, the **local** label, kinds, minute-rounded starts and per-kind counts – no remote string is ever displayed or interpreted, and a member who is not sharing does not appear at all (not even as "offline"). Removing a member forgets everything they sent.
+
+## Wiring the parent must do
+
+None of this is wired into `PhoenixRuntime`, `CoreServices`, `routes.ts` or the web UI (those are shared files).
+
+1. Construct `TeamWebhooks` with `{settings, secrets: <OS store>, bus, audit, clock}` and register `teamWebhookRoutes(service)` in `buildRoutes`. Export the module from `core/api/src/index.ts`.
+2. `ApiServer.onRequest` already skips `authenticate` for `route.public`; nothing else is needed for the ingest route. Check that `access-control-allow-headers` does not need `x-phoenix-*` (these callers are servers, not browsers).
+3. Construct `TeamSharing`, `TeamPresence` (roster from a pairing flow), `TeamStatus`; subscribe `bus.subscribe("team-status", ["deploy.*","agent_run.*","kage.meeting.*"], e => sharing.observe(e))`; call `status.broadcast()` on `sharing.subscribe` and on a timer shorter than 3 minutes; feed relay frames to `status.receive()`. Register `teamStatusRoutes`.
+4. Provide the identity private key from the OS store through `TeamStatusIdentity.privateKeyPem()` (the Phase 87 core identity can be reused or a separate key generated).
+5. Web UI and `useT()` strings for the consent and webhook screens (not part of this slice).
+
+## Limitations and unmet exit criteria
+
+- **"Two Phoenix installs see each other's shared state" is only shown in-process**: two `TeamStatus` objects exchange real encrypted, signed frames through an injected `send`. No relay server, no second machine, no pairing/roster exchange UI was involved.
+- **"A webhook from a real service drives Fawkes" is not met.** The tests POST locally signed requests to the route handlers over loopback HTTP and check the event reaches an `EventBus` subscriber. No real third-party service signs with `x-phoenix-signature` (real services use their own header schemes; an adapter or a small forwarder would be needed), and Fawkes' state engine was not run.
+- The signature scheme is Phoenix's own (`v1=` HMAC over `timestamp.body`), not GitHub's or Stripe's.
+- Replay and dedupe state is in memory: a Core restart forgets event ids, so a captured delivery can be replayed for the rest of its 5 minute window after a restart. The pre-auth and per-source rate limits also reset.
+- The rate-limited audit means a sustained flood is summarized, not individually recorded.
+- Team roster/pairing, key exchange and the relay transport for team frames are not implemented; `send` and the roster are injected. The Phase 87 relay's route/peer addressing currently only allows `core` and `dev_…` peers, so teammates cannot use it unmodified.
+- Webhook events are untrusted: they appear on the bus and in the activity feed like any event, but downstream consumers must keep treating `metadata.untrusted` events as data.
+- No web UI, i18n strings or settings screen were added.

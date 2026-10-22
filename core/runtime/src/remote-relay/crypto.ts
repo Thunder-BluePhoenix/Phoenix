@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { createCipheriv, createDecipheriv, createHash, createPrivateKey, createPublicKey, diffieHellman, generateKeyPairSync, hkdfSync, randomBytes } from "node:crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  diffieHellman,
+  generateKeyPairSync,
+  hkdfSync,
+  randomBytes,
+  sign,
+  verify,
+} from "node:crypto";
 import type { KeyObject } from "node:crypto";
 
 export interface RelayFrame {
@@ -20,41 +32,167 @@ export function newCoreIdentity(): { privateKey: string; publicKey: string } {
 }
 
 function publicKey(base64: string): KeyObject {
-  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64) || base64.length > 256) throw new Error("Invalid peer key");
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64) || base64.length > 256)
+    throw new Error("Invalid peer key");
   const key = createPublicKey({ key: Buffer.from(base64, "base64"), format: "der", type: "spki" });
-  if (key.asymmetricKeyType !== "ec" || key.asymmetricKeyDetails?.namedCurve !== "prime256v1") throw new Error("Expected P-256 peer key");
+  if (key.asymmetricKeyType !== "ec" || key.asymmetricKeyDetails?.namedCurve !== "prime256v1")
+    throw new Error("Expected P-256 peer key");
   return key;
 }
 
 function keyFor(secret: Buffer, route: string, sender: string, recipient: string): Buffer {
-  return Buffer.from(hkdfSync("sha256", secret, createHash("sha256").update(route).digest(), Buffer.from(`phoenix-relay-v1\n${sender}\n${recipient}`), 32));
+  return Buffer.from(
+    hkdfSync(
+      "sha256",
+      secret,
+      createHash("sha256").update(route).digest(),
+      Buffer.from(`phoenix-relay-v1\n${sender}\n${recipient}`),
+      32,
+    ),
+  );
 }
 
-function associated(route: string, recipient: string, frame: Pick<RelayFrame, "sender" | "ephemeral_key">): Buffer {
-  return Buffer.from(`phoenix-relay-v1\n${route}\n${frame.sender}\n${recipient}\n${frame.ephemeral_key}`);
+function associated(
+  route: string,
+  recipient: string,
+  frame: Pick<RelayFrame, "sender" | "ephemeral_key">,
+): Buffer {
+  return Buffer.from(
+    `phoenix-relay-v1\n${route}\n${frame.sender}\n${recipient}\n${frame.ephemeral_key}`,
+  );
 }
 
-export function seal(route: string, sender: string, recipient: string, pinnedRecipientKey: string, body: unknown): RelayFrame {
+export function seal(
+  route: string,
+  sender: string,
+  recipient: string,
+  pinnedRecipientKey: string,
+  body: unknown,
+): RelayFrame {
   const ephemeral = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-  const ephemeral_key = ephemeral.publicKey.export({ format: "der", type: "spki" }).toString("base64");
+  const ephemeral_key = ephemeral.publicKey
+    .export({ format: "der", type: "spki" })
+    .toString("base64");
   const iv = randomBytes(12);
-  const key = keyFor(diffieHellman({ privateKey: ephemeral.privateKey, publicKey: publicKey(pinnedRecipientKey) }), route, sender, recipient);
+  const key = keyFor(
+    diffieHellman({ privateKey: ephemeral.privateKey, publicKey: publicKey(pinnedRecipientKey) }),
+    route,
+    sender,
+    recipient,
+  );
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   cipher.setAAD(associated(route, recipient, { sender, ephemeral_key }));
   const ciphertext = Buffer.concat([cipher.update(JSON.stringify(body), "utf8"), cipher.final()]);
-  return { sender, ephemeral_key, iv: iv.toString("base64"), ciphertext: ciphertext.toString("base64"), tag: cipher.getAuthTag().toString("base64") };
+  return {
+    sender,
+    ephemeral_key,
+    iv: iv.toString("base64"),
+    ciphertext: ciphertext.toString("base64"),
+    tag: cipher.getAuthTag().toString("base64"),
+  };
 }
 
-export function open(route: string, recipient: string, expectedSender: string, privateKeyPem: string, frame: RelayFrame): unknown {
+export function open(
+  route: string,
+  recipient: string,
+  expectedSender: string,
+  privateKeyPem: string,
+  frame: RelayFrame,
+): unknown {
   if (frame.sender !== expectedSender) throw new Error("Unexpected sender");
   const iv = Buffer.from(frame.iv, "base64");
   const tag = Buffer.from(frame.tag, "base64");
-  if (iv.length !== 12 || tag.length !== 16 || frame.ciphertext.length > 44_000) throw new Error("Invalid encrypted frame");
+  if (iv.length !== 12 || tag.length !== 16 || frame.ciphertext.length > 44_000)
+    throw new Error("Invalid encrypted frame");
   const privateKey = createPrivateKey(privateKeyPem);
-  if (privateKey.asymmetricKeyType !== "ec" || privateKey.asymmetricKeyDetails?.namedCurve !== "prime256v1") throw new Error("Expected P-256 identity");
-  const key = keyFor(diffieHellman({ privateKey, publicKey: publicKey(frame.ephemeral_key) }), route, frame.sender, recipient);
+  if (
+    privateKey.asymmetricKeyType !== "ec" ||
+    privateKey.asymmetricKeyDetails?.namedCurve !== "prime256v1"
+  )
+    throw new Error("Expected P-256 identity");
+  const key = keyFor(
+    diffieHellman({ privateKey, publicKey: publicKey(frame.ephemeral_key) }),
+    route,
+    frame.sender,
+    recipient,
+  );
   const decipher = createDecipheriv("aes-256-gcm", key, iv);
   decipher.setAAD(associated(route, recipient, frame));
   decipher.setAuthTag(tag);
-  return JSON.parse(Buffer.concat([decipher.update(Buffer.from(frame.ciphertext, "base64")), decipher.final()]).toString("utf8")) as unknown;
+  return JSON.parse(
+    Buffer.concat([
+      decipher.update(Buffer.from(frame.ciphertext, "base64")),
+      decipher.final(),
+    ]).toString("utf8"),
+  ) as unknown;
+}
+
+/** Core's authenticated statement to one device: the sealed frame alone is anonymous, since the device key is public. */
+export interface CoreMessage {
+  timestamp: string;
+  nonce: string;
+  signature: string;
+  payload: unknown;
+}
+
+function coreStatementText(
+  route: string,
+  deviceId: string,
+  timestamp: string,
+  nonce: string,
+  payload: unknown,
+): Buffer {
+  const digest = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  return Buffer.from(
+    ["phoenix-relay-core-v1", route, deviceId, timestamp, nonce, digest].join("\n"),
+  );
+}
+
+export function signCoreMessage(
+  route: string,
+  deviceId: string,
+  corePrivateKey: string,
+  payload: unknown,
+  now: number,
+): CoreMessage {
+  const timestamp = String(now);
+  const nonce = randomBytes(18).toString("base64url");
+  const signature = sign(
+    "sha256",
+    coreStatementText(route, deviceId, timestamp, nonce, payload),
+    createPrivateKey(corePrivateKey),
+  ).toString("base64");
+  return { timestamp, nonce, signature, payload };
+}
+
+/** Returns the message when Core's pinned key signed exactly it for this route and device; throws otherwise. */
+export function verifyCoreMessage(
+  route: string,
+  deviceId: string,
+  pinnedCorePublicKey: string,
+  message: unknown,
+): CoreMessage {
+  const m = message as Partial<CoreMessage> | null;
+  if (
+    !m ||
+    typeof m !== "object" ||
+    typeof m.timestamp !== "string" ||
+    !/^\d{10,16}$/.test(m.timestamp) ||
+    typeof m.nonce !== "string" ||
+    !/^[A-Za-z0-9_-]{16,64}$/.test(m.nonce) ||
+    typeof m.signature !== "string" ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(m.signature) ||
+    m.signature.length > 200
+  )
+    throw new Error("Malformed Core message");
+  if (
+    !verify(
+      "sha256",
+      coreStatementText(route, deviceId, m.timestamp, m.nonce, m.payload),
+      publicKey(pinnedCorePublicKey),
+      Buffer.from(m.signature, "base64"),
+    )
+  )
+    throw new Error("Invalid Core signature");
+  return m as CoreMessage;
 }

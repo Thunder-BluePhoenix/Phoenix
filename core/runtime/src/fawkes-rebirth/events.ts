@@ -58,7 +58,8 @@ export function createCelebrationGate(options: CelebrationOptions = {}) {
   const pulls = new Map<string, PullState>();
   const clock = options.now ?? Date.now;
   const MAX_STREAMS = 128;
-  const valid = (value: string) => value.length > 0 && value.length <= 128 && /^[a-zA-Z0-9._:-]+$/.test(value);
+  const valid = (value: string) =>
+    value.length > 0 && value.length <= 128 && /^[a-zA-Z0-9._:-]+$/.test(value);
   const weekOf = (timestamp: number): string => {
     const date = new Date(timestamp);
     const day = date.getUTCDay();
@@ -67,15 +68,26 @@ export function createCelebrationGate(options: CelebrationOptions = {}) {
   };
   return {
     accept(event: Outcome): Celebration[] {
-      if (!valid(event.stream) || !Number.isSafeInteger(event.sequence) || event.sequence < 0 ||
-          !Number.isFinite(event.at) || event.at > clock() + 60_000 || event.at < 0) return [];
+      if (
+        !valid(event.stream) ||
+        !Number.isSafeInteger(event.sequence) ||
+        event.sequence < 0 ||
+        !Number.isFinite(event.at) ||
+        event.at > clock() + 60_000 ||
+        event.at < 0
+      )
+        return [];
       if (event.kind === "build") {
         const previous = builds.get(event.stream);
         if (previous && event.sequence <= previous.sequence) return [];
         if (!previous && builds.size >= MAX_STREAMS) builds.delete(builds.keys().next().value!);
         const week = weekOf(event.at);
         const streak = event.result === "failed" ? (previous?.streak ?? 0) + 1 : 0;
-        builds.set(event.stream, { sequence: event.sequence, streak, week: previous?.week ?? null });
+        builds.set(event.stream, {
+          sequence: event.sequence,
+          streak,
+          week: previous?.week ?? null,
+        });
         if (event.result !== "passed") return [];
         const result: Celebration[] = [];
         if (previous && previous.streak > 0) result.push({ kind: "rebirth", stream: event.stream });
@@ -89,10 +101,22 @@ export function createCelebrationGate(options: CelebrationOptions = {}) {
       const previous = pulls.get(event.stream);
       if (previous && event.sequence <= previous.sequence) return [];
       if (!previous && pulls.size >= MAX_STREAMS) pulls.delete(pulls.keys().next().value!);
-      const streak = event.result === "merged" ? (previous?.streak ?? 0) + (previous?.lastItem !== event.item ? 1 : 0) : 0;
-      pulls.set(event.stream, { sequence: event.sequence, streak, lastItem: event.result === "merged" ? event.item : null });
-      return options.milestones && streak === 3 ? [{ kind: "pr-streak", stream: event.stream }] : [];
+      const streak =
+        event.result === "merged"
+          ? (previous?.streak ?? 0) + (previous?.lastItem !== event.item ? 1 : 0)
+          : 0;
+      pulls.set(event.stream, {
+        sequence: event.sequence,
+        streak,
+        lastItem: event.result === "merged" ? event.item : null,
+      });
+      return options.milestones && streak === 3
+        ? [{ kind: "pr-streak", stream: event.stream }]
+        : [];
     },
-    reset(): void { builds.clear(); pulls.clear(); },
+    reset(): void {
+      builds.clear();
+      pulls.clear();
+    },
   };
 }

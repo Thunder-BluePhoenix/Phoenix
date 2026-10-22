@@ -7,6 +7,7 @@ import { calendar } from "./calendar";
 import { capture } from "./capture";
 import { common } from "./common";
 import { digest } from "./digest";
+import { fawkesRebirth } from "./fawkes-rebirth";
 import { focus } from "./focus";
 import { handoff } from "./handoff";
 import { machine } from "./machine";
@@ -45,6 +46,7 @@ const messages: Messages = {
   ...calendar,
   ...signals,
   ...machine,
+  ...fawkesRebirth,
 };
 
 export default messages;

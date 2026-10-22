@@ -1,0 +1,56 @@
+/* Original, cosmetic-only celebration styling for Fawkes (Phase 91). No assets are downloaded. */
+.fawkes-rebirth {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+}
+.fawkes-rebirth__status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.fawkes-rebirth__pulse {
+  display: inline-block;
+}
+.fawkes-rebirth__pulse--playing {
+  animation: phoenix-rebirth 650ms ease-out 1;
+}
+@keyframes phoenix-rebirth {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.7;
+  }
+  55% {
+    transform: scale(1.09);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.fawkes-rebirth--contrast .fawkes {
+  background: #000;
+  outline: 2px solid #fff;
+  border-radius: 50%;
+}
+.fawkes-rebirth--contrast .fawkes-art svg {
+  filter: grayscale(1) contrast(3);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fawkes-rebirth__pulse--playing {
+    animation: none;
+  }
+}
+@media (forced-colors: active) {
+  .fawkes-rebirth--contrast .fawkes {
+    outline: 2px solid ButtonText;
+  }
+  .fawkes-rebirth--contrast .fawkes-art svg {
+    filter: none;
+  }
+}

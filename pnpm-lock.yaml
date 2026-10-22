@@ -91,6 +91,18 @@ importers:
         specifier: workspace:*
         version: link:../../core/state-engine
 
+  ai/browsing:
+    dependencies:
+      '@phoenix/ai-models':
+        specifier: workspace:*
+        version: link:../models
+      '@phoenix/ai-tool-gateway':
+        specifier: workspace:*
+        version: link:../tool-gateway
+      '@phoenix/policy':
+        specifier: workspace:*
+        version: link:../../core/policy
+
   ai/context:
     dependencies:
       '@phoenix/ai-memory':
@@ -414,6 +426,8 @@ importers:
         specifier: ^2.12.1
         version: 2.12.1
 
+  apps/phoenix-cli: {}
+
   apps/web:
     dependencies:
       '@phoenix/ai-multimodal':
@@ -532,6 +546,16 @@ importers:
       '@phoenix/service-kit':
         specifier: workspace:*
         version: link:../../sdk/service-kit
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
+  capabilities/chat-approvals:
+    dependencies:
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
     devDependencies:
       '@phoenix/sdk-testing':
         specifier: workspace:*
@@ -740,6 +764,19 @@ importers:
         specifier: workspace:*
         version: link:../../sdk/testing
 
+  capabilities/status-lights:
+    dependencies:
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
   capabilities/stripe:
     dependencies:
       '@phoenix/logging':
@@ -784,6 +821,12 @@ importers:
       '@phoenix/sdk-testing':
         specifier: workspace:*
         version: link:../../sdk/testing
+
+  capabilities/youtube-music:
+    dependencies:
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
 
   core/api:
     dependencies:
@@ -1148,6 +1191,8 @@ importers:
       ajv-formats:
         specifier: ^3.0.1
         version: 3.0.1(ajv@8.20.0)
+
+  relay: {}
 
   sdk/capability:
     dependencies:

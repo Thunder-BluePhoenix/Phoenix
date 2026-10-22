@@ -3,7 +3,11 @@
 
 /** Transport implementations are supplied by the trusted host; adapters never discover or contact devices. */
 export interface DeviceTransport {
-  request(path: string, body: Readonly<Record<string, unknown>>, signal: AbortSignal): Promise<void>;
+  request(
+    path: string,
+    body: Readonly<Record<string, unknown>>,
+    signal: AbortSignal,
+  ): Promise<void>;
   report(bytes: Uint8Array, signal: AbortSignal): Promise<void>;
 }
 export type DeviceKind = "hue" | "key-light" | "luxafor" | "lifx";
@@ -29,7 +33,9 @@ function xy([red, green, blue]: RGB): { x: number; y: number } {
     const n = v / 255;
     return n > 0.04045 ? ((n + 0.055) / 1.055) ** 2.4 : n / 12.92;
   };
-  const r = linear(red), g = linear(green), b = linear(blue);
+  const r = linear(red),
+    g = linear(green),
+    b = linear(blue);
   const x = 0.664511 * r + 0.154324 * g + 0.162028 * b;
   const y = 0.283881 * r + 0.668433 * g + 0.047685 * b;
   const z = 0.000088 * r + 0.07231 * g + 0.986039 * b;
@@ -46,7 +52,8 @@ export function lifxSetColor([r, g, b]: RGB): Uint8Array {
   view.setUint32(4, 0x504858, true); // fixed Phoenix source; no user-controlled addresses
   bytes[22] = 1; // response required, so transport can detect failure
   view.setUint16(32, 102, true);
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const max = Math.max(r, g, b),
+    min = Math.min(r, g, b);
   const delta = max - min;
   let hue = 0;
   if (delta) {
@@ -64,7 +71,11 @@ export function lifxSetColor([r, g, b]: RGB): Uint8Array {
 }
 
 /** Device identifiers are host provisioned, not URLs or paths from events or Stream Deck. */
-export async function setDevice(device: Device, state: LightState, signal: AbortSignal): Promise<void> {
+export async function setDevice(
+  device: Device,
+  state: LightState,
+  signal: AbortSignal,
+): Promise<void> {
   const color = COLORS[state];
   if (device.kind === "luxafor") {
     await device.transport.report(Uint8Array.of(1, 0xff, ...color, 0, 0, 0), signal);
@@ -73,14 +84,28 @@ export async function setDevice(device: Device, state: LightState, signal: Abort
   } else if (device.kind === "hue") {
     if (!device.resource || !/^[a-f\d-]{36}$/i.test(device.resource))
       throw new Error("Invalid Hue light resource");
-    await device.transport.request(`/clip/v2/resource/light/${device.resource}`, color[0] || color[1] || color[2]
-      ? { on: { on: true }, color: { xy: xy(color) }, dimming: { brightness: 100 } }
-      : { on: { on: false } }, signal);
+    await device.transport.request(
+      `/clip/v2/resource/light/${device.resource}`,
+      color[0] || color[1] || color[2]
+        ? { on: { on: true }, color: { xy: xy(color) }, dimming: { brightness: 100 } }
+        : { on: { on: false } },
+      signal,
+    );
   } else {
     // Elgato Key Light LAN PUT /elgato/lights. Lights are white-only; never claim coloured states.
-    await device.transport.request("/elgato/lights", {
-      numberOfLights: 1,
-      lights: [{ on: state === "IDLE" ? 0 : 1, brightness: state === "RECORDING" ? 100 : 35, temperature: 200 }],
-    }, signal);
+    await device.transport.request(
+      "/elgato/lights",
+      {
+        numberOfLights: 1,
+        lights: [
+          {
+            on: state === "IDLE" ? 0 : 1,
+            brightness: state === "RECORDING" ? 100 : 35,
+            temperature: 200,
+          },
+        ],
+      },
+      signal,
+    );
   }
 }
