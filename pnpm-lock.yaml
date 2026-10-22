@@ -1013,6 +1013,9 @@ importers:
       '@phoenix/capability-calendar':
         specifier: workspace:*
         version: link:../../capabilities/calendar
+      '@phoenix/capability-chat-approvals':
+        specifier: workspace:*
+        version: link:../../capabilities/chat-approvals
       '@phoenix/capability-docker':
         specifier: workspace:*
         version: link:../../capabilities/docker

@@ -9,6 +9,7 @@ import type {
   WebhookStatus,
 } from "../../runtime/src/team-status/webhooks";
 import type { TeamStatusView } from "../../runtime/src/team-status/service";
+import { readRawBody } from "./raw-body";
 import { BodyTooLargeError, expectObject, route, sendJson, type Route } from "./http";
 
 /** Largest webhook body the endpoint reads; the signature covers exactly these bytes. */
@@ -48,60 +49,6 @@ export interface TeamWebhookRouteOptions {
   bodyTimeoutMs?: number;
 }
 
-/** Reads the raw bytes (the HMAC is over bytes, not over re-serialized JSON) up to the cap. */
-async function readRawBody(
-  req: IncomingMessage,
-  maxBytes: number,
-  timeoutMs: number,
-): Promise<Buffer> {
-  const type = req.headers["content-type"] ?? "";
-  if (!type.startsWith("application/json")) {
-    req.resume();
-    throw new PhoenixError(ErrorCode.INVALID_REQUEST, "Content-Type must be application/json");
-  }
-  const declared = req.headers["content-length"];
-  if (declared !== undefined && !/^\d+$/.test(declared))
-    throw new PhoenixError(ErrorCode.INVALID_REQUEST, "Invalid Content-Length");
-  if (Number(declared ?? 0) > maxBytes) throw new BodyTooLargeError(maxBytes);
-  const done = Promise.withResolvers<Buffer>();
-  const chunks: Buffer[] = [];
-  let size = 0;
-  let finished = false;
-  const timer = setTimeout(() => {
-    if (finished) return;
-    finished = true;
-    chunks.length = 0;
-    req.destroy();
-    done.reject(new PhoenixError(ErrorCode.INVALID_REQUEST, "Webhook body timed out"));
-  }, timeoutMs);
-  timer.unref();
-  req.on("data", (chunk: Buffer) => {
-    if (finished) return;
-    size += chunk.length;
-    if (size > maxBytes) {
-      finished = true;
-      chunks.length = 0;
-      req.pause();
-      clearTimeout(timer);
-      done.reject(new BodyTooLargeError(maxBytes));
-      return;
-    }
-    chunks.push(chunk);
-  });
-  req.on("end", () => {
-    if (!finished) {
-      finished = true;
-      clearTimeout(timer);
-      done.resolve(Buffer.concat(chunks));
-    }
-  });
-  req.on("error", (error) => {
-    clearTimeout(timer);
-    done.reject(error);
-  });
-  return done.promise;
-}
-
 function flag(value: unknown, what: string): boolean {
   if (typeof value !== "boolean") throw new PhoenixError(ErrorCode.INVALID_REQUEST, what);
   return value;
@@ -135,11 +82,11 @@ export function teamWebhookRoutes(
       "POST",
       `${WEBHOOK_INGEST_PREFIX}:source`,
       async ({ req, res, params }) => {
-        const body = await readRawBody(
-          req,
-          WEBHOOK_BODY_MAX_BYTES,
-          options.bodyTimeoutMs ?? WEBHOOK_BODY_TIMEOUT_MS,
-        );
+        const body = await readRawBody(req, {
+          maxBytes: WEBHOOK_BODY_MAX_BYTES,
+          timeoutMs: options.bodyTimeoutMs ?? WEBHOOK_BODY_TIMEOUT_MS,
+          contentTypes: ["application/json"],
+        });
         let outcome: WebhookOutcome;
         try {
           outcome = await service.accept({

@@ -21,6 +21,8 @@ import { notetakerRoutes } from "./notetaker-routes";
 import { digestRoutes } from "./digest-routes";
 import { calendarRoutes } from "./calendar-routes";
 import { teamWebhookRoutes } from "./team-webhook-routes";
+import { chatApprovalRoutes } from "./chat-approval-routes";
+import { remoteRelayRoutes } from "./remote-relay-routes";
 import { engineeringSignalsRoutes } from "./engineering-signals-routes";
 import { multimodalRoutes } from "./multimodal-routes";
 import { improvementRoutes } from "./improvement-routes";
@@ -405,5 +407,7 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...(s.calendar ? calendarRoutes(s.calendar) : []),
     ...(s.engineeringSignals ? engineeringSignalsRoutes(s.engineeringSignals) : []),
     ...(s.teamWebhooks ? teamWebhookRoutes(s.teamWebhooks) : []),
+    ...(s.chatApprovals ? chatApprovalRoutes(s.chatApprovals) : []),
+    ...(s.remoteRelay ? remoteRelayRoutes(s.remoteRelay) : []),
   ];
 }

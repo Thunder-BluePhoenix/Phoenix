@@ -21,6 +21,8 @@ import type { DigestService } from "./digest-routes";
 import type { CalendarApi } from "./calendar-routes";
 import type { EngineeringSignalsApi } from "./engineering-signals-routes";
 import type { TeamWebhookApi } from "./team-webhook-routes";
+import type { ChatApprovalsApi } from "./chat-approval-routes";
+import type { RemoteRelayApi } from "./remote-relay-routes";
 import type { PhoenixConfig } from "@phoenix/config";
 import type { EventBus } from "@phoenix/event-bus";
 import type { Logger } from "@phoenix/logging";
@@ -1298,6 +1300,10 @@ export interface CoreServices {
   engineeringSignals?: EngineeringSignalsApi;
   /** Incoming webhooks (Phase 92); absent when no OS secret store is available. */
   teamWebhooks?: TeamWebhookApi;
+  /** Chat approvals (Phase 86): the provider callback door; the capability is off until enabled. */
+  chatApprovals?: ChatApprovalsApi;
+  /** Remote access relay (Phase 87): off by default; absent without an OS secret store. */
+  remoteRelay?: RemoteRelayApi;
   /** Whether the session-token event route refuses the `terminal` source; the user's choice. */
   eventSourcePolicy?: EventSourcePolicyApi;
   petSettings?(): unknown;

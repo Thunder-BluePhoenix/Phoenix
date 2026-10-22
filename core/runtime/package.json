@@ -27,6 +27,7 @@
     "@phoenix/capability-awake": "workspace:*",
     "@phoenix/capability-calcom": "workspace:*",
     "@phoenix/capability-calendar": "workspace:*",
+    "@phoenix/capability-chat-approvals": "workspace:*",
     "@phoenix/capability-docker": "workspace:*",
     "@phoenix/capability-frappe": "workspace:*",
     "@phoenix/capability-git": "workspace:*",

@@ -97,6 +97,9 @@ import { LocalRegistryRuntime, type LocalRegistryConfig } from "./registry";
 import { SyncRuntime, type SyncTransportFactory } from "./sync";
 import { DemoRuntime, type DemoTuning } from "./demo";
 import { TeamWebhooks, WEBHOOK_SETTINGS_KEY } from "./team-status/webhooks";
+import { ChatApprovalsService, CHAT_APPROVALS_CAPABILITY } from "./chat-approvals/service";
+import type { HttpTransport } from "@phoenix/capability-chat-approvals";
+import { RemoteRelayService, type RemoteRelayServiceDeps } from "./remote-relay/service";
 import { EventSourcePolicy } from "./event-source-policy";
 import { WorkflowsRuntime } from "./workflows";
 
@@ -125,6 +128,10 @@ export interface RuntimeOptions {
   secrets?: SecretStore;
   /** Network used by the AI providers. Tests pass a counting fake; production uses global fetch. */
   fetch?: FetchLike;
+  /** Outgoing calls of chat approvals; tests pass a recording fake, production uses a guarded fetch. */
+  chatTransport?: HttpTransport;
+  /** Relay tuning (tests inject a fetcher, a clock and an instant sleep). */
+  relay?: Pick<RemoteRelayServiceDeps, "fetcher" | "clock" | "sleep">;
   /** Ollama base URL (loopback only). Defaults to http://127.0.0.1:11434. */
   ollamaUrl?: string;
   /** Anthropic base URL; tests only. */
@@ -215,6 +222,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly proactive: ProactiveRuntime;
   readonly calendar: CalendarService;
   readonly engineeringSignals: EngineeringSignalsRuntime;
+  /** Chat approvals (Phase 86): off by default; absent inside the demo runtime. */
+  readonly chatApprovals: ChatApprovalsService | undefined;
   /** Incoming webhooks (Phase 92): off by default; absent without an OS secret store. */
   readonly teamWebhooks: TeamWebhooks | undefined;
   readonly digest: DailyDigestService;
@@ -279,6 +288,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly agentSafety: AgentSafety;
   /** Phone link (Phase 71): off by default; a separate pinned-TLS LAN listener with device keys. */
   readonly phone: PhoneLink;
+  /** Remote access relay (Phase 87): off by default; absent without an OS secret store. */
+  readonly remoteRelay: RemoteRelayService | undefined;
   /** Phoenix MCP server (Phase 76): off by default; a separate loopback listener with per-client tokens. */
   readonly mcp: McpServer;
   /** Session handoff notes (Phase 79): deterministic notes, optional local summary, attach with preview. */
@@ -586,6 +597,23 @@ export class PhoenixRuntime implements CoreServices {
       isKillSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
       logger: this.logger.child("agent-approvals"),
     });
+    // Chat approvals (Phase 86): the capability is registered but OFF; nothing is posted or
+    // answered until the user enables it and switches a provider and a project on. The demo
+    // runtime never gets it (it opens no sockets).
+    this.chatApprovals =
+      options.demo === false
+        ? undefined
+        : new ChatApprovalsService({
+            permissions: this.permissions,
+            agentApprovals: this.agentApprovals,
+            audit: this.permissions.audit,
+            bus: this.bus,
+            config: () => this.capabilities.get(CHAT_APPROVALS_CAPABILITY).config,
+            enabled: () => this.capabilities.get(CHAT_APPROVALS_CAPABILITY).status === "enabled",
+            killSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
+            ...(options.chatTransport ? { transport: options.chatTransport } : {}),
+          });
+    if (this.chatApprovals) this.capabilities.registerBuiltin(this.chatApprovals.module);
     this.agentRelay = new AgentRelay({
       dataDir: this.config.dataDir,
       bus: this.bus,
@@ -625,6 +653,23 @@ export class PhoenixRuntime implements CoreServices {
       logger: this.logger.child("phone-link"),
       unavailable: options.demo === false,
       ...options.phone,
+    });
+    // Remote relay (Phase 87): off by default. It needs the OS credential store for Core's relay
+    // key, and never exists inside the demo runtime (it opens no sockets).
+    this.remoteRelay =
+      options.secrets && options.demo !== false
+        ? new RemoteRelayService({
+            settings: this.settings,
+            secrets: options.secrets,
+            devices: this.phone.devicesStore,
+            phone: this.phone,
+            audit: this.permissions.audit,
+            killSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
+            ...(options.relay ?? {}),
+          })
+        : undefined;
+    this.bus.subscribe("remote-relay", "security.kill_switch.engaged", () => {
+      void this.remoteRelay?.disable("kill_switch");
     });
     this.mission = new AgentUsageRuntime({
       db: this.db,
@@ -925,6 +970,7 @@ export class PhoenixRuntime implements CoreServices {
     const address = await this.api.listen(this.config.port, this.config.host);
     if (this.options.startAgentRelay ?? true) await this.agentRelay.start();
     await this.phone.start();
+    await this.remoteRelay?.start();
     await this.mcp.start();
     if (this.options.writeTokenFile ?? true) this.writeTokenFile();
 
@@ -1119,7 +1165,37 @@ export class PhoenixRuntime implements CoreServices {
         ).length,
         deleted_with: "revoke each source (DELETE /api/team/webhooks/sources/:source)",
       },
+      {
+        id: "chat_approvals_config",
+        description:
+          "Chat approvals settings (Phase 86), kept with the capability: the Slack and Discord workspace, channel and approver ids you entered and the projects you switched on for approving from chat. Bot tokens and signing secrets are only in the OS credential store. Off by default; nothing is posted until you enable the capability.",
+        count: this.chatApprovalsConfigured(),
+        deleted_with:
+          "uninstall or reconfigure the capability (POST /api/capabilities/chat-approvals/configure), and delete its secrets",
+      },
+      {
+        id: "remote_relay",
+        description:
+          "Remote access relay (Phase 87): the relay address you chose, a random route id and Core's relay public key, in settings. Core's relay private key is only in the OS credential store. The relay is untrusted and sees route id, peer address, frame size and timing, never contents. Off by default.",
+        count: this.remoteRelay?.status().enabled ? 1 : 0,
+        deleted_with:
+          "turn the relay off (DELETE /api/remote-relay), which discards the route and key",
+      },
     ];
+  }
+
+  /** How many chat approval settings are set (projects plus each provider that is switched on). */
+  private chatApprovalsConfigured(): number {
+    if (!this.chatApprovals) return 0;
+    const config = this.capabilities.get(CHAT_APPROVALS_CAPABILITY).config;
+    const projects = Array.isArray(config.projects) ? config.projects.length : 0;
+    const providers = ["slack", "discord", "teams"].filter((p) => {
+      const value = config[p];
+      return (
+        value !== null && typeof value === "object" && "enabled" in value && value.enabled === true
+      );
+    }).length;
+    return projects + providers;
   }
 
   /** Capabilities, and the coding agents Phoenix can see, that may get a Fawkes pill. */
@@ -1219,11 +1295,13 @@ export class PhoenixRuntime implements CoreServices {
       this.notetaker.close();
       this.attachments.close();
       this.agentApprovals.close();
+      this.chatApprovals?.close();
       clearInterval(this.syncTimer ?? undefined);
       if (this.ticker) clearInterval(this.ticker);
       if (this.pruner) clearInterval(this.pruner);
       await this.agentRelay.stop();
       await this.phone.close();
+      await this.remoteRelay?.close();
       await this.mcp.close();
       await this.api?.close();
       await this.agents.close();
