@@ -318,17 +318,23 @@ describe("ai steps: model output is untrusted data", () => {
     });
 
     const clock = new ManualClock();
+    const aiStarted = Promise.withResolvers<void>();
+    const aiReply = Promise.withResolvers<never>();
     const slow = await boot({
       path: setup().db,
       calls: newCalls(),
       now: clock.now,
       sleep: clock.sleep,
-      ai: () => new Promise(() => undefined),
+      ai: () => {
+        aiStarted.resolve();
+        return aiReply.promise;
+      },
     });
     await started(slow);
     slow.admin.save(user, aiFlow());
     slow.bus.publish(buildFailed());
-    await vi.waitFor(() => expect(clock.pendingTimers).toBe(1));
+    await aiStarted.promise;
+    expect(clock.pendingTimers).toBe(1);
     clock.advance(61_000);
     await slow.engine.idle();
     expect(slow.engine.listRuns()[0]).toMatchObject({
