@@ -28,6 +28,12 @@ import type { PermissionGateway } from "@phoenix/permissions";
 import type { EventStore, MeetingStore } from "@phoenix/persistence";
 import type { StateEngine } from "@phoenix/state-engine";
 
+/** The user's choice of whether `POST /api/events` refuses the `terminal` source. */
+export interface EventSourcePolicyApi {
+  get(): { reserveTerminal: boolean };
+  set(input: unknown): { reserveTerminal: boolean };
+}
+
 /** Capability registry surface used by the API (implemented by @phoenix/capability-manager). */
 export interface CapabilityService {
   list(): unknown[];
@@ -1292,6 +1298,8 @@ export interface CoreServices {
   engineeringSignals?: EngineeringSignalsApi;
   /** Incoming webhooks (Phase 92); absent when no OS secret store is available. */
   teamWebhooks?: TeamWebhookApi;
+  /** Whether the session-token event route refuses the `terminal` source; the user's choice. */
+  eventSourcePolicy?: EventSourcePolicyApi;
   petSettings?(): unknown;
   setPetSettings?(input: unknown): unknown;
   /** Persists the user's sleep preference. */

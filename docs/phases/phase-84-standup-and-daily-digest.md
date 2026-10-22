@@ -15,7 +15,7 @@ Your standup and day summary, written from what actually happened.
 
 ## Tasks
 
-- [ ] Yesterday / today / blockers from commits, agent sessions, meetings, CI and tasks. Sources: commits (read-only git, author equal to the repository's `user.email`, no merges, author date; none configured → "unattributed"), completed sessions (project name omitted), meetings (permission-gated) and stored events. Event-derived lines are labelled "Unverified event ·". Failed or partial sources are reported as unavailable, partial or unattributed notices. Stale blockers are cleared by a later pass or resume of the same subject. Tested with fixtures. Unticked because `terminal` and other sources can still be posted to `POST /api/events` (`github`, `issues` and `calendar` are reserved), so forged events can appear as unverified lines, and no real day was used.
+- [ ] Yesterday / today / blockers from commits, agent sessions, meetings, CI and tasks. Sources: commits (read-only git, author equal to the repository's `user.email`, no merges, author date; none configured → "unattributed"), completed sessions (project name omitted), meetings (permission-gated) and stored events. Event-derived lines are labelled "Unverified event ·". Failed or partial sources are reported as unavailable, partial or unattributed notices. Stale blockers are cleared by a later pass or resume of the same subject. Tested with fixtures. Unticked because other sources can still be posted to `POST /api/events` (`github`, `issues` and `calendar` are reserved, and `terminal` only if the user turns that on), so forged events can appear as unverified lines, and no real day was used.
 - [ ] End-of-day digest. Routes `GET /api/digest?day=`, `/api/digest/commit/:sha`, `/api/digest/event/:id` (authenticated, read-only); pages `#/digest`, `#/digest/event/:id`, `#/digest/commit/:sha` ([daily-digest.md](../daily-digest.md)). Simulated. Unticked: not checked against a real day.
 - [ ] Copy, or send to Slack/Teams with approval (Phase 86). Copy is built and performs no external write. **Send to Slack or Teams is not built** (Phase 86 does not exist).
 - [ ] Local model by default; sources linked for every line. The digest is deterministic and local and calls no model. Every line links to a local evidence page (event pages ignore `payload.url`); titles are sanitised (control and bidi characters stripped, 200 characters). Unticked: no real day was checked, and the "model" part is not used at all.
@@ -45,7 +45,7 @@ Your standup and day summary, written from what actually happened.
 
 ### Security review
 
-A static read-only review by tools (not a human audit) was followed by fixes, each with tests. **Not fixed (open):** `terminal` and other unreserved sources are still postable, so forged terminal events can appear as unverified lines.
+A static read-only review by tools (not a human audit) was followed by fixes, each with tests. **Not fixed (open):** unreserved sources are still postable, so forged events can appear as unverified lines. `terminal` can be reserved by the user's choice (off by default).
 
 ### What was not built
 

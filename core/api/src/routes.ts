@@ -128,6 +128,16 @@ export function buildRoutes(s: CoreServices): Route[] {
         })),
       };
     }),
+    route("GET", "/api/events/source-policy", () => {
+      if (!s.eventSourcePolicy)
+        throw new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, "Event source policy not available");
+      return s.eventSourcePolicy.get();
+    }),
+    route("PUT", "/api/events/source-policy", async ({ body }) => {
+      if (!s.eventSourcePolicy)
+        throw new PhoenixError(ErrorCode.RESOURCE_NOT_FOUND, "Event source policy not available");
+      return s.eventSourcePolicy.set(await body());
+    }),
     route("POST", "/api/events", async ({ body, res }) => {
       const event = await body();
       // Provider identities belong to their enabled capabilities, not arbitrary API clients.
@@ -137,6 +147,12 @@ export function buildRoutes(s: CoreServices): Route[] {
         throw new PhoenixError(
           ErrorCode.SECURITY_POLICY_BLOCKED,
           `Source "${String(postedSource)}" is reserved`,
+        );
+      }
+      if (String(postedSource) === "terminal" && s.eventSourcePolicy?.get().reserveTerminal) {
+        throw new PhoenixError(
+          ErrorCode.SECURITY_POLICY_BLOCKED,
+          'Source "terminal" is reserved (you turned this on in event source settings)',
         );
       }
       // The live agent-session signals are Core's own: a durable copy from another source would

@@ -97,6 +97,7 @@ import { LocalRegistryRuntime, type LocalRegistryConfig } from "./registry";
 import { SyncRuntime, type SyncTransportFactory } from "./sync";
 import { DemoRuntime, type DemoTuning } from "./demo";
 import { TeamWebhooks, WEBHOOK_SETTINGS_KEY } from "./team-status/webhooks";
+import { EventSourcePolicy } from "./event-source-policy";
 import { WorkflowsRuntime } from "./workflows";
 
 export interface PetSettings {
@@ -236,6 +237,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly appearance: AppearanceRuntime;
   /** The interface language (Phase 70, `ui.locale`); session-token routes only. */
   readonly uiSettings: UiSettingsRuntime;
+  /** Whether the session-token event route refuses the `terminal` source (user's choice, off). */
+  readonly eventSourcePolicy: EventSourcePolicy;
   /**
    * The only path from an agent to a capability (Phase 30). Phase 31 hands this, and nothing
    * else, to the agent runtime.
@@ -815,6 +818,7 @@ export class PhoenixRuntime implements CoreServices {
       known: () => this.knownSources(),
     });
     this.uiSettings = new UiSettingsRuntime(this.settings, this.bus);
+    this.eventSourcePolicy = new EventSourcePolicy(this.settings, this.permissions.audit);
     this.sync = new SyncRuntime(this.settings, options.secrets, options.syncTransport);
     this.demo =
       options.demo === false
