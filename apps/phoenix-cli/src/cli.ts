@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { parseArgs } from "node:util";
+import { ASK_TIMEOUT_MS, answerJson, ask, parseQuestion, renderAnswer } from "./ask";
 import { decide, listPending, renderList, toView, type Decision } from "./approvals";
 import { parseAwake, parseDuration, parseReason, renderAwake, runCommand } from "./awake";
 import { CoreClient, DEFAULT_CORE_URL, parseCoreUrl } from "./client";
-import { CoreError, EXIT, RefusedError, UsageError } from "./errors";
+import { CoreError, EXIT, NoAnswerError, RefusedError, UsageError } from "./errors";
 import { eventsPath, renderEvent, tailEvents } from "./events";
 import { clean, formatDuration, redact, terminalSafeJson } from "./format";
 import { parseEvents, parseHealth, parsePet, type CoreEvent } from "./model";
@@ -22,6 +23,7 @@ Usage:
   phoenix awake extend <duration>
   phoenix awake end
   phoenix awake status [--json]
+  phoenix ask "<question>" [--json]
   phoenix help
 
 Options:
@@ -38,6 +40,10 @@ and confirm the exact request. Denying needs neither.
 A duration is whole minutes, hours or days: 90, 90m, 2h, 1d (1 minute to 7 days). "awake" (start),
 "awake extend" and "awake end" are confirmed in Phoenix, exactly as in the app, and the CLI waits for
 your answer; it never answers for you. "awake status" only reads.
+
+"ask" puts a question to your own memory through Core's AI (the same route as the Pet Panel chat). It
+prints an answer only when Core produced one, labelled as a generated hypothesis with its evidence;
+if AI is off, no provider is allowed or nothing in memory matches, it prints Core's reason and exits 1.
 `;
 
 export interface CliEnvironment {
@@ -84,7 +90,7 @@ export async function run(io: CliEnvironment): Promise<number> {
       io.stdout(HELP);
       return command === undefined && !values.help ? EXIT.usage : EXIT.ok;
     }
-    if (!["status", "approvals", "events", "awake"].includes(command)) {
+    if (!["status", "approvals", "events", "awake", "ask"].includes(command)) {
       throw new UsageError(`Unknown command "${clean(command, 40)}". Try: phoenix help`);
     }
 
@@ -112,6 +118,20 @@ export async function run(io: CliEnvironment): Promise<number> {
       await approvals(client, sub, rest, values, io);
     } else if (command === "awake") {
       await awake(client, sub, rest, values, io);
+    } else if (command === "ask") {
+      const question = parseQuestion([sub, ...rest]);
+      const view = await ask(
+        new CoreClient({
+          baseUrl,
+          token,
+          fetch: io.fetch,
+          timeoutMs: ASK_TIMEOUT_MS,
+          headers: { "x-phoenix-client": "phoenix-cli" },
+        }),
+        question,
+        io.signal,
+      );
+      io.stdout(values.json ? `${terminalSafeJson(answerJson(view))}\n` : renderAnswer(view));
     } else {
       await events(client, sub, rest, values, io);
     }
@@ -301,6 +321,10 @@ function fail(err: unknown, token: string | undefined, io: CliEnvironment): numb
   if (err instanceof RefusedError) {
     say(err.message);
     return EXIT.refused;
+  }
+  if (err instanceof NoAnswerError) {
+    say(err.message);
+    return EXIT.failed;
   }
   if (err instanceof CoreError) {
     say(err.message);

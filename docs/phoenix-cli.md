@@ -2,8 +2,7 @@
 
 `apps/phoenix-cli` (`@phoenix/cli`, bin `phoenix`) is a command line for the loopback Core API. It uses
 only `node:*` modules and the global `fetch`; it has no runtime dependency and imports no workspace
-package. This build ships **status, approvals, an event tail and keep-awake**. `phoenix ask` is
-**not built** (see [What is not built](#what-is-not-built)).
+package. This build ships **status, approvals, an event tail, keep-awake and ask**.
 
 ```
 phoenix status [--json]
@@ -15,6 +14,7 @@ phoenix awake <duration> [--reason <text>]
 phoenix awake extend <duration>
 phoenix awake end
 phoenix awake status [--json]
+phoenix ask "<question>" [--json]
 ```
 
 Global options: `--url` (default `http://127.0.0.1:4870` or `PHOENIX_CORE_URL`), `--data-dir` (or
@@ -152,10 +152,29 @@ agentsWorking, batteryFloorPercent}` with unsafe characters escaped.
   (`capabilities/awake/testing/fakes.ts`), so no `caffeinate`, `systemd-inhibit` or PowerShell ran, and
   never against a real sleeping machine. Windows, Linux and a real macOS hold are unverified.
 
+## phoenix ask
+
+`phoenix ask why did CI fail?` (quotes optional, at most 500 characters) calls `POST /api/memory/ask`, the route
+the Pet Panel chat uses. Core retrieves relevant memory first and only then calls the configured model; it never
+calls one when nothing matches. The CLI adds no provider, route or setting.
+
+- Output is the generated text labelled **a hypothesis, not a stored fact**, with provider, model and locality
+  (local or cloud) and up to 10 facts or evidence items. `--json` prints `{answer, classification: "hypothesis",
+provider, model, locality, evidence, note}` with unsafe characters escaped.
+- **Fails closed.** Core answers HTTP 200 with facts but no generated text when AI is off, no provider is allowed,
+  the provider fails or nothing matched. The CLI prints Core's note on stderr, nothing on stdout, and exits 1; it
+  never shows those facts as an AI answer.
+- Model, evidence and note text is untrusted: control, bidi and other format characters are removed (`--json`
+  escapes them), the answer is capped at 8000 characters / 200 lines, and the session token is redacted.
+- The request timeout is 120 s (other commands use 10 s) because a local model can be slow. Ctrl-C cancels it.
+- Not streamed, no conversation history, and a cloud provider is used only if the user already allowed it in Core.
+- Verified against a fake Core and the real loopback `PhoenixRuntime` with **AI off**. A real model answer was never
+  produced or read by the CLI.
+
 ## What is not built
 
-- `phoenix ask "…"`: not built. There is no dedicated Core route for asking a question, and no stand-in
-  was written.
+- `phoenix ask` is a question about **your stored memory**, not a general chatbot (see below). It cannot
+  diagnose an arbitrary CI run that nothing in memory describes.
 - No `phoenix approve` shortcut (the command is `phoenix approvals approve <id>`).
 - No packaged binary, npm publish, shell completion, or WebSocket-based tail.
 - **Core cannot tell the CLI from a person.** Any program on the machine that can read

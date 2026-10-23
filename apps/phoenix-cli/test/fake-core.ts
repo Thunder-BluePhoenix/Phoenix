@@ -31,6 +31,8 @@ export interface FakeCore {
   /** When set, every request is answered with this status and error body. */
   failWith?: { status: number; body: unknown };
   agentApprovalsMissing: boolean;
+  /** What POST /api/memory/ask answers; replaced per test. */
+  memoryAnswer: Record<string, unknown>;
   stop: () => Promise<void>;
 }
 
@@ -75,6 +77,7 @@ export async function startFakeCore(token = `fake-${crypto.randomUUID()}`): Prom
       ],
     },
     agentApprovalsMissing: false,
+    memoryAnswer: {},
     stop: async () => {},
   };
 
@@ -136,6 +139,10 @@ export async function startFakeCore(token = `fake-${crypto.randomUUID()}`): Prom
         .sort((a, b) => b.seq - a.seq)
         .slice(0, limit);
       return send(res, 200, { events: rows });
+    }
+
+    if (method === "POST" && url.pathname === "/api/memory/ask") {
+      return send(res, 200, core.memoryAnswer);
     }
 
     const conf = /^\/api\/confirmations\/([^/]+)$/.exec(url.pathname);

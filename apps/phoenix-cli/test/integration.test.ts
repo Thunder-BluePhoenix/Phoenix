@@ -73,6 +73,16 @@ describe("phoenix CLI against the real loopback Core API", () => {
     ).toBe(true);
   });
 
+  it("fails closed against the real memory route when Core produced no AI answer", async () => {
+    const cli = await core();
+    const r = await cli.cli(["ask", "why did CI fail?"]);
+    // No model was configured or called: Core answers 200 without generated text.
+    expect(r.code).toBe(1);
+    expect(r.out).toBe("");
+    expect(r.err).toMatch(/^phoenix: .+/);
+    expect(cli.everything(r)).not.toContain(TOKEN);
+  });
+
   it("uses the existing agent approval decision API and records phoenix-cli as the client", async () => {
     const cli = await core();
     const created = runtime!.agentApprovals.create({

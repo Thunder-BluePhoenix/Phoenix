@@ -34,3 +34,8 @@ export class CoreError extends Error {
     super(message);
   }
 }
+
+/** Core answered, but not with the AI answer that `phoenix ask` promises (AI off, nothing matched). */
+export class NoAnswerError extends Error {
+  override name = "NoAnswerError";
+}
