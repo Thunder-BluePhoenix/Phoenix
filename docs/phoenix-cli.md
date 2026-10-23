@@ -2,8 +2,8 @@
 
 `apps/phoenix-cli` (`@phoenix/cli`, bin `phoenix`) is a command line for the loopback Core API. It uses
 only `node:*` modules and the global `fetch`; it has no runtime dependency and imports no workspace
-package. This build ships **status, approvals and an event tail**. `phoenix ask` and `phoenix awake`
-are **not built** (see [What is not built](#what-is-not-built)).
+package. This build ships **status, approvals, an event tail and keep-awake**. `phoenix ask` is
+**not built** (see [What is not built](#what-is-not-built)).
 
 ```
 phoenix status [--json]
@@ -11,6 +11,10 @@ phoenix approvals list [--json]
 phoenix approvals approve <id> [--ref <ref>]
 phoenix approvals deny <id> [--ref <ref>]
 phoenix events tail [-n <count>] [--follow] [--source <name>] [--type <type>] [--json]
+phoenix awake <duration> [--reason <text>]
+phoenix awake extend <duration>
+phoenix awake end
+phoenix awake status [--json]
 ```
 
 Global options: `--url` (default `http://127.0.0.1:4870` or `PHOENIX_CORE_URL`), `--data-dir` (or
@@ -115,12 +119,34 @@ document with the same facts.
 
 Time, sleeping and the fetch function are injected; no test waits on a real timer.
 
+## Keep awake
+
+`phoenix awake 2h --reason "overnight build"` calls the existing keep-awake capability command
+(`POST /api/capabilities/awake/commands/start`, then polls `GET /api/operations/:id`); `extend`, `end`
+and `status` call the capability's commands of the same names. A duration is whole minutes, hours or
+days (`90`, `90m`, `2h`, `1d`; 1 minute to 7 days); `1.5h` is refused rather than rounded, so the
+minutes the person approves are exactly the minutes typed. `--reason` is one line of at most 80
+characters without control or invisible characters.
+
+- **Core asks, the CLI never answers.** `start`, `extend` and `end` are `execute` commands, so the
+  permission gateway raises a confirmation naming the minutes. The CLI prints "Waiting for you to
+  approve this in Phoenix" on stderr and polls; the person answers in the app or with
+  `phoenix approvals approve`. If nobody answers within 330 s (Core's own confirmation expires at five
+  minutes) it exits `4` and says nothing was changed by this command yet.
+- A "no" from the person or the emergency stop exits `4` (refused), not `1` (failed). A start while a
+  session already runs, or an `extend` with none, exits `1` with Core's message.
+- If a command is cancelled after it was sent, Core cannot prove whether it took effect; the CLI says
+  so and points at `phoenix awake status`.
+- `status` is a read and asks nothing. `--json` prints `{active, mode, label, endsAt, remainingSeconds,
+agentsWorking, batteryFloorPercent}` with unsafe characters escaped.
+- Tested against the real `PhoenixRuntime` with the real keep-awake capability on a fake machine
+  (`capabilities/awake/testing/fakes.ts`), so no `caffeinate`, `systemd-inhibit` or PowerShell ran, and
+  never against a real sleeping machine. Windows, Linux and a real macOS hold are unverified.
+
 ## What is not built
 
-- `phoenix ask "…"` and `phoenix awake 2h`: not built in this slice. There is no dedicated Core
-  route for asking a question. Keep-awake is a capability command
-  (`POST /api/capabilities/awake/commands/start`, which asks for approval), but the CLI does not call
-  it yet; no stand-in was written.
+- `phoenix ask "…"`: not built. There is no dedicated Core route for asking a question, and no stand-in
+  was written.
 - No `phoenix approve` shortcut (the command is `phoenix approvals approve <id>`).
 - No packaged binary, npm publish, shell completion, or WebSocket-based tail.
 - **Core cannot tell the CLI from a person.** Any program on the machine that can read

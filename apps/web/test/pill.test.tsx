@@ -46,7 +46,8 @@ describe("pill dots", () => {
   it("follow the voice level while listening, the middle dot most, and rest again afterwards", async () => {
     const { frames, analyser, mic } = mountPill();
     await beginListening();
-    expect(frames.pending()).toBe(1);
+    // The frame is scheduled by an effect that runs after the "Listening" text is on screen.
+    await waitFor(() => expect(frames.pending()).toBe(1));
 
     analyser.value = 0.2;
     frames.tick();

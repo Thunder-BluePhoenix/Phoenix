@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 import { parseArgs } from "node:util";
 import { decide, listPending, renderList, toView, type Decision } from "./approvals";
+import { parseAwake, parseDuration, parseReason, renderAwake, runCommand } from "./awake";
 import { CoreClient, DEFAULT_CORE_URL, parseCoreUrl } from "./client";
 import { CoreError, EXIT, RefusedError, UsageError } from "./errors";
 import { eventsPath, renderEvent, tailEvents } from "./events";
@@ -17,17 +18,26 @@ Usage:
   phoenix approvals approve <id> [--ref <ref>]
   phoenix approvals deny <id> [--ref <ref>]
   phoenix events tail [-n <count>] [--follow] [--source <name>] [--type <type>] [--json]
+  phoenix awake <duration> [--reason <text>]
+  phoenix awake extend <duration>
+  phoenix awake end
+  phoenix awake status [--json]
   phoenix help
 
 Options:
   --url <url>        Core address (default ${DEFAULT_CORE_URL}, or PHOENIX_CORE_URL); loopback http only
   --data-dir <dir>   Core's data directory, where session.token lives (or PHOENIX_DATA_DIR)
   --json             Machine-readable output
+  --reason <text>    Why the computer should stay awake (phoenix awake, up to 80 characters)
   -h, --help         Show this help
 
 The session token is read from PHOENIX_SESSION_TOKEN or <data dir>/session.token and is never printed.
 Approving needs the --ref printed by "approvals list", or an interactive terminal where you review
 and confirm the exact request. Denying needs neither.
+
+A duration is whole minutes, hours or days: 90, 90m, 2h, 1d (1 minute to 7 days). "awake" (start),
+"awake extend" and "awake end" are confirmed in Phoenix, exactly as in the app, and the CLI waits for
+your answer; it never answers for you. "awake status" only reads.
 `;
 
 export interface CliEnvironment {
@@ -51,6 +61,7 @@ const OPTIONS = {
   "data-dir": { type: "string" },
   json: { type: "boolean", default: false },
   ref: { type: "string" },
+  reason: { type: "string" },
   n: { type: "string", short: "n" },
   follow: { type: "boolean", short: "f", default: false },
   source: { type: "string" },
@@ -73,7 +84,7 @@ export async function run(io: CliEnvironment): Promise<number> {
       io.stdout(HELP);
       return command === undefined && !values.help ? EXIT.usage : EXIT.ok;
     }
-    if (!["status", "approvals", "events"].includes(command)) {
+    if (!["status", "approvals", "events", "awake"].includes(command)) {
       throw new UsageError(`Unknown command "${clean(command, 40)}". Try: phoenix help`);
     }
 
@@ -99,6 +110,8 @@ export async function run(io: CliEnvironment): Promise<number> {
       await status(client, values.json, io);
     } else if (command === "approvals") {
       await approvals(client, sub, rest, values, io);
+    } else if (command === "awake") {
+      await awake(client, sub, rest, values, io);
     } else {
       await events(client, sub, rest, values, io);
     }
@@ -113,6 +126,7 @@ interface Values {
   json: boolean;
   follow: boolean;
   ref?: string | undefined;
+  reason?: string | undefined;
   n?: string | undefined;
   source?: string | undefined;
   type?: string | undefined;
@@ -201,6 +215,50 @@ async function approvals(
       ? `${JSON.stringify(result)}\n`
       : `${decision === "approve" ? "Approved" : "Denied"} ${result.id} (${result.source}). Core recorded it in the audit log.\n`,
   );
+}
+
+async function awake(
+  client: CoreClient,
+  sub: string | undefined,
+  rest: string[],
+  values: Values,
+  io: CliEnvironment,
+): Promise<void> {
+  const call = (command: string, input: Record<string, unknown>) =>
+    runCommand({
+      client,
+      capability: "awake",
+      command,
+      input,
+      signal: io.signal,
+      sleep: io.sleep,
+      waiting: () =>
+        io.stderr("Waiting for you to approve this in Phoenix (or: phoenix approvals list)...\n"),
+      // Core's own confirmation expires after five minutes; this stops just after that.
+      maxWaitMs: 330_000,
+      intervalMs: 1000,
+    });
+  const show = (result: unknown): void =>
+    io.stdout(
+      values.json ? `${terminalSafeJson(parseAwake(result))}\n` : renderAwake(parseAwake(result)),
+    );
+  if (sub === undefined)
+    throw new UsageError("Usage: phoenix awake <duration> | extend | end | status");
+  if (sub === "status") {
+    noMore(rest);
+    show(await call("status", {}));
+  } else if (sub === "end") {
+    noMore(rest);
+    show(await call("end", {}));
+  } else if (sub === "extend") {
+    const [duration, ...extra] = rest;
+    noMore(extra);
+    show(await call("extend", { minutes: parseDuration(duration) }));
+  } else {
+    noMore(rest);
+    const reason = parseReason(values.reason);
+    show(await call("start", { minutes: parseDuration(sub), ...(reason ? { reason } : {}) }));
+  }
 }
 
 async function events(

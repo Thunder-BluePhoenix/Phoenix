@@ -5,12 +5,12 @@ Phase 89 names three surfaces beyond the desktop app: the Apple Watch, a browser
 
 ## What is built, and what is not
 
-| Surface                              | Status in this build                                                                                                                                  |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `phoenix` CLI (`apps/phoenix-cli`)   | **Built, partly**: `status`, `approvals list/approve/deny`, `events tail`. See [phoenix-cli.md](phoenix-cli.md). `ask` and `awake` are **not built**. |
-| Apple Watch app (`apps/watch`)       | **NOT BUILT.** No watchOS target, no Swift, no WatchConnectivity bridge, no complication.                                                             |
-| Browser extension (`apps/extension`) | **NOT BUILT.** No manifest, no content scripts, no PR-page Fawkes, no Meet record button, no "send page to Phoenix".                                  |
-| iPhone app the watch depends on      | **NOT BUILT** (Phase 71 is Core-side only, see [phone-link.md](phone-link.md)).                                                                       |
+| Surface                              | Status in this build                                                                                                                              |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `phoenix` CLI (`apps/phoenix-cli`)   | **Built, partly**: `status`, `approvals list/approve/deny`, `events tail`, `awake`. See [phoenix-cli.md](phoenix-cli.md). `ask` is **not built**. |
+| Apple Watch app (`apps/watch`)       | **NOT BUILT.** No watchOS target, no Swift, no WatchConnectivity bridge, no complication.                                                         |
+| Browser extension (`apps/extension`) | **NOT BUILT.** No manifest, no content scripts, no PR-page Fawkes, no Meet record button, no "send page to Phoenix".                              |
+| iPhone app the watch depends on      | **NOT BUILT** (Phase 71 is Core-side only, see [phone-link.md](phone-link.md)).                                                                   |
 
 The Phase 89 exit criterion, "each surface performs one real action end to end", is **UNMET**: only the
 CLI performs real actions, and only against a local Core in tests. Nothing here has run on a watch, in a

@@ -5,7 +5,7 @@
 | Stage | Stage 14 — Phoenix originals |
 | Release target | Post-v2.0 track |
 | Priority | Low |
-| Status | 🟨 Only the `phoenix` CLI is built (tested with fakes and loopback). **Not built:** the Apple Watch app, the browser extension (documented only), `phoenix ask` and `phoenix awake`. No surface performed a real action end to end; the exit criterion is not met |
+| Status | 🟨 Only the `phoenix` CLI is built (tested with fakes and loopback). `phoenix awake` is built too. **Not built:** the Apple Watch app, the browser extension (documented only) and `phoenix ask`. No surface performed a real action end to end; the exit criterion is not met |
 | Depends on | [Phase 71 — Phone Link & Mobile Companions](phase-71-phone-link-and-mobile.md) |
 | Unblocks | — |
 
@@ -17,11 +17,11 @@ Phoenix from the wrist, the browser and the terminal.
 
 - [ ] Apple Watch app: state, approvals with wrist confirmation (through the iPhone app). **Not built.**
 - [ ] Browser extension: Fawkes on GitHub PR pages, meeting record button on Meet, send page to Phoenix. **Not built;** documented only in [companion-clients.md](../companion-clients.md).
-- [ ] `phoenix status`, `phoenix ask "why did CI fail?"`, `phoenix awake 2h`, `phoenix approve`. `phoenix status` and `phoenix approvals list/approve/deny` are built, plus `phoenix events tail [--follow]`. **`phoenix ask` and `phoenix awake` are not built.** Simulated. Unticked.
+- [ ] `phoenix status`, `phoenix ask "why did CI fail?"`, `phoenix awake 2h`, `phoenix approve`. `phoenix status`, `phoenix approvals list/approve/deny`, `phoenix events tail [--follow]` and `phoenix awake <duration> | extend | end | status` are built (awake: real Core and real keep-awake capability on a fake machine; the person approves in Phoenix). **`phoenix ask` is not built.** Simulated. Unticked.
 
 ## Deliverables
 
-- `apps/phoenix-cli` (`@phoenix/cli`): `phoenix status`, `phoenix approvals list|approve|deny`, `phoenix events tail [--follow]`. Built; added to the root `tsconfig` include; simulated evidence only. See [phoenix-cli.md](../phoenix-cli.md) and [companion-clients.md](../companion-clients.md).
+- `apps/phoenix-cli` (`@phoenix/cli`): `phoenix status`, `phoenix approvals list|approve|deny`, `phoenix events tail [--follow]`, `phoenix awake`. Built; added to the root `tsconfig` include; simulated evidence only. See [phoenix-cli.md](../phoenix-cli.md) and [companion-clients.md](../companion-clients.md).
 - Not built: `apps/watch`, `apps/extension`.
 
 ## Exit criteria
@@ -32,7 +32,7 @@ Phoenix from the wrist, the browser and the terminal.
 
 ### What was built
 
-- **CLI commands:** `phoenix status`, `phoenix approvals list | approve | deny`, `phoenix events tail [--follow]`.
+- **CLI commands:** `phoenix status`, `phoenix approvals list | approve | deny`, `phoenix events tail [--follow]`, `phoenix awake <duration> | extend | end | status` (confirmation stays with the person; a no or the emergency stop exits `4`).
 - **Safety:** loopback only; the token comes from the environment or a file and is never printed; redirects are refused; `approve` needs a `--ref` or an interactive confirm; untrusted text is sanitised.
 - Documentation: [phoenix-cli.md](../phoenix-cli.md), [companion-clients.md](../companion-clients.md).
 
@@ -46,7 +46,7 @@ A static read-only review by tools (not a human audit) found that `--json` outpu
 
 ### What was not built
 
-The Apple Watch app, the browser extension, `phoenix ask` and `phoenix awake`.
+The Apple Watch app, the browser extension and `phoenix ask`.
 
 ### What was not run
 
