@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { createAwakeCapability, type SessionController } from "@phoenix/capability-awake";
+import {
+  createAwakeCapability,
+  type DockerIdle,
+  type SessionController,
+} from "@phoenix/capability-awake";
 import { createAgentsCapability, type AgentsServices } from "@phoenix/capability-agents";
 import { createAppleMusicCapability } from "@phoenix/capability-apple-music";
 import { createDockerCapability } from "@phoenix/capability-docker";
@@ -36,6 +40,8 @@ export interface BuiltinHost {
   statusLights?: StatusLightsOptions;
   /** Phase 90: told about the live keep-awake session so the scheduler can hold the same one. */
   onAwakeSession?: (session: SessionController | undefined) => void;
+  /** Phase 74: whether Docker has running containers, for the lid-close "freeze Docker" action. */
+  dockerIdle?: DockerIdle;
 }
 
 /**
@@ -76,6 +82,7 @@ export function builtinCapabilities(
     createAwakeCapability({
       feed: () => agentsServices?.()?.events,
       ...(host.onAwakeSession ? { onSession: host.onAwakeSession } : {}),
+      ...(host.dockerIdle ? { dockerIdle: host.dockerIdle } : {}),
     }),
     createIssuesCapability(),
     createPlanningCapability({ services: planningServices }),

@@ -130,10 +130,12 @@ backlight needs private APIs or another third-party tool and is **not implemente
 ## Docker
 
 Idleness comes from the injected `DockerIdle` seam (`idle` / `busy` / `unknown`); `busy` and
-`unknown` never freeze. **GAP:** no cross-capability call exists yet (the Docker capability only
-publishes `docker.*` events and a `containers` command), so `createLidActionsModule` defaults the
-seam to `unknown`: Docker is **never** frozen until a host supplies `dockerIdle`. Wiring it in
-`core/runtime/src/builtins.ts` was out of this task's file ownership.
+`unknown` never freeze. Phoenix Core supplies it (`core/runtime/src/docker-idle.ts`, passed through
+`createAwakeCapability({ dockerIdle })`): it runs the Docker capability's read-only `containers` command and says
+`idle` only for a complete list in which every container is `exited`, `created` or `dead`. A running, paused or
+restarting container is `busy`; a disabled or unreachable Docker, a failed or 5 s slow call, the kill switch, an
+unknown state or a list of 200 rows (the command's limit, so it may be cut) is `unknown`. Without a host-supplied
+`dockerIdle` the seam is still `unknown`, so Docker is never frozen by default. The check never asks the user.
 
 ## App Nap
 

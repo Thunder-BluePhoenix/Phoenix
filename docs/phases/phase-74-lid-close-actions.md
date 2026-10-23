@@ -19,13 +19,13 @@ When the lid closes during a session, save power and quiet the machine; undo it 
 - [ ] Freeze listed apps with `SIGSTOP` (default Slack, WhatsApp, Discord); never meeting, recording or dictation apps; only unfreeze what it can prove it froze. Built (`actions/freeze-apps.ts`, `freeze-core.ts`): a process is resumed with `SIGCONT` only after its pid, start time, command and uid are proven to match what was frozen (`ps` with `TZ=UTC LC_ALL=C`); targets are limited to the current user (other users' processes are classed `not_ours`); undo is retried three times; apps that hold an audio or power assertion (read-only `pmset -g assertions`) are skipped and an unreadable assertion list fails closed (`assertions_unknown`). Tested with fakes (`actions.test.ts`, `hardening.test.ts`). Unticked because **no real app was frozen**; app paths and the `ps` output format are unverified, and an in-app call is detected only through assertions.
 - [ ] Mute every output, restore on open even after switching outputs. Built for the **default output only**: the output name is recorded, and a changed default is not unmuted (`output_changed`). Per-device mute is not built. Unrun against real audio.
 - [ ] Low Power Mode on. Built through the Phase 73 helper (`actions/low-power.ts`); the only action the backstop also undoes. Never run with the helper.
-- [ ] Freeze Docker Desktop when no container runs (off by default). The action exists (`actions/docker-freeze.ts`) but the `DockerIdle` seam defaults to unknown, so **it never freezes**; it is not wired to Phoenix's Docker capability.
+- [ ] Freeze Docker Desktop when no container runs (off by default). The action (`actions/docker-freeze.ts`) is now fed by Phoenix's Docker capability through `core/runtime/src/docker-idle.ts`: it freezes only when the capability lists containers and every one is stopped; running, paused, restarting, unknown, a failed call or a possibly cut list never freeze. Tested against the real Docker capability on a mock Engine socket and the fake machine; never against a real Docker Desktop or a closed lid. Unticked.
 - [ ] Turn App Nap off for agent apps (opt-in, journalled). Built with `defaults write`, the prior value journalled first (`actions/app-nap.ts`). Never run against real `defaults`.
 
 ## Tasks — Phoenix improvements
 
 - [x] Protected list always includes Phoenix, terminals, editors and running coding agents. Built (`lid-actions/protected.ts`, tests in `protected.test.ts`): Phoenix, terminals, editors, tracked agents and meeting apps are always protected, users can add names but not remove built-ins, unknown state fails closed, and mute, display sleep and App Nap act only when the protected state is `idle`. Meeting and recording state is per-capture and never expires. Agent pids may not arrive from agent events, so name-based protection does most of the work (see the notes).
-- [ ] Docker idleness comes from Phoenix's Docker capability. **Not wired**; the seam reports unknown.
+- [ ] Docker idleness comes from Phoenix's Docker capability. Wired (`dockerIdleFrom`, read-only `containers` command, fails closed); simulated only. Unticked.
 
 ## Deliverables
 

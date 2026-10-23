@@ -78,3 +78,15 @@ describe("the composed manifest", () => {
     r.shutdown();
   });
 });
+
+describe("the dockerIdle option", () => {
+  it("changes nothing in the composed capability: same commands, events, permissions and config", () => {
+    const withSeam = createAwakeCapability({ dockerIdle: () => Promise.resolve("idle") }).manifest;
+    expect(withSeam.commands).toEqual(manifest.commands);
+    expect(withSeam.events).toEqual(manifest.events);
+    expect(withSeam.permissions).toEqual(manifest.permissions);
+    expect(withSeam.config_schema).toEqual(manifest.config_schema);
+    // The production module set never offers the test-only simulation commands.
+    expect(withSeam.commands.map((c) => c.name)).not.toContain("lid_actions.simulate_close");
+  });
+});

@@ -33,7 +33,8 @@ import {
   type SessionMode,
 } from "./session";
 import { continuityModule } from "./continuity";
-import { lidActionsModule } from "./lid-actions";
+import { createLidActionsModule, lidActionsModule } from "./lid-actions";
+import type { DockerIdle } from "./lid-actions/types";
 import { recoveryModule } from "./power";
 import {
   AwakeError,
@@ -49,6 +50,7 @@ export * from "./battery";
 export * from "./inhibit";
 export * from "./session";
 export * from "./system";
+export type { DockerIdle, DockerIdleState } from "./lid-actions/types";
 
 /**
  * Modules added by later phases. Append yours here (one import, one entry):
@@ -161,6 +163,11 @@ export interface AwakeCapabilityOptions {
    * session; nothing else is exposed.
    */
   onSession?: (session: SessionController | undefined) => void;
+  /**
+   * Phoenix's Docker capability's view, for the lid-close "freeze Docker" action. Without it the
+   * answer is always unknown and Docker is never frozen. Ignored when `modules` is given.
+   */
+  dockerIdle?: DockerIdle;
 }
 
 const SESSION_EVENTS = [
@@ -301,7 +308,16 @@ function eventPayload(fields: SessionEventFields): Record<string, unknown> {
 /** A fresh capability instance (its own session); Phoenix Core builds one per runtime. */
 export function createAwakeCapability(options: AwakeCapabilityOptions = {}): CapabilityModule {
   const ref: { controller: SessionController | undefined } = { controller: undefined };
-  const composed = composeAwake([sessionModule(ref), ...(options.modules ?? MODULES)]);
+  const modules =
+    options.modules ??
+    (options.dockerIdle
+      ? [
+          recoveryModule,
+          createLidActionsModule({ dockerIdle: options.dockerIdle }),
+          continuityModule,
+        ]
+      : MODULES);
+  const composed = composeAwake([sessionModule(ref), ...modules]);
   let stopSignal: (() => void) | undefined;
 
   const module: CapabilityModule = defineCapability({

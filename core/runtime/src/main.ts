@@ -4,6 +4,7 @@ import { loadConfig, type PhoenixConfig } from "@phoenix/config";
 import { createLogger } from "@phoenix/logging";
 import { KeychainSecretStore, type SecretStore } from "@phoenix/persistence";
 import { builtinCapabilities } from "./builtins";
+import { dockerIdleFrom } from "./docker-idle";
 import { PhoenixRuntime } from "./runtime";
 import { explainStartupError } from "./startup-errors";
 
@@ -72,6 +73,9 @@ try {
           feed: () => runtime.bus,
         },
         onAwakeSession: (session) => runtime.scheduledAwake.bindSession(session),
+        dockerIdle: dockerIdleFrom({
+          invokeAndWait: (...args) => runtime.capabilities.invokeAndWait(...args),
+        }),
       },
     ),
   });
