@@ -156,7 +156,7 @@ The emergency stop (kill switch) refuses new reports (HTTP 403) and keeps what i
 - Claude Code's cumulative token counts are not in its status JSON; only a cost is read.
 - Codex and other agents deliver no token counts to Phoenix; they can use the generic report.
 - Retention is fixed at 400 days; there is no per-class retention setting for this data.
-- A budget warning's `resets_at` is the end of the budget's day written as UTC midnight of the next local day. In a time zone other than UTC the instant is not the local midnight; it is only a label for "tomorrow".
+- A budget warning's `resets_at` is the instant the next local day starts, in the time zone the service was built with (the system zone, or `recapTimeZone`). It is found from the zone's own day boundary, so it is right on 23- and 25-hour days and where a zone skips midnight. The zone is fixed when Core starts: if the computer's zone changes, restart Core to follow it.
 - Whoever can post to the usage route can pre-consume Core's per-day limits (sessions, agents, models) or move a session's baseline with a forged report; Core cannot tell a real report from a forged one. The limits only bound the damage.
 - The time zone that decides what "today" is, is fixed when Core starts. A change of the system zone is picked up after a restart.
 - The per-agent, per-session and per-day limits cut what is stored; the part cut stays **pending** (the session's baseline does not move past what was stored), so it is counted once there is room again. Cut and refused reports are counted for the current day in memory (`ingest` in `GET /api/mission`, shown on the page); a restart starts the count again.

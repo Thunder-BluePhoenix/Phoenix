@@ -92,6 +92,26 @@ describe("daily token budget", () => {
   });
 });
 
+describe("budget warning reset time", () => {
+  const resetOf = async (r: UsageRig) => {
+    r.usage.setConfig({ budgets: [{ id: "day", scope: "daily", metric: "tokens", limit: 1_000 }] });
+    report(r, 900);
+    await drain(r);
+    return warnings(r)[0]?.payload.resets_at;
+  };
+
+  it("is the next local midnight in the zone the budget day is keyed in", async () => {
+    // T0 is 2026-10-20T10:00Z: still the 20th in New York (06:00 EDT), so the day ends 04:00Z on the 21st.
+    expect(await resetOf(usageRig(undefined, "America/New_York"))).toBe("2026-10-21T04:00:00.000Z");
+  });
+
+  it("is UTC midnight for a UTC service, and differs for a zone ahead of UTC", async () => {
+    expect(await resetOf(usageRig(undefined, "UTC"))).toBe("2026-10-21T00:00:00.000Z");
+    // 15:30 IST on the 20th, so the day ends at 18:30Z on the 20th.
+    expect(await resetOf(usageRig(undefined, "Asia/Kolkata"))).toBe("2026-10-20T18:30:00.000Z");
+  });
+});
+
 describe("cost budgets and per-session budgets", () => {
   it("a cost budget never fires on an UNKNOWN cost (null is not zero, and not infinite)", async () => {
     const r = usageRig();

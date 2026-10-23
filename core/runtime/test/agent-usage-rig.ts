@@ -39,7 +39,7 @@ export function closeRigs(): void {
   for (const db of dbs.splice(0)) db.close();
 }
 
-export function usageRig(existing?: Database): UsageRig {
+export function usageRig(existing?: Database, timeZone = "UTC"): UsageRig {
   const db = existing ?? openDatabase(":memory:");
   if (!existing) dbs.push(db);
   const bus = new EventBus();
@@ -74,7 +74,7 @@ export function usageRig(existing?: Database): UsageRig {
     isKillSwitchEngaged: () => killSwitch.engaged,
     logger: silentLogger,
     now: () => clock.now,
-    timeZone: "UTC",
+    timeZone,
     events: eventStore,
   });
   runtimes.push(usage);

@@ -42,7 +42,7 @@ import {
 import { createEvent, ErrorCode, PhoenixError, type PhoenixEvent } from "@phoenix/protocol";
 import { THRESHOLDS_KEY } from "../agent-live";
 import type { LiveSessionView } from "@phoenix/api";
-import { addDays, assertTimeZone, dayKeyOf, systemTimeZone } from "../recap-calendar";
+import { addDays, assertTimeZone, dayKeyOf, startOfDayMs, systemTimeZone } from "../recap-calendar";
 import { buildBoard } from "./board";
 import {
   BASELINES_KEY,
@@ -309,8 +309,8 @@ export class AgentUsageRuntime implements MissionApi {
             budget_id: budget.id,
             scope: budget.scope,
             metric: budget.metric,
-            // The day ends here (UTC midnight of the next local day is close enough to label it).
-            resets_at: new Date(Date.parse(`${addDays(day, 1)}T00:00:00Z`)).toISOString(),
+            // The budget's day ends when the next local day starts, in the zone the day was keyed in.
+            resets_at: new Date(startOfDayMs(addDays(day, 1), this.timeZone)).toISOString(),
           },
         }),
       );

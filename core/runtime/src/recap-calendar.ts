@@ -39,6 +39,25 @@ export function dayKeyOf(ms: number, timeZone: string): string {
   return `${part("year").padStart(4, "0")}-${part("month")}-${part("day")}`;
 }
 
+/**
+ * The first instant (ms since the epoch) of local calendar day `day` in `timeZone`: the earliest
+ * moment whose `dayKeyOf` is `day`. Found by bisection on the day key instead of arithmetic on
+ * offsets, so it is right where midnight does not exist (a zone whose clocks skip 00:00 on the
+ * change day starts that day at 01:00) and on 23- and 25-hour days. Zone offsets stay within 14 h
+ * of UTC, so the answer lies in the 38 hours around UTC midnight of that date.
+ */
+export function startOfDayMs(day: string, timeZone: string): number {
+  let lo = utcOf(day) - 15 * 3_600_000; // always on the previous local day or earlier
+  let hi = utcOf(day) + 24 * 3_600_000; // always on this local day or later
+  // Invariant: dayKeyOf(lo) < day and dayKeyOf(hi) >= day (keys compare as text).
+  while (hi - lo > 1) {
+    const mid = lo + Math.floor((hi - lo) / 2);
+    if (dayKeyOf(mid, timeZone) < day) lo = mid;
+    else hi = mid;
+  }
+  return hi;
+}
+
 /** True for a real calendar date written YYYY-MM-DD (2026-02-30 is not one). */
 export function isDayKey(value: unknown): value is string {
   if (typeof value !== "string") return false;

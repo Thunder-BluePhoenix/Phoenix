@@ -6,6 +6,7 @@ import {
   assertTimeZone,
   dayKeyOf,
   isDayKey,
+  startOfDayMs,
   utcWindow,
   weekDays,
   weekStartOf,
@@ -72,5 +73,46 @@ describe("weeks start on Monday", () => {
     expect(Date.parse("2026-10-25T10:00:00Z")).toBeGreaterThanOrEqual(Date.parse(since));
     // Honolulu (-10): the evening of the 1st is the 2nd in UTC.
     expect(Date.parse("2026-11-02T09:59:00Z")).toBeLessThan(Date.parse(until));
+  });
+});
+
+describe("startOfDayMs", () => {
+  const iso = (day: string, zone: string) => new Date(startOfDayMs(day, zone)).toISOString();
+
+  it("is local midnight, in UTC terms, for fixed-offset and ordinary zones", () => {
+    expect(iso("2026-10-21", "UTC")).toBe("2026-10-21T00:00:00.000Z");
+    expect(iso("2026-10-21", NY)).toBe("2026-10-21T04:00:00.000Z");
+    expect(iso("2026-12-21", NY)).toBe("2026-12-21T05:00:00.000Z");
+    expect(iso("2026-10-21", "Asia/Kolkata")).toBe("2026-10-20T18:30:00.000Z");
+    expect(iso("2026-10-21", "Pacific/Kiritimati")).toBe("2026-10-20T10:00:00.000Z");
+    expect(iso("2026-10-21", "Pacific/Pago_Pago")).toBe("2026-10-21T11:00:00.000Z");
+  });
+
+  it("follows DST: the day after a 23- and a 25-hour day starts at the right instant", () => {
+    // Spring forward: 2026-03-08 is 23 hours long, so the 9th starts 23 h after the 8th.
+    expect(iso("2026-03-08", NY)).toBe("2026-03-08T05:00:00.000Z");
+    expect(iso("2026-03-09", NY)).toBe("2026-03-09T04:00:00.000Z");
+    // Fall back: 2026-11-01 is 25 hours long.
+    expect(iso("2026-11-01", NY)).toBe("2026-11-01T04:00:00.000Z");
+    expect(iso("2026-11-02", NY)).toBe("2026-11-02T05:00:00.000Z");
+  });
+
+  it("starts a day at 01:00 where the clocks skip midnight", () => {
+    // Asia/Beirut moves 00:00 to 01:00 on the last Sunday of March (2026-03-29).
+    expect(dayKeyOf(startOfDayMs("2026-03-29", "Asia/Beirut"), "Asia/Beirut")).toBe("2026-03-29");
+    expect(dayKeyOf(startOfDayMs("2026-03-29", "Asia/Beirut") - 1, "Asia/Beirut")).toBe(
+      "2026-03-28",
+    );
+    expect(iso("2026-03-29", "Asia/Beirut")).toBe("2026-03-28T22:00:00.000Z");
+  });
+
+  it("is the exact boundary of dayKeyOf in every tested zone", () => {
+    for (const zone of [NY, "Europe/London", "Australia/Lord_Howe", "Pacific/Chatham", "UTC"]) {
+      for (const day of ["2026-03-08", "2026-04-05", "2026-10-04", "2026-10-25", "2026-11-01"]) {
+        const start = startOfDayMs(day, zone);
+        expect(dayKeyOf(start, zone)).toBe(day);
+        expect(dayKeyOf(start - 1, zone) < day).toBe(true);
+      }
+    }
   });
 });
