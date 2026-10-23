@@ -6,10 +6,12 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { tauriShortcuts, type ShortcutsShell } from "../commands/shortcuts-shell";
 import { RebirthAvatar } from "../components/RebirthAvatar";
 import { AwakeCountdown } from "../components/Awake";
-import { ActiveSourcePills } from "../components/SourcePills";
+import { SourcePills } from "../components/SourcePills";
 import { useWornOutfit } from "../core/appearance";
 import { useDisplayedState } from "../core/context";
 import { useMute } from "../core/mute";
+import { useSoundHost } from "../core/sounds";
+import { usePillSwitcher, useSwitchPillsShortcut } from "../core/pill-switch";
 import { usePetSettings } from "../core/hooks";
 import type { PetState } from "../core/types";
 import { isMessageKey, useT } from "../i18n";
@@ -81,7 +83,14 @@ export function IslandApp({
   const t = useT();
   // Looked up once: a new shell object on every render would resubscribe to the mute event.
   const [own] = useState(() => tauriShortcuts());
-  const mute = useMute(shortcuts === undefined ? own : shortcuts, sounds);
+  const shortcutsShell = shortcuts === undefined ? own : shortcuts;
+  // A host-injected player (tests) wins; otherwise the window uses the Phase 59 sound host.
+  const soundHost = useSoundHost();
+  const mute = useMute(shortcutsShell, sounds ?? soundHost.player);
+  // "Switch pills": the shell sends the shortcut here while the island is the window on screen.
+  // The pills are published even while the island is collapsed and draws none.
+  const { pills, selected } = usePillSwitcher();
+  useSwitchPillsShortcut(shortcutsShell, (route) => shell?.openInPhoenix(route));
   const state = useDisplayedState();
   const { data: settings } = usePetSettings();
   const bubble = useBubble(state);
@@ -151,7 +160,7 @@ export function IslandApp({
                   {bubble ?? state.explanation}
                 </p>
               )}
-              <ActiveSourcePills />
+              <SourcePills pills={pills} selected={selected} />
               <AwakeCountdown />
               {state.recording && (
                 <span className="rec-pill" role="status">

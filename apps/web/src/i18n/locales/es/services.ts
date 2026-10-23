@@ -210,6 +210,16 @@ export const services: Record<keyof typeof enservices, string> = {
   "services.demo.finished": "Ese era el último paso. Detén la demo para volver a tu Phoenix.",
   "services.demo.stepOf": "Paso {n} / {total}",
   "services.demo.stepCount": "{count, plural, one {# paso} other {# pasos}}",
+  "services.demo.auto.group": "Recorrido automático",
+  "services.demo.auto.play": "Reproducir automáticamente",
+  "services.demo.auto.pause": "Pausar",
+  "services.demo.auto.resume": "Reanudar",
+  "services.demo.auto.stop": "Detener y empezar de nuevo",
+  "services.demo.auto.running":
+    "Se reproduce solo, un paso cada {seconds} segundos. Cualquier clic en un paso o una página lo detiene.",
+  "services.demo.auto.paused": "En pausa. Reanuda para continuar desde este paso.",
+  "services.demo.auto.reducedMotion":
+    "Tu sistema pide reducir el movimiento, así que el recorrido solo avanza cuando pulsas «Reproducir automáticamente».",
   "services.demo.startFailed": "No se pudo iniciar la demo",
   "services.demo.stopFailed":
     "No se pudo detener la demo limpiamente; se detiene sola cuando está inactiva",

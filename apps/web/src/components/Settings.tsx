@@ -25,6 +25,7 @@ import { DictationSettingsSection } from "./Dictation";
 import { DemoSettingsSection } from "./Demo";
 import { LanguageSection } from "./Language";
 import { ShortcutSettings } from "./ShortcutSettings";
+import { SoundSettingsSection } from "./SoundSettings";
 import { VoiceSettingsSection } from "./Voice";
 import { NotetakerSettingsSection } from "./Notetaker";
 import { Multimodal } from "./Multimodal";
@@ -60,6 +61,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <LanguageSection />
       <FawkesSettings />
       <FawkesAppearanceSection />
+      <SoundSettingsSection />
       <NotificationSettings />
       <FocusMode />
       <CapabilitySettings recording={state.recording} />

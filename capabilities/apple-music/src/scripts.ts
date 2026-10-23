@@ -64,6 +64,21 @@ on run argv
 	return vState & sep & my clean(vTitle) & sep & my clean(vArtist) & sep & my clean(vAlbum) & sep & (vDuration as text) & sep & (vPosition as text) & sep & (vVolume as text) & sep & vShuffle & sep & vRepeat
 end run`;
 
+/**
+ * The current track's first artwork as raw data. `osascript` prints data as `«data tdta<hex>»`;
+ * "none" when the track has no artwork or Music will not give it. Takes no argument.
+ */
+export const COVER_SCRIPT = `on run argv
+	if application "Music" is not running then return "not_running"
+	tell application "Music"
+		try
+			return raw data of artwork 1 of current track
+		on error
+			return "none"
+		end try
+	end tell
+end run`;
+
 export const PLAY_PAUSE_SCRIPT = `on run argv
 	if application "Music" is not running then return "not_running"
 	tell application "Music" to playpause
@@ -127,6 +142,7 @@ end run`;
 export const ALL_SCRIPTS: ReadonlySet<string> = new Set([
   RUNNING_SCRIPT,
   NOW_PLAYING_SCRIPT,
+  COVER_SCRIPT,
   PLAY_PAUSE_SCRIPT,
   NEXT_SCRIPT,
   PREVIOUS_SCRIPT,

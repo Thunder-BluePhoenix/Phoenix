@@ -25,9 +25,11 @@ import { CalendarPrepPage } from "./components/CalendarPrep";
 import { SettingsPage } from "./components/Settings";
 import { WorkflowDetailPage, WorkflowRunPage, WorkflowsPage } from "./components/Workflows";
 import { isTabId, PetPanel, type TabId } from "./components/PetPanel";
-import { useConnection, useDisplayedState, useTasks } from "./core/context";
+import { useClient, useConnection, useDisplayedState, useTasks } from "./core/context";
 import { useHashRoute } from "./core/hooks";
 import { useMute } from "./core/mute";
+import { useSoundHost } from "./core/sounds";
+import { switchPillsCommand, usePillSwitcher } from "./core/pill-switch";
 import { useT } from "./i18n";
 
 /** AppShell: navbar with Fawkes, Pet Panel, and the main content area. */
@@ -68,7 +70,13 @@ export function App() {
   const platform = useMemo(() => detectPlatform(), []);
   const bindings = useMemo(() => buildBindings(COMMANDS), []);
   const [shortcutsShell] = useState(() => tauriShortcuts());
-  const mute = useMute(shortcutsShell);
+  const soundHost = useSoundHost();
+  const mute = useMute(shortcutsShell, soundHost.player);
+  // The Settings preview obeys the desktop's mute flag too (unknown counts as muted).
+  soundHost.setMuted(mute.muted);
+  // The palette and the spoken request switch over the pills this window can see.
+  const client = useClient();
+  usePillSwitcher();
   const demo = useOptionalDemo();
   const demoPhase = demo?.state.phase;
   const demoController = demo?.controller;
@@ -91,6 +99,7 @@ export function App() {
         else window.location.hash = "#/settings";
       },
       togglePalette: () => setPaletteOpen((open) => !open),
+      switchPills: (direction) => switchPillsCommand(client, direction),
       demo:
         demoController && demoPhase
           ? {
@@ -101,7 +110,7 @@ export function App() {
           : null,
       mute: mute.toggle ? { muted: mute.muted, toggle: mute.toggle } : null,
     }),
-    [route, demoController, demoPhase, mute.toggle, mute.muted],
+    [client, route, demoController, demoPhase, mute.toggle, mute.muted],
   );
   useShortcuts(bindings, platform, commandContext);
 
@@ -135,6 +144,7 @@ export function App() {
         panelOpen={panelOpen}
         panelId={panelId}
         route={route}
+        {...(mute.sounds ? { sounds: mute.sounds } : {})}
         onToggleFawkes={() => (panelOpen ? closePanel() : setPanelOpen(true))}
       />
       {panelOpen && (

@@ -21,6 +21,7 @@ import { power } from "./power";
 import { safety } from "./safety";
 import { services } from "./services";
 import { settings } from "./settings";
+import { sounds } from "./sounds";
 import { shell } from "./shell";
 import { signals } from "./signals";
 import { browserProfiles } from "./browser-profiles";
@@ -55,6 +56,7 @@ const messages: Messages = {
   ...teamWebhooks,
   ...machine,
   ...fawkesRebirth,
+  ...sounds,
 };
 
 export default messages;

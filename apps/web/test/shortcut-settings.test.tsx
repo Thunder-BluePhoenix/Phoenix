@@ -115,6 +115,7 @@ function fakeShell(initial: ShortcutReport = reportOf()): FakeShell {
       return shell.report;
     },
     onMute: async () => () => {},
+    onSwitchPills: async () => () => {},
     onStatus: async (listener) => {
       statusListeners.add(listener);
       return () => statusListeners.delete(listener);

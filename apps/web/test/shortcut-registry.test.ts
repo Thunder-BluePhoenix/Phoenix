@@ -31,6 +31,7 @@ const ctx = (over: Partial<CommandContext> = {}): CommandContext => ({
   openPanelTab: vi.fn(),
   openLanguageSettings: vi.fn(),
   togglePalette: vi.fn(),
+  switchPills: vi.fn(),
   demo: null,
   mute: null,
   ...over,

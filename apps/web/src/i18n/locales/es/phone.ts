@@ -31,6 +31,28 @@ export const phone: Record<keyof typeof enphone, string> = {
     "El enlace con el teléfono está activado, pero el servicio aún no se está ejecutando.",
   "phone.addressChanged":
     "La dirección de red que elegiste ya no está disponible, así que el enlace con el teléfono sigue desactivado. Elige una dirección de nuevo para volver a activarlo.",
+  "phone.addressChanged.title": "La dirección de este equipo cambió",
+  "phone.addressChanged.mayNotReach":
+    "Es posible que un teléfono que ya vinculaste no pueda llegar a este equipo, porque aún recuerda la dirección anterior. No se abrió nada en otra red.",
+  "phone.addressChanged.pick": "Dirección de red",
+  "phone.addressChanged.use": "Usar esta dirección",
+  "phone.addressChanged.none":
+    "Ahora mismo no se encontró ninguna dirección privada de la red local. Conéctate a tu red y vuelve, o desactiva el enlace con el teléfono.",
+  "phone.addressChanged.off": "Desactivar el enlace con el teléfono",
+  "phone.addressChanged.repair":
+    "Tras elegir una dirección, muestra un nuevo código de vinculación y vuelve a vincular el teléfono si sigue sin poder conectarse.",
+  "phone.saved.address": "Se cambió la dirección del enlace con el teléfono.",
+  "phone.port.label": "Puerto",
+  "phone.port.save": "Guardar puerto",
+  "phone.port.invalid": "Introduce un número entero de 1024 a 65535.",
+  "phone.port.note":
+    "El enlace con el teléfono escucha en este puerto (de 1024 a 65535; el predeterminado es 47821). Un puerto nuevo se aplica la próxima vez que se abra el enlace; si ahora está activado, se reinicia en el puerto nuevo y cualquier código de vinculación en pantalla deja de funcionar. Los teléfonos que vinculaste antes pueden seguir usando el puerto anterior y tendrás que vincularlos de nuevo.",
+  "phone.saved.port": "Puerto del enlace con el teléfono guardado: {port}.",
+  "phone.pair.qrLabel": "Código QR con el enlace de vinculación",
+  "phone.pair.qrHint":
+    "Escanéalo con la aplicación del teléfono que vas a vincular. Contiene el código de arriba, así que muéstralo solo a tu propio teléfono.",
+  "phone.pair.qrUnavailable":
+    "No se pudo crear un código QR para este enlace; usa el enlace de abajo.",
   "phone.listen.address": "Dirección y puerto",
   "phone.listen.fingerprint": "Huella del certificado (SHA-256)",
   "phone.pair.show": "Mostrar código de vinculación",
@@ -43,7 +65,7 @@ export const phone: Record<keyof typeof enphone, string> = {
   "phone.pair.codeLabel": "Código de vinculación",
   "phone.pair.remaining": "Caduca en {time}",
   "phone.pair.fingerprint": "Huella del certificado:",
-  "phone.pair.link": "Enlace de vinculación (no hay código QR disponible):",
+  "phone.pair.link": "Enlace de vinculación (si el teléfono no puede escanear el código QR):",
   "phone.pair.hiddenActive":
     "Hay un código de vinculación activo hasta las {time}. No se vuelve a mostrar; cancélalo y muestra uno nuevo.",
   "phone.pending.question": '¿Vincular "{name}"?',

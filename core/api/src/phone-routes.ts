@@ -20,6 +20,11 @@ export interface PhoneStatusView {
   listening: boolean;
   address: string | null;
   port: number | null;
+  /**
+   * The port the listener binds to the next time it opens (`phone.port`, default 47821). `port`
+   * above is where it actually listens now. Changing it reopens a link that is on.
+   */
+  configured_port: number;
   /** LAN addresses the listener could be bound to right now. */
   addresses: string[];
   /** SHA-256 of the listener's certificate: uppercase hex pairs joined by `:`. */

@@ -95,9 +95,49 @@ export interface Pill {
   glyph: SourceStyle["glyph"];
 }
 
+/** Which way "switch pills" moves through the ordered pills. */
+export type PillDirection = "next" | "previous";
+
+/**
+ * The one order every pill view and the switch command use: by source id (agents before
+ * capabilities, then alphabetical), so the order never depends on which session or task woke up
+ * first. An entry with no id and a second entry with an id already seen are not available as
+ * pills and are left out.
+ */
+export function orderPills<T extends { id: string }>(sources: readonly T[]): T[] {
+  const seen = new Set<string>();
+  const kept: T[] = [];
+  for (const source of sources) {
+    if (source.id === "" || seen.has(source.id)) continue;
+    seen.add(source.id);
+    kept.push(source);
+  }
+  return kept.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/**
+ * The pill after (or before) `current` in the stable order, wrapping round at either end. `null`
+ * when there is no pill at all. A `current` that is `null` or is not among the sources (the
+ * source went quiet, or the user hid it) starts the walk: the first pill going next, the last
+ * going previous. With a single pill the answer is that pill.
+ */
+export function nextPill<T extends { id: string }>(
+  current: string | null,
+  sources: readonly T[],
+  direction: PillDirection,
+): T | null {
+  const ordered = orderPills(sources);
+  if (ordered.length === 0) return null;
+  const at = current === null ? -1 : ordered.findIndex((p) => p.id === current);
+  if (at === -1) return (direction === "next" ? ordered[0] : ordered[ordered.length - 1]) ?? null;
+  const step = direction === "next" ? 1 : ordered.length - 1;
+  return ordered[(at + step) % ordered.length] ?? null;
+}
+
 /**
  * Pills for what is active right now: coding-agent sessions that are working, and capabilities with a
- * running task. A source the user hid ("show in Fawkes" off) never appears.
+ * running task, in the stable `orderPills` order. A source the user hid ("show in Fawkes" off) never
+ * appears.
  */
 export function useActivePills(): Pill[] {
   const { data } = useAppearance();
@@ -114,6 +154,6 @@ export function useActivePills(): Pill[] {
       const label = data.known.find((k) => k.id === id)?.label ?? id.slice(id.indexOf(":") + 1);
       pills.push({ id, label, colour: style.colour, glyph: style.glyph });
     }
-    return pills;
+    return orderPills(pills);
   }, [data, tasks, sessions]);
 }

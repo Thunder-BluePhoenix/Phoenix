@@ -201,6 +201,16 @@ export const services: Record<keyof typeof enservices, string> = {
   "services.demo.stepOf": "الخطوة {n} / {total}",
   "services.demo.stepCount":
     "{count, plural, zero {لا خطوات} one {خطوة واحدة} two {خطوتان} few {# خطوات} many {# خطوة} other {# خطوة}}",
+  "services.demo.auto.group": "العرض الآلي",
+  "services.demo.auto.play": "تشغيل تلقائي",
+  "services.demo.auto.pause": "إيقاف مؤقت",
+  "services.demo.auto.resume": "استئناف",
+  "services.demo.auto.stop": "إيقاف والبدء من جديد",
+  "services.demo.auto.running":
+    "يعمل تلقائيًا، خطوة كل {seconds} ثوانٍ. أي نقرة على خطوة أو تنقّل بين الصفحات يوقفه.",
+  "services.demo.auto.paused": "متوقف مؤقتًا. اضغط استئناف للمتابعة من هذه الخطوة.",
+  "services.demo.auto.reducedMotion":
+    "يطلب نظامك تقليل الحركة، لذا لا يتقدّم العرض إلا عند الضغط على «تشغيل تلقائي».",
   "services.demo.startFailed": "تعذّر بدء العرض التجريبي",
   "services.demo.stopFailed":
     "تعذّر إيقاف العرض التجريبي بشكل سليم؛ سيتوقف من تلقاء نفسه عند الخمول",

@@ -4,8 +4,10 @@
 // A stand-in for the osascript runner. It never starts a process, so a test can never touch a
 // real player. It records every (script, args) call and answers by script constant.
 import {
+  COVER_SCRIPT,
   FIELD_SEPARATOR,
   NEXT_SCRIPT,
+  PlayerError,
   NOW_PLAYING_SCRIPT,
   PLAY_PAUSE_SCRIPT,
   PREVIOUS_SCRIPT,
@@ -13,8 +15,14 @@ import {
   SEEK_SCRIPT,
   SHUFFLE_SCRIPT,
   VOLUME_SCRIPT,
+  type OsaLimits,
   type OsaRunner,
 } from "../src";
+
+/** How `osascript` prints raw data (artwork): `«data tdta<hex>»`. */
+export function dataLiteral(bytes: Uint8Array): string {
+  return `«data tdta${Buffer.from(bytes).toString("hex").toUpperCase()}»`;
+}
 
 export interface FakeTrack {
   state: string;
@@ -39,6 +47,17 @@ export interface FakePlayer {
   /** False = the app is closed: every script answers "not_running". */
   running: boolean;
   track: FakeTrack;
+  /**
+   * What COVER_SCRIPT answers, verbatim (default "none"). Use `dataLiteral(bytes)` for the
+   * `«data tdta<hex>»` form `osascript` prints for artwork.
+   */
+  coverOutput: string;
+  /** The limits the capability passed with the last COVER_SCRIPT run. */
+  coverLimits?: OsaLimits;
+  /** When set, every COVER_SCRIPT run rejects with it. */
+  coverFailWith?: Error;
+  /** When set to a promise, COVER_SCRIPT waits for it before answering (a hung player). */
+  coverGate?: Promise<void>;
   /** When set, the next run rejects with it. */
   failWith?: Error;
 }
@@ -47,6 +66,7 @@ export function fakePlayer(track: Partial<FakeTrack> = {}): FakePlayer {
   const player: FakePlayer = {
     calls: [],
     running: true,
+    coverOutput: "none",
     track: {
       state: "playing",
       title: "Song",
@@ -59,7 +79,7 @@ export function fakePlayer(track: Partial<FakeTrack> = {}): FakePlayer {
       repeat: "off",
       ...track,
     },
-    run: async (script, args) => {
+    run: async (script, args, limits) => {
       player.calls.push({ script, args });
       if (player.failWith) {
         const err = player.failWith;
@@ -67,6 +87,16 @@ export function fakePlayer(track: Partial<FakeTrack> = {}): FakePlayer {
         throw err;
       }
       if (!player.running) return "not_running";
+      if (script === COVER_SCRIPT) {
+        player.coverLimits = limits;
+        await player.coverGate;
+        if (player.coverFailWith) throw player.coverFailWith;
+        // Like the real runner: an answer over the cap is refused, not truncated.
+        if (Buffer.byteLength(player.coverOutput) > (limits?.maxOutputBytes ?? 256 * 1024)) {
+          throw new PlayerError("too_large", "The player's answer was too large");
+        }
+        return player.coverOutput;
+      }
       const t = player.track;
       const controls = new Map<string, () => void>([
         [PLAY_PAUSE_SCRIPT, () => (t.state = t.state === "playing" ? "paused" : "playing")],

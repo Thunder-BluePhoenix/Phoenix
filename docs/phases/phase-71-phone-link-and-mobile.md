@@ -38,13 +38,13 @@ Follow agents and approve requests from a phone.
 
 ### What was built
 
-- **Listener** (`core/api/src/phone-listener.ts`): a separate HTTPS server, off by default, on one private LAN IPv4 address chosen by the user (RFC 1918 and `100.64/10` only), port 47821, serving only `/phone/v1/*`. The loopback API port is unchanged. If the chosen address vanishes the link stays off with `off_reason: address_changed` and never opens on another interface. Disabling, deleting phone data, the kill switch and Core shutdown close the socket and destroy every connection, including half-open TLS ones.
+- **Listener** (`core/api/src/phone-listener.ts`): a separate HTTPS server, off by default, on one private LAN IPv4 address chosen by the user (RFC 1918 and `100.64/10` only), port 47821 by default (`phone.port`, user-configurable from 1024 to 65535, never a port Core itself uses, audited; a change reopens the listener), serving only `/phone/v1/*`. The loopback API port is unchanged. If the chosen address vanishes the link stays off with `off_reason: address_changed` and never opens on another interface. Disabling, deleting phone data, the kill switch and Core shutdown close the socket and destroy every connection, including half-open TLS ones.
 - **Certificate** (`core/runtime/src/phone-cert.ts`): a minimal X.509 v3 DER builder (ECDSA P-256, one fixed profile) signed with `node:crypto`; no dependency. Keys are stored with restrictive permissions under the data directory.
 - **Pairing** (`core/runtime/src/phone-link.ts`): a 60-bit single-use code valid for two minutes, held only as a hash in memory; per-address lockout after 5 wrong codes and a global budget of 20 wrong guesses per live code; the pairing is confirmed by a Core-raised prompt that shows the key fingerprint.
 - **Signed requests**: ECDSA P-256 over method, path and query, timestamp, nonce and body hash; replay protection and a per-device nonce quota; failures audited with device id and reason only.
 - **Approvals bound to the exact request**: the phone sends the hash it saw; Core recomputes the hash from the request as it exists now and refuses on a mismatch. Decisions go through the same audited paths as the desktop. `require_user_verification` defaults to true; it is a claim the phone makes and Core cannot verify.
 - **Devices**: `paired_devices` (migration 29, public key only), device list and revoke routes, privacy-inventory row `phone_devices`, delete-all kind `phone`.
-- **Web**: `PhoneLink.tsx` (Settings, `phone.*` keys).
+- **Web**: `PhoneLink.tsx` (Settings, `phone.*` keys). An `address_changed` prompt (shown for that state only: says the paired phone may not reach this computer, nothing opened on another network, offers choosing an offered address or turning the link off through the existing settings route); a port field with an honest note; and a QR code of the pairing URI drawn by `apps/web/src/core/qr.ts` (pure TypeScript, byte mode, level M, versions 1 to 14, inline SVG with a quiet zone, no dependency) only while the pairing prompt is open, next to the text link. Strings exist in all ten locales; the nine non-English ones are machine-translated and unreviewed.
 
 ### Security review
 
@@ -65,11 +65,11 @@ Also open and inherited: Core cannot tell a person from a program on the desktop
 
 ### What was not built
 
-`apps/ios`, `apps/android`, push notifications, biometric prompts (phone side), PWA support (browser `Origin` requests are refused), a QR image for the pairing URI (text only), and a web UI for the `address_changed` state.
+`apps/ios`, `apps/android`, push notifications, biometric prompts (phone side) and PWA support (browser `Origin` requests are refused).
 
 ### What was not run
 
-Nothing was run with a real phone, over a real LAN or against iOS or Android TLS stacks. The certificate builder was checked with `X509Certificate` and a real TLS handshake in tests, and with `openssl` only where it is installed (those tests skip without it). The web page was tested against fake responses. Open items are in the [gap register](../gaps.md).
+Nothing was run with a real phone, over a real LAN or against iOS or Android TLS stacks. The certificate builder was checked with `X509Certificate` and a real TLS handshake in tests, and with `openssl` only where it is installed (those tests skip without it). The web page was tested against fake responses. The QR encoder was checked against ISO/IEC 18004 table vectors in tests and, once and outside the repository, by decoding 20 generated symbols with OpenCV's QR detector; no phone camera scanned a code from a screen, and no phone app consumed the `phoenixphone://` link (none exists). Open items are in the [gap register](../gaps.md).
 
 ## Notes & risks
 

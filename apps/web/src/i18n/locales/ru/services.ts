@@ -208,6 +208,17 @@ export const services: Record<keyof typeof enservices, string> = {
   "services.demo.stepOf": "Шаг {n} / {total}",
   "services.demo.stepCount":
     "{count, plural, one {# шаг} few {# шага} many {# шагов} other {# шага}}",
+  "services.demo.auto.group": "Автоматический показ",
+  "services.demo.auto.play": "Запустить автоматически",
+  "services.demo.auto.pause": "Пауза",
+  "services.demo.auto.resume": "Продолжить",
+  "services.demo.auto.stop": "Остановить и начать заново",
+  "services.demo.auto.running":
+    "Идёт сам, один шаг каждые {seconds} с. Любой щелчок по шагу или странице останавливает показ.",
+  "services.demo.auto.paused":
+    "Приостановлено. Нажмите «Продолжить», чтобы идти дальше с этого шага.",
+  "services.demo.auto.reducedMotion":
+    "Ваша система просит уменьшить анимацию, поэтому показ идёт дальше только после нажатия «Запустить автоматически».",
   "services.demo.startFailed": "Не удалось запустить демо",
   "services.demo.stopFailed":
     "Не удалось корректно остановить демо; оно остановится само, когда будет простаивать",

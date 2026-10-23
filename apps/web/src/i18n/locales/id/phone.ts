@@ -29,6 +29,28 @@ export const phone: Record<keyof typeof enphone, string> = {
   "phone.notListening": "Tautan ponsel aktif, tetapi pendengar belum berjalan.",
   "phone.addressChanged":
     "Alamat jaringan yang Anda pilih tidak tersedia lagi, jadi tautan ponsel tetap mati. Pilih alamat lagi untuk menyalakannya kembali.",
+  "phone.addressChanged.title": "Alamat komputer ini berubah",
+  "phone.addressChanged.mayNotReach":
+    "Ponsel yang sudah Anda pasangkan mungkin tidak dapat menjangkau komputer ini lagi karena masih mengingat alamat lama. Tidak ada yang dibuka di jaringan lain.",
+  "phone.addressChanged.pick": "Alamat jaringan",
+  "phone.addressChanged.use": "Gunakan alamat ini",
+  "phone.addressChanged.none":
+    "Saat ini tidak ditemukan alamat jaringan lokal pribadi. Hubungkan ke jaringan Anda lalu kembali, atau matikan tautan ponsel.",
+  "phone.addressChanged.off": "Matikan tautan ponsel",
+  "phone.addressChanged.repair":
+    "Setelah memilih alamat, tampilkan kode pemasangan baru dan pasangkan ponsel lagi jika masih tidak dapat terhubung.",
+  "phone.saved.address": "Alamat tautan ponsel diubah.",
+  "phone.port.label": "Port",
+  "phone.port.save": "Simpan port",
+  "phone.port.invalid": "Masukkan bilangan bulat dari 1024 sampai 65535.",
+  "phone.port.note":
+    "Tautan ponsel mendengarkan di port ini (1024 sampai 65535; bawaan 47821). Port baru berlaku saat tautan dibuka berikutnya; jika sedang aktif, tautan dimulai ulang di port baru dan kode pemasangan yang tampil di layar berhenti berfungsi. Ponsel yang dipasangkan sebelumnya mungkin masih memakai port lama dan perlu dipasangkan lagi.",
+  "phone.saved.port": "Port tautan ponsel disimpan: {port}.",
+  "phone.pair.qrLabel": "Kode QR berisi tautan pemasangan",
+  "phone.pair.qrHint":
+    "Pindai dengan aplikasi di ponsel yang sedang Anda pasangkan. Kode ini berisi kode di atas, jadi tunjukkan hanya ke ponsel Anda sendiri.",
+  "phone.pair.qrUnavailable":
+    "Kode QR tidak dapat dibuat untuk tautan ini; gunakan tautan di bawah.",
   "phone.listen.address": "Alamat dan port",
   "phone.listen.fingerprint": "Sidik jari sertifikat (SHA-256)",
   "phone.pair.show": "Tampilkan kode pemasangan",
@@ -41,7 +63,7 @@ export const phone: Record<keyof typeof enphone, string> = {
   "phone.pair.codeLabel": "Kode pemasangan",
   "phone.pair.remaining": "Kedaluwarsa dalam {time}",
   "phone.pair.fingerprint": "Sidik jari sertifikat:",
-  "phone.pair.link": "Tautan pemasangan (kode QR tidak tersedia):",
+  "phone.pair.link": "Tautan pemasangan (jika ponsel tidak dapat memindai kode QR):",
   "phone.pair.hiddenActive":
     "Kode pemasangan aktif sampai {time}. Kode tidak ditampilkan lagi; batalkan dan tampilkan yang baru.",
   "phone.pending.question": 'Pasangkan "{name}"?',

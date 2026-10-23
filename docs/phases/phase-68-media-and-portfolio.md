@@ -16,7 +16,7 @@ Optional personal capabilities: what is playing, and a read-only crypto portfoli
 ## Tasks — parity with Coucou
 
 - [ ] Spotify: cover, title, artist, seek, play/pause, previous/next, shuffle, repeat, volume; Fawkes dances while it plays. Built (`capabilities/spotify`, `test/spotify.test.ts`) with a fake script runner: now playing with the cover as an inline `data:` image, and every control. Not done: Fawkes does **not** dance (no Fawkes state means "enjoying music" and a new state may not be added, so the capability declares no `state_rules`, asserted by "declares no state_rules…"); repeat is off or all only; the AppleScript dictionary terms (`artwork url`, `repeating`) come from public docs and were never run against Spotify.
-- [ ] Apple Music: now playing and controls. Built (`capabilities/apple-music`, `test/apple-music.test.ts`) with a fake script runner; macOS only; no cover art. Never run against the Music app.
+- [ ] Apple Music: now playing and controls. Built (`capabilities/apple-music`, `test/apple-music.test.ts`) with a fake script runner; macOS only; cover art read from the Music app through a fixed AppleScript (`COVER_SCRIPT`, `raw data of artwork 1`), capped at 400 KB, PNG/JPEG by magic bytes only, returned as an inline `data:` URI like Spotify's (`test/apple-music.test.ts` "cover art"). Never run against the Music app, so the real `raw data` output and which tracks expose artwork are unconfirmed; a TIFF or other non-PNG/JPEG cover is refused, not converted.
 - [ ] Portfolio: 16 networks and 5 exchanges, balances, 7-day sparklines, 24-hour change. Built (`capabilities/portfolio`, `test/portfolio.test.ts`) against local mock servers: 16 networks (btc, ltc, doge, eth, optimism, base, arbitrum, polygon, gnosis, etc, xrp, xlm, algo, ton, trx, atom; native coins only, no tokens), 5 exchanges with HMAC-signed GETs (Binance, Bybit, OKX, KuCoin, Gate; spot and funding balances), and prices, 24-hour change and a 7-day sparkline from one CoinGecko `coins/markets` GET. Unticked because no network, exchange or CoinGecko was ever contacted: the response shapes and the five signing recipes come from public documentation, and the local mock recomputes signatures from the same reading, so a misreading would pass. Solana, Kraken and Coinbase are not covered.
 
 ## Tasks — Phoenix improvements
@@ -38,6 +38,7 @@ Optional personal capabilities: what is playing, and a read-only crypto portfoli
 ### What was built
 
 - Playback runs fixed AppleScript constants through `execFile("osascript", ["-e", SCRIPT, ...args])`. Seek and volume are validated integers passed as separate arguments, never in the script text; a track title cannot reach a script. Every script returns `not_running` before it would launch the app (so Phoenix never opens Spotify or Music). The runner is injectable; off macOS the capability reports unsupported and degraded and never runs a script.
+- Apple Music cover art: `COVER_SCRIPT` is a constant with no argument (no track text can reach it); the runner caps output at about 800 KB (hex), `src/cover.ts` decodes it, refuses over 400 KB and anything but PNG/JPEG magic bytes (SVG, HTML, WebP, GIF, garbage), writes no temp file, and any error or 5 s timeout means no cover. Same inline `data:` URI and unchanged CSP.
 - Spotify cover art: the capability itself fetches only from `https://*.scdn.co` (no redirects, 400 KB cap, JPEG/PNG/WebP byte check) and returns an inline `data:` URI, because the web CSP is `img-src 'self' data:`. The CSP was not loosened.
 - Portfolio uses only `ReadOnlyClient`. Addresses are validated per network before they reach a URL. Public indexers are free and rate-limited; their terms were not reviewed.
 - Web: the `NowPlaying` and `Portfolio` glances refresh on load, after a control and on reconnect, not on track events (ephemeral events are not forwarded to clients).
@@ -50,7 +51,7 @@ A static review (not a human audit) found no exploitable defect in the AppleScri
 
 Linux (MPRIS) and Windows playback are not implemented. Exchange balances are spot and funding only. Emoji control icons were not looked at. A relaunch race between the not-running check and the `tell` block is theoretically possible (inference, not tested). The xrpscan `xrpBalance` and Blockscout `coin_balance` shapes are the first to check against live services.
 
-What was not done or not run: any real player, exchange, indexer or CoinGecko request; Fawkes dancing; Apple Music cover art; Linux and Windows media; Solana, tokens, Kraken, Coinbase. Open items are in the [gap register](../gaps.md).
+What was not done or not run: any real player, exchange, indexer or CoinGecko request; Fawkes dancing; a real Music app's artwork; Linux and Windows media; Solana, tokens, Kraken, Coinbase. Open items are in the [gap register](../gaps.md).
 
 ## Notes & risks
 

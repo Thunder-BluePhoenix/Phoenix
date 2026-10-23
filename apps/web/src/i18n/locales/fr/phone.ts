@@ -31,6 +31,28 @@ export const phone: Record<keyof typeof enphone, string> = {
   "phone.notListening": "Le lien téléphone est activé, mais l'écouteur n'est pas encore démarré.",
   "phone.addressChanged":
     "L’adresse réseau que vous avez choisie n’est plus disponible ; le lien téléphone reste donc désactivé. Choisissez de nouveau une adresse pour le réactiver.",
+  "phone.addressChanged.title": "L'adresse de cet ordinateur a changé",
+  "phone.addressChanged.mayNotReach":
+    "Un téléphone déjà associé peut ne plus pouvoir joindre cet ordinateur, car il se souvient encore de l'ancienne adresse. Rien n'a été ouvert sur un autre réseau.",
+  "phone.addressChanged.pick": "Adresse réseau",
+  "phone.addressChanged.use": "Utiliser cette adresse",
+  "phone.addressChanged.none":
+    "Aucune adresse privée du réseau local n'a été trouvée pour le moment. Connectez-vous à votre réseau puis revenez, ou désactivez le lien téléphone.",
+  "phone.addressChanged.off": "Désactiver le lien téléphone",
+  "phone.addressChanged.repair":
+    "Après avoir choisi une adresse, affichez un nouveau code d'association et associez de nouveau le téléphone s'il ne parvient toujours pas à se connecter.",
+  "phone.saved.address": "L'adresse du lien téléphone a été modifiée.",
+  "phone.port.label": "Port",
+  "phone.port.save": "Enregistrer le port",
+  "phone.port.invalid": "Saisissez un nombre entier de 1024 à 65535.",
+  "phone.port.note":
+    "Le lien téléphone écoute sur ce port (de 1024 à 65535 ; la valeur par défaut est 47821). Un nouveau port s'applique à la prochaine ouverture du lien ; s'il est activé en ce moment, il redémarre sur le nouveau port et tout code d'association affiché cesse de fonctionner. Les téléphones associés auparavant peuvent encore utiliser l'ancien port et devoir être associés de nouveau.",
+  "phone.saved.port": "Port du lien téléphone enregistré : {port}.",
+  "phone.pair.qrLabel": "Code QR contenant le lien d'association",
+  "phone.pair.qrHint":
+    "Scannez-le avec l'application du téléphone que vous associez. Il contient le code ci-dessus : ne le montrez qu'à votre propre téléphone.",
+  "phone.pair.qrUnavailable":
+    "Impossible de créer un code QR pour ce lien ; utilisez le lien ci-dessous.",
   "phone.listen.address": "Adresse et port",
   "phone.listen.fingerprint": "Empreinte du certificat (SHA-256)",
   "phone.pair.show": "Afficher le code d'association",
@@ -43,7 +65,7 @@ export const phone: Record<keyof typeof enphone, string> = {
   "phone.pair.codeLabel": "Code d'association",
   "phone.pair.remaining": "Expire dans {time}",
   "phone.pair.fingerprint": "Empreinte du certificat :",
-  "phone.pair.link": "Lien d'association (aucun code QR disponible) :",
+  "phone.pair.link": "Lien d'association (si le téléphone ne peut pas scanner le code QR) :",
   "phone.pair.hiddenActive":
     "Un code d'association est actif jusqu'à {time}. Il n'est pas réaffiché ; annulez-le et affichez-en un nouveau.",
   "phone.pending.question": "Associer « {name} » ?",

@@ -52,6 +52,8 @@ export const shell: Record<keyof typeof enShell, string> = {
   "shell.cmd.panel.wardrobe": "পোশাকের আলমারি খুলুন",
   "shell.cmd.demo.start": "ডেমো শুরু করুন",
   "shell.cmd.demo.stop": "ডেমো বন্ধ করুন",
+  "shell.cmd.pills.next": "পরের উৎস পিলে যান",
+  "shell.cmd.pills.previous": "আগের উৎস পিলে যান",
   "shell.cmd.mute.toggle": "শব্দ ও নোটিফিকেশন মিউট বা আনমিউট করুন",
 
   "shell.shortcuts.title": "গ্লোবাল শর্টকাট",

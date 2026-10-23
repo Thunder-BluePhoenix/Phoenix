@@ -209,6 +209,16 @@ export const services: Record<keyof typeof enservices, string> = {
     "C’était la dernière étape. Arrêtez la démo pour revenir à votre propre Phoenix.",
   "services.demo.stepOf": "Étape {n} / {total}",
   "services.demo.stepCount": "{count, plural, one {# étape} other {# étapes}}",
+  "services.demo.auto.group": "Parcours automatique",
+  "services.demo.auto.play": "Lecture automatique",
+  "services.demo.auto.pause": "Pause",
+  "services.demo.auto.resume": "Reprendre",
+  "services.demo.auto.stop": "Arrêter et recommencer",
+  "services.demo.auto.running":
+    "Lecture automatique, une étape toutes les {seconds} secondes. Un clic sur une étape ou une page l’arrête.",
+  "services.demo.auto.paused": "En pause. Reprenez pour continuer à partir de cette étape.",
+  "services.demo.auto.reducedMotion":
+    "Votre système demande de réduire les animations : le parcours n’avance que si vous appuyez sur « Lecture automatique ».",
   "services.demo.startFailed": "Impossible de démarrer la démo",
   "services.demo.stopFailed":
     "Impossible d’arrêter proprement la démo ; elle s’arrête d’elle-même lorsqu’elle est inactive",

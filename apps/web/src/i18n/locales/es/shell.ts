@@ -52,6 +52,8 @@ export const shell: Record<keyof typeof enShell, string> = {
   "shell.cmd.panel.wardrobe": "Abrir el Armario",
   "shell.cmd.demo.start": "Iniciar la demostración",
   "shell.cmd.demo.stop": "Detener la demostración",
+  "shell.cmd.pills.next": "Cambiar a la siguiente etiqueta de fuente",
+  "shell.cmd.pills.previous": "Cambiar a la etiqueta de fuente anterior",
   "shell.cmd.mute.toggle": "Silenciar o reactivar sonidos y notificaciones",
 
   "shell.shortcuts.title": "Atajos globales",

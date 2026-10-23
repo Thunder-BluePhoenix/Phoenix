@@ -36,6 +36,7 @@ function fakeShortcuts(initialMuted: boolean) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    onSwitchPills: async () => () => {},
     onStatus: async () => () => {},
   };
   return {

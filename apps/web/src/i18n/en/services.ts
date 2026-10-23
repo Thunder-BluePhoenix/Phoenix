@@ -201,6 +201,16 @@ export const services = {
   "services.demo.finished": "That was the last step. Stop the demo to go back to your own Phoenix.",
   "services.demo.stepOf": "Step {n} / {total}",
   "services.demo.stepCount": "{count, plural, one {# step} other {# steps}}",
+  "services.demo.auto.group": "Automatic walkthrough",
+  "services.demo.auto.play": "Play automatically",
+  "services.demo.auto.pause": "Pause",
+  "services.demo.auto.resume": "Resume",
+  "services.demo.auto.stop": "Stop and start over",
+  "services.demo.auto.running":
+    "Playing on its own, one step every {seconds} seconds. Any click on a step or a page stops it.",
+  "services.demo.auto.paused": "Paused. Resume to continue from this step.",
+  "services.demo.auto.reducedMotion":
+    "Your system asks for reduced motion, so the walkthrough only advances when you press Play automatically.",
   "services.demo.startFailed": "The demo could not start",
   "services.demo.stopFailed":
     "The demo could not be stopped cleanly; it stops by itself when it is idle",

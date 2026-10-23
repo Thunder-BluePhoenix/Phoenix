@@ -353,6 +353,8 @@ export class PhoenixRuntime implements CoreServices {
   private readonly releaseDatabase: () => void;
   private readonly stopFocusDelivery: () => void;
   private api: ApiServer | null = null;
+  /** The port the loopback API actually bound (the configured one may be 0 = any free port). */
+  private apiPort: number | null = null;
   private ticker: NodeJS.Timeout | null = null;
   private readonly startedAt = Date.now();
   private stopping: Promise<void> | null = null;
@@ -768,6 +770,8 @@ export class PhoenixRuntime implements CoreServices {
       dataDir: this.config.dataDir,
       logger: this.logger.child("phone-link"),
       unavailable: options.demo === false,
+      // Ports Core itself uses: the loopback API (once bound) and the MCP server's (configured) port.
+      reservedPorts: () => [this.apiPort ?? this.config.port, this.mcp.status().port],
       ...options.phone,
     });
     // Remote relay (Phase 87): off by default. It needs the OS credential store for Core's relay
@@ -1126,6 +1130,7 @@ export class PhoenixRuntime implements CoreServices {
       ...(this.config.webRoot ? { webRoot: this.config.webRoot } : {}),
     });
     const address = await this.api.listen(this.config.port, this.config.host);
+    this.apiPort = address.port;
     if (this.options.startAgentRelay ?? true) await this.agentRelay.start();
     await this.phone.start();
     await this.remoteRelay?.start();

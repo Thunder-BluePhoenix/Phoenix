@@ -319,16 +319,16 @@ describe("running", () => {
     expect(await screen.findByText(/Phoenix is on main\./)).toBeTruthy();
   });
 
-  it("a switch_pill action opens the Pet Panel overview; a mailto draft is a link the user clicks, not an action", async () => {
+  it("a switch_pill action runs the pill command (here with no pills: the activity feed); a mailto draft is a link the user clicks, not an action", async () => {
     const { socket } = await listening();
     socket.fromCore({
       type: "reply",
       text: "Opening.",
       outcome: "ok",
       intent: "switch_pill",
-      action: { type: "switch_pill" },
+      action: { type: "switch_pill", direction: "next" },
     });
-    await waitFor(() => expect(window.location.hash).toBe("#/panel/overview"));
+    await waitFor(() => expect(window.location.hash).toBe("#/panel/activity"));
     const url = "mailto:?subject=Draft%20from%20Fawkes&body=the%20release";
     socket.fromCore({
       type: "reply",

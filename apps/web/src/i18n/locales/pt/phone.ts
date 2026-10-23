@@ -31,6 +31,28 @@ export const phone: Record<keyof typeof enphone, string> = {
     "A ligação com o telemóvel está ativada, mas o serviço ainda não está em execução.",
   "phone.addressChanged":
     "O endereço de rede que você escolheu não está mais disponível, então o link do telefone continua desligado. Escolha um endereço novamente para ligá-lo de novo.",
+  "phone.addressChanged.title": "O endereço deste computador mudou",
+  "phone.addressChanged.mayNotReach":
+    "Um telemóvel que já emparelhou pode já não conseguir chegar a este computador, porque ainda se lembra do endereço antigo. Nada foi aberto noutra rede.",
+  "phone.addressChanged.pick": "Endereço de rede",
+  "phone.addressChanged.use": "Usar este endereço",
+  "phone.addressChanged.none":
+    "Neste momento não foi encontrado nenhum endereço privado da rede local. Ligue-se à sua rede e volte, ou desative a ligação com o telemóvel.",
+  "phone.addressChanged.off": "Desativar a ligação com o telemóvel",
+  "phone.addressChanged.repair":
+    "Depois de escolher um endereço, mostre um novo código de emparelhamento e emparelhe o telemóvel de novo se ainda não conseguir ligar-se.",
+  "phone.saved.address": "O endereço da ligação com o telemóvel foi alterado.",
+  "phone.port.label": "Porta",
+  "phone.port.save": "Guardar porta",
+  "phone.port.invalid": "Introduza um número inteiro de 1024 a 65535.",
+  "phone.port.note":
+    "A ligação com o telemóvel escuta nesta porta (1024 a 65535; a predefinida é 47821). Uma porta nova aplica-se na próxima vez que a ligação abrir; se estiver ativada agora, reinicia na porta nova e qualquer código de emparelhamento no ecrã deixa de funcionar. Os telemóveis emparelhados antes podem continuar a usar a porta antiga e precisar de ser emparelhados de novo.",
+  "phone.saved.port": "Porta da ligação com o telemóvel guardada: {port}.",
+  "phone.pair.qrLabel": "Código QR com a ligação de emparelhamento",
+  "phone.pair.qrHint":
+    "Leia-o com a aplicação do telemóvel que está a emparelhar. Contém o código acima, por isso mostre-o apenas ao seu próprio telemóvel.",
+  "phone.pair.qrUnavailable":
+    "Não foi possível criar um código QR para esta ligação; use a ligação abaixo.",
   "phone.listen.address": "Endereço e porta",
   "phone.listen.fingerprint": "Impressão digital do certificado (SHA-256)",
   "phone.pair.show": "Mostrar código de emparelhamento",
@@ -43,7 +65,7 @@ export const phone: Record<keyof typeof enphone, string> = {
   "phone.pair.codeLabel": "Código de emparelhamento",
   "phone.pair.remaining": "Expira em {time}",
   "phone.pair.fingerprint": "Impressão digital do certificado:",
-  "phone.pair.link": "Ligação de emparelhamento (não há código QR disponível):",
+  "phone.pair.link": "Ligação de emparelhamento (se o telemóvel não conseguir ler o código QR):",
   "phone.pair.hiddenActive":
     "Há um código de emparelhamento ativo até {time}. Não é mostrado de novo; cancele-o e mostre um novo.",
   "phone.pending.question": 'Emparelhar "{name}"?',

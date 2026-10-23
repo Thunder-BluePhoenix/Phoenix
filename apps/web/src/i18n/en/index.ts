@@ -20,6 +20,7 @@ import { power } from "./power";
 import { safety } from "./safety";
 import { services } from "./services";
 import { settings } from "./settings";
+import { sounds } from "./sounds";
 import { shell } from "./shell";
 import { signals } from "./signals";
 import { browserProfiles } from "./browser-profiles";
@@ -55,6 +56,7 @@ export const en = {
   ...teamWebhooks,
   ...machine,
   ...fawkesRebirth,
+  ...sounds,
 } as const;
 
 /** A message id, e.g. "common.button.save". A misspelt id is a compile error. */

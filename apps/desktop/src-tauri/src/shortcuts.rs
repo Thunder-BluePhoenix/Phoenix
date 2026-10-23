@@ -25,7 +25,6 @@ use parking_lot::Mutex;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::fmt;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use tauri::{AppHandle, Runtime};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt as _, ShortcutState};
 
@@ -39,8 +38,13 @@ pub const ALERT_ROUTE: &str = "/panel/overview";
 /// Agent sessions. Focusing the real terminal needs Core's session token, which this shell does
 /// not hold for that route, so this opens the page that lists the sessions instead.
 pub const TERMINAL_ROUTE: &str = "/agents";
-/// What "switch pills" cycles through, in order: the places that show what each source is doing.
-const PILL_ROUTES: [&str; 3] = ["/panel/activity", "/panel/capabilities", "/agents"];
+/// Where "switch pills" goes when no desktop window shows pills (navbar mode, or Fawkes hidden):
+/// the Pet Panel activity feed. With a window on screen the web page decides, from the source pills
+/// it shows, which page to open (`apps/web/src/core/pill-switch.ts`).
+pub const PILLS_FALLBACK_ROUTE: &str = "/panel/activity";
+/// Event sent to the one desktop window that shows the source pills when "switch pills" is
+/// pressed: `{ "direction": "next" }`. The page moves its own pill selection.
+pub const SWITCH_PILLS_EVENT: &str = "shortcuts://switch_pills";
 /// Event sent to the desktop pages when the mute flag changes: `{ "muted": bool }`.
 pub const MUTE_EVENT: &str = "shortcuts://mute";
 /// Event sent to the desktop pages after bindings are (re)registered: a [`Report`].
@@ -748,7 +752,6 @@ struct HostState {
 #[derive(Default)]
 pub struct Host {
     state: Mutex<HostState>,
-    pill_cursor: AtomicUsize,
 }
 
 impl Host {
@@ -813,12 +816,35 @@ impl Host {
         state.statuses.clone_from(&statuses);
         statuses
     }
+}
 
-    /// The next route "switch pills" visits (cycles).
-    pub fn next_pill_route(&self) -> &'static str {
-        let i = self.pill_cursor.fetch_add(1, Ordering::Relaxed);
-        PILL_ROUTES[i % PILL_ROUTES.len()]
+/// The desktop window that shows the source pills.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PillWindow {
+    Floating,
+    Island,
+}
+
+/// Which window shows pills right now: the floating window in floating mode and the island in
+/// island mode, each only while Fawkes is visible. Navbar mode has no desktop window, and the
+/// hidden window of the other mode must not also react (the pill would switch twice).
+pub fn pill_window(mode: Mode, visible: bool) -> Option<PillWindow> {
+    match (mode, visible) {
+        (Mode::Floating, true) => Some(PillWindow::Floating),
+        (Mode::Island, true) => Some(PillWindow::Island),
+        _ => None,
     }
+}
+
+/// Payload of [`SWITCH_PILLS_EVENT`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct SwitchPillsPayload {
+    pub direction: &'static str,
+}
+
+impl SwitchPillsPayload {
+    /// The shortcut always moves to the next pill.
+    pub const NEXT: Self = Self { direction: "next" };
 }
 
 /// What "send Fawkes to the desktop" does from the current state.
@@ -1409,13 +1435,26 @@ mod tests {
     }
 
     #[test]
-    fn switch_pills_cycles_through_every_route_and_wraps() {
-        let host = Host::default();
-        let seen: Vec<&str> = (0..PILL_ROUTES.len() * 2)
-            .map(|_| host.next_pill_route())
-            .collect();
-        assert_eq!(seen[..PILL_ROUTES.len()], PILL_ROUTES);
-        assert_eq!(seen[PILL_ROUTES.len()..], PILL_ROUTES);
+    fn switch_pills_goes_to_the_one_window_that_shows_pills() {
+        assert_eq!(
+            pill_window(Mode::Floating, true),
+            Some(PillWindow::Floating)
+        );
+        assert_eq!(pill_window(Mode::Island, true), Some(PillWindow::Island));
+        // Hidden, or no desktop window at all: nothing shows pills, the shell opens the feed.
+        assert_eq!(pill_window(Mode::Floating, false), None);
+        assert_eq!(pill_window(Mode::Island, false), None);
+        assert_eq!(pill_window(Mode::Navbar, true), None);
+        assert_eq!(pill_window(Mode::Navbar, false), None);
+    }
+
+    #[test]
+    fn switch_pills_event_carries_only_the_direction() {
+        assert_eq!(SWITCH_PILLS_EVENT, "shortcuts://switch_pills");
+        assert_eq!(
+            serde_json::to_string(&SwitchPillsPayload::NEXT).unwrap(),
+            r#"{"direction":"next"}"#
+        );
     }
 
     #[test]
@@ -1424,7 +1463,7 @@ mod tests {
         for route in Action::ALL
             .into_iter()
             .filter_map(Action::route)
-            .chain(PILL_ROUTES)
+            .chain([PILLS_FALLBACK_ROUTE])
         {
             assert!(
                 phoenix_url("http://127.0.0.1:4870", route).is_some(),

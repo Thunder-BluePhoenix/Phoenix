@@ -4,19 +4,23 @@ import { createHarness, type Harness } from "@phoenix/sdk-testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ALL_SCRIPTS,
+  COVER_SCRIPT,
   FIELD_SEPARATOR,
+  MAX_COVER_BYTES,
   PLAY_PAUSE_SCRIPT,
   REPEAT_SCRIPT,
   VOLUME_SCRIPT,
   NOTHING_OBSERVED,
   createAppleMusicCapability,
   diffPlayback,
+  parseCover,
   parseNowPlaying,
+  readCover,
   runControl,
   type NowPlaying,
 } from "../src";
 import * as scripts from "../src/scripts";
-import { fakePlayer, type FakePlayer } from "../testing/fake-player";
+import { dataLiteral, fakePlayer, type FakePlayer } from "../testing/fake-player";
 
 /** The poller's waits: each ends only when the test says so. */
 class Clock {
@@ -114,7 +118,7 @@ describe("now_playing", () => {
     const talking = scriptConstants().filter(([, script]) =>
       script.includes('tell application "Music"'),
     );
-    expect(talking.length).toBe(8);
+    expect(talking.length).toBe(9);
     for (const [name, script] of talking) {
       const guard = script.indexOf('if application "Music" is not running then return');
       expect(guard, name).toBeGreaterThanOrEqual(0);
@@ -138,6 +142,159 @@ describe("now_playing", () => {
         ),
       ),
     ).toThrow(/unexpected answer/);
+  });
+});
+
+/** Magic bytes followed by filler, `size` bytes in all. */
+function image(magic: number[], size = 64): Uint8Array {
+  const bytes = new Uint8Array(size).fill(0x41);
+  bytes.set(magic);
+  return bytes;
+}
+const PNG = image([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const JPEG = image([0xff, 0xd8, 0xff, 0xe0]);
+const dataUrl = (type: string, bytes: Uint8Array) =>
+  `data:image/${type};base64,${Buffer.from(bytes).toString("base64")}`;
+const text = (s: string) => new TextEncoder().encode(s);
+
+describe("cover art", () => {
+  it("returns a PNG and a JPEG as an inline image, read through the fixed cover script", async () => {
+    const player = fakePlayer();
+    await ready(player);
+    player.coverOutput = dataLiteral(PNG);
+    expect((await h!.run("apple-music", "now_playing")).result).toMatchObject({
+      cover: dataUrl("png", PNG),
+    });
+    player.track.title = "Other";
+    player.coverOutput = dataLiteral(JPEG);
+    expect((await h!.run("apple-music", "now_playing")).result).toMatchObject({
+      cover: dataUrl("jpeg", JPEG),
+    });
+    const cover = player.calls.filter((c) => c.script === COVER_SCRIPT);
+    expect(cover).toHaveLength(2);
+    for (const call of cover) expect(call.args).toEqual([]);
+    expect(player.coverLimits?.maxOutputBytes).toBeGreaterThan(MAX_COVER_BYTES * 2);
+  });
+
+  it("asks Music once per track, and again when the track changes", async () => {
+    const player = fakePlayer();
+    await ready(player);
+    player.coverOutput = dataLiteral(PNG);
+    const coverRuns = () => player.calls.filter((c) => c.script === COVER_SCRIPT).length;
+    await h!.run("apple-music", "now_playing");
+    await h!.run("apple-music", "now_playing");
+    expect(coverRuns()).toBe(1);
+    player.track.title = "Next one";
+    await h!.run("apple-music", "now_playing");
+    expect(coverRuns()).toBe(2);
+  });
+
+  it("accepts exactly the size cap and refuses one byte more", () => {
+    const at = image([0xff, 0xd8, 0xff], MAX_COVER_BYTES);
+    expect(parseCover(dataLiteral(at))).toBe(dataUrl("jpeg", at));
+    const over = image([0xff, 0xd8, 0xff], MAX_COVER_BYTES + 1);
+    expect(parseCover(dataLiteral(over))).toBeUndefined();
+  });
+
+  it("refuses an oversize answer: the runner is told the cap and the capability shows no cover", async () => {
+    const player = fakePlayer();
+    await ready(player);
+    player.coverOutput = dataLiteral(
+      image([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 3_000_000),
+    );
+    const op = await h!.run("apple-music", "now_playing");
+    expect(op.status).toBe("succeeded");
+    expect((op.result as NowPlaying).cover).toBeUndefined();
+    expect((op.result as NowPlaying).title).toBe("Song");
+    // The runner is not what enforces the cap alone: even a runner that returned it is refused.
+    const huge = dataLiteral(
+      image([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], MAX_COVER_BYTES + 1),
+    );
+    expect(await readCover(async () => huge, "darwin")).toEqual({ failed: false });
+  });
+
+  it.each([
+    ["SVG", dataLiteral(text('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>'))],
+    ["HTML", dataLiteral(text("<!doctype html><script>alert(1)</script>"))],
+    ["garbage bytes", dataLiteral(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]))],
+    ["WebP", dataLiteral(image([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]))],
+    ["GIF", dataLiteral(text("GIF89a......"))],
+    ["a PNG signature cut short", dataLiteral(image([0x89, 0x50, 0x4e, 0x47]))],
+    ["an empty literal", "«data tdta»"],
+    ["odd hex", "«data tdta89504E4»"],
+    ["text that is not a literal", "hello"],
+    ["a data URI printed as text", dataUrl("png", PNG)],
+    ["a literal with trailing text", `${dataLiteral(PNG)} extra`],
+    ["a literal with leading text", `x${dataLiteral(PNG)}`],
+    ["none", "none"],
+    ["empty output", ""],
+  ])("shows no cover for %s", async (_name, output) => {
+    const player = fakePlayer();
+    await ready(player);
+    player.coverOutput = output;
+    const op = await h!.run("apple-music", "now_playing");
+    expect(op.status).toBe("succeeded");
+    expect((op.result as NowPlaying).cover).toBeUndefined();
+    expect((op.result as NowPlaying).title).toBe("Song");
+  });
+
+  it("shows no cover, and does not throw, when the runner fails; the next call tries again", async () => {
+    const player = fakePlayer();
+    await ready(player);
+    player.coverOutput = dataLiteral(PNG);
+    player.coverFailWith = new Error("osascript exploded with /Users/me/secret.txt");
+    const op = await h!.run("apple-music", "now_playing");
+    expect(op.status).toBe("succeeded");
+    expect((op.result as NowPlaying).cover).toBeUndefined();
+    expect(JSON.stringify(op)).not.toContain("secret.txt");
+    player.coverFailWith = undefined;
+    expect((await h!.run("apple-music", "now_playing")).result).toMatchObject({
+      cover: dataUrl("png", PNG),
+    });
+  });
+
+  it("shows no cover when the player never answers (timeout)", async () => {
+    const player = fakePlayer();
+    player.coverGate = new Promise<void>(() => undefined);
+    const started = Date.now();
+    expect(await readCover(player.run, "darwin", undefined, 20)).toEqual({ failed: true });
+    expect(Date.now() - started).toBeLessThan(2_000);
+    // A caller that cancels (the command was aborted) gets the same answer at once.
+    const gone = AbortSignal.abort();
+    expect(await readCover(player.run, "darwin", gone)).toEqual({ failed: true });
+  });
+
+  it("does not ask for a cover when the app is closed, off macOS, or the track is unknown", async () => {
+    const closed = fakePlayer();
+    closed.running = false;
+    await ready(closed);
+    await h!.run("apple-music", "now_playing");
+    expect(closed.calls.some((c) => c.script === COVER_SCRIPT)).toBe(false);
+    const other = fakePlayer();
+    expect(await readCover(other.run, "linux")).toEqual({ failed: false });
+    expect(other.calls).toEqual([]);
+    const midway = fakePlayer();
+    midway.running = false;
+    expect(await readCover(midway.run, "darwin")).toEqual({ failed: true });
+  });
+
+  it("COVER_SCRIPT is a constant that takes no input and only reads", () => {
+    expect(ALL_SCRIPTS.has(COVER_SCRIPT)).toBe(true);
+    expect(COVER_SCRIPT).not.toMatch(
+      /\$\{|item \d+ of argv|do shell script|set \w+ to .*artwork|write|file/i,
+    );
+    expect(COVER_SCRIPT).toContain('if application "Music" is not running then return');
+    expect(COVER_SCRIPT).toContain("raw data of artwork 1 of current track");
+  });
+
+  it("whatever the track says, the cover script is the same constant with no arguments", async () => {
+    const player = fakePlayer({ title: HOSTILE[0]!, artist: HOSTILE[1]!, album: HOSTILE[2]! });
+    await ready(player);
+    player.coverOutput = dataLiteral(PNG);
+    await h!.run("apple-music", "now_playing");
+    const cover = player.calls.filter((c) => c.script === COVER_SCRIPT);
+    expect(cover).toEqual([{ script: COVER_SCRIPT, args: [] }]);
+    for (const call of player.calls) expect(ALL_SCRIPTS.has(call.script)).toBe(true);
   });
 });
 

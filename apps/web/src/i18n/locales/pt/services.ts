@@ -209,6 +209,16 @@ export const services: Record<keyof typeof enservices, string> = {
     "Esse foi o último passo. Encerre a demonstração para voltar ao seu Phoenix.",
   "services.demo.stepOf": "Passo {n} / {total}",
   "services.demo.stepCount": "{count, plural, one {# passo} other {# passos}}",
+  "services.demo.auto.group": "Percurso automático",
+  "services.demo.auto.play": "Reproduzir automaticamente",
+  "services.demo.auto.pause": "Pausar",
+  "services.demo.auto.resume": "Retomar",
+  "services.demo.auto.stop": "Parar e recomeçar",
+  "services.demo.auto.running":
+    "Reproduzindo sozinho, um passo a cada {seconds} segundos. Qualquer clique em um passo ou página o interrompe.",
+  "services.demo.auto.paused": "Em pausa. Retome para continuar a partir deste passo.",
+  "services.demo.auto.reducedMotion":
+    "Seu sistema pede menos movimento, então o percurso só avança quando você pressiona «Reproduzir automaticamente».",
   "services.demo.startFailed": "Não foi possível iniciar a demonstração",
   "services.demo.stopFailed":
     "Não foi possível encerrar a demonstração corretamente; ela para sozinha quando fica ociosa",

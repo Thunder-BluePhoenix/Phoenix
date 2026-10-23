@@ -9,7 +9,7 @@ import { FIELD_SEPARATOR } from "./scripts";
 export type PlayState = "playing" | "paused" | "stopped" | "not_running";
 export type RepeatMode = "off" | "one" | "all";
 
-/** What `now_playing` returns. No cover: Music exposes artwork only as raw data (README). */
+/** What `now_playing` returns. `cover` is added by the capability (cover.ts), never by the parser. */
 export interface NowPlaying {
   running: boolean;
   state: PlayState;
@@ -22,6 +22,8 @@ export interface NowPlaying {
   volume?: number;
   shuffle?: boolean;
   repeat?: RepeatMode;
+  /** Only ever a `data:image/(jpeg|png);base64,` URI built from checked bytes, see cover.ts. */
+  cover?: string;
 }
 
 const MAX_TEXT = 200;

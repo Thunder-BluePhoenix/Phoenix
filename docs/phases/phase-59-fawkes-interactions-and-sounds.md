@@ -5,7 +5,7 @@
 | Stage | Stage 12 — Coucou parity and beyond |
 | Release target | Post-v2.0 track |
 | Priority | Medium |
-| Status | 🟨 Interactions, emotes and a procedural sound library with its policy built and unit-tested; no sound ever played, no host wires sounds or the desktop follow behaviour, emote artwork not looked at |
+| Status | 🟨 Interactions, emotes and a procedural sound library with its policy built and unit-tested; the web app now hosts the sound player with a Settings section and real quiet mode and quiet hours (tested with fakes only); no sound ever played, no desktop sounds-folder reader, no desktop follow behaviour, emote artwork not looked at |
 | Depends on | [Phase 10 — Animation System & P0 States](phase-10-animation-system-p0-states.md) |
 | Unblocks | [Phase 61 — Wardrobe, Per-Source Fawkes & Visible Capabilities](phase-61-wardrobe-and-per-source-fawkes.md), [Phase 91 — Fawkes Rebirth, Milestones, Skin Packs & Accessibility](phase-91-fawkes-rebirth-and-skins.md) |
 
@@ -19,19 +19,20 @@ Make Fawkes a character you can interact with, with original motion and sound.
 - [x] Eyes follow the cursor (`gazeTarget`, `smoothGaze`, a `pointermove` listener in `fawkes.ts`; tests `interaction-engine.test.ts` "cursor tracking", `fawkes-interactions.test.ts` "gaze follows the cursor"). Inside the page only; it does not follow the cursor outside the window.
 - [x] Hover: blinks, eyes grow; click: squish + annoyed; 3 fast clicks: dizzy (tests `interaction-engine.test.ts` "hover" and "poke and dizzy", `fawkes-interactions.test.ts`, `fawkes-avatar-interactions.test.tsx`)
 - [x] Emotes with real triggers; happy jump when an agent finishes (the jump needs a fresh `agent.completed` event in the state snapshot, once per event id: `interaction-engine.test.ts` "completion jump", `fawkes-interactions.test.ts` "completion jump needs a real event"). The motion CSS is checked as text (`pet/assets/test/emotes.test.ts`); nobody has looked at the artwork rendered.
-- [ ] Sound set for events, a sounds folder to replace any sound, mute. Built and tested: seven procedurally generated sounds (`pet/assets/src/sounds.ts`, `pet/assets/test/sounds.test.ts`), the player with mute and volume (`pet/runtime/src/sounds.ts`, `sounds.test.ts`), WAV validation of user files, and `FawkesAvatar` accepts a `sounds` player. Not built: any host that creates the player (nothing in `apps/` calls `createSoundPlayer`), a settings control, and the desktop code that reads a real sounds folder (only an injected resolver interface exists). The browser audio backend was tested against fakes; no audio was ever played.
+- [ ] Sound set for events, a sounds folder to replace any sound, mute. Built and tested: seven procedurally generated sounds (`pet/assets/src/sounds.ts`, `pet/assets/test/sounds.test.ts`), the player with mute and volume (`pet/runtime/src/sounds.ts`, `sounds.test.ts`), WAV validation of user files, and `FawkesAvatar` accepts a `sounds` player. The web app now creates the player (`apps/web/src/core/sounds.ts`: `SoundHost`, mounted in `App`, `FloatingApp` and `IslandApp`), with a Settings section (switch off by default, volume 0-100, a preview button per event; `apps/web/src/components/SoundSettings.tsx`, `ui.sounds` in Core) and tests in `apps/web/test/sounds.test.tsx`. Not built: the desktop code that reads a real sounds folder (only the injected `SoundOverrideResolver` interface exists, no host passes one; the Rust/Tauri side is untouched). The browser audio backend was tested against fakes; no audio was ever played. See [fawkes-sounds.md](../fawkes-sounds.md).
 - [ ] On the desktop: follows the cursor, flies home on an alert and back. Only the pure state machine exists (`pet/runtime/src/follow.ts`, test `follow.test.ts`); it is not wired into `apps/desktop`, so the floating Fawkes does not follow the cursor or fly home.
 
 ## Tasks — Phoenix improvements
 
 - [x] All motion respects reduced motion with a still pose (Phase 10 rule): gaze is off and every emote has a still pose in CSS (`emotes.test.ts` "gaze is neutralised", per-emote still pose; `interaction-engine.test.ts`, `fawkes-interactions.test.ts`, `fawkes-avatar-interactions.test.tsx` "holds a still pose under reduced motion"; `follow.test.ts` "reduced motion makes flights instant")
-- [ ] Sounds respect quiet mode and quiet hours, and are off by default. The policy does (`sounds.test.ts`: off by default, mute, quiet via an injected `isQuiet()`, `inQuietHours` including midnight wrap and a malformed window counted as quiet), but nothing yet connects `isQuiet()` to Phoenix's real quiet mode and quiet hours settings, because no host creates a player.
+- [ ] Sounds respect quiet mode and quiet hours, and are off by default. The policy does (`sounds.test.ts`: off by default, mute, quiet via an injected `isQuiet()`, `inQuietHours` including midnight wrap and a malformed window counted as quiet), and the web host now connects `isQuiet()` to Phoenix's real quiet mode (notification switch off), quiet hours (the Proactive `quietHours`, judged with the clock at play time), the emergency stop and the demo, failing silent when Core cannot say (`apps/web/test/sounds.test.tsx`, shown with a fake backend and fake Core only; each rule was mutation-checked; no sound was heard). Sounds also wait for a user gesture. Left unticked: nothing was heard on a real device and the desktop windows were only run in happy-dom.
 - [x] Every emote maps to a real event; Fawkes never fakes a state (Tech Spec §10): an emote sets only `data-emote`, never `data-state`/`data-animation`/`aria-label`, ends at once on an urgent state, and has a bounded duration and a real source (`interaction-engine.test.ts` "real state always wins", `fawkes-interactions.test.ts` "interaction emotes are never agent states")
 
 ## Deliverables
 
 - pet/assets: original emotes and sounds (CC BY-SA 4.0): `pet/assets/src/emotes.ts`, `pet/assets/src/sounds.ts`
 - pet/runtime interactions: `interaction-engine.ts`, `interaction.ts`, `follow.ts`, `sounds.ts`
+- apps/web sound host and Settings: `core/sounds.ts`, `components/SoundSettings.tsx` (see [fawkes-sounds.md](../fawkes-sounds.md))
 
 ## Exit criteria
 
@@ -40,7 +41,7 @@ Make Fawkes a character you can interact with, with original motion and sound.
 
 ## Implementation notes
 
-Sounds are generated at run time from note descriptions; there is no sampled or third-party audio. They are off by default and play only for a real event, with sounds enabled, not muted, volume above zero and not quiet. Not verified: that any of it is audible or pleasant, the Web Audio backend against a real `AudioContext`, and what the emote artwork looks like. The whole phase is exercised by unit tests and a happy-dom render only.
+Sounds are generated at run time from note descriptions; there is no sampled or third-party audio. They are off by default and play only for a real event, with sounds enabled, not muted, volume above zero and not quiet. The web app host (`apps/web/src/core/sounds.ts`) makes "not quiet" mean Phoenix's real quiet mode, quiet hours, emergency stop and demo, read from Core at play time, and waits for a user gesture; the Settings section has the switch, the volume and a preview per event. The user sounds folder reader for the desktop is NOT built. Not verified: that any of it is audible or pleasant, the Web Audio backend against a real `AudioContext`, and what the emote artwork looks like. The whole phase is exercised by unit tests and a happy-dom render only.
 
 ## Notes & risks
 

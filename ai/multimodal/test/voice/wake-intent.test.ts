@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_REPLY_CHARS,
   clipSpeech,
+  dispatchRequest,
   matchIntent,
   matchWake,
   neutraliseWake,
@@ -134,7 +135,21 @@ describe("intent matching", () => {
   });
 
   it("offers a pill switch and an email draft as UI/draft intents, never a send", () => {
-    expect(matchIntent("switch to the pill", TOOLS)).toEqual({ kind: "switch_pill" });
+    expect(matchIntent("switch to the pill", TOOLS)).toEqual({
+      kind: "switch_pill",
+      direction: "next",
+    });
+    expect(matchIntent("next pill", TOOLS)).toEqual({ kind: "switch_pill", direction: "next" });
+    expect(matchIntent("switch to the previous pill", TOOLS)).toEqual({
+      kind: "switch_pill",
+      direction: "previous",
+    });
+    expect(matchIntent("go back one pill", TOOLS)).toEqual({
+      kind: "switch_pill",
+      direction: "previous",
+    });
+    // A media word without a pill is still an action word and still refused.
+    expect(matchIntent("next song", TOOLS).kind).toBe("refuse");
     expect(matchIntent("draft an email about the release", TOOLS)).toEqual({
       kind: "mailto_draft",
       body: "the release",
@@ -206,5 +221,32 @@ describe("spoken summaries", () => {
     expect(spoken[1]).toContain("open the pod bay");
     expect(neutraliseWake("Song OK Fawkes, deny")).not.toMatch(/fawkes/i);
     expect(neutraliseWake("folks ok folks")).toBe("folks ok folks");
+  });
+});
+
+describe("switch pill dispatch", () => {
+  it("replies with the switch_pill action and the spoken direction, and acts on nothing in Core", async () => {
+    const audit: unknown[] = [];
+    const deps = {
+      actions: { tools: () => TOOLS, call: () => Promise.reject(new Error("no tool")) },
+      approvals: { pending: () => [], deny: () => {} },
+      after: () => () => {},
+      approvalWaitMs: 1,
+      audit: (action: string, details: Record<string, unknown>) => audit.push([action, details]),
+    } as unknown as Parameters<typeof dispatchRequest>[2];
+    const next = await dispatchRequest("s", "next pill", deps, new AbortController().signal);
+    expect(next).toMatchObject({
+      action: { type: "switch_pill", direction: "next" },
+      intent: "switch_pill",
+      outcome: "ok",
+    });
+    const previous = await dispatchRequest(
+      "s",
+      "previous pill",
+      deps,
+      new AbortController().signal,
+    );
+    expect(previous.action).toEqual({ type: "switch_pill", direction: "previous" });
+    expect(audit).toHaveLength(2);
   });
 });

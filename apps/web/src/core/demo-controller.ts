@@ -168,6 +168,12 @@ export class DemoController {
     }
   }
 
+  /** Back to before the first step (the caption and counter reset); the route and the demo Core are left as they are. */
+  rewind(): void {
+    if (this.snap.phase !== "on" || this.snap.step === -1) return;
+    this.set({ step: -1, error: null });
+  }
+
   private set(patch: Partial<DemoSnapshot>): void {
     this.snap = { ...this.snap, ...patch };
     for (const listener of [...this.listeners]) listener();

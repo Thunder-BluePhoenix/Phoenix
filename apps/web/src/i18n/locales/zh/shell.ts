@@ -49,6 +49,8 @@ export const shell: Record<keyof typeof enShell, string> = {
   "shell.cmd.panel.wardrobe": "打开衣橱",
   "shell.cmd.demo.start": "开始演示",
   "shell.cmd.demo.stop": "停止演示",
+  "shell.cmd.pills.next": "切换到下一个来源标签",
+  "shell.cmd.pills.previous": "切换到上一个来源标签",
   "shell.cmd.mute.toggle": "静音或取消静音声音和通知",
 
   "shell.shortcuts.title": "全局快捷键",

@@ -22,3 +22,7 @@ After changing the artwork, regenerate the previews: `npx tsx scripts/render-faw
 - `src/outfits/everyday.ts`, `src/outfits/seasonal.ts`: the eight built-in outfits (original art). `auto-season` picks the current season's outfit (hemisphere is a setting; the clock is injected in tests).
 - `src/outfits/sources.ts`: the glyph set and default colours for the per-source pills.
 - The runtime draws a validated pack with `createElementNS` (never `innerHTML`) in `pet/runtime/src/outfit.ts`; Core validates every import again (`core/runtime/src/appearance.ts`).
+
+## Sounds (Phase 59)
+
+- `src/sounds.ts`: seven original procedural sounds (note descriptions, synthesised to WAV at run time; no audio files) and the event table. Phoenix-original only; nothing from Coucou. The web app plays them through `apps/web/src/core/sounds.ts`: see [fawkes-sounds.md](../../docs/fawkes-sounds.md).

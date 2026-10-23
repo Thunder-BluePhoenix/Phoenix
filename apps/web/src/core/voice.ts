@@ -22,7 +22,9 @@ export interface VoiceStarted {
   id: string;
 }
 
-export type VoiceAction = { type: "switch_pill" } | { type: "mailto"; url: string };
+/** `direction` is absent from an older Core: that means "next". Anything but "previous" is "next". */
+export type VoiceAction =
+  { type: "switch_pill"; direction?: "next" | "previous" } | { type: "mailto"; url: string };
 
 export interface VoiceReply {
   text: string;

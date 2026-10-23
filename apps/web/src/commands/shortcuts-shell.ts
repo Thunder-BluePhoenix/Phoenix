@@ -9,6 +9,8 @@
 // The shell answers only the Fawkes and island windows; from any other page the commands refuse
 // with code "forbidden" and the events never arrive.
 
+import type { PillDirection } from "../core/appearance";
+
 /** Settings key and command argument of each action (shortcuts.rs `Action::as_str`). */
 export const SHORTCUT_ACTIONS = [
   "open_chat",
@@ -60,11 +62,17 @@ export interface ShortcutsShell {
   setMuted(muted: boolean): Promise<ShortcutReport>;
   /** Calls back whenever the mute flag changes (`shortcuts://mute`); returns the unsubscribe. */
   onMute(listener: (muted: boolean) => void): Promise<() => void>;
+  /**
+   * Calls back when the "switch pills" shortcut was pressed (`shortcuts://switch_pills`, sent only
+   * to the Fawkes and island windows); returns the unsubscribe. A malformed event is dropped.
+   */
+  onSwitchPills(listener: (direction: PillDirection) => void): Promise<() => void>;
   /** Calls back after bindings are re-registered (`shortcuts://status`); returns the unsubscribe. */
   onStatus(listener: (report: ShortcutReport) => void): Promise<() => void>;
 }
 
 export const MUTE_EVENT = "shortcuts://mute";
+export const SWITCH_PILLS_EVENT = "shortcuts://switch_pills";
 export const STATUS_EVENT = "shortcuts://status";
 
 const isAction = (v: unknown): v is ShortcutAction => SHORTCUT_ACTIONS.some((a) => a === v);
@@ -145,6 +153,11 @@ export function tauriShortcuts(win: Window = window): ShortcutsShell | null {
       listen<unknown>(MUTE_EVENT, (e) => {
         const muted = field(e.payload, "muted");
         if (typeof muted === "boolean") listener(muted);
+      }),
+    onSwitchPills: (listener) =>
+      listen<unknown>(SWITCH_PILLS_EVENT, (e) => {
+        const direction = field(e.payload, "direction");
+        if (direction === "next" || direction === "previous") listener(direction);
       }),
     onStatus: (listener) =>
       listen<unknown>(STATUS_EVENT, (e) => {

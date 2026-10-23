@@ -231,6 +231,37 @@ paths:
       responses:
         "200": { description: Settings }
         "400": { $ref: "#/components/responses/Error" }
+  /api/ui/sounds:
+    get:
+      summary: >-
+        Fawkes sounds (Phase 59): { enabled, volume }. Off by default; volume is a whole percent
+        (default 60). Quiet mode, quiet hours, mute, the emergency stop and the demo silence sounds
+        in the page regardless of these values.
+      responses:
+        "200": { description: "{ enabled, volume }" }
+    post:
+      summary: Set the sound switch and/or the volume; publishes ui.sounds.changed
+      requestBody:
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    additionalProperties: false,
+                    minProperties: 1,
+                    properties:
+                      {
+                        enabled: { type: boolean },
+                        volume: { type: integer, minimum: 0, maximum: 100 },
+                      },
+                  },
+              },
+          }
+      responses:
+        "200": { description: "{ enabled, volume }" }
+        "400": { $ref: "#/components/responses/Error" }
   /api/events:
     get:
       summary: Recent durable events, newest first
@@ -776,7 +807,8 @@ paths:
     get:
       summary: >-
         Phone link (Phase 71) status: enabled (default false), whether the separate LAN HTTPS
-        listener is up, its address and port, the certificate SHA-256 fingerprint a phone must pin,
+        listener is up, its address and port, the configured port (`configured_port`, default 47821)
+        used the next time it opens, the certificate SHA-256 fingerprint a phone must pin,
         the require_user_verification setting (default true), the kill switch, whether a pairing
         code is live (its expiry only, never the code), a pending pair request with the phone's key
         fingerprint and the confirmation id to answer through POST /api/confirmations/{id}, and the
@@ -786,9 +818,12 @@ paths:
   /api/phone/settings:
     post:
       summary: >-
-        Enable or disable the phone link, choose the LAN address, or set require_user_verification
-        (audited). Enabling starts a separate HTTPS listener on one LAN address (never the loopback
-        API port); refused while the kill switch is engaged.
+        Enable or disable the phone link, choose the LAN address, choose the listener port, or set
+        require_user_verification (audited). Enabling starts a separate HTTPS listener on one LAN
+        address (never the loopback API port); refused while the kill switch is engaged. A new
+        address or port reopens a running (or enabled) listener at once and withdraws any live
+        pairing code; the port must be a whole number from 1024 to 65535 and not a port Core itself
+        uses (the loopback API or the MCP server).
       requestBody:
         required: true
         content:
@@ -800,6 +835,7 @@ paths:
                 enabled: { type: boolean }
                 require_user_verification: { type: boolean }
                 address: { type: [string, "null"] }
+                port: { type: integer, minimum: 1024, maximum: 65535 }
       responses:
         "200": { description: Status }
         "400": { $ref: "#/components/responses/Error" }

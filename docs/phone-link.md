@@ -21,15 +21,15 @@ which is the same mechanism, with the same limit, as every other approval. See G
 
 ## Listener
 
-| Property  | Value                                                                                                                                                                                                                                                                                                                                                                                  |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Bind      | one private LAN IPv4 address chosen by the user (only RFC 1918 `10/8`, `172.16/12`, `192.168/16` and `100.64/10` are offered; default: the first of those), port 47821 (`phone.port` is not user-configurable in this build). If the chosen address vanishes the link stays **off** (status `off_reason: "address_changed"`, the setting is kept) and never opens on another interface |
-| Transport | HTTPS, TLS 1.2+, self-signed certificate made by Phoenix                                                                                                                                                                                                                                                                                                                               |
-| Routes    | only `/phone/v1/*` (table below). No static files, no directory listing, no WebSocket/CONNECT, no CORS                                                                                                                                                                                                                                                                                 |
-| `Host`    | must be exactly `<address>` or `<address>:<port>` (DNS-rebinding allow-list)                                                                                                                                                                                                                                                                                                           |
-| `Origin`  | any `Origin` header is refused (native clients only; **PWAs are not supported**, see GAPS)                                                                                                                                                                                                                                                                                             |
-| Body      | `application/json`, at most 16 KiB; 32 connections, at most 4 per remote address; TLS handshake timeout 8 s; header/request timeouts 10 s/15 s                                                                                                                                                                                                                                         |
-| Logs      | route name, status and device id only: never a path with an id, a code, a key or a signature                                                                                                                                                                                                                                                                                           |
+| Property  | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bind      | one private LAN IPv4 address chosen by the user (only RFC 1918 `10/8`, `172.16/12`, `192.168/16` and `100.64/10` are offered; default: the first of those), TCP port **47821 by default, user-configurable** (`phone.port`, see [Port](#port)). If the chosen address vanishes the link stays **off** (status `off_reason: "address_changed"`, the setting is kept) and never opens on another interface; Settings then shows a prompt (see [Address changed](#address-changed)) |
+| Transport | HTTPS, TLS 1.2+, self-signed certificate made by Phoenix                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Routes    | only `/phone/v1/*` (table below). No static files, no directory listing, no WebSocket/CONNECT, no CORS                                                                                                                                                                                                                                                                                                                                                                           |
+| `Host`    | must be exactly `<address>` or `<address>:<port>` (DNS-rebinding allow-list)                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `Origin`  | any `Origin` header is refused (native clients only; **PWAs are not supported**, see GAPS)                                                                                                                                                                                                                                                                                                                                                                                       |
+| Body      | `application/json`, at most 16 KiB; 32 connections, at most 4 per remote address; TLS handshake timeout 8 s; header/request timeouts 10 s/15 s                                                                                                                                                                                                                                                                                                                                   |
+| Logs      | route name, status and device id only: never a path with an id, a code, a key or a signature                                                                                                                                                                                                                                                                                                                                                                                     |
 
 Closing: disabling the link, deleting phone data, the **kill switch**, and Core shutdown all close
 the socket, destroy every connection (including half-open TLS ones), and clear the live pairing code and the replay-nonce cache. The
@@ -56,9 +56,51 @@ It is **not** verified against iOS/Android TLS stacks (GAPS).
 
 **Pinning:** the desktop shows the certificate's SHA-256 fingerprint (uppercase hex pairs joined by
 `:`, the form `X509Certificate.fingerprint256` gives) next to the pairing code and in the pairing URI
-(`phoenixphone://pair?host=…&port=…&code=…&fp=…`, shown as text; **no QR image is generated in this
-build**). The phone connects, compares the presented certificate's fingerprint to the one it was
+(`phoenixphone://pair?host=…&port=…&code=…&fp=…`, shown as text **and** as a QR code, see
+[QR code](#qr-code)). The phone connects, compares the presented certificate's fingerprint to the one it was
 given, and pins it. It must refuse any other certificate. It never uses a CA store for this link.
+
+### Port
+
+`phone.port` is the TCP port the listener binds. Default **47821**; `POST /api/phone/settings {"port":N}`
+accepts a whole number from **1024 to 65535** that is **not a port Core itself uses**: the loopback API's
+port (the one it actually bound) and the MCP server's configured port are refused with `400`; anything
+else (a string, a float, `null`, out of range) is `400` too. The change is audited as
+`phone.settings.changed {port}` (only when the value changed). It takes effect the way an address
+change does: if the link is on (or enabled but off), it is closed and reopened on the new port at once,
+and a pairing code shown for the old listener dies with it. If the new port is already taken by
+another program the reopen fails (`503`, the setting is kept, the link stays off). The pairing URI and
+the status route carry the **effective** port (`port` is where it listens now, `configured_port` is the
+setting, which applies the next time the link opens). The TLS certificate does not depend on the port, so
+it keeps its fingerprint, but phones paired earlier may still be configured with the old port and have to
+be paired again. "Delete all phone data" clears the setting (back to 47821).
+
+### Address changed
+
+When the link is enabled but the address the user chose is no longer on this computer, Core reports
+`off_reason: "address_changed"` and stays off. Settings → Phone link then shows a prompt (only for that
+state; not with the kill switch engaged, not while listening) that says a paired phone may not reach this
+computer any more, that nothing was opened on another network, and offers the existing safe actions:
+pick one of the addresses Core offers right now and apply it (`POST /api/phone/settings {"address":…}`),
+or turn the link off (`{"enabled":false}`). If Core offers no address the prompt says so and only offers
+to turn the link off. After a new address the certificate is reissued, so the phone has to pair again.
+
+### QR code
+
+While the pairing prompt is open (a code was returned to this page and has not expired, been cancelled or
+been used) Settings draws the pairing URI as a QR code next to the text link. The encoder is
+`apps/web/src/core/qr.ts`: pure TypeScript, no dependency, no network; byte mode, error correction level
+**M**, versions 1 to 14 (up to **362 bytes** of UTF-8; longer text is refused and the page shows the text
+link and says no QR code could be made), the mask of lowest penalty, drawn as an inline SVG (black on
+white, with the 4-module quiet zone). The URI contains the pairing code, so it is secret for two
+minutes: it is held only in the component's state, the SVG holds module path data (not the text), nothing
+is logged or stored, and the drawing disappears with the code (expiry, cancel, a phone asking to pair, a
+closed listener, a new address or port). A code that Core only reports as active after a page reload is
+not drawn again. **Verification:** the encoder is tested against ISO/IEC 18004 vectors (format and
+version information tables, generator polynomial, a published Reed-Solomon example, capacity and
+interleaving tables) and, outside the repository and not as a test, the matrices of 20 symbols
+(versions 1 to 14, UTF-8 and the maximum length) were decoded back to the original text with OpenCV's QR
+detector. **No real phone camera or phone app scanned a code from the screen.**
 
 ## Pairing
 
@@ -162,7 +204,7 @@ claim) is what makes the statement the device's; the bound hash is what makes it
 This closes the [Phase 45](phases/phase-45-cross-device-context.md) device-revocation gap **for the
 phone link only**; encrypted-sync/relay device identity and revocation is separate and still open.
 "Delete all phone data" (`POST /api/privacy/delete {"data":"phone","confirm":true}`) removes every
-device, withdraws a pairing in flight, clears the `phone.address` and `phone.require_user_verification`
+device, withdraws a pairing in flight, clears the `phone.address`, `phone.port` and `phone.require_user_verification`
 settings, closes the listener and deletes the certificate (a removal failure is logged, never thrown). The inventory lists `phone_devices`.
 
 ## Audit
@@ -178,7 +220,7 @@ public/private key, signature, nonce, code or token.
 Recorded in the [gap register](gaps.md). Not built: `apps/ios`, `apps/android` (no Xcode/Android
 toolchain was verified; push notifications need APNs/FCM accounts), Live Activities / Dynamic Island,
 widgets, Control Center, Siri and Shortcuts, Face ID / fingerprint prompts (phone side), Spotlight,
-Focus filter, PWA support, a QR image. **The exit criterion “a permission request is approved from a
+Focus filter, PWA support. **The exit criterion “a permission request is approved from a
 real phone with biometric confirmation” is UNMET.** Verified only with a Node test client acting as the
 phone.
 

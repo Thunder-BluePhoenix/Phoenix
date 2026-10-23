@@ -74,6 +74,7 @@ const REQUEST_VERSION = "PHX1";
 const KEY_ENABLED = "phone.enabled";
 const KEY_VERIFY = "phone.require_user_verification";
 const KEY_ADDRESS = "phone.address";
+const KEY_PORT = "phone.port";
 
 const NONCE = /^[A-Za-z0-9_-]{16,64}$/;
 const DEVICE_ID = /^dev_[0-9a-f]{12}$/;
@@ -222,6 +223,8 @@ export interface PhoneLinkTuning {
   clock?: ApprovalClock;
   /** Addresses the user may bind to. Default: this machine's private LAN IPv4 addresses ({@link lanAddressesFrom}). */
   lanAddresses?: () => string[];
+  /** Ports Core itself uses (the loopback API, the MCP server): the phone link refuses to be set to one. */
+  reservedPorts?: () => readonly number[];
   /** 0 = any free port (tests). Default {@link DEFAULT_PHONE_PORT}. */
   port?: number;
   /** Listener tuning (tests shorten these); see PhoneListenerOptions. */
@@ -315,6 +318,7 @@ export class PhoneLink implements PhoneApi, PhoneDeviceApi {
   private codeGuesses = 0;
   /** Pairing is paused until then because one live code took {@link MAX_WRONG_CODES_PER_CODE} guesses. */
   private lockedUntil = 0;
+  private readonly reservedPorts: () => readonly number[];
   /** Wrong codes per remote address while a code was live; an address over the limit is locked out. */
   private readonly pairFailures = new FailureLimiter(MAX_WRONG_CODES, LOCKOUT_MS);
   private readonly removeIdentity: (dir: string) => void;
@@ -328,6 +332,7 @@ export class PhoneLink implements PhoneApi, PhoneDeviceApi {
     this.clock = d.clock ?? systemClock;
     this.lan = d.lanAddresses ?? defaultLanAddresses;
     this.port = d.port ?? DEFAULT_PHONE_PORT;
+    this.reservedPorts = d.reservedPorts ?? (() => []);
     this.removeIdentity = d.removeIdentity ?? removeTlsIdentity;
     this.tlsDir = join(d.dataDir, "phone");
     this.logger = d.logger;
@@ -335,6 +340,11 @@ export class PhoneLink implements PhoneApi, PhoneDeviceApi {
     this.unsubscribe = d.bus.subscribe("phone-link", "security.kill_switch.engaged", () =>
       this.shutDownForKillSwitch(),
     );
+  }
+
+  /** The port the listener binds to: the user's `phone.port`, else the built-in default. */
+  private configuredPort(): number {
+    return this.d.settings.get<number>(KEY_PORT, this.port);
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -405,7 +415,7 @@ export class PhoneLink implements PhoneApi, PhoneDeviceApi {
     });
     let bound: { port: number };
     try {
-      bound = await listener.listen(this.port);
+      bound = await listener.listen(this.configuredPort());
     } catch (err) {
       this.logger.warn("Phone link could not bind", { error: (err as Error).message });
       throw new PhoenixError(
@@ -477,6 +487,7 @@ export class PhoneLink implements PhoneApi, PhoneDeviceApi {
       listening: this.running !== null,
       address: this.running?.address ?? null,
       port: this.running?.port ?? null,
+      configured_port: this.configuredPort(),
       addresses,
       fingerprint: this.running?.fingerprint ?? null,
       require_user_verification: this.d.settings.get<boolean>(KEY_VERIFY, true),
@@ -508,8 +519,8 @@ export class PhoneLink implements PhoneApi, PhoneDeviceApi {
 
   async configure(input: unknown): Promise<PhoneStatusView> {
     const body = plainObject(input);
-    exactKeys(body, ["enabled", "require_user_verification", "address"]);
-    const { enabled, require_user_verification: verifyClaim, address } = body;
+    exactKeys(body, ["enabled", "require_user_verification", "address", "port"]);
+    const { enabled, require_user_verification: verifyClaim, address, port } = body;
     if (enabled !== undefined && typeof enabled !== "boolean")
       throw invalid('"enabled" must be true or false');
     if (verifyClaim !== undefined && typeof verifyClaim !== "boolean")
@@ -517,6 +528,12 @@ export class PhoneLink implements PhoneApi, PhoneDeviceApi {
     if (address !== undefined && address !== null) {
       if (typeof address !== "string" || !this.lan().includes(address))
         throw invalid('"address" must be one of this computer\'s local network addresses');
+    }
+    if (port !== undefined) {
+      if (typeof port !== "number" || !Number.isInteger(port) || port < 1024 || port > 65535)
+        throw invalid('"port" must be a whole number from 1024 to 65535');
+      if (this.reservedPorts().includes(port))
+        throw invalid('"port" is already used by Phoenix itself; choose another');
     }
     await this.serialise(async () => {
       if (verifyClaim !== undefined) {
@@ -541,6 +558,21 @@ export class PhoneLink implements PhoneApi, PhoneDeviceApi {
             action: "phone.settings.changed",
             decision: "info",
             details: { address_changed: true },
+          });
+      }
+      if (port !== undefined) {
+        const changed = port !== this.configuredPort();
+        this.d.settings.set(KEY_PORT, port);
+        // Like a new address, a new port takes effect by reopening a link that is on (or tried to be).
+        reopen =
+          reopen ||
+          (changed && (this.running !== null || this.d.settings.get<boolean>(KEY_ENABLED, false)));
+        if (changed)
+          this.d.permissions.audit.record({
+            actor: "user",
+            action: "phone.settings.changed",
+            decision: "info",
+            details: { port },
           });
       }
       if (enabled === false || reopen) {
@@ -654,6 +686,7 @@ export class PhoneLink implements PhoneApi, PhoneDeviceApi {
     this.pairResults.clear();
     this.d.settings.set(KEY_ENABLED, false);
     this.d.settings.delete(KEY_ADDRESS);
+    this.d.settings.delete(KEY_PORT);
     this.d.settings.delete(KEY_VERIFY);
     const deleted = this.devicesStore.deleteAll();
     this.clearNonces();

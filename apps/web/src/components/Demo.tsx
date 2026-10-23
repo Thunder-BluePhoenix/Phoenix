@@ -4,6 +4,7 @@ import {
   createContext,
   Fragment,
   useContext,
+  useEffect,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -17,7 +18,9 @@ import {
   type DemoRouter,
   type DemoSnapshot,
 } from "../core/demo-controller";
+import { DemoTimeline, type DemoTimelineOptions } from "../core/demo-timeline";
 import { formatNumber } from "../core/format";
+import { useHashRoute } from "../core/hooks";
 import { useLocale, useT } from "../i18n";
 import { Feedback } from "./Feedback";
 import "./demo.css";
@@ -54,11 +57,14 @@ export function DemoHost({
   client,
   makeClient,
   router,
+  timeline,
   children,
 }: {
   client: PhoenixClient;
   makeClient?: DemoClientFactory;
   router?: DemoRouter;
+  /** Interval, timers and motion preference of the optional timed walkthrough (tests inject fakes). */
+  timeline?: DemoTimelineOptions;
   children: ReactNode;
 }) {
   const [controller] = useState(() => new DemoController(client, makeClient, router));
@@ -69,7 +75,7 @@ export function DemoHost({
       {state.phase === "on" && <DemoBanner />}
       <CoreProvider client={state.client}>
         <Fragment key={demoToken}>{children}</Fragment>
-        {state.phase === "on" && <DemoWalkthrough />}
+        {state.phase === "on" && <DemoWalkthrough timelineOptions={timeline} />}
       </CoreProvider>
     </DemoContext.Provider>
   );
@@ -85,10 +91,16 @@ function DemoBanner() {
   );
 }
 
-function DemoWalkthrough() {
+function DemoWalkthrough({ timelineOptions }: { timelineOptions?: DemoTimelineOptions }) {
   const t = useT();
   const { locale } = useLocale();
   const { controller, state } = useDemo();
+  const [timeline] = useState(() => new DemoTimeline(controller, timelineOptions));
+  const auto = useSyncExternalStore(timeline.subscribe, timeline.getSnapshot);
+  const route = useHashRoute();
+  // The timeline lives exactly as long as the walkthrough is on screen: leaving the demo unmounts it.
+  useEffect(() => timeline.attach(), [timeline]);
+  useEffect(() => timeline.routeChanged(route), [timeline, route]);
   const steps = state.session?.steps ?? [];
   const current = state.step >= 0 ? steps[state.step] : undefined;
   const next = state.step + 1;
@@ -143,6 +155,47 @@ function DemoWalkthrough() {
           {t("services.demo.stop")}
         </button>
       </div>
+      <div className="button-row wrap" role="group" aria-label={t("services.demo.auto.group")}>
+        {auto.status === "idle" && (
+          <button
+            type="button"
+            className="btn"
+            disabled={state.playing || steps.length === 0}
+            onClick={() => timeline.play()}
+          >
+            {t("services.demo.auto.play")}
+          </button>
+        )}
+        {auto.status === "playing" && (
+          <button type="button" className="btn" onClick={() => timeline.pause()}>
+            {t("services.demo.auto.pause")}
+          </button>
+        )}
+        {auto.status === "paused" && (
+          <button
+            type="button"
+            className="btn"
+            disabled={state.playing}
+            onClick={() => timeline.play()}
+          >
+            {t("services.demo.auto.resume")}
+          </button>
+        )}
+        {auto.status !== "idle" && (
+          <button type="button" className="btn" onClick={() => timeline.stop()}>
+            {t("services.demo.auto.stop")}
+          </button>
+        )}
+      </div>
+      <p className="small muted" role="status">
+        {auto.status === "playing"
+          ? t("services.demo.auto.running", { seconds: formatNumber(auto.intervalMs / 1000) })
+          : auto.status === "paused"
+            ? t("services.demo.auto.paused")
+            : auto.reducedMotion
+              ? t("services.demo.auto.reducedMotion")
+              : ""}
+      </p>
       <Feedback error={state.error} saved={state.notice} />
     </section>
   );

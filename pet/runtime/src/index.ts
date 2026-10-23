@@ -19,8 +19,10 @@ export {
   PILL_BACKGROUND,
   resolveOutfit,
   seasonOf,
+  SOUND_EVENTS,
   validateOutfitPack,
   type GlyphName,
   type OutfitPack,
+  type SoundEvent,
   type SourceStyle,
 } from "@phoenix/pet-assets";

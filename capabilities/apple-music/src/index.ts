@@ -3,16 +3,20 @@
 //
 // Apple Music capability (Phase 68): shows what the LOCAL Music app is playing and controls it
 // through macOS AppleScript. No Apple account, token or web API is involved.
+// The cover is read from the Music app as raw data and re-checked (size, PNG/JPEG bytes) before it
+// is shown as an inline image; see cover.ts.
 // Safety: every script is a constant (scripts.ts); input only ever travels as `osascript`
 // arguments after validation; a closed app is reported, never launched.
 import { defineCapability, type CapabilityContext, type HealthResult } from "@phoenix/sdk";
 import { realSleep, startPolling, type Sleep } from "@phoenix/service-kit";
+import { readCover } from "./cover";
 import { PlayerError } from "./errors";
 import { diffPlayback, NOTHING_OBSERVED, type Observed } from "./events";
 import { osascriptRunner, type OsaRunner } from "./osascript";
 import type { NowPlaying } from "./parse";
 import { readNowPlaying, runControl } from "./player";
 
+export * from "./cover";
 export * from "./errors";
 export * from "./events";
 export * from "./osascript";
@@ -50,6 +54,7 @@ export function createAppleMusicCapability(options: AppleMusicCapabilityOptions 
   let observed: Observed = NOTHING_OBSERVED;
   let last: NowPlaying | undefined;
   let failure: PlayerError | undefined;
+  let coverCache: { key: string; cover: string | undefined } | undefined;
 
   async function observe(): Promise<NowPlaying> {
     try {
@@ -62,6 +67,22 @@ export function createAppleMusicCapability(options: AppleMusicCapabilityOptions 
         err instanceof PlayerError ? err : new PlayerError("player", "The player did not answer");
       throw failure;
     }
+  }
+
+  /**
+   * Adds the cover of the track that is playing. Music is asked once per track (keyed by its
+   * title, artist, album and length); a failed or refused read leaves `cover` out and is retried
+   * on the next call, so a hiccup does not hide the cover for the whole track.
+   */
+  async function withCover(now: NowPlaying, signal: AbortSignal): Promise<NowPlaying> {
+    if (!now.running || now.title === undefined) return now;
+    const key = JSON.stringify([now.title, now.artist, now.album, now.duration_s]);
+    if (coverCache?.key !== key) {
+      const read = await readCover(run, platform, signal);
+      if (read.failed) return now;
+      coverCache = { key, cover: read.cover };
+    }
+    return coverCache.cover ? { ...now, cover: coverCache.cover } : now;
   }
 
   function track(ctx: CapabilityContext, now: NowPlaying): void {
@@ -77,7 +98,7 @@ export function createAppleMusicCapability(options: AppleMusicCapabilityOptions 
       name: "Apple Music",
       version: "0.1.0",
       description:
-        "What the Music app (Apple Music) is playing, and play/pause, next, previous, seek, volume, shuffle and repeat, on macOS. Controls the local app only (no account or token). Never launches Music. Every control asks for your confirmation.",
+        "What the Music app (Apple Music) is playing (with its cover), and play/pause, next, previous, seek, volume, shuffle and repeat, on macOS. Controls the local app only (no account or token). Never launches Music. Every control asks for your confirmation.",
       license: "GPL-3.0-or-later",
       homepage: "https://github.com/Thunder-BluePhoenix/Phoenix",
       events: ["apple_music.track.*"],
@@ -89,7 +110,7 @@ export function createAppleMusicCapability(options: AppleMusicCapabilityOptions 
         {
           name: "now_playing",
           description:
-            "The track, position, volume, shuffle and repeat of the running Music app. No cover art (Music only exposes it as raw data). Reports not_running without launching the app.",
+            "The track, position, volume, shuffle and repeat of the running Music app, plus its cover as an inline PNG/JPEG image (400 KB max, checked by its first bytes; absent when there is none). Reports not_running without launching the app.",
           side_effect: "read",
           permissions: ["shell_command"],
           input_schema: noInput,
@@ -183,6 +204,7 @@ export function createAppleMusicCapability(options: AppleMusicCapabilityOptions 
       observed = NOTHING_OBSERVED;
       last = undefined;
       failure = undefined;
+      coverCache = undefined;
       // Nothing to poll where AppleScript does not exist; health says why.
       if (platform !== "darwin") return;
       startPolling(
@@ -199,8 +221,8 @@ export function createAppleMusicCapability(options: AppleMusicCapabilityOptions 
       );
     },
     commands: {
-      async now_playing() {
-        return observe();
+      async now_playing(_input, ctx) {
+        return withCover(await observe(), ctx.signal);
       },
       async play_pause(input) {
         await runControl(run, platform, "play_pause", input);

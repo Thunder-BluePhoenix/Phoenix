@@ -2077,6 +2077,19 @@ code.break {
   margin: 4px 0 8px;
   padding-inline-start: 20px;
 }
+.phone-qr {
+  margin: 8px 0;
+}
+.qr-image {
+  display: block;
+  width: 220px;
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+.phone-port input {
+  width: 7em;
+}
 
 .power-recovery-warning {
   border: 1px solid var(--warning-text);

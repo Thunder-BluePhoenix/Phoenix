@@ -28,6 +28,24 @@ export const phone = {
   "phone.notListening": "Phone link is on, but the listener is not running yet.",
   "phone.addressChanged":
     "The network address you chose is no longer available, so the phone link stays off. Choose an address again to turn it back on.",
+  "phone.addressChanged.title": "This computer's address changed",
+  "phone.addressChanged.mayNotReach":
+    "A phone you already paired may not be able to reach this computer any more: it still remembers the old address. Nothing was opened on another network.",
+  "phone.addressChanged.pick": "Network address",
+  "phone.addressChanged.use": "Use this address",
+  "phone.addressChanged.none":
+    "No private local network address was found right now. Connect to your network and come back, or turn the phone link off.",
+  "phone.addressChanged.off": "Turn the phone link off",
+  "phone.addressChanged.repair":
+    "After choosing an address, show a new pairing code and pair the phone again if it still cannot connect.",
+  "phone.saved.address": "Phone link address changed.",
+
+  "phone.port.label": "Port",
+  "phone.port.save": "Save port",
+  "phone.port.invalid": "Enter a whole number from 1024 to 65535.",
+  "phone.port.note":
+    "The phone link listens on this port (1024 to 65535; the default is 47821). A new port takes effect when the link next opens; if it is on now it restarts on the new port and any pairing code on screen stops working. Phones you paired earlier may still use the old port and need to be paired again.",
+  "phone.saved.port": "Phone link port saved: {port}.",
 
   "phone.listen.address": "Address and port",
   "phone.listen.fingerprint": "Certificate fingerprint (SHA-256)",
@@ -41,7 +59,11 @@ export const phone = {
   "phone.pair.codeLabel": "Pairing code",
   "phone.pair.remaining": "Expires in {time}",
   "phone.pair.fingerprint": "Certificate fingerprint:",
-  "phone.pair.link": "Pairing link (a QR code is not available):",
+  "phone.pair.link": "Pairing link (if the phone cannot scan the QR code):",
+  "phone.pair.qrLabel": "QR code with the pairing link",
+  "phone.pair.qrHint":
+    "Scan it with the app on the phone you are pairing. It contains the code above, so show it only to your own phone.",
+  "phone.pair.qrUnavailable": "A QR code could not be made for this link; use the link below.",
   "phone.pair.hiddenActive":
     "A pairing code is active until {time}. It is not shown again; cancel it and show a new one.",
 

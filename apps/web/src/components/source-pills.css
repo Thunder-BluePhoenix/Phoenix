@@ -40,3 +40,9 @@
   color: #343a40;
   --pill-colour: #343a40;
 }
+/* The pill "switch pills" selected: a thicker outline, never colour alone (aria-current says it too). */
+.source-pill[data-selected="true"] {
+  border-width: 3px;
+  padding-block: 0;
+  padding-inline: 3.5px 5.5px;
+}

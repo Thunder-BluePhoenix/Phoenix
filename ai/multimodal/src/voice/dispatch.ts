@@ -28,7 +28,8 @@ export interface VoiceActions {
   call(tool: string, signal: AbortSignal): Promise<{ output: unknown }>;
 }
 
-export type VoiceUiAction = { type: "switch_pill" } | { type: "mailto"; url: string };
+export type VoiceUiAction =
+  { type: "switch_pill"; direction: "next" | "previous" } | { type: "mailto"; url: string };
 
 export type VoiceOutcome = "ok" | "refused" | "unavailable" | "failed" | "denied";
 
@@ -73,8 +74,8 @@ export async function dispatchRequest(
   switch (intent.kind) {
     case "switch_pill":
       return {
-        text: "Opening the Pet Panel.",
-        action: { type: "switch_pill" },
+        text: "Switching pills.",
+        action: { type: "switch_pill", direction: intent.direction },
         intent: intent.kind,
         outcome: "ok",
       };

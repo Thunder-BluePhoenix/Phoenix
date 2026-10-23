@@ -52,6 +52,8 @@ export const shell: Record<keyof typeof enShell, string> = {
   "shell.cmd.panel.wardrobe": "Buka Lemari Pakaian",
   "shell.cmd.demo.start": "Mulai demo",
   "shell.cmd.demo.stop": "Hentikan demo",
+  "shell.cmd.pills.next": "Beralih ke pil sumber berikutnya",
+  "shell.cmd.pills.previous": "Beralih ke pil sumber sebelumnya",
   "shell.cmd.mute.toggle": "Bisukan atau aktifkan suara dan notifikasi",
 
   "shell.shortcuts.title": "Pintasan global",

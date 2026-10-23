@@ -78,7 +78,12 @@ export interface SoundBackend {
   play(wav: Uint8Array, volume: number): Promise<void>;
 }
 
-export type SoundOutcome = "played" | "disabled" | "muted" | "silent-volume" | "quiet" | "failed";
+/**
+ * `no-gesture` is never produced by `createSoundPlayer` itself: a host that must wait for a user
+ * gesture (browser autoplay rules) answers it without calling the player.
+ */
+export type SoundOutcome =
+  "played" | "disabled" | "muted" | "silent-volume" | "quiet" | "no-gesture" | "failed";
 
 export interface SoundPlayerOptions {
   backend: SoundBackend;

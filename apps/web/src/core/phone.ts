@@ -11,6 +11,8 @@ export interface PhoneStatus {
   listening: boolean;
   address: string | null;
   port: number | null;
+  /** The port the listener uses the next time it opens (`phone.port`; 47821 unless the user chose one). */
+  configured_port: number;
   addresses: string[];
   /** Uppercase hex pairs separated by ":". */
   fingerprint: string | null;
@@ -88,6 +90,17 @@ export function groupFingerprint(fingerprint: string): string {
 export function hostPort(address: string, port: number | null): string {
   const host = address.includes(":") && !address.startsWith("[") ? `[${address}]` : address;
   return port === null ? host : `${host}:${port}`;
+}
+
+export const PHONE_PORT_MIN = 1024;
+export const PHONE_PORT_MAX = 65535;
+
+/** The port a person typed, as a whole number from 1024 to 65535, or null when it is not one. */
+export function parsePhonePort(text: string): number | null {
+  const trimmed = text.trim();
+  if (!/^\d{1,5}$/.test(trimmed)) return null;
+  const port = Number(trimmed);
+  return port >= PHONE_PORT_MIN && port <= PHONE_PORT_MAX ? port : null;
 }
 
 /** Wall-clock now, re-read every second while `active`. */

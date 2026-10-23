@@ -27,6 +27,27 @@ export const phone: Record<keyof typeof enphone, string> = {
   "phone.notListening": "ربط الهاتف مفعّل، لكن المستمع لم يبدأ العمل بعد.",
   "phone.addressChanged":
     "عنوان الشبكة الذي اخترته لم يعد متاحًا، لذا يبقى ربط الهاتف متوقفًا. اختر عنوانًا مرة أخرى لتشغيله من جديد.",
+  "phone.addressChanged.title": "تغيّر عنوان هذا الكمبيوتر",
+  "phone.addressChanged.mayNotReach":
+    "قد لا يتمكن هاتف اقترنت به سابقًا من الوصول إلى هذا الكمبيوتر بعد الآن، لأنه ما زال يتذكر العنوان القديم. لم يتم فتح أي شيء على شبكة أخرى.",
+  "phone.addressChanged.pick": "عنوان الشبكة",
+  "phone.addressChanged.use": "استخدام هذا العنوان",
+  "phone.addressChanged.none":
+    "لم يُعثر الآن على أي عنوان خاص في الشبكة المحلية. اتصل بشبكتك ثم عد، أو أوقف ربط الهاتف.",
+  "phone.addressChanged.off": "إيقاف ربط الهاتف",
+  "phone.addressChanged.repair":
+    "بعد اختيار عنوان، أظهر رمز اقتران جديدًا واقرن الهاتف مرة أخرى إذا ظل غير قادر على الاتصال.",
+  "phone.saved.address": "تم تغيير عنوان ربط الهاتف.",
+  "phone.port.label": "المنفذ",
+  "phone.port.save": "حفظ المنفذ",
+  "phone.port.invalid": "أدخل عددًا صحيحًا من 1024 إلى 65535.",
+  "phone.port.note":
+    "يستمع ربط الهاتف على هذا المنفذ (من 1024 إلى 65535؛ الافتراضي 47821). يسري المنفذ الجديد عند فتح الرابط في المرة التالية؛ وإذا كان قيد التشغيل الآن فيُعاد تشغيله على المنفذ الجديد ويتوقف أي رمز اقتران معروض على الشاشة. قد تظل الهواتف التي اقترنت بها سابقًا تستخدم المنفذ القديم وتحتاج إلى الاقتران من جديد.",
+  "phone.saved.port": "تم حفظ منفذ ربط الهاتف: {port}.",
+  "phone.pair.qrLabel": "رمز QR يحتوي على رابط الاقتران",
+  "phone.pair.qrHint":
+    "امسحه بالتطبيق على الهاتف الذي تقرنه. يحتوي على الرمز أعلاه، فأظهره لهاتفك أنت فقط.",
+  "phone.pair.qrUnavailable": "تعذّر إنشاء رمز QR لهذا الرابط؛ استخدم الرابط أدناه.",
   "phone.listen.address": "العنوان والمنفذ",
   "phone.listen.fingerprint": "بصمة الشهادة (SHA-256)",
   "phone.pair.show": "إظهار رمز الاقتران",
@@ -38,7 +59,7 @@ export const phone: Record<keyof typeof enphone, string> = {
   "phone.pair.codeLabel": "رمز الاقتران",
   "phone.pair.remaining": "تنتهي الصلاحية خلال {time}",
   "phone.pair.fingerprint": "بصمة الشهادة:",
-  "phone.pair.link": "رابط الاقتران (رمز QR غير متاح):",
+  "phone.pair.link": "رابط الاقتران (إذا تعذّر على الهاتف مسح رمز QR):",
   "phone.pair.hiddenActive":
     "رمز اقتران نشط حتى {time}. لا يُعرض مرة أخرى؛ ألغِه وأظهر رمزًا جديدًا.",
   "phone.pending.question": 'هل تقرن "{name}"؟',

@@ -5,6 +5,7 @@
 // so a command, its label and its key chord can never drift apart. (Global shortcuts that work from
 // other applications belong to the desktop shell and are configured in Settings; they are not here.)
 import type { DemoPhase } from "../core/demo-controller";
+import type { PillDirection } from "../core/appearance";
 import type { MessageKey } from "../i18n";
 import type { TabId } from "../components/PetPanel";
 import { ChordError, chordId, parseChord, type Chord } from "./keys";
@@ -18,6 +19,8 @@ export interface CommandContext {
   /** Settings, scrolled to and focused on the interface language. */
   openLanguageSettings(): void;
   togglePalette(): void;
+  /** Selects the next or previous source pill and opens the page that shows it (the shortcut and voice run the same code). */
+  switchPills(direction: PillDirection): void;
   /** The demo controller's phase and entry points; null outside a <DemoHost>. */
   demo: { phase: DemoPhase; start(): void; stop(): void } | null;
   /** The desktop's mute flag; null in a browser, where there is no desktop to mute. */
@@ -167,6 +170,18 @@ export const COMMANDS: readonly Command[] = [
     keywords: ["demo", "walkthrough", "tour", "exit", "end"],
     when: (ctx) => ctx.demo?.phase === "on",
     run: (ctx) => ctx.demo?.stop(),
+  },
+  {
+    id: "pills.next",
+    labelKey: "shell.cmd.pills.next",
+    keywords: ["pill", "pills", "source", "sources", "switch", "next", "fawkes"],
+    run: (ctx) => ctx.switchPills("next"),
+  },
+  {
+    id: "pills.previous",
+    labelKey: "shell.cmd.pills.previous",
+    keywords: ["pill", "pills", "source", "sources", "switch", "previous", "back", "fawkes"],
+    run: (ctx) => ctx.switchPills("previous"),
   },
   {
     id: "mute.toggle",

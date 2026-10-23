@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import type { SoundPlayer } from "@phoenix/pet-runtime";
 import { visualFor } from "@phoenix/pet-states";
 import { forwardRef } from "react";
 import type { ConnectionStatus, PetState } from "../core/types";
@@ -25,10 +26,12 @@ export interface NavbarProps {
   /** Current hash route, to mark the active link. */
   route?: string;
   onToggleFawkes: () => void;
+  /** The pet's sound player (Phase 59); omitted for a silent Fawkes. */
+  sounds?: SoundPlayer;
 }
 
 export const Navbar = forwardRef<FawkesAvatarHandle, NavbarProps>(function Navbar(
-  { state, connection, panelOpen, panelId, route = "/", onToggleFawkes },
+  { state, connection, panelOpen, panelId, route = "/", onToggleFawkes, sounds },
   ref,
 ) {
   const t = useT();
@@ -104,6 +107,7 @@ export const Navbar = forwardRef<FawkesAvatarHandle, NavbarProps>(function Navba
           controls={panelId}
           reducedMotion={petSettings.reduced_motion}
           outfit={outfit}
+          {...(sounds ? { sounds } : {})}
           onActivate={onToggleFawkes}
         />
       </div>

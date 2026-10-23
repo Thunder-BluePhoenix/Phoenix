@@ -13,6 +13,7 @@ import type { MessageKey } from "../i18n";
 import { translate } from "../i18n/store";
 import { ApiError, type PhoenixClient } from "./client";
 import { createBrowserMicrophone, type DictationMicrophone } from "./dictation-mic";
+import { switchPillsCommand } from "./pill-switch";
 import type { VoiceAction, VoicePhase, VoiceReply, VoiceStarted } from "./voice";
 
 export type AssistantPhase = "idle" | "starting" | VoicePhase;
@@ -100,10 +101,13 @@ export class VoiceAssistant {
   private activeUntil = 0;
   private mutedUntil = 0;
   private readonly listeners = new Set<() => void>();
-  /** Navigation for a `switch_pill` action: the Pet Panel's overview tab. */
+  /**
+   * A `switch_pill` action runs the same command as the shortcut and the palette: select the next
+   * (or previous) source pill and open the page that shows it.
+   */
   onAction: (action: VoiceAction) => void = (action) => {
-    if (action.type === "switch_pill" && typeof window !== "undefined")
-      window.location.hash = "#/panel/overview";
+    if (action.type === "switch_pill")
+      switchPillsCommand(this.client, action.direction === "previous" ? "previous" : "next");
   };
 
   constructor(

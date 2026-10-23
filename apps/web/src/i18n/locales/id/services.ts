@@ -204,6 +204,16 @@ export const services: Record<keyof typeof enservices, string> = {
     "Itu langkah terakhir. Hentikan demo untuk kembali ke Phoenix Anda sendiri.",
   "services.demo.stepOf": "Langkah {n} / {total}",
   "services.demo.stepCount": "{count, plural, other {# langkah}}",
+  "services.demo.auto.group": "Panduan otomatis",
+  "services.demo.auto.play": "Putar otomatis",
+  "services.demo.auto.pause": "Jeda",
+  "services.demo.auto.resume": "Lanjutkan",
+  "services.demo.auto.stop": "Berhenti dan mulai ulang",
+  "services.demo.auto.running":
+    "Berjalan sendiri, satu langkah setiap {seconds} detik. Klik pada langkah atau halaman mana pun akan menghentikannya.",
+  "services.demo.auto.paused": "Dijeda. Lanjutkan untuk meneruskan dari langkah ini.",
+  "services.demo.auto.reducedMotion":
+    "Sistem Anda meminta pengurangan gerakan, jadi panduan hanya maju saat Anda menekan «Putar otomatis».",
   "services.demo.startFailed": "Demo tidak dapat dimulai",
   "services.demo.stopFailed":
     "Demo tidak dapat dihentikan dengan bersih; demo berhenti sendiri saat menganggur",

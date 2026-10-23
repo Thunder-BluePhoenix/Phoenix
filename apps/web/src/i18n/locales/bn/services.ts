@@ -203,6 +203,16 @@ export const services: Record<keyof typeof enservices, string> = {
   "services.demo.finished": "এটাই ছিল শেষ ধাপ। নিজের Phoenix-এ ফিরতে ডেমো বন্ধ করুন।",
   "services.demo.stepOf": "ধাপ {n} / {total}",
   "services.demo.stepCount": "{count, plural, one {# টি ধাপ} other {# টি ধাপ}}",
+  "services.demo.auto.group": "স্বয়ংক্রিয় ওয়াকথ্রু",
+  "services.demo.auto.play": "স্বয়ংক্রিয়ভাবে চালান",
+  "services.demo.auto.pause": "বিরতি",
+  "services.demo.auto.resume": "আবার শুরু করুন",
+  "services.demo.auto.stop": "থামিয়ে নতুন করে শুরু করুন",
+  "services.demo.auto.running":
+    "নিজে নিজে চলছে, প্রতি {seconds} সেকেন্ডে একটি ধাপ। কোনো ধাপে বা পেজে ক্লিক করলে এটি থেমে যায়।",
+  "services.demo.auto.paused": "বিরতিতে আছে। এই ধাপ থেকে চালিয়ে যেতে আবার শুরু করুন।",
+  "services.demo.auto.reducedMotion":
+    "আপনার সিস্টেম কম নড়াচড়া চেয়েছে, তাই «স্বয়ংক্রিয়ভাবে চালান» চাপলে তবেই ওয়াকথ্রু এগোয়।",
   "services.demo.startFailed": "ডেমো শুরু করা যায়নি",
   "services.demo.stopFailed":
     "ডেমো পুরোপুরি ঠিকভাবে বন্ধ করা যায়নি; নিষ্ক্রিয় থাকলে এটি নিজেই বন্ধ হয়ে যায়",

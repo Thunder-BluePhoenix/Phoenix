@@ -58,6 +58,8 @@ export const shell = {
   "shell.cmd.panel.wardrobe": "Open the Wardrobe",
   "shell.cmd.demo.start": "Start the demo",
   "shell.cmd.demo.stop": "Stop the demo",
+  "shell.cmd.pills.next": "Switch to the next source pill",
+  "shell.cmd.pills.previous": "Switch to the previous source pill",
   "shell.cmd.mute.toggle": "Mute or unmute sounds and notifications",
 
   // Global shortcuts (Settings; desktop app only)

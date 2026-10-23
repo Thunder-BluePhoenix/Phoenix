@@ -52,6 +52,8 @@ export const shell: Record<keyof typeof enShell, string> = {
   "shell.cmd.panel.wardrobe": "Abrir o Guarda-roupa",
   "shell.cmd.demo.start": "Iniciar a demonstração",
   "shell.cmd.demo.stop": "Parar a demonstração",
+  "shell.cmd.pills.next": "Mudar para a próxima etiqueta de fonte",
+  "shell.cmd.pills.previous": "Mudar para a etiqueta de fonte anterior",
   "shell.cmd.mute.toggle": "Silenciar ou reativar sons e notificações",
 
   "shell.shortcuts.title": "Atalhos globais",

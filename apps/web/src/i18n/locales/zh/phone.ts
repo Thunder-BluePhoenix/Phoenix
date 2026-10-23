@@ -26,6 +26,26 @@ export const phone: Record<keyof typeof enphone, string> = {
   "phone.notListening": "手机连接已开启，但监听尚未运行。",
   "phone.addressChanged":
     "你选择的网络地址已不可用，因此手机连接保持关闭。请重新选择地址以再次开启。",
+  "phone.addressChanged.title": "这台电脑的地址已更改",
+  "phone.addressChanged.mayNotReach":
+    "你之前配对的手机可能无法再连接到这台电脑，因为它仍记着旧地址。没有在其他网络上打开任何内容。",
+  "phone.addressChanged.pick": "网络地址",
+  "phone.addressChanged.use": "使用此地址",
+  "phone.addressChanged.none":
+    "目前没有找到私有的本地网络地址。请连接到你的网络后再回来，或关闭手机连接。",
+  "phone.addressChanged.off": "关闭手机连接",
+  "phone.addressChanged.repair": "选择地址后，如果手机仍无法连接，请显示新的配对码并重新配对手机。",
+  "phone.saved.address": "手机连接的地址已更改。",
+  "phone.port.label": "端口",
+  "phone.port.save": "保存端口",
+  "phone.port.invalid": "请输入 1024 到 65535 之间的整数。",
+  "phone.port.note":
+    "手机连接在此端口监听（1024 到 65535；默认 47821）。新端口在连接下次打开时生效；如果现在已开启，它会在新端口上重新启动，屏幕上显示的配对码将失效。之前配对的手机可能仍使用旧端口，需要重新配对。",
+  "phone.saved.port": "手机连接端口已保存：{port}。",
+  "phone.pair.qrLabel": "包含配对链接的二维码",
+  "phone.pair.qrHint":
+    "请用你正在配对的手机上的应用扫描。它包含上面的配对码，所以只给你自己的手机看。",
+  "phone.pair.qrUnavailable": "无法为此链接生成二维码；请使用下面的链接。",
   "phone.listen.address": "地址和端口",
   "phone.listen.fingerprint": "证书指纹 (SHA-256)",
   "phone.pair.show": "显示配对码",
@@ -37,7 +57,7 @@ export const phone: Record<keyof typeof enphone, string> = {
   "phone.pair.codeLabel": "配对码",
   "phone.pair.remaining": "{time} 后过期",
   "phone.pair.fingerprint": "证书指纹：",
-  "phone.pair.link": "配对链接（没有二维码）：",
+  "phone.pair.link": "配对链接（如果手机无法扫描二维码）：",
   "phone.pair.hiddenActive": "配对码在 {time} 之前有效。它不会再次显示；请取消并显示新的配对码。",
   "phone.pending.question": "配对“{name}”？",
   "phone.pending.fingerprint": "密钥指纹",

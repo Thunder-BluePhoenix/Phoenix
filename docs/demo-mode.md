@@ -10,6 +10,20 @@ Starting the demo stops this page's microphone features first: voice listening i
 
 Stop it with **Stop demo and go back**. The web app reconnects to the real Core and restores the route you were on.
 
+## Automatic walkthrough (optional)
+
+Below the step buttons, **Play automatically** runs the same steps through the same controller as **Next step**: the first step at once, then one step every 6 seconds, ending on the last step (the screen stays there; **Stop demo and go back** is still the way out). **Pause** keeps the current step and stops the clock, **Resume** goes on from it, and **Stop and start over** ends the run and resets the walkthrough to its first screen (the demo Core and the route are left as they are).
+
+- It never starts by itself. Only pressing **Play automatically** starts it, so a demo that is merely open never moves.
+- With `prefers-reduced-motion: reduce` the page says so and the walkthrough still only advances after that explicit press. If the preference turns on while a run is going, the run is paused.
+- Any other driver ends the run (it goes back to idle and the screen stays as it is): a step played by hand (Previous, Play this step, Next), a hash-route change that is not the step's own route (navigating by hand), stopping the demo, the walkthrough unmounting, or a step that fails (the error is shown as for a manual step).
+- Its one timer is cleared and its subscriptions removed whenever the run ends or the walkthrough unmounts. The interval (`DEFAULT_STEP_INTERVAL_MS`, 6000), the timer functions and the reduced-motion source are injectable (`DemoHost`'s `timeline` prop, `DemoTimeline` options) so tests use fake timers. There is no setting for the interval in the UI.
+- Code: `apps/web/src/core/demo-timeline.ts`, wired in `apps/web/src/components/Demo.tsx`; tests: `apps/web/test/demo-timeline.test.tsx` (fake timers, no real clock). Non-English strings for the new controls are machine-generated and not reviewed by a native speaker.
+
+## Floating window, pill and island: still not switched
+
+Only the main web app switches to the demo runtime. The floating window, the pill and the island are separate webview entry points (`apps/web/src/floating/main.tsx`, `pill/main.tsx`, `island/main.tsx`), each with its own `PhoenixClient` on the real Core and no `DemoHost`; the demo controller's state (the demo token and client) exists only in the main window's page memory. Making them follow the demo needs a cross-window handoff of the demo session (for example a Tauri event or command from the shell carrying the demo URL and token, and a `DemoHost`-style client switch in each of those three entry points, restored when the demo stops) — a desktop-shell change that is not in the web code alone and was not built. While a demo runs those windows keep showing the real Core's data. No timed run is mirrored there either.
+
 ## Isolation and safety
 
 A demo is a separate `PhoenixRuntime`, not a special state inside the real one:

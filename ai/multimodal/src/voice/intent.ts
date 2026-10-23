@@ -17,7 +17,7 @@ export interface VoiceTool {
 
 export type VoiceIntent =
   | { kind: "tool"; tool: string }
-  | { kind: "switch_pill" }
+  | { kind: "switch_pill"; direction: "next" | "previous" }
   | { kind: "mailto_draft"; body: string }
   | { kind: "deny" }
   | { kind: "unavailable"; message: string }
@@ -29,6 +29,9 @@ const DENY = /^(deny|reject|decline|cancel that)\b/iu;
 const MAIL = /\b(email|mail)\b/iu;
 const DRAFT = /\b(draft|compose|write)\b/iu;
 const PILL = /\b(switch|open|show|change)\b.*\b(pill|floating)\b|\bpill\b/iu;
+/** "next pill" and "previous pill" are navigation, not the media action words above. */
+const PILL_NAVIGATION = /\b(next|previous)\b/giu;
+const PILL_BACKWARDS = /\b(previous|last|back)\b/iu;
 const WEB = /\b(web|internet|google|search|look up)\b/iu;
 const MUSIC = /\b(music|song|track|album|artist|playing|listening)\b/iu;
 /** Phrase -> conventional tool names, tried in order; the first that is enabled and read-only wins. */
@@ -86,14 +89,17 @@ export function matchIntent(text: string, tools: readonly VoiceTool[]): VoiceInt
     const topic = /\b(?:about|saying|that says)\s+(.+)$/u.exec(request)?.[1] ?? "";
     return { kind: "mailto_draft", body: topic.slice(0, MAX_DRAFT_CHARS) };
   }
-  if (ACTION_WORDS.test(request)) {
+  const pill = PILL.test(request);
+  if (ACTION_WORDS.test(pill ? request.replace(PILL_NAVIGATION, " ") : request)) {
     return {
       kind: "refuse",
       message:
         "Voice can read information, but it cannot perform an action or approve one. Use the Pet Panel for that.",
     };
   }
-  if (PILL.test(request)) return { kind: "switch_pill" };
+  if (pill) {
+    return { kind: "switch_pill", direction: PILL_BACKWARDS.test(request) ? "previous" : "next" };
+  }
   if (WEB.test(request)) {
     return { kind: "unavailable", message: "Web search is not available in Phoenix." };
   }

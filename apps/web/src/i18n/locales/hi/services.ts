@@ -204,6 +204,16 @@ export const services: Record<keyof typeof enservices, string> = {
   "services.demo.finished": "यह अंतिम चरण था। अपने Phoenix पर लौटने के लिए डेमो रोकें।",
   "services.demo.stepOf": "चरण {n} / {total}",
   "services.demo.stepCount": "{count, plural, one {# चरण} other {# चरण}}",
+  "services.demo.auto.group": "स्वचालित वॉकथ्रू",
+  "services.demo.auto.play": "अपने आप चलाएँ",
+  "services.demo.auto.pause": "रोकें",
+  "services.demo.auto.resume": "फिर शुरू करें",
+  "services.demo.auto.stop": "रोकें और फिर से शुरू करें",
+  "services.demo.auto.running":
+    "अपने आप चल रहा है, हर {seconds} सेकंड में एक चरण। किसी चरण या पेज पर क्लिक करने से यह रुक जाता है।",
+  "services.demo.auto.paused": "रुका हुआ है। इसी चरण से आगे बढ़ने के लिए फिर शुरू करें।",
+  "services.demo.auto.reducedMotion":
+    "आपका सिस्टम कम गति चाहता है, इसलिए वॉकथ्रू तभी आगे बढ़ता है जब आप «अपने आप चलाएँ» दबाते हैं।",
   "services.demo.startFailed": "डेमो शुरू नहीं हो सका",
   "services.demo.stopFailed":
     "डेमो ठीक से रोका नहीं जा सका; निष्क्रिय होने पर यह अपने आप रुक जाता है",

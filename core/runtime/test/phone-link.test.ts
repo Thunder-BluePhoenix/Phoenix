@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { once } from "node:events";
+import { connect as netConnect, createServer, type Socket } from "node:net";
 import { request as httpsRequest } from "node:https";
-import { connect as netConnect, type Socket } from "node:net";
 import type { NetworkInterfaceInfo } from "node:os";
 import { PhoneThrottledError, type PhoneAuthRequest } from "@phoenix/api";
 import { existsSync } from "node:fs";
@@ -18,6 +18,7 @@ import {
   MAX_WRONG_CODES,
   MAX_WRONG_CODES_PER_CODE,
   PAIRING_TTL_MS,
+  DEFAULT_PHONE_PORT,
   requestHash,
   previewHash,
   type PhoneLinkTuning,
@@ -58,6 +59,7 @@ interface Status {
   listening: boolean;
   address: string | null;
   port: number | null;
+  configured_port: number;
   fingerprint: string | null;
   require_user_verification: boolean;
   kill_switch: boolean;
@@ -1071,6 +1073,119 @@ describe("network address choice", () => {
   });
 });
 
+describe("listener port", () => {
+  /** A port nothing is listening on right now (bound to 0, read, released). */
+  async function freePort(): Promise<number> {
+    const probe = createServer();
+    probe.listen(0, "127.0.0.1");
+    await once(probe, "listening");
+    const { port } = probe.address() as { port: number };
+    probe.close();
+    await once(probe, "close");
+    return port;
+  }
+
+  const setPort = (r: { core: TestCore }, port: unknown) =>
+    r.core.api("POST", "/api/phone/settings", { port });
+
+  it("defaults to the built-in port and reports it as the configured port", async () => {
+    const r = await rig({ port: undefined });
+    expect(await r.status()).toMatchObject({ configured_port: DEFAULT_PHONE_PORT });
+  });
+
+  it("rejects a port that is not a whole number from 1024 to 65535, or that Core itself uses", async () => {
+    const r = await rig();
+    for (const bad of [1023, 0, 65536, -1, 4870.5, "4870", null, true, NaN, 1e9]) {
+      const reply = await setPort(r, bad);
+      expect(reply.status, String(bad)).toBe(400);
+      expect(reply.json.message).toMatch(/"port" must be a whole number/);
+    }
+    // The loopback API's own port and the MCP server's port are refused.
+    const apiPort = await setPort(r, r.core.port);
+    expect(apiPort.status).toBe(400);
+    expect(apiPort.json.message).toMatch(/used by Phoenix itself/);
+    const mcpPort = (await r.core.api("GET", "/api/mcp/status")).json.port as number;
+    expect((await setPort(r, mcpPort)).status).toBe(400);
+    // Nothing was stored by the refused requests.
+    expect(r.core.runtime.settings.get("phone.port", "unset")).toBe("unset");
+    expect((await r.audit()).filter((e) => e.action === "phone.settings.changed")).toEqual([]);
+  });
+
+  it("listens on the chosen port when enabled, and the pairing URI and status carry it", async () => {
+    const r = await rig({ port: undefined });
+    const port = await freePort();
+    const saved = await setPort(r, port);
+    expect(saved.status).toBe(200);
+    expect(saved.json).toMatchObject({ configured_port: port, listening: false, port: null });
+    const on = await r.enable();
+    expect(on).toMatchObject({ listening: true, port, configured_port: port });
+    const pairing = (await r.core.api("POST", "/api/phone/pairing")).json;
+    expect(pairing.port).toBe(port);
+    expect(new URL(pairing.uri).searchParams.get("port")).toBe(String(port));
+    const phone = new FakePhone("127.0.0.1", port, on.fingerprint, () => r.clock.now());
+    expect((await phone.raw("GET", "/phone/v1/pair/pair_x", {})).peerFingerprint).toBe(
+      pairing.fingerprint,
+    );
+    expect(await r.audit()).toContainEqual(
+      expect.objectContaining({
+        actor: "user",
+        action: "phone.settings.changed",
+        details: { port },
+      }),
+    );
+  });
+
+  it("moves a running listener to the new port and drops the code shown for the old one", async () => {
+    const r = await rig({ port: undefined });
+    const first = await freePort();
+    await setPort(r, first);
+    await r.enable();
+    const old = (await r.core.api("POST", "/api/phone/pairing")).json;
+    expect(old.port).toBe(first);
+    const second = await freePort();
+    const moved = await setPort(r, second);
+    expect(moved.json).toMatchObject({ listening: true, port: second, configured_port: second });
+    expect(moved.json.pairing).toBeNull(); // the code shown for the old port died with the old listener
+    const pairing = (await r.core.api("POST", "/api/phone/pairing")).json;
+    expect(new URL(pairing.uri).searchParams.get("port")).toBe(String(second));
+    // Setting the same port again changes nothing and is not audited a second time.
+    await setPort(r, second);
+    const changes = (await r.audit()).filter(
+      (e) => e.action === "phone.settings.changed" && "port" in e.details,
+    );
+    expect(changes.map((e) => e.details.port)).toEqual([second, first]); // the audit list is newest first
+  });
+
+  it("keeps the port after the link is turned off and on, and delete-all forgets it", async () => {
+    const r = await rig({ port: undefined });
+    const port = await freePort();
+    await setPort(r, port);
+    await r.enable();
+    await r.core.api("POST", "/api/phone/settings", { enabled: false });
+    expect((await r.status()).port).toBeNull();
+    expect((await r.enable()).port).toBe(port);
+    await r.core.api("POST", "/api/privacy/delete", { data: "phone", confirm: true });
+    expect(r.core.runtime.settings.get("phone.port", "unset")).toBe("unset");
+    expect(await r.status()).toMatchObject({ configured_port: DEFAULT_PHONE_PORT });
+  });
+
+  it("stays off, with a clear error, when the chosen port is already taken", async () => {
+    const r = await rig({ port: undefined });
+    const blocker = createServer();
+    blocker.listen(0, "127.0.0.1");
+    await once(blocker, "listening");
+    try {
+      const taken = (blocker.address() as { port: number }).port;
+      await setPort(r, taken);
+      const reply = await r.core.api("POST", "/api/phone/settings", { enabled: true });
+      expect(reply.status).toBe(503);
+      expect((await r.status()).listening).toBe(false);
+    } finally {
+      blocker.close();
+    }
+  });
+});
+
 describe("delete all phone data", () => {
   it("clears the phone settings and survives a failing certificate removal without an unhandled rejection", async () => {
     const unhandled: unknown[] = [];
@@ -1096,6 +1211,7 @@ describe("delete all phone data", () => {
         expect.objectContaining({ msg: "Phone data could not be fully removed" }),
       );
       expect(r.core.runtime.settings.get("phone.address", "unset")).toBe("unset");
+      expect(r.core.runtime.settings.get("phone.port", "unset")).toBe("unset");
       expect(r.core.runtime.settings.get("phone.require_user_verification", "unset")).toBe("unset");
       expect(await r.status()).toMatchObject({ enabled: false, listening: false, devices: 0 });
     } finally {

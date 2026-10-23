@@ -720,7 +720,29 @@ fn open_route<R: Runtime>(app: &AppHandle<R>, route: &str) {
 pub fn run_shortcut<R: Runtime>(app: &AppHandle<R>, action: shortcuts::Action) {
     let shell = app.state::<Shell<R>>();
     match action {
-        shortcuts::Action::SwitchPills => open_route(app, shell.shortcuts.next_pill_route()),
+        shortcuts::Action::SwitchPills => {
+            let (mode, visible) = {
+                let settings = shell.settings.lock();
+                (settings.mode, settings.visible)
+            };
+            // The window that shows the pills moves its own selection and opens the page for it
+            // (`switch_pills` event); with no such window the shell opens the activity feed.
+            let label = match shortcuts::pill_window(mode, visible) {
+                Some(shortcuts::PillWindow::Floating) => Some(WINDOW_LABEL),
+                Some(shortcuts::PillWindow::Island) => Some(island::ISLAND_LABEL),
+                None => None,
+            };
+            match label {
+                Some(label) => {
+                    let _ = app.emit_to(
+                        label,
+                        shortcuts::SWITCH_PILLS_EVENT,
+                        shortcuts::SwitchPillsPayload::NEXT,
+                    );
+                }
+                None => open_route(app, shortcuts::PILLS_FALLBACK_ROUTE),
+            }
+        }
         shortcuts::Action::Mute => {
             let on = !shell.settings.lock().muted;
             set_muted(app, on);
