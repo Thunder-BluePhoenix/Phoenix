@@ -101,8 +101,12 @@ describe("phoenix approvals list", () => {
 
 describe("requestRef", () => {
   it("changes with any field of the request, including ones the listing does not show", () => {
-    const base = parseConfirmations({ confirmations: [confirmation("c1")] })[0]!;
-    const same = parseConfirmations({ confirmations: [confirmation("c1")] })[0]!;
+    const base = parseConfirmations({
+      confirmations: [{ ...confirmation("c1"), ref: "c".repeat(64) }],
+    })[0]!;
+    const same = parseConfirmations({
+      confirmations: [{ ...confirmation("c1"), ref: "c".repeat(64) }],
+    })[0]!;
     expect(requestRef(base)).toBe(requestRef(same));
     for (const change of [
       { capabilityId: "docker" },
@@ -111,19 +115,23 @@ describe("requestRef", () => {
       { expiresAt: "2099-01-01T00:00:01.000Z" },
       { id: "c2" },
     ]) {
-      const other = parseConfirmations({ confirmations: [confirmation("c1", change)] })[0]!;
+      const other = parseConfirmations({
+        confirmations: [{ ...confirmation("c1", change), ref: "c".repeat(64) }],
+      })[0]!;
       expect(requestRef(other), JSON.stringify(change)).not.toBe(requestRef(base));
     }
-    const agent = parseAgentApprovals({ approvals: [agentApproval("c1")] })[0]!;
+    const agent = parseAgentApprovals({
+      approvals: [{ ...agentApproval("c1"), ref: "a".repeat(64) }],
+    })[0]!;
     expect(requestRef(agent)).not.toBe(requestRef(base));
   });
 
   it("does not depend on key order", () => {
     const a = parseAgentApprovals({
-      approvals: [{ id: "a", tool: "T", agent: "x", expires_at: "e" }],
+      approvals: [{ id: "a", tool: "T", agent: "x", expires_at: "e", ref: "a".repeat(64) }],
     })[0]!;
     const b = parseAgentApprovals({
-      approvals: [{ expires_at: "e", agent: "x", tool: "T", id: "a" }],
+      approvals: [{ expires_at: "e", agent: "x", tool: "T", id: "a", ref: "a".repeat(64) }],
     })[0]!;
     expect(requestRef(a)).toBe(requestRef(b));
   });
@@ -140,7 +148,7 @@ describe("phoenix approvals approve / deny", () => {
     expect(posts()).toHaveLength(1);
     expect(posts()[0]).toMatchObject({
       path: "/api/confirmations/conf_1",
-      body: { approve: true },
+      body: { approve: true, ref: "c".repeat(64) },
       client: "phoenix-cli",
     });
   });
@@ -153,11 +161,11 @@ describe("phoenix approvals approve / deny", () => {
     expect(JSON.parse(r.out)).toEqual({ id: "apr_1", source: "agent", decision: "approve", ref });
     expect(posts()[0]).toMatchObject({
       path: "/api/agent-approvals/apr_1/decision",
-      body: { behavior: "allow" },
+      body: { behavior: "allow", ref: "a".repeat(64) },
       client: "phoenix-cli",
     });
     // No "always allow" rule, no message, nothing beyond the verdict.
-    expect(posts()[0]!.body).toEqual({ behavior: "allow" });
+    expect(posts()[0]!.body).toEqual({ behavior: "allow", ref: "a".repeat(64) });
   });
 
   it("refuses to approve a request that changed after it was listed", async () => {
@@ -237,7 +245,7 @@ describe("phoenix approvals approve / deny", () => {
       { id: "conf_1", via: "confirmation", verdict: false },
       { id: "apr_1", via: "agent", verdict: false },
     ]);
-    expect(posts()[1]!.body).toEqual({ behavior: "deny" });
+    expect(posts()[1]!.body).toEqual({ behavior: "deny", ref: "a".repeat(64) });
   });
 
   it("still refuses to deny when a quoted reference no longer matches", async () => {

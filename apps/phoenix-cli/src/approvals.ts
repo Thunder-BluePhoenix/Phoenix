@@ -145,10 +145,12 @@ export async function decide(options: DecideOptions): Promise<DecideResult> {
     if (current.source === "confirmation") {
       await client.request("POST", `/api/confirmations/${encodeURIComponent(id)}`, {
         approve: decision === "approve",
+        ref: current.ref,
       });
     } else {
       await client.request("POST", `/api/agent-approvals/${encodeURIComponent(id)}/decision`, {
         behavior: decision === "approve" ? "allow" : "deny",
+        ref: current.ref,
       });
     }
   } catch (err) {

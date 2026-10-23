@@ -109,13 +109,20 @@ export async function startFakeCore(token = `fake-${crypto.randomUUID()}`): Prom
       });
     }
     if (method === "GET" && url.pathname === "/api/confirmations") {
-      return send(res, 200, { confirmations: core.confirmations });
+      return send(res, 200, {
+        confirmations: core.confirmations.map((confirmation) => ({
+          ...confirmation,
+          ref: "c".repeat(64),
+        })),
+      });
     }
     if (method === "GET" && url.pathname === "/api/agent-approvals") {
       if (core.agentApprovalsMissing) {
         return send(res, 404, { code: "RESOURCE_NOT_FOUND", message: "Agent approvals not found" });
       }
-      return send(res, 200, { approvals: core.agentApprovals });
+      return send(res, 200, {
+        approvals: core.agentApprovals.map((approval) => ({ ...approval, ref: "a".repeat(64) })),
+      });
     }
     if (method === "GET" && url.pathname === "/api/events") {
       const after = Number(url.searchParams.get("after_seq") ?? "0");

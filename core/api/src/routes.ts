@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 import { ErrorCode, isPermission, PhoenixError } from "@phoenix/protocol";
 import { expectBoolean, expectObject, intParam, route, type Route } from "./http";
+import { approvalRef, sameApprovalRef } from "./approval-ref";
 import { agentApprovalRoutes } from "./agent-approval-routes";
 import { agentLiveRoutes } from "./agent-live-routes";
 import { agentRelayRoutes } from "./agent-relay-routes";
@@ -363,11 +364,23 @@ export function buildRoutes(s: CoreServices): Route[] {
     route("GET", "/api/confirmations", () => ({
       confirmations: s.permissions.pendingConfirmations().map((c) => {
         const agent = s.agents?.describeConfirmation(c.id);
-        return agent ? { ...c, ...agent } : c;
+        const view = agent ? { ...c, ...agent } : c;
+        return { ...view, ref: approvalRef("confirmation", view) };
       }),
     })),
-    route("POST", "/api/confirmations/:id", async ({ params, body }) => {
-      const approve = expectBoolean(expectObject(await body()), "approve");
+    route("POST", "/api/confirmations/:id", async ({ req, params, body }) => {
+      const input = expectObject(await body());
+      const approve = expectBoolean(input, "approve");
+      if (req.headers["x-phoenix-client"] === "phoenix-cli") {
+        const current = s.permissions.pendingConfirmations().find((c) => c.id === params.id);
+        const agent = current ? s.agents?.describeConfirmation(current.id) : undefined;
+        const view = current ? (agent ? { ...current, ...agent } : current) : undefined;
+        if (!view || !sameApprovalRef(approvalRef("confirmation", view), input.ref))
+          throw new PhoenixError(
+            ErrorCode.EVENT_DUPLICATE,
+            "Confirmation changed; list and review it again",
+          );
+      }
       if (!s.permissions.resolveConfirmation(params.id!, approve)) throw notFound("Confirmation");
       return { id: params.id, approved: approve };
     }),

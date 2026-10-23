@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
 import { intParam, route, type Route } from "./http";
+import { approvalRef, sameApprovalRef } from "./approval-ref";
 import type { CoreServices } from "./services";
 
 export interface AgentApprovalQuestionView {
@@ -127,7 +128,11 @@ export function agentApprovalRoutes(s: CoreServices): Route[] {
       res.statusCode = 201;
       return created;
     }),
-    route("GET", "/api/agent-approvals", () => ({ approvals: approvals().list() })),
+    route("GET", "/api/agent-approvals", () => ({
+      approvals: approvals()
+        .list()
+        .map((view) => ({ ...view, ref: approvalRef("agent", view) })),
+    })),
     route("GET", "/api/agent-approvals/history", ({ url }) => {
       const limit = intParam(url, "limit");
       return { history: approvals().history(limit) };
@@ -143,11 +148,25 @@ export function agentApprovalRoutes(s: CoreServices): Route[] {
     ),
     route("POST", "/api/agent-approvals/:id/decision", async ({ req, params, body }) => {
       const client = req.headers["x-phoenix-client"];
-      return approvals().decide(
-        params.id!,
-        await body(),
-        typeof client === "string" ? client : undefined,
-      );
+      const input = await body();
+      if (client === "phoenix-cli") {
+        const current = approvals()
+          .list()
+          .find((view) => view.id === params.id);
+        const ref =
+          input !== null && typeof input === "object" && !Array.isArray(input)
+            ? (input as Record<string, unknown>).ref
+            : undefined;
+        if (!current || !sameApprovalRef(approvalRef("agent", current), ref))
+          throw new PhoenixError(
+            ErrorCode.EVENT_DUPLICATE,
+            "Approval changed; list and review it again",
+          );
+      }
+      if (input !== null && typeof input === "object" && !Array.isArray(input)) {
+        delete (input as Record<string, unknown>).ref;
+      }
+      return approvals().decide(params.id!, input, typeof client === "string" ? client : undefined);
     }),
   ];
 }

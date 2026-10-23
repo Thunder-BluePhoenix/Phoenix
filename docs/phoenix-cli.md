@@ -48,10 +48,10 @@ request carries `Authorization: Bearer <token>` and `X-Phoenix-Client: phoenix-c
 `phoenix approvals list` merges the two places Core keeps requests that wait for a person, through
 routes that already exist:
 
-| Source         | Listed from                | Decided through                          |
-| -------------- | -------------------------- | ---------------------------------------- |
-| `confirmation` | `GET /api/confirmations`   | `POST /api/confirmations/:id {approve}`  |
-| `agent`        | `GET /api/agent-approvals` | `POST /api/agent-approvals/:id/decision` |
+| Source         | Listed from                | Decided through                                          |
+| -------------- | -------------------------- | -------------------------------------------------------- |
+| `confirmation` | `GET /api/confirmations`   | `POST /api/confirmations/:id {approve, ref}`             |
+| `agent`        | `GET /api/agent-approvals` | `POST /api/agent-approvals/:id/decision {behavior, ref}` |
 
 Both are the same audited paths the web UI uses (`PermissionGateway.resolveConfirmation` and
 `AgentApprovals.decide`, which write the audit log and publish their events). The CLI adds no route and
@@ -60,27 +60,36 @@ allow/deny. A Core without the agent-approval service answers `404` there; that 
 
 ### A decision is bound to the request
 
-Each listed request has a **ref**: the first 16 hex characters of
-`sha256("phoenix-cli-approval-v1\n" + canonicalJson({source, …every field Core listed}))`. It covers the
-id, the requester, the command or summary, permissions, risk, target and expiry. Deciding re-reads the
-pending list and:
+Each listed request has two references:
+
+- a **short ref**: the first 16 hex characters of the CLI's local hash over every field it listed, used
+  to detect that a copied `--ref` is stale before the CLI sends anything; and
+- a **Core ref**: a full 64-hex SHA-256 digest Core issued over the exact redacted pending view plus its
+  source, under the domain `phoenix-approval-ref-v1`. The CLI never creates it and includes it in its
+  decision body. When the client label is `phoenix-cli`, Core recomputes and verifies that digest in
+  constant time before it resolves the request. A missing, malformed, cross-request or stale Core ref
+  returns `409 EVENT_DUPLICATE` and leaves the request pending.
+
+The full ref covers the id, requester, command or summary, permissions, risk, target, expiry and every
+other field Core listed. Deciding re-reads the pending list and:
 
 1. refuses (`4`) if the id is no longer waiting (decided elsewhere, expired, never existed);
-2. refuses if a quoted `--ref` does not equal the ref of the request **as it is now**;
+2. refuses if a quoted `--ref` does not equal the short ref of the request **as it is now**;
 3. refuses if the request has expired by the CLI's clock;
 4. for **approve** without `--ref`, prints the full request and asks `Approve this request? [y/N]` on
    an interactive terminal; with no terminal it exits `2` rather than approving blind;
-5. sends only `{"approve": true|false}` or `{"behavior": "allow"|"deny"}`. It never creates an "always
-   allow" rule, never attaches a message, and there is no approve-all.
+5. sends `{"approve": true|false, "ref": <Core ref>}` or `{"behavior": "allow"|"deny", "ref": <Core
+ref>}`. It never creates an "always allow" rule, never attaches a message, and there is no
+   approve-all.
 
-**deny** needs no ref (refusing is always safe), but a quoted ref that no longer matches still stops it.
-If Core answers `404`/`409` to the decision (someone else decided first) the CLI reports "refused", not
-a crash.
+**deny** needs no short `--ref` (refusing is always safe), but Core still binds it to the record it just
+listed. If Core answers `404`/`409` to the decision (someone else decided first or the Core ref is stale)
+the CLI reports "refused", not a crash.
 
-The check in 2 is a TOCTOU guard performed by the client: between the re-read and the `POST` the request
-could in principle change, and the two Core routes take no request hash (the phone-link route does, see
-[phone-link.md](phone-link.md)). The window is one local round trip, and a changed request has a new id
-or (for confirmations) cannot change at all; this is a limit, not a proof.
+This removes the CLI list/decision TOCTOU window. It does **not** authenticate a person: any local process
+that holds the session token can list a request, obtain its Core ref and decide it. The web, phone and
+internal flows retain their existing authenticated paths; the server binding is deliberately scoped to
+`x-phoenix-client: phoenix-cli`.
 
 ### Untrusted text
 

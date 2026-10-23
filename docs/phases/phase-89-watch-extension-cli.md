@@ -38,7 +38,7 @@ Phoenix from the wrist, the browser and the terminal.
 
 ### Deviations
 
-- The `--ref` check is **client-side**: Core routes take no hash, so the CLI cannot bind the decision to a request hash on the server.
+- The CLI's short `--ref` remains a client-side convenience, but Core now issues and verifies a full reference for requests labelled `phoenix-cli`; this removes the list/decision TOCTOU window. It does not authenticate the person holding the session token.
 
 ### Security review
 

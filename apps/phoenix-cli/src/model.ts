@@ -10,6 +10,8 @@ export type ApprovalSource = "confirmation" | "agent";
 export interface PendingApproval {
   source: ApprovalSource;
   id: string;
+  /** Core-issued full digest for deciding this exact record; never synthesized by the CLI. */
+  ref: string;
   /** One line for a person: the command, path or summary. Untrusted text. */
   title: string;
   /** Who is asking: a capability id or an agent name. Untrusted text. */
@@ -59,7 +61,8 @@ const str = (value: unknown, fallback = ""): string =>
 
 export function parseConfirmations(value: unknown): PendingApproval[] {
   return list(value, "confirmations", "the confirmations list").flatMap((c) => {
-    if (typeof c.id !== "string") return [];
+    if (typeof c.id !== "string" || typeof c.ref !== "string" || !/^[0-9a-f]{64}$/.test(c.ref))
+      return [];
     const permissions = Array.isArray(c.permissions) ? c.permissions.map(String).join(", ") : "";
     const detail = [
       `command: ${str(c.command)}`,
@@ -72,6 +75,7 @@ export function parseConfirmations(value: unknown): PendingApproval[] {
       {
         source: "confirmation" as const,
         id: c.id,
+        ref: c.ref,
         title: str(c.summary, str(c.command)),
         requester: str(c.capabilityId, "unknown"),
         detail,
@@ -85,13 +89,20 @@ export function parseConfirmations(value: unknown): PendingApproval[] {
 export function parseAgentApprovals(value: unknown): PendingApproval[] {
   return list(value, "approvals", "the agent approvals list").flatMap((a) => {
     // A question needs an answer text; the CLI only carries allow or deny.
-    if (typeof a.id !== "string" || a.kind === "question") return [];
+    if (
+      typeof a.id !== "string" ||
+      typeof a.ref !== "string" ||
+      !/^[0-9a-f]{64}$/.test(a.ref) ||
+      a.kind === "question"
+    )
+      return [];
     const input = isRecord(a.input_summary) ? a.input_summary : {};
     const title = str(input.command) || str(input.path) || str(input.description) || str(a.tool);
     return [
       {
         source: "agent" as const,
         id: a.id,
+        ref: a.ref,
         title,
         requester: str(a.agent, "unknown"),
         detail: [
