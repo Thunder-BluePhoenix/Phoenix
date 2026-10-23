@@ -22,4 +22,6 @@ export const FAKE_JWT = join(
   ".",
   "c2lnbmF0dXJlMTIz",
 );
+/** A Stripe test-mode key: the detector deliberately does not match it. */
+export const FAKE_STRIPE_TEST_KEY = join("s", "k_", "test_", "abcdefghijklmnop0123");
 export const GITHUB_TOKEN_PREFIX = join("gh", "p_");

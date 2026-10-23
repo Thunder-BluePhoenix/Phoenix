@@ -12,3 +12,7 @@ bd60e96dd43cf477db8feef8d15259a120caf0f7:ai/memory/test/ingestors.test.ts:aws-ac
 
 # A test passes a key object by variable name; generic-api-key matched the property name. There is no secret in the line, and it no longer has that shape.
 f9287519f1fa540a3f62e5bb417920fb7046518c:core/runtime/test/phone-cert.test.ts:generic-api-key:91
+
+# A Stripe TEST-mode key shape, used as a negative case ("the detector must not match sk_test_ keys")
+# in commit 750eb79. It is a fake canary, not a credential, and the file now builds it at runtime.
+750eb79355f6694ea4804c60235ab064ed432e3a:protocol/test/validate.test.ts:stripe-access-token:111

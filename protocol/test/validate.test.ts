@@ -19,6 +19,7 @@ import {
   FAKE_JWT,
   FAKE_NPM_TOKEN,
   FAKE_STRIPE_KEY,
+  FAKE_STRIPE_TEST_KEY,
 } from "../testing/fake-secrets";
 
 const fixtures = JSON.parse(
@@ -108,7 +109,7 @@ describe("no secrets in events", () => {
   });
 
   it("does not flag a Stripe test key or a two-part dotted string", () => {
-    expect(findSecrets({ a: "sk_test_abcdefghijklmnop0123", b: "eyJhbGciOi.abc" })).toEqual([]);
+    expect(findSecrets({ a: FAKE_STRIPE_TEST_KEY, b: "ey" + "JhbGciOi.abc" })).toEqual([]);
   });
 
   it("does not flag ordinary words", () => {
