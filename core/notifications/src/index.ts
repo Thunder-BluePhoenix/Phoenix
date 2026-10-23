@@ -55,8 +55,12 @@ export const DEFAULT_PREFERENCES: NotificationPreferences = {
 const PREFS_KEY = "notifications.preferences";
 const SEVERITY_RANK: Record<Severity, number> = { info: 0, success: 1, warning: 2, error: 3 };
 
-/** Successful outcomes worth telling the user about even though they are not problems. */
-const ALWAYS_NOTIFY = new Set(["kage.summary.ready"]);
+/**
+ * Events worth telling the user about even though they are not problems: a finished meeting
+ * summary, and a meeting about to start (only the calendar capability emits that, and only once
+ * the owner enabled it and connected a calendar; the meeting title goes in the body, not the title).
+ */
+const ALWAYS_NOTIFY = new Set(["kage.summary.ready", "calendar.meeting.starting_soon"]);
 
 /** Bookkeeping events that never notify on their own. */
 const NEVER_NOTIFY_PREFIXES = [

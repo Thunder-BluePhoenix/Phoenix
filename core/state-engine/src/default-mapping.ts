@@ -15,6 +15,7 @@ export const EVENT_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "capability.uninstalled": "{payload.name} uninstalled",
   "capability.command.completed": "{payload.capability}: {payload.command} completed",
   "capability.command.failed": "{payload.capability}: {payload.command} failed",
+  "calendar.meeting.starting_soon": "A meeting is starting soon",
   "security.confirmation.resolved": "Request {payload.outcome}",
   "security.permission.denied": "{payload.capability} was not allowed to run {payload.command}",
   "security.kill_switch.disengaged": "Emergency stop released",
