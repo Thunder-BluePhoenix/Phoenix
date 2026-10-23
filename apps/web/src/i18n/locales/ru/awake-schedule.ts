@@ -6,14 +6,19 @@ import type { awakeSchedule as enAwakeSchedule } from "../../en/awake-schedule";
 export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.loading": "Загрузка…",
   "awakeSchedule.schedule.title": "Удержание бодрствования по расписанию",
-  "awakeSchedule.schedule.notAvailable": "Удержание бодрствования по расписанию недоступно: у этого Phoenix Core нет защищённого хранилища секретов ОС.",
-  "awakeSchedule.schedule.loadFailed": "Не удалось загрузить удержание бодрствования по расписанию.",
-  "awakeSchedule.schedule.intro": "По умолчанию выключено. Включение и сохранение каждого окна сначала запрашивают ваше согласие в разделе «Подтверждения»; пока функция включена, компьютер не засыпает в сохранённые окна.",
-  "awakeSchedule.schedule.awakeOff": "Возможность «Не засыпать» не включена, поэтому ни одно окно не может удерживать компьютер бодрствующим. Включите её в «Интеграциях».",
+  "awakeSchedule.schedule.notAvailable":
+    "Удержание бодрствования по расписанию недоступно: у этого Phoenix Core нет защищённого хранилища секретов ОС.",
+  "awakeSchedule.schedule.loadFailed":
+    "Не удалось загрузить удержание бодрствования по расписанию.",
+  "awakeSchedule.schedule.intro":
+    "По умолчанию выключено. Включение и сохранение каждого окна сначала запрашивают ваше согласие в разделе «Подтверждения»; пока функция включена, компьютер не засыпает в сохранённые окна.",
+  "awakeSchedule.schedule.awakeOff":
+    "Возможность «Не засыпать» не включена, поэтому ни одно окно не может удерживать компьютер бодрствующим. Включите её в «Интеграциях».",
   "awakeSchedule.schedule.enable": "Не давать компьютеру засыпать в мои сохранённые окна",
   "awakeSchedule.schedule.confirming": "Ожидаем вашего подтверждения в «Подтверждениях»…",
   "awakeSchedule.state.off": "Удержание бодрствования по расписанию выключено.",
-  "awakeSchedule.state.idle": "Удержание бодрствования по расписанию включено. Сейчас ни одно окно не идёт.",
+  "awakeSchedule.state.idle":
+    "Удержание бодрствования по расписанию включено. Сейчас ни одно окно не идёт.",
   "awakeSchedule.state.holding": "Сейчас компьютер удерживается в бодрствующем состоянии.",
   "awakeSchedule.state.holdingUntil": "Компьютер удерживается в бодрствующем состоянии до {time}.",
   "awakeSchedule.state.waiting": "Окно ждёт начала, потому что {reason}",
@@ -50,11 +55,15 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.add.minBattery": "Минимальный заряд (%)",
   "awakeSchedule.add.submit": "Сохранить окно",
   "awakeSchedule.lights.title": "Индикаторы состояния",
-  "awakeSchedule.lights.notAvailable": "Индикаторы состояния недоступны: у этого Phoenix Core нет защищённого хранилища секретов ОС.",
+  "awakeSchedule.lights.notAvailable":
+    "Индикаторы состояния недоступны: у этого Phoenix Core нет защищённого хранилища секретов ОС.",
   "awakeSchedule.lights.loadFailed": "Не удалось загрузить индикаторы состояния.",
-  "awakeSchedule.lights.intro": "Fawkes может показывать, что он делает, на лампе в вашей собственной сети. К лампе обращаются, только если вы добавили её здесь, разрешили Fawkes её включать и включена возможность «Индикаторы состояния».",
-  "awakeSchedule.lights.limits": "Отправляются только фиксированные цвета, никогда текст. Пока поддерживается только Elgato Key Light.",
-  "awakeSchedule.lights.capabilityOff": "Возможность «Индикаторы состояния» не включена. Включите её здесь или в «Интеграциях».",
+  "awakeSchedule.lights.intro":
+    "Fawkes может показывать, что он делает, на лампе в вашей собственной сети. К лампе обращаются, только если вы добавили её здесь, разрешили Fawkes её включать и включена возможность «Индикаторы состояния».",
+  "awakeSchedule.lights.limits":
+    "Отправляются только фиксированные цвета, никогда текст. Пока поддерживается только Elgato Key Light.",
+  "awakeSchedule.lights.capabilityOff":
+    "Возможность «Индикаторы состояния» не включена. Включите её здесь или в «Интеграциях».",
   "awakeSchedule.lights.enable": "Включить",
   "awakeSchedule.lights.empty": "Лампы не добавлены.",
   "awakeSchedule.lights.line": "Key Light по адресу {address}",

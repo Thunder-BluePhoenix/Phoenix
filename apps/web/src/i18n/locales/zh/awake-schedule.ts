@@ -8,8 +8,10 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.schedule.title": "定时保持唤醒",
   "awakeSchedule.schedule.notAvailable": "定时保持唤醒不可用：此 Phoenix Core 没有系统密钥存储。",
   "awakeSchedule.schedule.loadFailed": "无法加载定时保持唤醒。",
-  "awakeSchedule.schedule.intro": "默认关闭。开启它和保存每个时间段时，都会先在“审批”中征求你的同意；开启后，此电脑会在你保存的时间段内保持唤醒。",
-  "awakeSchedule.schedule.awakeOff": "“保持唤醒”功能未启用，因此没有任何时间段能让此电脑保持唤醒。请在“集成”中启用。",
+  "awakeSchedule.schedule.intro":
+    "默认关闭。开启它和保存每个时间段时，都会先在“审批”中征求你的同意；开启后，此电脑会在你保存的时间段内保持唤醒。",
+  "awakeSchedule.schedule.awakeOff":
+    "“保持唤醒”功能未启用，因此没有任何时间段能让此电脑保持唤醒。请在“集成”中启用。",
   "awakeSchedule.schedule.enable": "在我保存的时间段内让此电脑保持唤醒",
   "awakeSchedule.schedule.confirming": "正在等待你在“审批”中确认…",
   "awakeSchedule.state.off": "定时保持唤醒已关闭。",
@@ -52,7 +54,8 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.lights.title": "状态灯",
   "awakeSchedule.lights.notAvailable": "状态灯不可用：此 Phoenix Core 没有系统密钥存储。",
   "awakeSchedule.lights.loadFailed": "无法加载状态灯。",
-  "awakeSchedule.lights.intro": "Fawkes 可以通过你自己网络上的灯来显示它正在做什么。只有当你在此添加了灯、允许 Fawkes 点亮它、并且已启用“状态灯”功能时，才会联系该灯。",
+  "awakeSchedule.lights.intro":
+    "Fawkes 可以通过你自己网络上的灯来显示它正在做什么。只有当你在此添加了灯、允许 Fawkes 点亮它、并且已启用“状态灯”功能时，才会联系该灯。",
   "awakeSchedule.lights.limits": "只发送固定颜色，绝不发送任何文字。目前只支持 Elgato Key Light。",
   "awakeSchedule.lights.capabilityOff": "“状态灯”功能未启用。可在此处或“集成”中启用。",
   "awakeSchedule.lights.enable": "启用",

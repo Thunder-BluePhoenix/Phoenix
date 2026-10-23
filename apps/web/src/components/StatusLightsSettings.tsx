@@ -41,7 +41,12 @@ export function StatusLightsSection() {
 
   const add = async (event: FormEvent) => {
     event.preventDefault();
-    const added: ProvisionedLight = { id: id.trim(), kind: "key-light", address: address.trim(), port: null };
+    const added: ProvisionedLight = {
+      id: id.trim(),
+      kind: "key-light",
+      address: address.trim(),
+      port: null,
+    };
     if (await replace([...(lights ?? []), added])) {
       setId("");
       setAddress("");

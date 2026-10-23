@@ -6,14 +6,18 @@ import type { awakeSchedule as enAwakeSchedule } from "../../en/awake-schedule";
 export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.loading": "Chargement…",
   "awakeSchedule.schedule.title": "Maintien en éveil programmé",
-  "awakeSchedule.schedule.notAvailable": "Le maintien en éveil programmé n’est pas disponible : ce Phoenix Core n’a pas de coffre de secrets du système.",
+  "awakeSchedule.schedule.notAvailable":
+    "Le maintien en éveil programmé n’est pas disponible : ce Phoenix Core n’a pas de coffre de secrets du système.",
   "awakeSchedule.schedule.loadFailed": "Impossible de charger le maintien en éveil programmé.",
-  "awakeSchedule.schedule.intro": "Désactivé par défaut. L’activer et enregistrer chaque plage vous demandent d’abord confirmation dans Approbations ; une fois activé, cet ordinateur reste éveillé pendant les plages enregistrées.",
-  "awakeSchedule.schedule.awakeOff": "La capacité Maintien en éveil n’est pas activée : aucune plage ne peut donc garder cet ordinateur éveillé. Activez-la dans Intégrations.",
+  "awakeSchedule.schedule.intro":
+    "Désactivé par défaut. L’activer et enregistrer chaque plage vous demandent d’abord confirmation dans Approbations ; une fois activé, cet ordinateur reste éveillé pendant les plages enregistrées.",
+  "awakeSchedule.schedule.awakeOff":
+    "La capacité Maintien en éveil n’est pas activée : aucune plage ne peut donc garder cet ordinateur éveillé. Activez-la dans Intégrations.",
   "awakeSchedule.schedule.enable": "Garder cet ordinateur éveillé pendant mes plages enregistrées",
   "awakeSchedule.schedule.confirming": "En attente de votre confirmation dans Approbations…",
   "awakeSchedule.state.off": "Le maintien en éveil programmé est désactivé.",
-  "awakeSchedule.state.idle": "Le maintien en éveil programmé est activé. Aucune plage n’est en cours.",
+  "awakeSchedule.state.idle":
+    "Le maintien en éveil programmé est activé. Aucune plage n’est en cours.",
   "awakeSchedule.state.holding": "Cet ordinateur est maintenu éveillé en ce moment.",
   "awakeSchedule.state.holdingUntil": "Cet ordinateur est maintenu éveillé jusqu’à {time}.",
   "awakeSchedule.state.waiting": "Une plage attend de démarrer car {reason}",
@@ -50,11 +54,15 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.add.minBattery": "Batterie minimale (%)",
   "awakeSchedule.add.submit": "Enregistrer la plage",
   "awakeSchedule.lights.title": "Voyants d’état",
-  "awakeSchedule.lights.notAvailable": "Les voyants d’état ne sont pas disponibles : ce Phoenix Core n’a pas de coffre de secrets du système.",
+  "awakeSchedule.lights.notAvailable":
+    "Les voyants d’état ne sont pas disponibles : ce Phoenix Core n’a pas de coffre de secrets du système.",
   "awakeSchedule.lights.loadFailed": "Impossible de charger les voyants d’état.",
-  "awakeSchedule.lights.intro": "Fawkes peut montrer ce qu’il fait sur une lumière de votre propre réseau. Une lumière n’est contactée que si vous l’avez ajoutée ici, autorisé Fawkes à l’allumer et activé la capacité Voyants d’état.",
-  "awakeSchedule.lights.limits": "Seules des couleurs fixes sont envoyées, jamais de texte. Seul l’Elgato Key Light est pris en charge pour l’instant.",
-  "awakeSchedule.lights.capabilityOff": "La capacité Voyants d’état n’est pas activée. Activez-la ici ou dans Intégrations.",
+  "awakeSchedule.lights.intro":
+    "Fawkes peut montrer ce qu’il fait sur une lumière de votre propre réseau. Une lumière n’est contactée que si vous l’avez ajoutée ici, autorisé Fawkes à l’allumer et activé la capacité Voyants d’état.",
+  "awakeSchedule.lights.limits":
+    "Seules des couleurs fixes sont envoyées, jamais de texte. Seul l’Elgato Key Light est pris en charge pour l’instant.",
+  "awakeSchedule.lights.capabilityOff":
+    "La capacité Voyants d’état n’est pas activée. Activez-la ici ou dans Intégrations.",
   "awakeSchedule.lights.enable": "Activer",
   "awakeSchedule.lights.empty": "Aucune lumière ajoutée.",
   "awakeSchedule.lights.line": "Key Light à l’adresse {address}",

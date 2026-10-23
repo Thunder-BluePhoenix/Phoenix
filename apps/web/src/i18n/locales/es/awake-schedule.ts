@@ -6,14 +6,18 @@ import type { awakeSchedule as enAwakeSchedule } from "../../en/awake-schedule";
 export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.loading": "Cargando…",
   "awakeSchedule.schedule.title": "Mantener activo según horario",
-  "awakeSchedule.schedule.notAvailable": "Mantener activo según horario no está disponible: este Phoenix Core no tiene almacén de secretos del sistema.",
+  "awakeSchedule.schedule.notAvailable":
+    "Mantener activo según horario no está disponible: este Phoenix Core no tiene almacén de secretos del sistema.",
   "awakeSchedule.schedule.loadFailed": "No se pudo cargar el mantenimiento activo según horario.",
-  "awakeSchedule.schedule.intro": "Desactivado por defecto. Activarlo y guardar cada ventana te lo pregunta antes en Aprobaciones; mientras está activo, este equipo permanece despierto durante las ventanas que guardaste.",
-  "awakeSchedule.schedule.awakeOff": "La capacidad Mantener activo no está habilitada, así que ninguna ventana puede mantener este equipo despierto. Habilítala en Integraciones.",
+  "awakeSchedule.schedule.intro":
+    "Desactivado por defecto. Activarlo y guardar cada ventana te lo pregunta antes en Aprobaciones; mientras está activo, este equipo permanece despierto durante las ventanas que guardaste.",
+  "awakeSchedule.schedule.awakeOff":
+    "La capacidad Mantener activo no está habilitada, así que ninguna ventana puede mantener este equipo despierto. Habilítala en Integraciones.",
   "awakeSchedule.schedule.enable": "Mantener este equipo despierto durante mis ventanas guardadas",
   "awakeSchedule.schedule.confirming": "Esperando tu confirmación en Aprobaciones…",
   "awakeSchedule.state.off": "Mantener activo según horario está desactivado.",
-  "awakeSchedule.state.idle": "Mantener activo según horario está activado. Ninguna ventana está en curso ahora.",
+  "awakeSchedule.state.idle":
+    "Mantener activo según horario está activado. Ninguna ventana está en curso ahora.",
   "awakeSchedule.state.holding": "Manteniendo este equipo despierto ahora.",
   "awakeSchedule.state.holdingUntil": "Manteniendo este equipo despierto hasta {time}.",
   "awakeSchedule.state.waiting": "Una ventana espera para empezar porque {reason}",
@@ -50,11 +54,15 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.add.minBattery": "Batería mínima (%)",
   "awakeSchedule.add.submit": "Guardar ventana",
   "awakeSchedule.lights.title": "Luces de estado",
-  "awakeSchedule.lights.notAvailable": "Las luces de estado no están disponibles: este Phoenix Core no tiene almacén de secretos del sistema.",
+  "awakeSchedule.lights.notAvailable":
+    "Las luces de estado no están disponibles: este Phoenix Core no tiene almacén de secretos del sistema.",
   "awakeSchedule.lights.loadFailed": "No se pudieron cargar las luces de estado.",
-  "awakeSchedule.lights.intro": "Fawkes puede mostrar lo que hace en una luz de tu propia red. Solo se contacta una luz si la añadiste aquí, permitiste que Fawkes la encienda y la capacidad Luces de estado está habilitada.",
-  "awakeSchedule.lights.limits": "Solo se envían colores fijos, nunca texto. Por ahora solo se admite Elgato Key Light.",
-  "awakeSchedule.lights.capabilityOff": "La capacidad Luces de estado no está habilitada. Habilítala aquí o en Integraciones.",
+  "awakeSchedule.lights.intro":
+    "Fawkes puede mostrar lo que hace en una luz de tu propia red. Solo se contacta una luz si la añadiste aquí, permitiste que Fawkes la encienda y la capacidad Luces de estado está habilitada.",
+  "awakeSchedule.lights.limits":
+    "Solo se envían colores fijos, nunca texto. Por ahora solo se admite Elgato Key Light.",
+  "awakeSchedule.lights.capabilityOff":
+    "La capacidad Luces de estado no está habilitada. Habilítala aquí o en Integraciones.",
   "awakeSchedule.lights.enable": "Habilitar",
   "awakeSchedule.lights.empty": "No se añadió ninguna luz.",
   "awakeSchedule.lights.line": "Key Light en {address}",

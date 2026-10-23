@@ -72,7 +72,7 @@ export function FawkesRebirth({
       >
         {children}
       </span>
-      <span className="fawkes-rebirth__status" role="status" aria-live="polite" aria-atomic="true">
+      <span className="fawkes-rebirth__status" aria-live="polite" aria-atomic="true">
         {shown ? t(MESSAGE[shown.kind]) : ""}
       </span>
     </span>

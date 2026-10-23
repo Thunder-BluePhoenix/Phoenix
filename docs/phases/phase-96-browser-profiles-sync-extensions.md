@@ -26,7 +26,7 @@ Make the Phoenix browser yours across devices.
 - `core/api/src/browser-profile-routes.ts` (session token only) under `/api/browser/*`: profile CRUD, per-profile sync opt-in, bookmark HTML import (256 KiB body limit), history, write-only credentials `PUT/DELETE …/credentials/:name`, publish, `POST /api/browser/sync/pull`, sync preview/accept/adopt, extension list/approval/uninstall. Needs a secret store (503 otherwise). Privacy row `browser_profiles`.
 - Sync reuses the Phase 45 `SyncRuntime` only after account sync is configured and the profile opted in; the relay holds only sealed envelopes. Credentials never come back from any route. Approving an extension asks the user (blocks); withdrawing and uninstalling never ask; every `authorize()` is decided by the gateway (fails closed; the kill switch makes it say no).
 - Test: `core/runtime/test/browser-profiles-wiring.test.ts` (10, two Cores sharing a fake relay).
-- Not built: a browser engine, partition purge, an extension runtime or sandbox, signer distribution/revocation. Settings UI in progress (`BrowserProfilesSettings.tsx` does not exist yet).
+- Not built: a browser engine, partition purge, an extension runtime or sandbox, signer distribution/revocation. Settings section: `apps/web/src/components/BrowserProfilesSettings.tsx`.
 
 ## Exit criteria
 

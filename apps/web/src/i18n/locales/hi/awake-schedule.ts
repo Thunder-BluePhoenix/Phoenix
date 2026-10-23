@@ -6,10 +6,13 @@ import type { awakeSchedule as enAwakeSchedule } from "../../en/awake-schedule";
 export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.loading": "लोड हो रहा है…",
   "awakeSchedule.schedule.title": "निर्धारित जागृत रखना",
-  "awakeSchedule.schedule.notAvailable": "निर्धारित जागृत रखना उपलब्ध नहीं है: इस Phoenix Core में OS सीक्रेट स्टोर नहीं है।",
+  "awakeSchedule.schedule.notAvailable":
+    "निर्धारित जागृत रखना उपलब्ध नहीं है: इस Phoenix Core में OS सीक्रेट स्टोर नहीं है।",
   "awakeSchedule.schedule.loadFailed": "निर्धारित जागृत रखना लोड नहीं हो सका।",
-  "awakeSchedule.schedule.intro": "डिफ़ॉल्ट रूप से बंद। इसे चालू करने और हर समय-खंड को सहेजने से पहले आपसे “स्वीकृतियाँ” में पूछा जाता है; चालू रहने पर यह कंप्यूटर आपके सहेजे गए समय-खंडों में जागता रहता है।",
-  "awakeSchedule.schedule.awakeOff": "“जागृत रखें” क्षमता चालू नहीं है, इसलिए कोई भी समय-खंड इस कंप्यूटर को जागृत नहीं रख सकता। इसे “इंटीग्रेशन” में चालू करें।",
+  "awakeSchedule.schedule.intro":
+    "डिफ़ॉल्ट रूप से बंद। इसे चालू करने और हर समय-खंड को सहेजने से पहले आपसे “स्वीकृतियाँ” में पूछा जाता है; चालू रहने पर यह कंप्यूटर आपके सहेजे गए समय-खंडों में जागता रहता है।",
+  "awakeSchedule.schedule.awakeOff":
+    "“जागृत रखें” क्षमता चालू नहीं है, इसलिए कोई भी समय-खंड इस कंप्यूटर को जागृत नहीं रख सकता। इसे “इंटीग्रेशन” में चालू करें।",
   "awakeSchedule.schedule.enable": "मेरे सहेजे गए समय-खंडों में इस कंप्यूटर को जागृत रखें",
   "awakeSchedule.schedule.confirming": "आपकी पुष्टि का इंतज़ार है — “स्वीकृतियाँ” में पुष्टि करें…",
   "awakeSchedule.state.off": "निर्धारित जागृत रखना बंद है।",
@@ -50,11 +53,15 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.add.minBattery": "न्यूनतम बैटरी (%)",
   "awakeSchedule.add.submit": "समय-खंड सहेजें",
   "awakeSchedule.lights.title": "स्टेटस लाइट",
-  "awakeSchedule.lights.notAvailable": "स्टेटस लाइट उपलब्ध नहीं हैं: इस Phoenix Core में OS सीक्रेट स्टोर नहीं है।",
+  "awakeSchedule.lights.notAvailable":
+    "स्टेटस लाइट उपलब्ध नहीं हैं: इस Phoenix Core में OS सीक्रेट स्टोर नहीं है।",
   "awakeSchedule.lights.loadFailed": "स्टेटस लाइट लोड नहीं हो सकीं।",
-  "awakeSchedule.lights.intro": "Fawkes आपके अपने नेटवर्क की किसी लाइट पर दिखा सकता है कि वह क्या कर रहा है। लाइट से तभी संपर्क किया जाता है जब आपने उसे यहाँ जोड़ा हो, Fawkes को उसे जलाने की अनुमति दी हो, और “स्टेटस लाइट” क्षमता चालू हो।",
-  "awakeSchedule.lights.limits": "केवल निश्चित रंग भेजे जाते हैं, कभी कोई टेक्स्ट नहीं। अभी केवल Elgato Key Light समर्थित है।",
-  "awakeSchedule.lights.capabilityOff": "“स्टेटस लाइट” क्षमता चालू नहीं है। इसे यहाँ या “इंटीग्रेशन” में चालू करें।",
+  "awakeSchedule.lights.intro":
+    "Fawkes आपके अपने नेटवर्क की किसी लाइट पर दिखा सकता है कि वह क्या कर रहा है। लाइट से तभी संपर्क किया जाता है जब आपने उसे यहाँ जोड़ा हो, Fawkes को उसे जलाने की अनुमति दी हो, और “स्टेटस लाइट” क्षमता चालू हो।",
+  "awakeSchedule.lights.limits":
+    "केवल निश्चित रंग भेजे जाते हैं, कभी कोई टेक्स्ट नहीं। अभी केवल Elgato Key Light समर्थित है।",
+  "awakeSchedule.lights.capabilityOff":
+    "“स्टेटस लाइट” क्षमता चालू नहीं है। इसे यहाँ या “इंटीग्रेशन” में चालू करें।",
   "awakeSchedule.lights.enable": "चालू करें",
   "awakeSchedule.lights.empty": "कोई लाइट नहीं जोड़ी गई।",
   "awakeSchedule.lights.line": "{address} पर Key Light",

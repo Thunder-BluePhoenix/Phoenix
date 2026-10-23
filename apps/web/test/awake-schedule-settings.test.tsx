@@ -8,8 +8,8 @@ import { StatusLightsSection } from "../src/components/StatusLightsSettings";
 import { PhoenixClient } from "../src/core/client";
 import { CoreProvider } from "../src/core/context";
 import { I18nProvider } from "../src/i18n";
+import { resetActive } from "../src/i18n/store";
 import { fakeApi, type FakeApi } from "./fake-api";
-import { fakeApi } from "./fake-api";
 import { FakeWebSocket } from "./fake-ws";
 import { capability } from "./views-harness";
 
@@ -74,7 +74,7 @@ const awakeSection = async () =>
 const lightsSection = async () =>
   within((await screen.findByRole("heading", { name: "Status lights" })).closest("section")!);
 
-const writes = (api: ReturnType<typeof fakeApi>) => api.calls.filter((c) => c.method !== "GET");
+const writes = (api: FakeApi) => api.calls.filter((c) => c.method !== "GET");
 
 describe("scheduled keep-awake", () => {
   it("starts off, asks only after the box is ticked, and shows the wait for Approvals", async () => {
@@ -87,7 +87,7 @@ describe("scheduled keep-awake", () => {
     await s.findByText("Scheduled keep-awake is off.");
     const box = s.getByRole("checkbox", {
       name: "Keep this computer awake during my saved windows",
-const writes = (api: FakeApi) => api.calls.filter((c) => c.method !== "GET");
+    }) as HTMLInputElement;
     expect(box.checked).toBe(false);
     expect(s.queryByText("Waiting for you to confirm in Approvals…")).toBeNull();
     expect(writes(api)).toEqual([]);
@@ -101,8 +101,9 @@ const writes = (api: FakeApi) => api.calls.filter((c) => c.method !== "GET");
     await act(async () => gate.resolve(view({ enabled: true, state: "idle" })));
     await s.findByText("Scheduled keep-awake is on. No window is running right now.");
     expect(s.queryByText("Waiting for you to confirm in Approvals…")).toBeNull();
-    expect((s.getByRole("checkbox", { name: /Keep this computer awake/ }) as HTMLInputElement).checked)
-      .toBe(true);
+    expect(
+      (s.getByRole("checkbox", { name: /Keep this computer awake/ }) as HTMLInputElement).checked,
+    ).toBe(true);
   });
 
   it("shows a refusal and stays off", async () => {
@@ -211,14 +212,13 @@ const writes = (api: FakeApi) => api.calls.filter((c) => c.method !== "GET");
     fireEvent.click(await s.findByRole("button", { name: "Remove a/b" }));
     await s.findByText("No windows saved.");
     expect(writes(api)).toEqual([
-      { method: "DELETE", path: "/api/scheduled-awake/schedules/a%2Fb", body: undefined },
+      { method: "DELETE", path: "/api/scheduled-awake/schedules/a%2Fb", body: {} },
     ]);
   });
 
   it("describes a window by label, days, times and zone", async () => {
     mount({
-      "GET /api/scheduled-awake": () =>
-        view({ schedules: [{ ...NIGHT, label: "Night shift" }] }),
+      "GET /api/scheduled-awake": () => view({ schedules: [{ ...NIGHT, label: "Night shift" }] }),
     });
     const s = await awakeSection();
     await s.findByText("Night shift");
@@ -256,7 +256,9 @@ const writes = (api: FakeApi) => api.calls.filter((c) => c.method !== "GET");
     });
     const s = await awakeSection();
     fireEvent.click(await s.findByRole("button", { name: "Cancel the current window" }));
-    await waitFor(() => expect(s.queryByRole("button", { name: "Cancel the current window" })).toBeNull());
+    await waitFor(() =>
+      expect(s.queryByRole("button", { name: "Cancel the current window" })).toBeNull(),
+    );
     expect(writes(api)[0]).toEqual({
       method: "POST",
       path: "/api/scheduled-awake/cancel-current",
@@ -294,7 +296,11 @@ const writes = (api: FakeApi) => api.calls.filter((c) => c.method !== "GET");
     await s.findByRole("button", { name: /^Skip night/ });
     expect(writes(api)).toEqual([
       { method: "POST", path: "/api/scheduled-awake/skips", body: { key } },
-      { method: "DELETE", path: `/api/scheduled-awake/skips/${encodeURIComponent(key)}`, body: undefined },
+      {
+        method: "DELETE",
+        path: `/api/scheduled-awake/skips/${encodeURIComponent(key)}`,
+        body: {},
+      },
     ]);
   });
 });

@@ -6,14 +6,18 @@ import type { awakeSchedule as enAwakeSchedule } from "../../en/awake-schedule";
 export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.loading": "جارٍ التحميل…",
   "awakeSchedule.schedule.title": "إبقاء الجهاز مستيقظًا بجدول زمني",
-  "awakeSchedule.schedule.notAvailable": "إبقاء الجهاز مستيقظًا بجدول زمني غير متاح: لا يملك Phoenix Core هذا مخزن أسرار لنظام التشغيل.",
+  "awakeSchedule.schedule.notAvailable":
+    "إبقاء الجهاز مستيقظًا بجدول زمني غير متاح: لا يملك Phoenix Core هذا مخزن أسرار لنظام التشغيل.",
   "awakeSchedule.schedule.loadFailed": "تعذّر تحميل إبقاء الجهاز مستيقظًا بجدول زمني.",
-  "awakeSchedule.schedule.intro": "متوقف افتراضيًا. تشغيله وحفظ كل فترة يطلبان موافقتك أولًا في الموافقات؛ وعند تشغيله يبقى هذا الكمبيوتر مستيقظًا خلال الفترات التي حفظتها.",
-  "awakeSchedule.schedule.awakeOff": "ميزة إبقاء الجهاز مستيقظًا غير مفعّلة، لذا لا تستطيع أي فترة إبقاء هذا الكمبيوتر مستيقظًا. فعّلها في التكاملات.",
+  "awakeSchedule.schedule.intro":
+    "متوقف افتراضيًا. تشغيله وحفظ كل فترة يطلبان موافقتك أولًا في الموافقات؛ وعند تشغيله يبقى هذا الكمبيوتر مستيقظًا خلال الفترات التي حفظتها.",
+  "awakeSchedule.schedule.awakeOff":
+    "ميزة إبقاء الجهاز مستيقظًا غير مفعّلة، لذا لا تستطيع أي فترة إبقاء هذا الكمبيوتر مستيقظًا. فعّلها في التكاملات.",
   "awakeSchedule.schedule.enable": "أبقِ هذا الكمبيوتر مستيقظًا خلال الفترات التي حفظتها",
   "awakeSchedule.schedule.confirming": "بانتظار تأكيدك في الموافقات…",
   "awakeSchedule.state.off": "إبقاء الجهاز مستيقظًا بجدول زمني متوقف.",
-  "awakeSchedule.state.idle": "إبقاء الجهاز مستيقظًا بجدول زمني قيد التشغيل. لا توجد فترة جارية الآن.",
+  "awakeSchedule.state.idle":
+    "إبقاء الجهاز مستيقظًا بجدول زمني قيد التشغيل. لا توجد فترة جارية الآن.",
   "awakeSchedule.state.holding": "يُبقى هذا الكمبيوتر مستيقظًا الآن.",
   "awakeSchedule.state.holdingUntil": "يُبقى هذا الكمبيوتر مستيقظًا حتى {time}.",
   "awakeSchedule.state.waiting": "فترة تنتظر البدء لأن {reason}",
@@ -50,10 +54,13 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.add.minBattery": "الحد الأدنى للبطارية (%)",
   "awakeSchedule.add.submit": "حفظ الفترة",
   "awakeSchedule.lights.title": "أضواء الحالة",
-  "awakeSchedule.lights.notAvailable": "أضواء الحالة غير متاحة: لا يملك Phoenix Core هذا مخزن أسرار لنظام التشغيل.",
+  "awakeSchedule.lights.notAvailable":
+    "أضواء الحالة غير متاحة: لا يملك Phoenix Core هذا مخزن أسرار لنظام التشغيل.",
   "awakeSchedule.lights.loadFailed": "تعذّر تحميل أضواء الحالة.",
-  "awakeSchedule.lights.intro": "يمكن لـ Fawkes عرض ما يفعله على ضوء في شبكتك. لا يُتصل بالضوء إلا إذا أضفته هنا وسمحت لـ Fawkes بإضاءته وكانت ميزة أضواء الحالة مفعّلة.",
-  "awakeSchedule.lights.limits": "تُرسل ألوان ثابتة فقط، ولا يُرسل أي نص أبدًا. يُدعم حاليًا Elgato Key Light فقط.",
+  "awakeSchedule.lights.intro":
+    "يمكن لـ Fawkes عرض ما يفعله على ضوء في شبكتك. لا يُتصل بالضوء إلا إذا أضفته هنا وسمحت لـ Fawkes بإضاءته وكانت ميزة أضواء الحالة مفعّلة.",
+  "awakeSchedule.lights.limits":
+    "تُرسل ألوان ثابتة فقط، ولا يُرسل أي نص أبدًا. يُدعم حاليًا Elgato Key Light فقط.",
   "awakeSchedule.lights.capabilityOff": "ميزة أضواء الحالة غير مفعّلة. فعّلها هنا أو في التكاملات.",
   "awakeSchedule.lights.enable": "تفعيل",
   "awakeSchedule.lights.empty": "لم تُضف أي أضواء.",

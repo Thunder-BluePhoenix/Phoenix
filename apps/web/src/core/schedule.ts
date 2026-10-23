@@ -17,7 +17,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 // ── Scheduled keep-awake ─────────────────────────────────────────────────────
 
 export type ScheduleState = "off" | "idle" | "holding" | "waiting";
-export type ScheduleRecurrence = { kind: "weekly"; days: number[] } | { kind: "once"; date: string };
+export type ScheduleRecurrence =
+  { kind: "weekly"; days: number[] } | { kind: "once"; date: string };
 
 export interface AwakeSchedule {
   id: string;
@@ -59,7 +60,8 @@ function readRecurrence(raw: unknown): ScheduleRecurrence | null {
   if (raw.kind === "once" && typeof raw.date === "string") return { kind: "once", date: raw.date };
   if (raw.kind === "weekly" && Array.isArray(raw.days)) {
     const days = raw.days.filter(
-      (day): day is number => typeof day === "number" && Number.isInteger(day) && day >= 0 && day <= 6,
+      (day): day is number =>
+        typeof day === "number" && Number.isInteger(day) && day >= 0 && day <= 6,
     );
     return { kind: "weekly", days };
   }
@@ -87,8 +89,7 @@ function readSchedule(raw: unknown): AwakeSchedule | null {
     end,
     recurrence,
     requireCharger: rules.requireCharger === true,
-    minBatteryPercent:
-      typeof rules.minBatteryPercent === "number" ? rules.minBatteryPercent : null,
+    minBatteryPercent: typeof rules.minBatteryPercent === "number" ? rules.minBatteryPercent : null,
   };
 }
 
@@ -156,9 +157,7 @@ export const lightBody = (light: ProvisionedLight) => ({
 /** The ids the status-lights capability's `devices` setting allows, from its stored config. */
 export function consentedIds(config: Record<string, unknown> | undefined): string[] {
   const devices = config?.devices;
-  return Array.isArray(devices)
-    ? devices.filter((id): id is string => typeof id === "string")
-    : [];
+  return Array.isArray(devices) ? devices.filter((id): id is string => typeof id === "string") : [];
 }
 
 // ── Loading ──────────────────────────────────────────────────────────────────
@@ -224,7 +223,8 @@ export function formatCalendarDate(date: string, locale: ActiveLocale): string {
   const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
   if (!parts) return date;
   const at = new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])));
-  return new Intl.DateTimeFormat(intlLocale(locale), { dateStyle: "medium", timeZone: "UTC" }).format(
-    at,
-  );
+  return new Intl.DateTimeFormat(intlLocale(locale), {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(at);
 }

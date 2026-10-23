@@ -34,7 +34,7 @@ const WAITING_REASONS: Record<string, MessageKey> = {
 export function ScheduledAwakeSection() {
   const t = useT();
   const { locale } = useLocale();
-  const { data, status, apply, reload } = useCoreResource(SCHEDULED_AWAKE_PATH, readScheduledAwake);
+  const { data, status, apply } = useCoreResource(SCHEDULED_AWAKE_PATH, readScheduledAwake);
   const { run, busy, error } = useAction();
   const [asking, setAsking] = useState(false);
   const [id, setId] = useState("");
@@ -82,7 +82,11 @@ export function ScheduledAwakeSection() {
   };
 
   const cancelCurrent = async () => {
-    if ((await run("POST", `${SCHEDULED_AWAKE_PATH}/cancel-current`)) !== undefined) await reload();
+    const result = await run<{ status?: unknown }>(
+      "POST",
+      `${SCHEDULED_AWAKE_PATH}/cancel-current`,
+    );
+    if (result !== undefined) apply(result.status);
   };
 
   const toggleDay = (day: number, on: boolean) =>
@@ -212,7 +216,9 @@ export function ScheduledAwakeSection() {
                         to: formatMoment(window.endsAt, locale),
                       })}
                     </span>{" "}
-                    {window.skipped && <span className="muted small">{t("awakeSchedule.upcoming.skipped")}</span>}{" "}
+                    {window.skipped && (
+                      <span className="muted small">{t("awakeSchedule.upcoming.skipped")}</span>
+                    )}{" "}
                     <button
                       type="button"
                       className="btn"
@@ -232,7 +238,11 @@ export function ScheduledAwakeSection() {
                           : change("POST", `${SCHEDULED_AWAKE_PATH}/skips`, { key: window.key }))
                       }
                     >
-                      {t(window.skipped ? "awakeSchedule.upcoming.unskip" : "awakeSchedule.upcoming.skip")}
+                      {t(
+                        window.skipped
+                          ? "awakeSchedule.upcoming.unskip"
+                          : "awakeSchedule.upcoming.skip",
+                      )}
                     </button>
                   </li>
                 );

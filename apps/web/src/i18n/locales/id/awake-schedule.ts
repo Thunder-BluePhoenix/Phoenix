@@ -6,14 +6,19 @@ import type { awakeSchedule as enAwakeSchedule } from "../../en/awake-schedule";
 export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.loading": "Memuat…",
   "awakeSchedule.schedule.title": "Jaga tetap aktif terjadwal",
-  "awakeSchedule.schedule.notAvailable": "Jaga tetap aktif terjadwal tidak tersedia: Phoenix Core ini tidak memiliki penyimpanan rahasia OS.",
+  "awakeSchedule.schedule.notAvailable":
+    "Jaga tetap aktif terjadwal tidak tersedia: Phoenix Core ini tidak memiliki penyimpanan rahasia OS.",
   "awakeSchedule.schedule.loadFailed": "Jaga tetap aktif terjadwal tidak dapat dimuat.",
-  "awakeSchedule.schedule.intro": "Mati secara default. Menyalakannya dan menyimpan setiap jendela waktu akan bertanya dulu kepada Anda di Persetujuan; saat menyala, komputer ini tetap aktif selama jendela waktu yang Anda simpan.",
-  "awakeSchedule.schedule.awakeOff": "Kemampuan Jaga tetap aktif belum diaktifkan, jadi tidak ada jendela waktu yang bisa menjaga komputer ini tetap aktif. Aktifkan di Integrasi.",
-  "awakeSchedule.schedule.enable": "Jaga komputer ini tetap aktif selama jendela waktu yang saya simpan",
+  "awakeSchedule.schedule.intro":
+    "Mati secara default. Menyalakannya dan menyimpan setiap jendela waktu akan bertanya dulu kepada Anda di Persetujuan; saat menyala, komputer ini tetap aktif selama jendela waktu yang Anda simpan.",
+  "awakeSchedule.schedule.awakeOff":
+    "Kemampuan Jaga tetap aktif belum diaktifkan, jadi tidak ada jendela waktu yang bisa menjaga komputer ini tetap aktif. Aktifkan di Integrasi.",
+  "awakeSchedule.schedule.enable":
+    "Jaga komputer ini tetap aktif selama jendela waktu yang saya simpan",
   "awakeSchedule.schedule.confirming": "Menunggu konfirmasi Anda di Persetujuan…",
   "awakeSchedule.state.off": "Jaga tetap aktif terjadwal mati.",
-  "awakeSchedule.state.idle": "Jaga tetap aktif terjadwal menyala. Tidak ada jendela waktu yang berjalan saat ini.",
+  "awakeSchedule.state.idle":
+    "Jaga tetap aktif terjadwal menyala. Tidak ada jendela waktu yang berjalan saat ini.",
   "awakeSchedule.state.holding": "Sedang menjaga komputer ini tetap aktif.",
   "awakeSchedule.state.holdingUntil": "Menjaga komputer ini tetap aktif hingga {time}.",
   "awakeSchedule.state.waiting": "Sebuah jendela waktu menunggu untuk dimulai karena {reason}",
@@ -50,11 +55,15 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.add.minBattery": "Baterai minimum (%)",
   "awakeSchedule.add.submit": "Simpan jendela waktu",
   "awakeSchedule.lights.title": "Lampu status",
-  "awakeSchedule.lights.notAvailable": "Lampu status tidak tersedia: Phoenix Core ini tidak memiliki penyimpanan rahasia OS.",
+  "awakeSchedule.lights.notAvailable":
+    "Lampu status tidak tersedia: Phoenix Core ini tidak memiliki penyimpanan rahasia OS.",
   "awakeSchedule.lights.loadFailed": "Lampu status tidak dapat dimuat.",
-  "awakeSchedule.lights.intro": "Fawkes dapat menampilkan apa yang sedang dikerjakannya pada lampu di jaringan Anda sendiri. Lampu hanya dihubungi jika Anda menambahkannya di sini, mengizinkan Fawkes menyalakannya, dan kemampuan Lampu status diaktifkan.",
-  "awakeSchedule.lights.limits": "Hanya warna tetap yang dikirim, tidak pernah teks. Saat ini hanya Elgato Key Light yang didukung.",
-  "awakeSchedule.lights.capabilityOff": "Kemampuan Lampu status belum diaktifkan. Aktifkan di sini atau di Integrasi.",
+  "awakeSchedule.lights.intro":
+    "Fawkes dapat menampilkan apa yang sedang dikerjakannya pada lampu di jaringan Anda sendiri. Lampu hanya dihubungi jika Anda menambahkannya di sini, mengizinkan Fawkes menyalakannya, dan kemampuan Lampu status diaktifkan.",
+  "awakeSchedule.lights.limits":
+    "Hanya warna tetap yang dikirim, tidak pernah teks. Saat ini hanya Elgato Key Light yang didukung.",
+  "awakeSchedule.lights.capabilityOff":
+    "Kemampuan Lampu status belum diaktifkan. Aktifkan di sini atau di Integrasi.",
   "awakeSchedule.lights.enable": "Aktifkan",
   "awakeSchedule.lights.empty": "Belum ada lampu yang ditambahkan.",
   "awakeSchedule.lights.line": "Key Light di {address}",

@@ -43,7 +43,7 @@ function view(props: Props, locale: ActiveLocale = "en") {
   const r = render(ui(props));
   return { ...r, update: (p: Props) => r.rerender(ui(p)) };
 }
-const status = (c: HTMLElement) => c.querySelector("[role=status]")?.textContent;
+const status = (c: HTMLElement) => c.querySelector(".fawkes-rebirth__status")?.textContent;
 const pulse = (c: HTMLElement) => c.querySelector(".fawkes-rebirth__pulse--playing");
 
 describe("FawkesRebirth", () => {

@@ -51,7 +51,7 @@ The `contentScript` text is data. Only a host-side sandbox that has received a p
 - **Extension signers** come only from `RuntimeOptions.extensionSigners` (default none). No route can add one, so by default no extension can be installed. Installing checks the Ed25519 signature (`POST …/extensions`).
 - **Approval.** Approving an extension asks the user through the permission gateway and the request blocks. Withdrawing approval and uninstalling never ask. Every `authorize()` is decided by the gateway; it fails closed, and the kill switch makes it answer no.
 - **Privacy.** Profiles, bookmarks, history and credential names are privacy row `browser_profiles`.
-- **Settings section:** Settings UI in progress (`apps/web/src/components/BrowserProfilesSettings.tsx` does not exist yet).
+- **Settings section:** `apps/web/src/components/BrowserProfilesSettings.tsx` (profiles, sync opt-in, import, publish, other devices, extensions).
 
 Still the host's job: honor `partition` in a webview and purge it on delete, and provide the signer key map from Phoenix-controlled configuration.
 

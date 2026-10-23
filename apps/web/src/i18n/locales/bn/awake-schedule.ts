@@ -6,10 +6,13 @@ import type { awakeSchedule as enAwakeSchedule } from "../../en/awake-schedule";
 export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.loading": "লোড হচ্ছে…",
   "awakeSchedule.schedule.title": "নির্ধারিত জাগ্রত রাখা",
-  "awakeSchedule.schedule.notAvailable": "নির্ধারিত জাগ্রত রাখা উপলব্ধ নয়: এই Phoenix Core-এ OS সিক্রেট স্টোর নেই।",
+  "awakeSchedule.schedule.notAvailable":
+    "নির্ধারিত জাগ্রত রাখা উপলব্ধ নয়: এই Phoenix Core-এ OS সিক্রেট স্টোর নেই।",
   "awakeSchedule.schedule.loadFailed": "নির্ধারিত জাগ্রত রাখা লোড করা যায়নি।",
-  "awakeSchedule.schedule.intro": "ডিফল্টভাবে বন্ধ। এটি চালু করা এবং প্রতিটি সময়সীমা সংরক্ষণ করার আগে “অনুমোদন”-এ আপনার কাছে জানতে চাওয়া হয়; চালু থাকলে এই কম্পিউটার আপনার সংরক্ষিত সময়সীমায় জেগে থাকে।",
-  "awakeSchedule.schedule.awakeOff": "“জাগ্রত রাখুন” সক্ষমতা চালু নেই, তাই কোনো সময়সীমা এই কম্পিউটারকে জাগ্রত রাখতে পারে না। এটি “ইন্টিগ্রেশন”-এ চালু করুন।",
+  "awakeSchedule.schedule.intro":
+    "ডিফল্টভাবে বন্ধ। এটি চালু করা এবং প্রতিটি সময়সীমা সংরক্ষণ করার আগে “অনুমোদন”-এ আপনার কাছে জানতে চাওয়া হয়; চালু থাকলে এই কম্পিউটার আপনার সংরক্ষিত সময়সীমায় জেগে থাকে।",
+  "awakeSchedule.schedule.awakeOff":
+    "“জাগ্রত রাখুন” সক্ষমতা চালু নেই, তাই কোনো সময়সীমা এই কম্পিউটারকে জাগ্রত রাখতে পারে না। এটি “ইন্টিগ্রেশন”-এ চালু করুন।",
   "awakeSchedule.schedule.enable": "আমার সংরক্ষিত সময়সীমায় এই কম্পিউটারকে জাগ্রত রাখুন",
   "awakeSchedule.schedule.confirming": "“অনুমোদন”-এ আপনার নিশ্চিতকরণের অপেক্ষায়…",
   "awakeSchedule.state.off": "নির্ধারিত জাগ্রত রাখা বন্ধ আছে।",
@@ -50,11 +53,15 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.add.minBattery": "ন্যূনতম ব্যাটারি (%)",
   "awakeSchedule.add.submit": "সময়সীমা সংরক্ষণ করুন",
   "awakeSchedule.lights.title": "স্ট্যাটাস লাইট",
-  "awakeSchedule.lights.notAvailable": "স্ট্যাটাস লাইট উপলব্ধ নয়: এই Phoenix Core-এ OS সিক্রেট স্টোর নেই।",
+  "awakeSchedule.lights.notAvailable":
+    "স্ট্যাটাস লাইট উপলব্ধ নয়: এই Phoenix Core-এ OS সিক্রেট স্টোর নেই।",
   "awakeSchedule.lights.loadFailed": "স্ট্যাটাস লাইট লোড করা যায়নি।",
-  "awakeSchedule.lights.intro": "Fawkes কী করছে তা আপনার নিজের নেটওয়ার্কের একটি লাইটে দেখাতে পারে। লাইটের সাথে তখনই যোগাযোগ করা হয় যখন আপনি সেটি এখানে যোগ করেছেন, Fawkes-কে জ্বালানোর অনুমতি দিয়েছেন এবং “স্ট্যাটাস লাইট” সক্ষমতা চালু আছে।",
-  "awakeSchedule.lights.limits": "শুধু নির্দিষ্ট রং পাঠানো হয়, কখনও কোনো লেখা নয়। এখন পর্যন্ত শুধু Elgato Key Light সমর্থিত।",
-  "awakeSchedule.lights.capabilityOff": "“স্ট্যাটাস লাইট” সক্ষমতা চালু নেই। এখানে বা “ইন্টিগ্রেশন”-এ চালু করুন।",
+  "awakeSchedule.lights.intro":
+    "Fawkes কী করছে তা আপনার নিজের নেটওয়ার্কের একটি লাইটে দেখাতে পারে। লাইটের সাথে তখনই যোগাযোগ করা হয় যখন আপনি সেটি এখানে যোগ করেছেন, Fawkes-কে জ্বালানোর অনুমতি দিয়েছেন এবং “স্ট্যাটাস লাইট” সক্ষমতা চালু আছে।",
+  "awakeSchedule.lights.limits":
+    "শুধু নির্দিষ্ট রং পাঠানো হয়, কখনও কোনো লেখা নয়। এখন পর্যন্ত শুধু Elgato Key Light সমর্থিত।",
+  "awakeSchedule.lights.capabilityOff":
+    "“স্ট্যাটাস লাইট” সক্ষমতা চালু নেই। এখানে বা “ইন্টিগ্রেশন”-এ চালু করুন।",
   "awakeSchedule.lights.enable": "চালু করুন",
   "awakeSchedule.lights.empty": "কোনো লাইট যোগ করা হয়নি।",
   "awakeSchedule.lights.line": "{address}-এ Key Light",

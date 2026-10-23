@@ -6,14 +6,18 @@ import type { awakeSchedule as enAwakeSchedule } from "../../en/awake-schedule";
 export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.loading": "Carregando…",
   "awakeSchedule.schedule.title": "Manter ativo por agenda",
-  "awakeSchedule.schedule.notAvailable": "Manter ativo por agenda não está disponível: este Phoenix Core não tem um cofre de segredos do sistema.",
+  "awakeSchedule.schedule.notAvailable":
+    "Manter ativo por agenda não está disponível: este Phoenix Core não tem um cofre de segredos do sistema.",
   "awakeSchedule.schedule.loadFailed": "Não foi possível carregar o manter ativo por agenda.",
-  "awakeSchedule.schedule.intro": "Desativado por padrão. Ativá-lo e salvar cada janela perguntam antes em Aprovações; enquanto estiver ativado, este computador fica acordado durante as janelas salvas.",
-  "awakeSchedule.schedule.awakeOff": "A capacidade Manter ativo não está habilitada, então nenhuma janela pode manter este computador acordado. Habilite-a em Integrações.",
+  "awakeSchedule.schedule.intro":
+    "Desativado por padrão. Ativá-lo e salvar cada janela perguntam antes em Aprovações; enquanto estiver ativado, este computador fica acordado durante as janelas salvas.",
+  "awakeSchedule.schedule.awakeOff":
+    "A capacidade Manter ativo não está habilitada, então nenhuma janela pode manter este computador acordado. Habilite-a em Integrações.",
   "awakeSchedule.schedule.enable": "Manter este computador acordado durante minhas janelas salvas",
   "awakeSchedule.schedule.confirming": "Aguardando sua confirmação em Aprovações…",
   "awakeSchedule.state.off": "Manter ativo por agenda está desativado.",
-  "awakeSchedule.state.idle": "Manter ativo por agenda está ativado. Nenhuma janela está em andamento agora.",
+  "awakeSchedule.state.idle":
+    "Manter ativo por agenda está ativado. Nenhuma janela está em andamento agora.",
   "awakeSchedule.state.holding": "Mantendo este computador acordado agora.",
   "awakeSchedule.state.holdingUntil": "Mantendo este computador acordado até {time}.",
   "awakeSchedule.state.waiting": "Uma janela está aguardando para começar porque {reason}",
@@ -50,11 +54,15 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.add.minBattery": "Bateria mínima (%)",
   "awakeSchedule.add.submit": "Salvar janela",
   "awakeSchedule.lights.title": "Luzes de status",
-  "awakeSchedule.lights.notAvailable": "As luzes de status não estão disponíveis: este Phoenix Core não tem um cofre de segredos do sistema.",
+  "awakeSchedule.lights.notAvailable":
+    "As luzes de status não estão disponíveis: este Phoenix Core não tem um cofre de segredos do sistema.",
   "awakeSchedule.lights.loadFailed": "Não foi possível carregar as luzes de status.",
-  "awakeSchedule.lights.intro": "O Fawkes pode mostrar o que está fazendo em uma luz da sua própria rede. Uma luz só é contatada se você a adicionou aqui, permitiu que o Fawkes a acenda e a capacidade Luzes de status está habilitada.",
-  "awakeSchedule.lights.limits": "Apenas cores fixas são enviadas, nunca texto. Por enquanto só há suporte para o Elgato Key Light.",
-  "awakeSchedule.lights.capabilityOff": "A capacidade Luzes de status não está habilitada. Habilite-a aqui ou em Integrações.",
+  "awakeSchedule.lights.intro":
+    "O Fawkes pode mostrar o que está fazendo em uma luz da sua própria rede. Uma luz só é contatada se você a adicionou aqui, permitiu que o Fawkes a acenda e a capacidade Luzes de status está habilitada.",
+  "awakeSchedule.lights.limits":
+    "Apenas cores fixas são enviadas, nunca texto. Por enquanto só há suporte para o Elgato Key Light.",
+  "awakeSchedule.lights.capabilityOff":
+    "A capacidade Luzes de status não está habilitada. Habilite-a aqui ou em Integrações.",
   "awakeSchedule.lights.enable": "Habilitar",
   "awakeSchedule.lights.empty": "Nenhuma luz adicionada.",
   "awakeSchedule.lights.line": "Key Light em {address}",

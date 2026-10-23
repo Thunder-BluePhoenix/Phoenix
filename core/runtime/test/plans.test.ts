@@ -712,10 +712,12 @@ describe("approve and create are user routes only", () => {
     );
     // Plan and workflow approval/authorisation must never be a tool. Capabilities for outside
     // services (n8n) may have their own approval-gated actions that merely mention a workflow.
+    // status-lights.revoke only stops writing to one light (it removes access, never grants any).
     expect(
       commands.filter(
         (c) =>
-          /approve|authori[sz]e|revoke|plans?\.create|plans?\.preview/i.test(c) ||
+          (c !== "status-lights.revoke" &&
+            /approve|authori[sz]e|revoke|plans?\.create|plans?\.preview/i.test(c)) ||
           /^workflows?\./i.test(c),
       ),
     ).toEqual([]);

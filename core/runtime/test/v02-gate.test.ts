@@ -234,6 +234,7 @@ describe("v0.2 gate: several integrations, one protocol", () => {
     // hardware, agent launching, and tracker writes need a separate external signal.
     const ids = [
       ...builtinCapabilities("prod").map((module) => module.manifest.id),
+      "chat-approvals",
       "capture-microphone",
       "capture-screen",
       "mock",

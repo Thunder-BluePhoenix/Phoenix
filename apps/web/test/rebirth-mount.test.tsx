@@ -51,7 +51,7 @@ async function flush(): Promise<void> {
 }
 
 const announcement = (container: HTMLElement) =>
-  container.querySelector(".fawkes-rebirth [role=status]")?.textContent;
+  container.querySelector(".fawkes-rebirth__status")?.textContent;
 
 describe("the avatar wrapped in the rebirth celebration", () => {
   it("announces a rebirth Core pushed, and draws nothing before one", async () => {
