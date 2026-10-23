@@ -52,7 +52,7 @@ An independent static review (read-only, not a human audit) was followed by fixe
 
 ### What was not built
 
-Attaching to a real commit or PR (copy-only); a fail-closed mode; detector patterns for Stripe, JWT, GitLab and npm tokens; the guard in the `claude-hooks` and `codex-hooks` printers.
+Attaching to a real commit or PR (copy-only); a fail-closed mode. Added later: detector patterns for Stripe live keys, GitLab personal access tokens, npm tokens and JWTs, and the guard in the `claude-hooks` and `codex-hooks` printers (`--no-guard` omits it). Both are tested with fake secrets only.
 
 ### What was not run
 

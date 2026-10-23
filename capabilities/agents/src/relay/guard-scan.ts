@@ -24,6 +24,10 @@ export const GUARD_KINDS = [
   "slack_token",
   "aws_access_key",
   "private_key",
+  "stripe_key",
+  "gitlab_token",
+  "npm_token",
+  "jwt",
   "secret_assignment",
 ] as const;
 export type GuardKind = (typeof GUARD_KINDS)[number];

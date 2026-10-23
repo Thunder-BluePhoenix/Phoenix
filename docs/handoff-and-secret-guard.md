@@ -28,8 +28,10 @@ The deny output follows the documented hook contracts: the script exits `0` and 
 ([Claude Code hooks](https://code.claude.com/docs/en/hooks), [Codex hooks](https://developers.openai.com/codex/hooks)).
 It never prints `allow`, so the agent's own permission prompt is not bypassed.
 
-`phoenix-agent claude-hooks` / `codex-hooks` (the printers for people who edit config by hand) do **not** include the
-guard. Only the installer does.
+`phoenix-agent claude-hooks` / `codex-hooks` (the printers for people who edit config by hand) include the
+guard as a `PreToolUse` group with no matcher, as the installer does. `--no-guard` leaves it out. The installer and
+the printers build the group from the same function, so they cannot drift apart. The printed Codex block was checked
+against the documented shape only, never run in a real Codex.
 
 ### What it looks at
 
@@ -52,7 +54,10 @@ guard. Only the installer does.
   The command is read in full whatever its length; a very long command that mentions `commit` or `push` still
   gathers the staged diff.
 
-Detector kinds: `bearer_token`, `github_token`, `api_key`, `slack_token`, `aws_access_key`, `private_key`, and the
+Detector kinds: `bearer_token`, `github_token`, `api_key`, `slack_token`, `aws_access_key`, `private_key`,
+`stripe_key` (live `sk_live_` / `rk_live_` keys; test-mode keys are deliberately not matched), `gitlab_token`
+(`glpat-`), `npm_token` (`npm_` plus 36 characters), `jwt` (three dot-separated parts, the first two starting
+`eyJ`), and the
 guard-only `secret_assignment` (a secret-named variable assigned a long random-looking value). These are heuristics:
 they miss secrets that look like ordinary text and can flag test fixtures.
 
@@ -171,8 +176,9 @@ as text.
 - Detectors are heuristics. The guard is a safety net, not a guarantee, and it is bypassed by a command run outside
   an agent with the hook installed.
 - **The guard is not tamper-resistant.** An agent that can edit its own hook configuration (for example
-  `~/.claude/settings.json`) or the Phoenix checkout can remove or change the hook. The detector has few patterns
-  (six value patterns plus one assignment rule); a secret it does not recognise is not blocked.
+  `~/.claude/settings.json`) or the Phoenix checkout can remove or change the hook. The detector has ten value patterns
+  plus one assignment rule; a secret it does not recognise (Stripe test keys, GitLab deploy tokens, PyPI or cloud
+  tokens other than AWS access keys) is not blocked.
 - **The override card text is partly attacker-chosen.** It names finding kinds and locations (file names and line
   numbers from the agent's own diff or tool input). Locations are cleaned of control characters and anything that looks
   like a secret, and are clipped, but a file name can still say something misleading. The decision is bound to the

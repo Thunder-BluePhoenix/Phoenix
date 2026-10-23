@@ -589,11 +589,30 @@ describe("phoenix-agent claude-hooks / codex-hooks output", () => {
     expect(permission.command).toContain("--timeout-ms 120000");
     expect(permission.timeout).toBe(130);
     expect(hooks.PreToolUse![0]!.matcher).toBe("AskUserQuestion");
+    // The secret guard has no matcher, so it reads every tool's input.
+    const guard = hooks.PreToolUse![1]!;
+    expect(guard.matcher).toBeUndefined();
+    expect(guard.hooks[0]!.command).toContain("guard-hook.ts");
+    expect(guard.hooks[0]!.command).toContain("--agent claude-code");
+    expect(guard.hooks[0]!.timeout).toBe(130);
   });
 
-  it("--no-approvals prints only the observe-only hooks", async () => {
-    const { out } = await capture(["claude-hooks", "--no-approvals"]);
-    expect(Object.keys(entries(JSON.parse(out)))).not.toContain("PermissionRequest");
+  it("--no-approvals still prints the secret guard, and --no-guard drops only the guard", async () => {
+    const noApprovals = entries(
+      JSON.parse((await capture(["claude-hooks", "--no-approvals"])).out),
+    );
+    expect(Object.keys(noApprovals)).not.toContain("PermissionRequest");
+    expect(noApprovals.PreToolUse).toHaveLength(1);
+    expect(noApprovals.PreToolUse![0]!.hooks[0]!.command).toContain("guard-hook.ts");
+
+    const noGuard = entries(JSON.parse((await capture(["claude-hooks", "--no-guard"])).out));
+    expect(noGuard.PreToolUse).toHaveLength(1);
+    expect(noGuard.PreToolUse![0]!.matcher).toBe("AskUserQuestion");
+
+    const neither = entries(
+      JSON.parse((await capture(["claude-hooks", "--no-approvals", "--no-guard"])).out),
+    );
+    expect(Object.keys(neither)).not.toContain("PreToolUse");
   });
 
   it("--approval-timeout-ms changes the decision timeout and the hook timeout together", async () => {
@@ -603,12 +622,21 @@ describe("phoenix-agent claude-hooks / codex-hooks output", () => {
     expect(permission.timeout).toBe(55);
   });
 
-  it("codex-hooks prints the PermissionRequest hook for codex", async () => {
+  it("codex-hooks prints the PermissionRequest hook and the secret guard for codex", async () => {
     const { code, out } = await capture(["codex-hooks"]);
     expect(code).toBe(0);
     const hooks = entries(JSON.parse(out));
-    expect(Object.keys(hooks)).toEqual(["PermissionRequest"]);
+    expect(Object.keys(hooks).sort()).toEqual(["PermissionRequest", "PreToolUse"]);
     expect(hooks.PermissionRequest![0]!.hooks[0]!.command).toContain("--agent codex");
+    expect(hooks.PreToolUse![0]!.matcher).toBeUndefined();
+    const guard = hooks.PreToolUse![0]!.hooks[0]!.command;
+    expect(guard).toContain("guard-hook.ts");
+    expect(guard).toContain("--agent codex");
+  });
+
+  it("codex-hooks --no-guard prints the PermissionRequest hook only", async () => {
+    const { out } = await capture(["codex-hooks", "--no-guard"]);
+    expect(Object.keys(entries(JSON.parse(out)))).toEqual(["PermissionRequest"]);
   });
 
   it("rejects a timeout outside 5 s..10 min", async () => {

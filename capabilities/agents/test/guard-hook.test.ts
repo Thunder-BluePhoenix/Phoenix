@@ -16,7 +16,11 @@ import {
   FAKE_AWS_KEY,
   FAKE_BEARER,
   FAKE_GITHUB_TOKEN,
+  FAKE_GITLAB_TOKEN,
+  FAKE_JWT,
+  FAKE_NPM_TOKEN,
   FAKE_OPENAI_KEY,
+  FAKE_STRIPE_KEY,
 } from "../../../protocol/testing/fake-secrets";
 import type { ApprovalOutcome } from "../src/approval-client";
 import type { ApprovalRequest } from "../src/approval-map";
@@ -109,12 +113,27 @@ describe("detector kinds", () => {
     expect(GUARD_KINDS.length).toBe(SECRET_VALUE_PATTERNS.length + 1);
   });
 
+  it("does not flag look-alikes that are not credentials", () => {
+    const lookalikes = [
+      join2("sk_", "test_", "abcdefghijklmnop0123"), // Stripe test mode
+      join2("np", "m_", "short"),
+      join2("gl", "pat-", "short"),
+      join2("ey", "Jhbgcio.not-a-jwt"), // two parts only
+      "see npm_config and glpat in the docs",
+    ];
+    for (const text of lookalikes) expect(scanText(text, "x")).toEqual([]);
+  });
+
   it.each([
     ["bearer_token", FAKE_BEARER],
     ["github_token", FAKE_GITHUB_TOKEN],
     ["api_key", FAKE_OPENAI_KEY],
     ["aws_access_key", FAKE_AWS_KEY],
     ["private_key", PEM],
+    ["stripe_key", FAKE_STRIPE_KEY],
+    ["gitlab_token", FAKE_GITLAB_TOKEN],
+    ["npm_token", FAKE_NPM_TOKEN],
+    ["jwt", FAKE_JWT],
     ["slack_token", join2("xo", "xb-1234567890-abcdefghij")],
     ["secret_assignment", ASSIGNMENT],
   ])("finds %s and reports only a kind and a place", (kind, secret) => {

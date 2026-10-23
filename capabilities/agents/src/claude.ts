@@ -98,21 +98,46 @@ export interface ClaudeApprovalHooks {
   timeoutMs?: number;
 }
 
+/** The secret guard (Phase 79): the command that runs guard-hook.ts and the timeout it was built with. */
+export interface GuardHook {
+  command: string;
+  timeoutMs?: number;
+}
+
+/** The `PreToolUse` group of the secret guard: no matcher, because it reads every tool's input. */
+export function guardGroup(guard: GuardHook, extra: Record<string, unknown> = {}): unknown[] {
+  return [
+    {
+      hooks: [
+        {
+          type: "command",
+          command: guard.command,
+          timeout: approvalHookTimeoutSeconds(guard.timeoutMs ?? APPROVAL_TIMEOUT.default),
+          ...extra,
+        },
+      ],
+    },
+  ];
+}
+
 /**
  * The `hooks` object for ~/.claude/settings.json; `command` is run for every followed hook
  * (observe-only, 5 s). With `approvals`, two more entries wait for a decision from Phoenix:
  * `PermissionRequest`, and `PreToolUse` limited to `AskUserQuestion`. Their `timeout` (seconds)
  * is the decision timeout plus 10 s, so the hook gives up (fail open) before Claude Code does.
+ * With `guard`, a `PreToolUse` group without a matcher runs the secret guard for every tool call.
  */
 export function claudeHooksConfig(
   command: string,
   approvals?: ClaudeApprovalHooks,
+  guard?: GuardHook,
 ): Record<string, unknown> {
   const entry = [{ hooks: [{ type: "command", command, timeout: 5 }] }];
   const observed = Object.fromEntries(Object.keys(CLAUDE_HOOK_STATES).map((name) => [name, entry]));
   // PostToolUse emits the step for each completed tool; PreToolUse remains reserved for
   // AskUserQuestion approvals so a tool is not counted twice.
-  if (!approvals) return { hooks: observed };
+  const guarded = guard ? { PreToolUse: guardGroup(guard) } : {};
+  if (!approvals) return { hooks: { ...observed, ...guarded } };
   const handler = {
     type: "command",
     command: approvals.command,
@@ -122,7 +147,10 @@ export function claudeHooksConfig(
     hooks: {
       ...observed,
       PermissionRequest: [{ hooks: [handler] }],
-      PreToolUse: [{ matcher: "AskUserQuestion", hooks: [handler] }],
+      PreToolUse: [
+        { matcher: "AskUserQuestion", hooks: [handler] },
+        ...(guard ? guardGroup(guard) : []),
+      ],
     },
   };
 }

@@ -24,6 +24,7 @@ import {
   type InputSummarizer,
   type InputSummary,
 } from "./approval-map";
+import { guardGroup, type GuardHook } from "./claude";
 import { isRecord } from "./guards";
 
 export const CODEX_AGENT = "codex";
@@ -61,11 +62,14 @@ export const SUMMARIZERS: Readonly<Record<string, InputSummarizer>> = {
 
 /**
  * The `hooks` object for ~/.codex/hooks.json (or `[hooks]` in config.toml). Printed, never written.
- * `timeout` is in seconds and is the decision timeout plus 10 s.
+ * `timeout` is in seconds and is the decision timeout plus 10 s. With `guard`, a `PreToolUse` group
+ * without a matcher runs the Phase 79 secret guard for every tool call (Codex's `PreToolUse` takes the
+ * same deny shape, per its published hooks documentation; never run against a real Codex).
  */
 export function codexHooksConfig(
   command: string,
   timeoutMs: number = APPROVAL_TIMEOUT.default,
+  guard?: GuardHook,
 ): Record<string, unknown> {
   return {
     hooks: {
@@ -81,6 +85,9 @@ export function codexHooksConfig(
           ],
         },
       ],
+      ...(guard
+        ? { PreToolUse: guardGroup(guard, { statusMessage: "Checking for secrets" }) }
+        : {}),
     },
   };
 }

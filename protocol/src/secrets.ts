@@ -13,6 +13,13 @@ export const SECRET_VALUE_PATTERNS: readonly RegExp[] = [
   /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/,
   /\bAKIA[0-9A-Z]{16}\b/,
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+  // Appended in this order: capabilities/agents guard-scan.ts names each entry by position.
+  // Live and restricted live Stripe keys; test-mode keys (sk_test_) are not matched on purpose.
+  /\b[sr]k_live_[A-Za-z0-9]{16,}\b/,
+  /\bglpat-[A-Za-z0-9_-]{20,}\b/,
+  /\bnpm_[A-Za-z0-9]{36}\b/,
+  // A JSON Web Token: header and payload are base64url JSON (both start "eyJ"), then a signature.
+  /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/,
 ];
 
 function normaliseKey(key: string): string {

@@ -164,42 +164,40 @@ const flat = (events: Readonly<Record<string, readonly unknown[]>>): HookSpec =>
 const group = (handler: Record<string, unknown>) => [{ hooks: [handler] }];
 
 const claudeSpec = (ctx: AdapterContext): HookSpec => {
-  const config = claudeHooksConfig(ctx.commands.claudeState(), {
-    command: ctx.commands.approval("claude-code", APPROVAL_TIMEOUT.default),
-    timeoutMs: APPROVAL_TIMEOUT.default,
-  });
-  const hooks = isRecord(config.hooks) ? (config.hooks as Record<string, unknown[]>) : {};
   // Phase 79: the secret guard runs for EVERY PreToolUse (no matcher) next to the AskUserQuestion
   // approval group. Both are Phoenix's, so install/repair/uninstall treat them as one set.
-  const guard = group({
-    type: "command",
-    command: ctx.commands.guard("claude-code", APPROVAL_TIMEOUT.default),
-    timeout: approvalHookTimeoutSeconds(APPROVAL_TIMEOUT.default),
-  });
-  return grouped({ ...hooks, PreToolUse: [...(hooks.PreToolUse ?? []), ...guard] });
+  const config = claudeHooksConfig(
+    ctx.commands.claudeState(),
+    {
+      command: ctx.commands.approval("claude-code", APPROVAL_TIMEOUT.default),
+      timeoutMs: APPROVAL_TIMEOUT.default,
+    },
+    {
+      command: ctx.commands.guard("claude-code", APPROVAL_TIMEOUT.default),
+      timeoutMs: APPROVAL_TIMEOUT.default,
+    },
+  );
+  return grouped(isRecord(config.hooks) ? (config.hooks as Record<string, unknown[]>) : {});
 };
 
 const codexSpec = (ctx: AdapterContext): HookSpec => {
-  const approval = codexHooksConfig(ctx.commands.approval("codex", APPROVAL_TIMEOUT.default));
+  const approval = codexHooksConfig(
+    ctx.commands.approval("codex", APPROVAL_TIMEOUT.default),
+    APPROVAL_TIMEOUT.default,
+    { command: ctx.commands.guard("codex", APPROVAL_TIMEOUT.default) },
+  );
   const observe = group({ type: "command", command: ctx.commands.generic("codex"), timeout: 5 });
-  const permission = isRecord(approval.hooks)
-    ? (approval.hooks.PermissionRequest as unknown[])
-    : [];
+  const codexHooks = isRecord(approval.hooks) ? approval.hooks : {};
   return grouped({
     SessionStart: observe,
     UserPromptSubmit: observe,
     PostToolUse: observe,
     Stop: observe,
     SessionEnd: observe,
-    PermissionRequest: permission,
+    PermissionRequest: codexHooks.PermissionRequest as unknown[],
     // Phase 79: Codex's PreToolUse takes the same deny shape (developers.openai.com/codex/hooks).
     // No matcher: the guard reads every tool's input. UNVERIFIED against a real Codex.
-    PreToolUse: group({
-      type: "command",
-      command: ctx.commands.guard("codex", APPROVAL_TIMEOUT.default),
-      timeout: approvalHookTimeoutSeconds(APPROVAL_TIMEOUT.default),
-      statusMessage: "Checking for secrets",
-    }),
+    PreToolUse: codexHooks.PreToolUse as unknown[],
   });
 };
 

@@ -12,7 +12,14 @@ import {
   PROTOCOL_VERSION,
   validateEvent,
 } from "../src";
-import { FAKE_BEARER, FAKE_GITHUB_TOKEN } from "../testing/fake-secrets";
+import {
+  FAKE_BEARER,
+  FAKE_GITHUB_TOKEN,
+  FAKE_GITLAB_TOKEN,
+  FAKE_JWT,
+  FAKE_NPM_TOKEN,
+  FAKE_STRIPE_KEY,
+} from "../testing/fake-secrets";
 
 const fixtures = JSON.parse(
   readFileSync(new URL("../fixtures/appendix-a.events.json", import.meta.url), "utf8"),
@@ -89,6 +96,19 @@ describe("no secrets in events", () => {
       "$.a[0].password",
       "$.b",
     ]);
+  });
+
+  it.each([
+    ["Stripe live key", FAKE_STRIPE_KEY],
+    ["GitLab token", FAKE_GITLAB_TOKEN],
+    ["npm token", FAKE_NPM_TOKEN],
+    ["JWT", FAKE_JWT],
+  ])("finds a %s in an event payload", (_name, secret) => {
+    expect(findSecrets({ note: `value ${secret} here` })).toEqual(["$.note"]);
+  });
+
+  it("does not flag a Stripe test key or a two-part dotted string", () => {
+    expect(findSecrets({ a: "sk_test_abcdefghijklmnop0123", b: "eyJhbGciOi.abc" })).toEqual([]);
   });
 
   it("does not flag ordinary words", () => {
