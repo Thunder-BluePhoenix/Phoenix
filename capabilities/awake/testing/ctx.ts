@@ -23,11 +23,16 @@ const quiet = {
   },
 };
 
-/** A capability context that records events; `abort()` plays disable / Core exit. */
+/**
+ * A capability context that records events. Like the manager's, it refuses to publish once its
+ * signal is aborted. `controller.abort()` plays disable / Core exit; `failEmit` plays a bus that
+ * rejects (`result`) or throws (`throw`) on publish.
+ */
 export class FakeContext {
   readonly controller = new AbortController();
   readonly events: EmittedEvent[] = [];
   config: Record<string, unknown> = {};
+  failEmit: "result" | "throw" | undefined;
 
   get ctx(): CapabilityContext {
     return {
@@ -37,6 +42,9 @@ export class FakeContext {
       signal: this.controller.signal,
       secret: () => Promise.resolve(undefined),
       emit: (event) => {
+        if (this.failEmit === "throw") throw new Error("bus exploded");
+        if (this.failEmit === "result" || this.controller.signal.aborted)
+          return { ok: false, error: new Error("not published") } as never;
         this.events.push(event as EmittedEvent);
         // The bus's success record has fields no Awake code reads; `never` stands in for it.
         return { ok: true } as never;
@@ -64,8 +72,8 @@ export interface Rig {
   module: CapabilityModule;
   battery: { reading: BatteryReading; reads: number };
   call(command: string, input?: unknown): Promise<unknown>;
-  /** Core exit / disable. */
-  disable(): Promise<void>;
+  /** Disable / Core exit as the manager runs it: `stopping`, then the abort, then `shutdown`. */
+  disable(reason?: string): Promise<void>;
 }
 
 export interface RigOptions extends AwakeCapabilityOptions {
@@ -110,7 +118,8 @@ export async function rig(options: RigOptions = {}): Promise<Rig> {
       await settle();
       return result;
     },
-    async disable() {
+    async disable(reason = "user") {
+      module.stopping?.(fake.ctx, reason);
       fake.controller.abort();
       await module.shutdown?.(fake.ctx);
       await settle();

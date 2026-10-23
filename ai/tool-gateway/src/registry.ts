@@ -29,14 +29,18 @@ const EMPTY_INPUT: Record<string, unknown> = {
   maxProperties: 0,
 };
 
-/** Manifests persisted by the capability manager (builtin and external), for the runtime wiring. */
+/**
+ * Manifests persisted by the capability manager (builtin and external), for the runtime wiring.
+ * These rows were validated when they were registered (external ones without the first-party
+ * allowance for the reserved `agent.safety` namespace), so the overlap is not re-judged here.
+ */
 export function manifestsFromDatabase(db: Database): CapabilityManifest[] {
   const rows = db.prepare("SELECT manifest FROM capabilities").all() as unknown as {
     manifest: string;
   }[];
   const out: CapabilityManifest[] = [];
   for (const row of rows) {
-    const result = validateManifest(JSON.parse(row.manifest));
+    const result = validateManifest(JSON.parse(row.manifest), { allowReservedEventOverlap: true });
     if (result.ok) out.push(result.manifest);
   }
   return out;

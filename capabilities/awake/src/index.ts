@@ -44,6 +44,7 @@ import {
   type AwakeEnv,
   type AwakeModule,
   type BatteryReading,
+  type SessionEndReason,
 } from "./system";
 
 export * from "./battery";
@@ -360,14 +361,19 @@ export function createAwakeCapability(options: AwakeCapabilityOptions = {}): Cap
         newId: options.newId ?? (() => `awk_${crypto.randomUUID().replaceAll("-", "")}`),
         emit(type, fields) {
           const reason = fields.reason;
-          const result = ctx.emit({
-            event_type: type,
-            severity: reason !== undefined && WARNING_REASONS.has(reason) ? "warning" : "info",
-            subject: "Keep awake",
-            correlation_id: fields.session_id,
-            payload: eventPayload(fields),
-          });
-          if (!result.ok) ctx.logger.warn("awake event not published", { type });
+          try {
+            const result = ctx.emit({
+              event_type: type,
+              severity: reason !== undefined && WARNING_REASONS.has(reason) ? "warning" : "info",
+              subject: "Keep awake",
+              correlation_id: fields.session_id,
+              payload: eventPayload(fields),
+            });
+            if (!result.ok) ctx.logger.warn("awake event not published", { type });
+          } catch {
+            // A failing publish never holds up the release that already happened.
+            ctx.logger.warn("awake event not published", { type });
+          }
         },
       });
       ref.controller = controller;
@@ -391,6 +397,16 @@ export function createAwakeCapability(options: AwakeCapabilityOptions = {}): Cap
             ? "Keeping the computer awake while agents work"
             : `Keeping the computer awake, ${Math.ceil(session.remaining_seconds / 60)} min left`,
       };
+    },
+    /**
+     * Disable, the emergency stop and Core exit call this BEFORE they abort the signal, while the
+     * context can still publish: the hold is released (first, inside `end`) and the one
+     * `awake.session.ended` says it was cut short. No session: nothing is published. The abort
+     * handler and `shutdown` that follow find nothing left to end, so there is no second event.
+     */
+    stopping(_ctx, reason) {
+      // Every disable reason but the emergency stop and Core exit (user, uninstall, …) is "disabled".
+      ref.controller?.end(reason === "kill_switch" || reason === "shutdown" ? reason : "disabled");
     },
     shutdown(ctx) {
       stopSignal?.();

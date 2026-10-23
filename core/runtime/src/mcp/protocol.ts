@@ -2,8 +2,12 @@
 // Copyright (C) 2026 Phoenix contributors
 //
 // The little of JSON-RPC 2.0 and MCP (revision 2025-06-18) that Phoenix's MCP server speaks, written
-// by hand: no SDK. Only `initialize`, `notifications/initialized`, `tools/list`, `tools/call` and
-// `ping` exist; everything else is `-32601`.
+// by hand: no SDK. `initialize`, `notifications/*` (accepted with 202, ignored: that includes
+// `notifications/cancelled`), `tools/list`, `tools/call` and `ping` do real work. The discovery
+// probes `resources/list`, `resources/templates/list` and `prompts/list` answer an EMPTY catalogue
+// (Phoenix serves no resources or prompts, so `initialize` declares neither capability). Everything
+// else (`resources/read`, `prompts/get`, `logging/*`, `completion/*`, `sampling/*`, ...) is `-32601`.
+// Batches are refused with `-32600`: revision 2025-06-18 removed JSON-RPC batching.
 
 import { isRecord } from "./guards";
 
@@ -37,7 +41,11 @@ export type RpcMessage =
 /** Sorts one parsed JSON body into a request, a notification, a stray response or garbage. */
 export function classify(body: unknown): RpcMessage {
   if (Array.isArray(body))
-    return { kind: "invalid", id: null, message: "Batch requests are not supported" };
+    return {
+      kind: "invalid",
+      id: null,
+      message: "Batch requests are not supported (removed in MCP 2025-06-18)",
+    };
   if (!isRecord(body)) return { kind: "invalid", id: null, message: "Not a JSON-RPC message" };
   const { id, method, params } = body;
   const goodId =

@@ -34,6 +34,38 @@ export const RESERVED_SOURCES: ReadonlySet<string> = new Set([
   "notification",
 ]);
 
+/**
+ * Event namespace only Core publishes (Phase 77): `agent.safety.loop`, `.stall`, `.checkpoint`.
+ * It sits inside `agent.*`, which the first-party `agents` capability legitimately declares, so
+ * it cannot be a reserved SOURCE-style first segment. It is reserved as a whole instead: no
+ * capability publishes into it (see `isReservedEventType`) and only first-party manifests may
+ * declare a pattern that could cover it (see `patternCoversReservedEvents`).
+ */
+export const RESERVED_EVENT_NAMESPACE = "agent.safety" as const;
+
+/** True when `eventType` is in the namespace Core keeps for itself (`agent.safety` and below). */
+export function isReservedEventType(eventType: string): boolean {
+  return (
+    eventType === RESERVED_EVENT_NAMESPACE || eventType.startsWith(`${RESERVED_EVENT_NAMESPACE}.`)
+  );
+}
+
+/**
+ * True when a declared event pattern (an exact type or a prefix ending in `.*`) could match a
+ * reserved event type: `agent.*`, `agent.safety.*` and `agent.safety.checkpoint` all do,
+ * `agent.working` and `agent.sa.*` do not. A bare `*` is not a valid pattern (the manifest
+ * schema refuses it), so it never reaches this check.
+ */
+export function patternCoversReservedEvents(pattern: string): boolean {
+  if (!pattern.endsWith(".*")) return isReservedEventType(pattern);
+  const base = pattern.slice(0, -2);
+  return (
+    RESERVED_EVENT_NAMESPACE === base ||
+    RESERVED_EVENT_NAMESPACE.startsWith(`${base}.`) ||
+    base.startsWith(`${RESERVED_EVENT_NAMESPACE}.`)
+  );
+}
+
 export interface CommandSpec {
   name: string;
   description: string;
@@ -107,8 +139,21 @@ export function eventDeclared(patterns: readonly string[], eventType: string): b
 export type ManifestResult =
   { ok: true; manifest: CapabilityManifest } | { ok: false; error: PhoenixError };
 
+export interface ValidateManifestOptions {
+  /**
+   * First-party (built-in, in-process) manifests only: allow event patterns that could cover the
+   * reserved `agent.safety` namespace (the `agents` capability declares `agent.*`). Never set for a
+   * manifest that came from outside Core; the publish check in the capability manager blocks the
+   * reserved subset for built-ins anyway.
+   */
+  allowReservedEventOverlap?: boolean;
+}
+
 /** Validates schema plus cross-field rules. Never throws. */
-export function validateManifest(value: unknown): ManifestResult {
+export function validateManifest(
+  value: unknown,
+  options: ValidateManifestOptions = {},
+): ManifestResult {
   const fail = (details: string[]) => ({
     ok: false as const,
     error: new PhoenixError(ErrorCode.INVALID_REQUEST, "Invalid capability manifest", details),
@@ -131,6 +176,19 @@ export function validateManifest(value: unknown): ManifestResult {
     const namespace = pattern.split(".")[0]!;
     if (RESERVED_SOURCES.has(namespace)) {
       problems.push(`/events "${pattern}" is in the reserved "${namespace}" namespace`);
+    }
+  }
+  // `agent.safety.*` (loop, stall, checkpoint warnings of the Phase 77 safety net) is Core's. It
+  // lies inside `agent.*`, so a plain "first segment" rule cannot reserve it. Only first-party
+  // manifests may declare a pattern that could cover it; an external or marketplace manifest
+  // declaring `agent.*`, `agent.safety.*` or `agent.safety.checkpoint` is refused.
+  if (!options.allowReservedEventOverlap) {
+    for (const pattern of m.events) {
+      if (patternCoversReservedEvents(pattern)) {
+        problems.push(
+          `/events "${pattern}" could match the reserved "${RESERVED_EVENT_NAMESPACE}" event namespace`,
+        );
+      }
     }
   }
 

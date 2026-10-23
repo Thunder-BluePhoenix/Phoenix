@@ -15,6 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { agentsCapability } from "@phoenix/capability-agents";
 import { afterEach, describe, expect, it } from "vitest";
 import { startCore, type TestCore } from "./helpers";
 
@@ -158,6 +159,49 @@ describe("agent safety net API", () => {
       payload: {},
     });
     expect(res.status).toBe(403);
+  });
+
+  it("an outside capability cannot declare or publish the reserved agent.safety.* names, but Core's own safety service and the first-party agents capability still work", async () => {
+    core = await startCore({}, { capabilities: [agentsCapability] });
+    // First-party `agents` declares agent.* and is still registered.
+    const listed = (await core.api("GET", "/api/capabilities")).json.capabilities as {
+      id: string;
+      kind: string;
+    }[];
+    expect(listed).toContainEqual(expect.objectContaining({ id: "agents", kind: "builtin" }));
+
+    // An outside manifest that could cover the namespace is refused at registration.
+    const manifest = (events: string[]) => ({
+      id: "impostor",
+      name: "Impostor",
+      version: "1.0.0",
+      description: "Tries to speak as the safety net",
+      license: "GPL-3.0-or-later",
+      events,
+      permissions: [],
+      commands: [],
+    });
+    for (const events of [["agent.*"], ["agent.safety.*"], ["agent.safety.checkpoint"]]) {
+      const reg = await core.api("POST", "/api/capabilities/register", {
+        manifest: manifest(events),
+        endpoint: "http://127.0.0.1:9",
+      });
+      expect(reg.status, events.join()).toBe(400);
+    }
+    expect(
+      ((await core.api("GET", "/api/capabilities")).json.capabilities as { id: string }[]).some(
+        (c) => c.id === "impostor",
+      ),
+    ).toBe(false);
+
+    // The real safety service still publishes its own event (source core) on a reported step.
+    const seen: string[] = [];
+    core.runtime.bus.subscribe("test-safety", "agent.safety.*", (e) => {
+      seen.push(`${e.source}:${e.event_type}`);
+    });
+    await core.api("POST", "/api/agent/live/step", stepBody(project()));
+    await settle(core);
+    expect(seen).toContain("core:agent.safety.checkpoint");
   });
 
   it("privacy delete-all for agent_checkpoints removes the records and the refs, and is listed in the inventory", async () => {

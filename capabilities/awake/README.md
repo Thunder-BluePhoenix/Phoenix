@@ -62,6 +62,16 @@ without it `agents_grace` is refused. Only events whose bus `source` is `agents`
 `reason` (ended only) is `expired | cancelled | battery | thermal | shutdown | disabled | kill_switch | agents_done | inhibitor_lost`.
 `correlation_id` is the session id. No tick event: the UI counts down from `ends_at`.
 
+A live session released by disable, the emergency stop or Core exit publishes exactly one
+`awake.session.ended` with `reason` `disabled` (any disable that is not the emergency stop:
+user, uninstall, re-registered), `kill_switch` or `shutdown`. The manager calls the capability's
+optional `stopping(ctx, reason)` hook **before** it aborts the context's signal (an aborted
+context cannot publish), and the hook ends the session: the hold is released first inside `end`,
+then the event is published. A publish that fails or throws is logged and never holds up the
+release, the disable or the shutdown. The abort handler and `shutdown()` that follow find no
+session, so there is no second event; with no session nothing is published. Without the hook (a
+bare abort) the hold is still released but nothing is published.
+
 Fawkes' state is **not** changed (no `state_rules`): WORKING while only a timer runs would be wrong,
 and states are fixed. The "awake" indicator is the countdown pill in the island, floating Fawkes and
 the Overview.
@@ -83,9 +93,6 @@ that pid, releases it, and checks the process and assertion are gone.
 ## Known limits
 
 - Closing the lid still sleeps the machine (that needs Phase 73).
-- On disable, the emergency stop and Core exit the manager aborts the capability's signal first, and
-  an aborted context cannot publish, so those paths release the hold but do **not** publish
-  `awake.session.ended` (`capability.disabled` records the reason). `end`, expiry, battery,
-  agents_done and a lost hold publish normally.
+- Disable, the emergency stop and Core exit are tested only on fake machines and buses (the capability manager, a real `PhoenixRuntime` and `FakeSystem`), never on a real Mac, account or app. See "Events" for what each publishes. When Core exits, the event is published and queued on the bus before it closes; it is delivered because `PhoenixRuntime.stop()` drains the bus first, but a live subscriber such as a window may already be gone.
 - No tray countdown: the tray menu is Rust (Tauri) and was not touched.
 - Linux and Windows are untested on real machines.

@@ -142,7 +142,7 @@ What hooks actually report limits what can be seen:
 Each finding raises **one** WARNING event per episode (dedup: a pattern warns again only after it
 breaks or the session moves): `agent.safety.loop` / `agent.safety.stall`, source `core`, severity
 `warning`, subject `agent-safety`, payload `{agent, session_id, kind, reason, repository}` (reason
-redacted, commands clipped to 80 characters). Core-only: `POST /api/events` refuses these types.
+redacted, commands clipped to 80 characters). Core-only: see [Reserved namespace](#reserved-namespace-agentsafety).
 
 - **Pet state.** Two state rules (added through `StateEngine.addRules`, the default mapping is untouched)
   map both events to Fawkes `WARNING` with the reason as explanation, for 10 minutes.
@@ -164,6 +164,34 @@ redacted, commands clipped to 80 characters). Core-only: `POST /api/events` refu
 A Core-only ephemeral `agent.safety.checkpoint` event (taken/skipped, names only) keeps open screens
 fresh. The UI is `AgentSafety.tsx`, a section on the Agent sessions page.
 
+## Reserved namespace: `agent.safety.*`
+
+Only Core publishes `agent.safety.*` (`loop`, `stall`, `checkpoint`, and anything added below it later). The
+namespace lies inside `agent.*`, which the first-party `agents` capability declares, so it is reserved by rule
+rather than by first segment (`RESERVED_EVENT_NAMESPACE`, `isReservedEventType`, `patternCoversReservedEvents` in
+`protocol/src/manifest.ts`). Three layers:
+
+1. **Manifest validation (external manifests).** `validateManifest` refuses any event pattern that could match the
+   namespace: `agent.*`, `agent.safety.*`, `agent.safety.checkpoint`, `agent.safety.<anything>`. The error is
+   `/events "<pattern>" could match the reserved "agent.safety" event namespace` (`INVALID_REQUEST`, HTTP 400 on
+   `POST /api/capabilities/register`; the registry index and `runExternalCapability` use the same validator). A bare
+   `*` was never a valid pattern (the schema requires a namespaced prefix). Neighbours that cannot match, such as
+   `agent.working` or `agent.safetyx.*`, stay allowed.
+2. **First-party exception.** Built-in in-process modules (`registerBuiltin`, `defineCapability`) validate with
+   `allowReservedEventOverlap: true`, so the `agents` capability keeps its `agent.*` declaration. The rule is: a
+   pattern may overlap the reserved namespace only if Core itself loaded the module; nothing arriving over the
+   register endpoint or from a marketplace index gets the exception.
+3. **Publish check (all capabilities, built-in or external).** `CapabilityManager.publishAs` refuses any
+   `agent.safety` type with `SECURITY_POLICY_BLOCKED` ("Event type … is reserved for Core") before the declared
+   pattern check. It covers `ctx.emit` of a built-in and `POST /api/capabilities/:id/events` of an external one, and
+   also a manifest stored before this rule existed. Core's own service publishes on the bus directly with source
+   `core`, not through a capability, so it is unaffected.
+
+`POST /api/events` still refuses `agent.safety.loop|stall|checkpoint` from any poster.
+Tests: `protocol/test/manifest.test.ts`, `core/capability-manager/test/manager.test.ts`,
+`core/runtime/test/api.test.ts`, `core/runtime/test/agent-safety-api.test.ts`. They use simulated and
+fake capabilities (a fixture child process, loopback stubs); no real external capability took part.
+
 ## Files
 
 `core/runtime/src/agent-safety/{git,checkpoints,rollback,detectors,settings,service,index}.ts`,
@@ -182,8 +210,9 @@ fresh. The UI is `AgentSafety.tsx`, a section on the Agent sessions page.
 - **The warning card text is partly attacker-chosen.** Loop and stall reasons contain the agent's own command or file
   name (redacted and clipped, but chosen by the agent); the rollback summary names the project folder, cleaned of
   hidden characters but chosen by whoever created the folder.
-- **Reservation of `agent.safety.*` events is incomplete for external capabilities.** `POST /api/events` refuses
-  `agent.safety.loop|stall|checkpoint` from any poster, but an external capability that declares `agent.*` events in
-  its manifest can emit other `agent.*` types that this service reads only when their source is the right one.
+- **Reservation is by rule, not by list, and was exercised in simulation only.** See "Reserved namespace" above; no
+  real third-party capability, marketplace package or real agent took part. The rule closes the capability
+  manifest and capability publish paths; it does not stop a process that already holds the Core session token from
+  other API routes, which is outside the capability model.
 - The safety net is not tamper-resistant: an agent that can run `git update-ref -d` on its own checkpoint ref, or edit
   Core's database, removes its own checkpoint. It protects against mistakes, not a hostile agent.

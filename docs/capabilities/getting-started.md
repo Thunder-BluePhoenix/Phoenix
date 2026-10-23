@@ -85,6 +85,8 @@ export const hello = defineCapability({
 
 Register it by passing it in `capabilities` to `new PhoenixRuntime(...)`.
 
+A builtin may also define `stopping(ctx, reason)`. Disable (`reason` is why: `user`, `kill_switch`, `uninstall`, …) and Core exit (`shutdown`) call it synchronously **before** `ctx.signal` is aborted, so `ctx.emit` still publishes there (after the abort it does not). Use it to announce that live work was cut short; still release the real resource on abort and in `shutdown`. A throw is logged and ignored.
+
 ## 4. Test it
 
 `@phoenix/sdk-testing` gives you an in-memory Phoenix:

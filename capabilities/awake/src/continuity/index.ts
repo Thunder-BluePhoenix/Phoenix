@@ -10,21 +10,20 @@
 // Fawkes: `awake.network.down` shows WARNING ("Network is down") and expires by itself after
 // NETWORK_DOWN_TTL_MS if the matching `awake.network.up` is lost; `awake.network.up` clears it.
 // WARNING was chosen because the machine still works but the agent run is at risk; no new state.
+import { join } from "node:path";
 import type { CapabilityContext, CommandSpec } from "@phoenix/sdk";
 import { isRecord } from "../guards";
 import { AwakeError, type AwakeDeps, type AwakeModule } from "../system";
+import { defaultDataDir } from "../power";
+import { nodeJournalFs, type JournalFs } from "../power/journal";
 import {
   CONTINUITY_CONFIG,
   parseContinuityConfig,
   type ContinuityConfig,
   type ContinuityEmit,
 } from "./config";
-import {
-  HotspotController,
-  createMemoryPreviousNetwork,
-  type JoinResult,
-  type PreviousNetworkStore,
-} from "./hotspot";
+import { HotspotController, type JoinResult, type PreviousNetworkStore } from "./hotspot";
+import { PREVIOUS_NETWORK_FILE, createFilePreviousNetwork } from "./previous-network";
 import { NetworkWatch, createTcpProbe, type NetworkProbe, type OutageTransition } from "./network";
 import {
   NudgeController,
@@ -39,6 +38,7 @@ import { BROWSERS, ThrottleChecker } from "./throttle";
 
 export * from "./config";
 export * from "./hotspot";
+export * from "./previous-network";
 export * from "./network";
 export * from "./nudge";
 export * from "./protected";
@@ -61,7 +61,12 @@ export const HOTSPOT_SECRET = "hotspot_password";
 /** Seams a test (or a host) replaces. Defaults are the real thing. */
 export interface ContinuityOptions {
   probe?: NetworkProbe;
+  /** Replaces the file-backed previous-network store (tests). */
   previousNetwork?: PreviousNetworkStore;
+  /** The Core data directory; the previous network goes in `<dir>/awake/`. Default: `defaultDataDir()`. */
+  dir?: string;
+  /** File access for the previous network. Default: the real file system (0700 dir, 0600 file). */
+  fs?: JournalFs;
   /** Delivers text to Phoenix-tracked agent sessions. Absent: those targets report "unavailable". */
   sessionInput?: AgentSessionInput;
   /** Existence check used to find tmux in TMUX_PATHS. Default: the real filesystem. */
@@ -109,6 +114,7 @@ interface Running {
   watch: NetworkWatch | undefined;
   nudge: NudgeController | undefined;
   hotspot: HotspotController;
+  previous: PreviousNetworkStore;
   throttle: ThrottleChecker;
   tracker: ProtectedTracker;
   outage: OutageRecord | null;
@@ -176,7 +182,6 @@ const COMMAND_SPECS: CommandSpec[] = [
 /** The continuity module. Create one per capability instance; tests build their own. */
 export function createContinuityModule(options: ContinuityOptions = {}): AwakeModule {
   let running: Running | undefined;
-  const previousNetwork = options.previousNetwork ?? createMemoryPreviousNetwork();
 
   const need = (): Running => {
     if (!running) throw new AwakeError("unavailable", "The awake capability is not running");
@@ -207,7 +212,7 @@ export function createContinuityModule(options: ContinuityOptions = {}): AwakeMo
       r.emit("awake.hotspot.joined", "info", {
         mode: result.mode,
         already: result.already,
-        previous_saved: previousNetwork.get() !== null,
+        previous_saved: r.previous.get() !== null,
       });
     } else {
       r.emit("awake.hotspot.failed", "warning", { reason: result.reason });
@@ -282,7 +287,7 @@ export function createContinuityModule(options: ContinuityOptions = {}): AwakeMo
             ssid_set: c.hotspot.ssid !== null,
             password_argv_allowed: c.hotspot.allowPasswordArgv,
             password_saved: (await r.ctx.secret(HOTSPOT_SECRET)) !== undefined,
-            previous_network_saved: previousNetwork.get() !== null,
+            previous_network_saved: r.previous.get() !== null,
           },
           nudge: {
             enabled: c.nudge.enabled,
@@ -357,13 +362,23 @@ export function createContinuityModule(options: ContinuityOptions = {}): AwakeMo
       const tracker = trackProtected(deps.feed, deps.env.clock);
       const isProtected = options.isProtected ?? tracker.isProtected;
       const run = deps.env.run;
+      const previous =
+        options.previousNetwork ??
+        createFilePreviousNetwork({
+          path: join(options.dir ?? defaultDataDir(), "awake", PREVIOUS_NETWORK_FILE),
+          fs: options.fs ?? nodeJournalFs,
+          now: () => deps.env.clock.now(),
+          onError: (reason) => ctx.logger.warn("previous network not persisted", { reason }),
+        });
+      // The user turned hotspot use off: whatever was remembered for it goes with it.
+      if (!config.hotspot.enabled) previous.clear();
       const hotspot = new HotspotController({
         run,
         platform: deps.env.platform,
         ssid: config.hotspot.ssid,
         allowPasswordArgv: config.hotspot.allowPasswordArgv,
         secret: () => ctx.secret(HOTSPOT_SECRET),
-        store: previousNetwork,
+        store: previous,
         now: () => deps.env.clock.now(),
       });
       const throttle = new ThrottleChecker({
@@ -383,6 +398,7 @@ export function createContinuityModule(options: ContinuityOptions = {}): AwakeMo
         watch: undefined,
         nudge: undefined,
         hotspot,
+        previous,
         throttle,
         tracker,
         outage: null,

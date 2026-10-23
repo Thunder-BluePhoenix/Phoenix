@@ -155,6 +155,69 @@ describe("release on every path", () => {
     expect(r.fake.types().filter((t) => t === "awake.session.ended")).toHaveLength(1);
   });
 
+  it("the emergency stop publishes one awake.session.ended with reason kill_switch, before the abort", async () => {
+    const r = await rig();
+    await started(r);
+    await r.disable("kill_switch");
+    expect(r.sys.alive).toHaveLength(0);
+    const ended = r.fake.events.filter((e) => e.event_type === "awake.session.ended");
+    expect(ended).toHaveLength(1);
+    expect(ended[0]?.payload).toMatchObject({
+      session_id: "awk_test1",
+      mode: "timed",
+      reason: "kill_switch",
+      remaining_seconds: null,
+    });
+  });
+
+  it("Core exit publishes one awake.session.ended with reason shutdown", async () => {
+    const r = await rig();
+    await started(r);
+    await r.disable("shutdown");
+    expect(r.sys.alive).toHaveLength(0);
+    expect(r.fake.types().filter((t) => t === "awake.session.ended")).toHaveLength(1);
+    expect(r.fake.last("awake.session.ended").payload).toMatchObject({ reason: "shutdown" });
+  });
+
+  it("a disable with no session publishes nothing", async () => {
+    const r = await rig();
+    await r.disable();
+    expect(r.fake.events).toHaveLength(0);
+  });
+
+  it("a session that already ended normally is not announced again by a later disable", async () => {
+    const r = await rig();
+    await started(r);
+    await r.call("end");
+    await r.disable();
+    expect(r.fake.types().filter((t) => t === "awake.session.ended")).toHaveLength(1);
+    expect(r.fake.last("awake.session.ended").payload).toMatchObject({ reason: "cancelled" });
+  });
+
+  it.each(["result", "throw"] as const)(
+    "a publish that fails (%s) never stops the release on disable",
+    async (failure) => {
+      const r = await rig();
+      await started(r);
+      r.fake.failEmit = failure;
+      await r.disable("kill_switch");
+      expect(r.sys.alive).toHaveLength(0);
+      expect(r.sys.children[0]?.killed).toBe(1);
+      expect(r.sys.clock.pending).toBe(0);
+      expect(r.fake.types()).not.toContain("awake.session.ended");
+      expect(((await r.call("status")) as SessionStatus).active).toBe(false);
+    },
+  );
+
+  it("a stop signal alone (no stopping hook) still releases, and cannot publish", async () => {
+    const r = await rig();
+    await started(r);
+    r.fake.controller.abort();
+    await settle();
+    expect(r.sys.alive).toHaveLength(0);
+    expect(r.fake.types()).not.toContain("awake.session.ended");
+  });
+
   it("shutdown() alone (Core exit without an abort) releases", async () => {
     const r = await rig();
     await started(r);

@@ -163,7 +163,16 @@ export class McpListener {
         }
         return this.refuse(res, 400, "bad_body", "Could not read the request body");
       }
-      send(res, await this.o.handler.handle({ authorization: req.headers.authorization, body }));
+      const version = req.headers["mcp-protocol-version"];
+      send(
+        res,
+        await this.o.handler.handle({
+          authorization: req.headers.authorization,
+          // Node joins repeated headers with ", ", which then fails the version check.
+          protocolVersion: Array.isArray(version) ? version.join(", ") : version,
+          body,
+        }),
+      );
     } catch (err) {
       this.logger.error("mcp listener failed", { error: err });
       send(res, { status: 500, body: rpcError(null, RpcCode.INTERNAL_ERROR, "Internal error") });

@@ -27,18 +27,62 @@ Settings, "Phoenix MCP server": tick the switch. Core then listens on `127.0.0.1
 
 ## Transport
 
-|                   |                                                                                                                                  |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Endpoint          | `POST http://127.0.0.1:<port>/mcp` (Streamable-HTTP style: one JSON-RPC message per POST, one JSON reply; no SSE, no GET)        |
-| Auth              | `Authorization: Bearer <client token>`                                                                                           |
-| `Host`            | must be exactly `127.0.0.1:<port>` or `localhost:<port>` (defeats DNS rebinding)                                                 |
-| `Origin`          | any `Origin` header is refused (a browser page cannot use it)                                                                    |
-| Body              | JSON, at most **64 KiB** (`413` above)                                                                                           |
-| Rate              | 60 requests per minute per client and 4 calls running at once (`429` + `Retry-After`)                                            |
-| Methods           | `initialize`, `notifications/initialized`, `tools/list`, `tools/call`, `ping`. Everything else is `-32601`. Batches are refused. |
-| Protocol versions | `2025-06-18` (preferred), `2025-03-26`, `2024-11-05`                                                                             |
+|                   |                                                                                                                                                                                                                                                                                    |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Endpoint          | `POST http://127.0.0.1:<port>/mcp` (Streamable-HTTP style: one JSON-RPC message per POST, one JSON reply; no SSE, no GET)                                                                                                                                                          |
+| Auth              | `Authorization: Bearer <client token>`                                                                                                                                                                                                                                             |
+| `Host`            | must be exactly `127.0.0.1:<port>` or `localhost:<port>` (defeats DNS rebinding)                                                                                                                                                                                                   |
+| `Origin`          | any `Origin` header is refused (a browser page cannot use it)                                                                                                                                                                                                                      |
+| Body              | JSON, at most **64 KiB** (`413` above)                                                                                                                                                                                                                                             |
+| Rate              | 60 requests per minute per client and 4 calls running at once (`429` + `Retry-After`)                                                                                                                                                                                              |
+| Methods           | `initialize`, `notifications/*` (any notification: `202`, no body, ignored), `tools/list`, `tools/call`, `ping`, and the discovery probes `resources/list`, `resources/templates/list`, `prompts/list` (empty lists). Everything else is `-32601`. Batches are refused (`-32600`). |
+| Protocol versions | `2025-06-18` (preferred), `2025-03-26`, `2024-11-05`                                                                                                                                                                                                                               |
 
 No MCP SDK is used; the JSON-RPC handling is in `core/runtime/src/mcp/`.
+
+### Handshake details a client may probe
+
+Checked against the MCP revision Phoenix negotiates first, **2025-06-18** (specification pages on
+[transports](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports),
+[resources](https://modelcontextprotocol.io/specification/2025-06-18/server/resources),
+[prompts](https://modelcontextprotocol.io/specification/2025-06-18/server/prompts),
+[pagination](https://modelcontextprotocol.io/specification/2025-06-18/server/utilities/pagination) and
+[cancellation](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/cancellation)).
+
+| Probe                                                                                                                                 | Phoenix answers                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `resources/list`                                                                                                                      | `{"resources":[]}`                                                                                                                                                                                                                                       |
+| `resources/templates/list`                                                                                                            | `{"resourceTemplates":[]}`                                                                                                                                                                                                                               |
+| `prompts/list`                                                                                                                        | `{"prompts":[]}`                                                                                                                                                                                                                                         |
+| any of the three with a `cursor`                                                                                                      | `-32602` `Invalid cursor` (no cursor is ever issued; the pagination page says invalid cursors SHOULD be `-32602`)                                                                                                                                        |
+| `resources/read`, `resources/subscribe`, `prompts/get`, `logging/*`, `completion/*`, `sampling/*`, anything unknown                   | `-32601` `Method not found` (audited as `unknown_method`)                                                                                                                                                                                                |
+| `notifications/cancelled` and every other notification                                                                                | `202`, no body, ignored. Nothing is cancelled (a call already running finishes; the cancellation page lets a receiver ignore a cancel it cannot act on). Malformed params are ignored too.                                                               |
+| a JSON-RPC batch (`[...]`)                                                                                                            | `400` with `-32600` and **nothing in it runs**. Revision 2025-06-18 removed batching (its changelog), so a client of that revision never sends one. Clients that negotiate `2025-03-26` may batch; Phoenix refuses those too, with the same clear error. |
+| invalid JSON                                                                                                                          | `400`, `-32700`                                                                                                                                                                                                                                          |
+| valid JSON that is not a JSON-RPC 2.0 request/notification/response (wrong `jsonrpc`, bad `id`, non-object `params`, empty body, ...) | `400`, `-32600`                                                                                                                                                                                                                                          |
+| `MCP-Protocol-Version` header                                                                                                         | absent: accepted. One of the three supported versions: accepted. Anything else (or repeated): `400` `-32600`, as the transports page requires. The check runs **after** authentication, so an unauthenticated caller learns nothing.                     |
+
+The probes are answered only because some clients call them after `initialize` whether or not the
+server declared the capability. Phoenix does **not** declare `resources` or `prompts` in
+`initialize` (it serves none, and the spec says servers that support them must declare them), so a
+conforming client never needs them. They go through the same bearer authentication, revocation
+re-check, rate limit and Host/Origin/size checks as every other request; an unauthenticated or
+revoked client gets `401` for them like for anything else, and they do not depend on any grant
+because they reveal nothing.
+
+**No `Mcp-Session-Id`.** The transport page makes sessions optional ("MAY assign a session ID"). The
+server is stateless on purpose: each request is authenticated by the bearer token and all state is
+the client record, so there is nothing a session id would protect, and a second identifier would be
+one more thing to leak or replay. No `Mcp-Session-Id` is returned, a client-supplied one is ignored,
+and `DELETE` (the optional session termination) is refused with `405`, which the spec permits.
+
+**No SSE.** For a JSON-RPC request the server "MUST either return `text/event-stream` ... or
+`application/json`" and the client "MUST support both", so a plain request/response reply is
+conforming. Phoenix never sends server-initiated requests or notifications (it declares no
+`listChanged`, `subscribe` or `logging`), so there is nothing to stream. `GET /mcp` answers `405`,
+which the page defines as "the server does not offer an SSE stream at this endpoint". A client that
+insists on the legacy 2024-11-05 HTTP+SSE transport (a `GET` that expects an `endpoint` event) will
+not work over HTTP; use the stdio bridge.
 
 ### stdio bridge
 
@@ -120,7 +164,7 @@ from being misled. Grant only what a client needs.
 ## Audit, revoke, kill switch, delete
 
 - **Every call is audited**, denials included: `mcp.call` (allowed), `mcp.call.denied` (reason:
-  `not_granted`, `unknown_tool`, `unknown_method`, `invalid_params`, `revoked`, `revoked_in_flight`,
+  `not_granted`, `unknown_tool`, `unknown_method`, `invalid_params`, `protocol_version`, `revoked`, `revoked_in_flight`,
   `grant_removed_in_flight`, `rate_limited`, `too_many_in_flight`, `bad_token`, `kill_switch`,
   `host`, `origin`, `body_too_large`, ...). Rows hold the client id, the tool name and success; never
   arguments, results or tokens. Refusals are budgeted at 20 rows a minute per client (callers with
@@ -229,10 +273,10 @@ curl -s http://127.0.0.1:47822/mcp -H "Authorization: Bearer $PHOENIX_MCP_TOKEN"
 
 ## What is and is not verified
 
-|                                                                                                                                                                                                                    |                                                                                                                                                                                          |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Grants, revocation (incl. in flight), Host/Origin/size/rate guards, audit, token hashing, scoped memory, approval creation and owner-only decision, notify, kill switch, delete-all, stdio bridge, Settings screen | Tested with a **simulated** client (`core/runtime/test/mcp-*.test.ts`, `apps/web/test/mcp-clients.test.tsx`).                                                                            |
-| Any real MCP client talking to it                                                                                                                                                                                  | **Not done.** Handshake details real clients expect (for example `resources/list` probes, SSE streams, `Mcp-Session-Id`) are not implemented; a client that requires them will not work. |
-| The snippets above                                                                                                                                                                                                 | **Unverified.**                                                                                                                                                                          |
-| Hybrid (embedding) search for MCP clients                                                                                                                                                                          | Not offered; lexical only.                                                                                                                                                               |
-| Per-tool policy rules for the read tools backed by Phoenix's own data                                                                                                                                              | They are authorised by the client's grants and audited by the MCP handler; only `git.status` / `github.status` go through the tool gateway's policy engine.                              |
+|                                                                                                                                                                                                                    |                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Grants, revocation (incl. in flight), Host/Origin/size/rate guards, audit, token hashing, scoped memory, approval creation and owner-only decision, notify, kill switch, delete-all, stdio bridge, Settings screen | Tested with a **simulated** client (`core/runtime/test/mcp-*.test.ts`, `apps/web/test/mcp-clients.test.tsx`).                                                                                                               |
+| Any real MCP client talking to it                                                                                                                                                                                  | **Not done.** Claude Code, Cursor and Codex were NOT run. The handshake probes above are tested only by the simulated client; a client that needs something else (for example the legacy HTTP+SSE transport) will not work. |
+| The snippets above                                                                                                                                                                                                 | **Unverified.**                                                                                                                                                                                                             |
+| Hybrid (embedding) search for MCP clients                                                                                                                                                                          | Not offered; lexical only.                                                                                                                                                                                                  |
+| Per-tool policy rules for the read tools backed by Phoenix's own data                                                                                                                                              | They are authorised by the client's grants and audited by the MCP handler; only `git.status` / `github.status` go through the tool gateway's policy engine.                                                                 |

@@ -97,9 +97,28 @@ The network the Mac was on is remembered **before** the join (and the join is no
 already on the hotspot). A saved real network is never overwritten by "not associated" or an
 unreadable Wi-Fi reading (a second failover after the Wi-Fi already dropped would otherwise lose
 the way back); it is replaced only by a different real network (you moved). The Settings screen
-offers "Rejoin my previous network" (no password, ever).
-**GAP:** the record is in memory only. `src/power/journal.ts` (Recovery73) did not exist when this
-was written, so a Core restart forgets it. `PreviousNetworkStore` is the seam to swap.
+offers "Rejoin my previous network" (no password, ever). It asks you every time (execute command),
+and does nothing, except forget the record, if the Mac is already on that network.
+
+**It survives a Core restart.** The record is the file `<data dir>/awake/previous-network.json`
+(`src/continuity/previous-network.ts`; data dir = `PHOENIX_DATA_DIR`, else `~/.phoenix/<env>`, the
+same rule as the recovery journal), written through the same file seam as the Phase 73 journal:
+directory 0700, file 0600, replaced atomically. The journal itself is not used: it is built for
+changes that must be undone (strict checksum, owner, 1 MB budget, quit veto), and a Wi-Fi name is
+not one.
+
+- Stored: `{"v":1,"ssid":…,"device":"enN","at":<ms>}`. Never a password, a BSSID or a location.
+- On load the SSID and device must pass the same rules as joining, the file must hold exactly those
+  keys and be at most 1 KiB (bigger is deleted without being read), and `at` must not be in the
+  future. A record **24 hours old or older** is dropped, also while Core keeps running.
+- Anything that fails those checks is ignored and **deleted**.
+- It is removed after a successful rejoin (or when already on it), and when Core starts with
+  hotspot failover turned off. A failed rejoin keeps it so you can retry.
+- If the file cannot be written, the record lives in memory for this run and the log says
+  `write_failed` (never the SSID).
+
+Tested with a fake machine and a fake file system only (`test/continuity/hotspot.test.ts`); no real
+restart, disk or Mac.
 
 ## 3. Nudge
 

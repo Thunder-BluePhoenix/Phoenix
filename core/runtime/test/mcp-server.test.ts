@@ -314,10 +314,12 @@ describe("protocol", () => {
     );
     expect(note.status).toBe(202);
     for (const method of [
-      "resources/list",
-      "prompts/list",
+      "resources/read",
+      "prompts/get",
       "sampling/createMessage",
       "logging/setLevel",
+      "completion/complete",
+      "resources/subscribe",
     ]) {
       expect((await mcp.rpc(method)).rpc?.error?.code, method).toBe(-32601);
     }
@@ -327,7 +329,7 @@ describe("protocol", () => {
         a.details.reason === "unknown_method" &&
         a.details.client === id,
     );
-    expect(denied).toHaveLength(4);
+    expect(denied).toHaveLength(6);
   });
 
   it("rejects malformed JSON-RPC without crashing", async () => {
@@ -343,6 +345,227 @@ describe("protocol", () => {
     );
     expect((await mcp.call("phoenix_activity", { limit: 1 })).rpc?.error?.code).toBe(-32602);
     expect((await mcp.rpc("tools/call", { name: 5 })).rpc?.error?.code).toBe(-32602);
+  });
+});
+
+describe("handshake details a conforming client may probe", () => {
+  const probes: [string, string][] = [
+    ["resources/list", "resources"],
+    ["resources/templates/list", "resourceTemplates"],
+    ["prompts/list", "prompts"],
+  ];
+
+  it("answers the discovery probes with the exact empty-list shape, echoing the request id", async () => {
+    const r = await rig();
+    const { mcp } = await r.client();
+    for (const [method, key] of probes) {
+      const reply = await mcp.raw(JSON.stringify({ jsonrpc: "2.0", id: "probe-1", method }));
+      expect(reply.status, method).toBe(200);
+      expect(reply.headers["content-type"]).toMatch(/^application\/json/);
+      expect(reply.rpc, method).toEqual({ jsonrpc: "2.0", id: "probe-1", result: { [key]: [] } });
+      // An explicit params object (what some clients send) is the same.
+      expect((await mcp.rpc(method, {})).rpc?.result, method).toEqual({ [key]: [] });
+    }
+    // The grants of a client with every tool do not change the probes or the tool list.
+    const all = await r.client(READ_ALL());
+    for (const [method, key] of probes)
+      expect((await all.mcp.rpc(method)).rpc?.result, method).toEqual({ [key]: [] });
+  });
+
+  it("never issues a cursor, so a cursor is -32602; the list stays free of audit noise", async () => {
+    const r = await rig();
+    const { mcp, id } = await r.client();
+    for (const [method] of probes) {
+      const reply = await mcp.rpc(method, { cursor: "abc" });
+      expect(reply.rpc?.error, method).toEqual({ code: -32602, message: "Invalid cursor" });
+      expect(reply.rpc?.result).toBeUndefined();
+    }
+    const reasons = (await r.audit())
+      .filter((a) => a.action === "mcp.call.denied" && a.details.client === id)
+      .map((a) => a.details.reason);
+    expect(reasons).toEqual(["invalid_params", "invalid_params", "invalid_params"]);
+    await mcp.rpc("resources/list");
+    expect(
+      (await r.audit()).filter((a) => a.action === "mcp.call.denied" && a.details.client === id),
+    ).toHaveLength(3);
+  });
+
+  it("does not declare resources or prompts, and the other optional methods stay unknown", async () => {
+    const r = await rig();
+    const { mcp } = await r.client();
+    const init = await mcp.rpc("initialize", { protocolVersion: "2025-06-18" });
+    const caps = init.rpc?.result?.capabilities as Record<string, unknown>;
+    expect(Object.keys(caps)).toEqual(["tools"]);
+    for (const method of [
+      "resources/read",
+      "resources/subscribe",
+      "prompts/get",
+      "logging/setLevel",
+      "completion/complete",
+      "resources/templates/read",
+      "prompts/list/extra",
+    ])
+      expect((await mcp.rpc(method)).rpc?.error, method).toEqual({
+        code: -32601,
+        message: "Method not found",
+      });
+  });
+
+  it("refuses the new methods for a missing, wrong or revoked token, and while the kill switch is on", async () => {
+    const r = await rig();
+    const { mcp, id } = await r.client();
+    const probe = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "resources/list" });
+    const anonymous = await post(r.port, probe);
+    expect(anonymous.status).toBe(401);
+    expect(anonymous.headers["www-authenticate"]).toBe("Bearer");
+    expect(anonymous.rpc?.result).toBeUndefined();
+    const wrong = await new FakeMcpClient(r.port, `${mcp.token}x`).raw(probe);
+    expect(wrong.status).toBe(401);
+    expect(wrong.rpc?.result).toBeUndefined();
+    expect((await mcp.raw(probe)).status).toBe(200);
+    expect((await r.core.api("DELETE", `/api/mcp/clients/${id}`)).status).toBe(200);
+    for (const method of ["resources/list", "resources/templates/list", "prompts/list"]) {
+      const revoked = await mcp.rpc(method);
+      expect(revoked.status, method).toBe(401);
+      expect(revoked.rpc?.error?.code, method).toBe(-32600);
+      expect(revoked.rpc?.result).toBeUndefined();
+    }
+  });
+
+  it("does not run the probes past the rate limit", async () => {
+    const r = await rig({ callsPerMinute: 2 });
+    const { mcp } = await r.client();
+    expect((await mcp.rpc("prompts/list")).status).toBe(200);
+    expect((await mcp.rpc("prompts/list")).status).toBe(200);
+    const limited = await mcp.rpc("prompts/list");
+    expect(limited.status).toBe(429);
+    expect(limited.rpc?.error?.code).toBe(-32003);
+  });
+
+  it("accepts notifications/cancelled (and any other notification) with 202 and no body, whatever its params", async () => {
+    const r = await rig();
+    const { mcp } = await r.client();
+    for (const params of [
+      { requestId: 1, reason: "user" },
+      { requestId: "never-issued" },
+      { requestId: { nested: true }, reason: 5 },
+      {},
+    ]) {
+      const note = await mcp.raw(
+        JSON.stringify({ jsonrpc: "2.0", method: "notifications/cancelled", params }),
+      );
+      expect(note.status).toBe(202);
+      expect(note.text).toBe("");
+    }
+    const bare = await mcp.raw(
+      JSON.stringify({ jsonrpc: "2.0", method: "notifications/cancelled" }),
+    );
+    expect(bare.status).toBe(202);
+    // It cancels nothing and the session is unaffected.
+    expect((await mcp.rpc("ping")).rpc?.result).toEqual({});
+    // A stray response from the client is accepted and ignored too.
+    const stray = await mcp.raw(JSON.stringify({ jsonrpc: "2.0", id: 9, result: {} }));
+    expect(stray.status).toBe(202);
+    // An unauthenticated cancel is still refused.
+    const unauth = await post(
+      r.port,
+      JSON.stringify({ jsonrpc: "2.0", method: "notifications/cancelled", params: {} }),
+    );
+    expect(unauth.status).toBe(401);
+  });
+
+  it("is stateless: no Mcp-Session-Id is issued, and a client-supplied one is ignored", async () => {
+    const r = await rig();
+    const { mcp } = await r.client();
+    const init = await mcp.rpc("initialize", { protocolVersion: "2025-06-18" });
+    expect(init.headers["mcp-session-id"]).toBeUndefined();
+    for (const session of ["1868a90c-0000-4000-8000-000000000000", "not-issued-by-anyone"]) {
+      const reply = await mcp.raw(JSON.stringify({ jsonrpc: "2.0", id: 5, method: "ping" }), {
+        "mcp-session-id": session,
+      });
+      expect(reply.status).toBe(200);
+      expect(reply.rpc?.result).toEqual({});
+      expect(reply.headers["mcp-session-id"]).toBeUndefined();
+    }
+    // A session-terminating DELETE is refused as an unsupported method, as the spec allows (405).
+    const closed = await post(
+      r.port,
+      "",
+      { authorization: `Bearer ${mcp.token}` },
+      "/mcp",
+      "DELETE",
+    );
+    expect(closed.status).toBe(405);
+  });
+
+  it("checks MCP-Protocol-Version: the supported ones and its absence pass, anything else is 400", async () => {
+    const r = await rig();
+    const { mcp, id } = await r.client();
+    const ping = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" });
+    for (const version of ["2025-06-18", "2025-03-26", "2024-11-05"])
+      expect((await mcp.raw(ping, { "mcp-protocol-version": version })).status, version).toBe(200);
+    expect((await mcp.raw(ping)).status).toBe(200);
+    for (const version of ["1999-01-01", "", "2025-06-18, 2025-06-18", "latest"]) {
+      const bad = await mcp.raw(ping, { "mcp-protocol-version": version });
+      expect(bad.status, version).toBe(400);
+      expect(bad.rpc?.error?.code, version).toBe(-32600);
+      expect(bad.rpc?.result).toBeUndefined();
+    }
+    // The check sits behind authentication: an anonymous caller learns nothing about versions.
+    const anonymous = await post(r.port, ping, { "mcp-protocol-version": "1999-01-01" });
+    expect(anonymous.status).toBe(401);
+    const refusals = (await r.audit()).filter(
+      (a) => a.details.reason === "protocol_version" && a.details.client === id,
+    );
+    expect(refusals.length).toBeGreaterThan(0);
+  });
+
+  it("refuses batches with -32600 and runs nothing in them, and answers malformed bodies as documented", async () => {
+    const r = await rig();
+    const { mcp } = await r.client(READ_ALL());
+    const single = { jsonrpc: "2.0", id: 1, method: "ping" };
+    for (const batch of [
+      [single],
+      [single, single],
+      [],
+      [single, { jsonrpc: "2.0", method: "x" }],
+    ]) {
+      const reply = await mcp.raw(JSON.stringify(batch));
+      expect(reply.status).toBe(400);
+      expect(reply.rpc).toEqual({
+        jsonrpc: "2.0",
+        id: null,
+        error: {
+          code: -32600,
+          message: "Batch requests are not supported (removed in MCP 2025-06-18)",
+        },
+      });
+    }
+    // No call inside a refused batch ran.
+    const calls = [
+      { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "phoenix_notify" } },
+    ];
+    expect((await mcp.raw(JSON.stringify(calls))).status).toBe(400);
+    expect((await r.audit()).some((a) => a.action === "mcp.call")).toBe(false);
+
+    const parse = await mcp.raw("{not json");
+    expect(parse.status).toBe(400);
+    expect(parse.rpc).toEqual({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32700, message: "Parse error" },
+    });
+    for (const body of ["", "null", "7", '"ping"', "{}", '{"jsonrpc":"2.0","id":1}']) {
+      const bad = await mcp.raw(body);
+      expect(bad.status, body).toBe(400);
+      expect(bad.rpc?.error?.code, body).toBe(body === "" ? -32700 : -32600);
+    }
+    const wrongParams = await mcp.raw(
+      '{"jsonrpc":"2.0","id":3,"method":"resources/list","params":[]}',
+    );
+    expect(wrongParams.status).toBe(400);
+    expect(wrongParams.rpc?.error?.code).toBe(-32600);
+    expect(wrongParams.rpc?.id).toBe(3);
   });
 });
 

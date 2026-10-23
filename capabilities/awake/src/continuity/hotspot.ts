@@ -45,27 +45,14 @@ export interface PreviousNetwork {
 }
 
 /**
- * Where the previous network is kept. In-memory only: the recovery journal
- * (`src/power/journal.ts`, Recovery73) did not exist when this was written, so a Core restart
- * forgets it. This is a listed GAP; swap the store, not the controller, when the journal exists.
+ * Where the previous network is kept (`previous-network.ts` holds the real one: a small private
+ * file in the Core data dir, so "rejoin my previous network" survives a Core restart). The store
+ * never returns an expired record and never holds a password.
  */
 export interface PreviousNetworkStore {
   get(): PreviousNetwork | null;
   set(value: PreviousNetwork): void;
   clear(): void;
-}
-
-export function createMemoryPreviousNetwork(): PreviousNetworkStore {
-  let current: PreviousNetwork | null = null;
-  return {
-    get: () => current,
-    set(value) {
-      current = value;
-    },
-    clear() {
-      current = null;
-    },
-  };
 }
 
 /** `networksetup -listallhardwareports`: the first Wi-Fi port's device, if it is a plain `enN`. */
@@ -191,7 +178,10 @@ export class HotspotController {
     }
   }
 
-  /** Rejoins the remembered network (a known network: no password argument, ever). */
+  /**
+   * Rejoins the remembered network (a known network: no password argument, ever). Not asked when
+   * the Mac is already on it: the record is dropped and nothing is changed.
+   */
   async rejoinPrevious(): Promise<JoinResult> {
     if (this.o.platform !== "darwin") return { joined: false, reason: "unsupported_platform" };
     const previous = this.o.store.get();
@@ -199,6 +189,10 @@ export class HotspotController {
       return { joined: false, reason: "no_hotspot_configured" };
     }
     if (!isWifiDevice(previous.device)) return { joined: false, reason: "no_wifi_device" };
+    if ((await this.currentNetwork(previous.device)) === previous.ssid) {
+      this.o.store.clear();
+      return { joined: true, mode: "known_network", already: true };
+    }
     const rejoin = ["-setairportnetwork", previous.device, previous.ssid];
     const done = await this.o.run(NETWORKSETUP, rejoin, { timeoutMs: JOIN_TIMEOUT_MS });
     if (done.code !== 0 || JOIN_FAILED.test(done.stdout + done.stderr)) {

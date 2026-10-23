@@ -4,6 +4,7 @@
 // A continuity module on a fake machine. Nothing real is touched: commands are recorded by
 // FakeSystem, time moves only when a test advances it, the network probe is a script.
 import type { CapabilityContext } from "@phoenix/sdk";
+import type { JournalFs } from "../../src/power/journal";
 import {
   TMUX_PATHS,
   createContinuityModule,
@@ -12,6 +13,7 @@ import {
 } from "../../src/continuity";
 import type { ActiveSession, AwakeDeps, AwakeModule, Platform, RunResult } from "../../src/system";
 import { FakeFeed, FakeSystem, settle } from "../../testing/fakes";
+import { MemFs } from "../power/fixtures";
 import type { EmittedEvent } from "../../testing/ctx";
 
 /** Built at runtime so no credential-shaped literal sits in the tree. */
@@ -29,8 +31,25 @@ const quiet = {
   },
 };
 
+export const DATA_DIR = "/data";
+
+/** The fake file system keeps what the real one would: the mode every file and directory is created with. */
+export class ModeFs extends MemFs implements JournalFs {
+  readonly modes = new Map<string, number>();
+  override mkdirPrivate(dir: string): void {
+    super.mkdirPrivate(dir);
+    this.modes.set(dir, 0o700);
+  }
+  override replace(path: string, data: string): void {
+    super.replace(path, data);
+    this.modes.set(path, 0o600);
+  }
+}
+
 export interface ContinuityRig {
   sys: FakeSystem;
+  /** What the module persists to (a fake; nothing real is touched). */
+  fs: ModeFs;
   feed: FakeFeed;
   events: EmittedEvent[];
   logs: string[];
@@ -53,6 +72,8 @@ export interface RigOptions {
   noFeed?: boolean;
   options?: ContinuityOptions;
   script?: (file: string, args: readonly string[]) => RunResult | undefined;
+  /** Reuse a machine and file system: a Core restart on the same computer. */
+  restartOf?: ContinuityRig;
 }
 
 export const ENABLE_ALL = {
@@ -75,7 +96,10 @@ export const ENABLE_ALL = {
 };
 
 export async function continuityRig(rigOptions: RigOptions = {}): Promise<ContinuityRig> {
-  const sys = new FakeSystem(rigOptions.platform ? { platform: rigOptions.platform } : {});
+  const sys =
+    rigOptions.restartOf?.sys ??
+    new FakeSystem(rigOptions.platform ? { platform: rigOptions.platform } : {});
+  const fs = rigOptions.restartOf?.fs ?? new ModeFs();
   if (rigOptions.script) sys.script = rigOptions.script;
   const feed = new FakeFeed();
   const events: EmittedEvent[] = [];
@@ -109,6 +133,8 @@ export async function continuityRig(rigOptions: RigOptions = {}): Promise<Contin
     untilWatched: () => Promise.resolve(),
   };
   const module = createContinuityModule({
+    dir: DATA_DIR,
+    fs,
     probe: () => {
       net.probes += 1;
       return Promise.resolve(net.up);
@@ -130,6 +156,7 @@ export async function continuityRig(rigOptions: RigOptions = {}): Promise<Contin
   module.init?.(ctx, deps);
   const rig: ContinuityRig = {
     sys,
+    fs,
     feed,
     events,
     logs,

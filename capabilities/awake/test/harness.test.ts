@@ -83,36 +83,65 @@ describe("awake in the capability manager", () => {
     expect(op.status).toBe("succeeded");
   });
 
-  // The manager aborts a capability's signal before it shuts it down, and an aborted context can
-  // no longer publish: so a disable or the emergency stop releases the hold but cannot add an
-  // awake.session.ended event. The manager's own capability.disabled event (with the reason) is
-  // the record of why the session stopped.
-  it("disabling the capability releases the hold; capability.disabled records why", async () => {
+  // The manager calls the capability's `stopping` hook before it aborts the signal, so the
+  // context can still publish: disable, the emergency stop and Core exit each release the hold and
+  // publish exactly one awake.session.ended (source awake) that says why. capability.disabled
+  // records the same reason from the manager.
+  const endedEvents = (h: Harness) =>
+    h.events.filter((e) => e.event_type === "awake.session.ended");
+
+  it("disabling the capability releases the hold and publishes one awake.session.ended (disabled)", async () => {
     const { h, sys } = await ready();
     await h.run("awake", "start", { minutes: 30 });
     await h.manager.disable("awake");
     await h.drain();
     expect(sys.alive).toHaveLength(0);
     expect(sys.children[0]?.killed).toBe(1);
+    expect(endedEvents(h)).toHaveLength(1);
+    expect(endedEvents(h)[0]).toMatchObject({ source: "awake", payload: { reason: "disabled" } });
     const disabled = h.events.find((e) => e.event_type === "capability.disabled");
     expect(disabled?.payload.reason).toBe("user");
   });
 
-  it("the emergency stop releases the hold; capability.disabled says kill_switch", async () => {
+  it("the emergency stop releases the hold and publishes one awake.session.ended (kill_switch)", async () => {
     const { h, sys } = await ready();
     await h.run("awake", "start", { minutes: 30 });
     h.permissions.engageKillSwitch();
     await h.drain();
     await settle();
     expect(sys.alive).toHaveLength(0);
+    expect(endedEvents(h)).toHaveLength(1);
+    expect(endedEvents(h)[0]).toMatchObject({
+      source: "awake",
+      payload: { reason: "kill_switch" },
+    });
     const disabled = h.events.find((e) => e.event_type === "capability.disabled");
     expect(disabled?.payload.reason).toBe("kill_switch");
   });
 
-  it("closing the manager (Core exit) releases the hold", async () => {
+  it("closing the manager (Core exit) releases the hold and publishes one awake.session.ended (shutdown)", async () => {
     const { h, sys } = await ready();
     await h.run("awake", "start", { minutes: 30 });
     await h.manager.close();
     expect(sys.alive).toHaveLength(0);
+    expect(endedEvents(h)).toHaveLength(1);
+    expect(endedEvents(h)[0]).toMatchObject({ source: "awake", payload: { reason: "shutdown" } });
+  });
+
+  it("disabling with no session publishes no awake.session.ended", async () => {
+    const { h } = await ready();
+    await h.manager.disable("awake");
+    await h.drain();
+    expect(endedEvents(h)).toHaveLength(0);
+  });
+
+  it("a normal end is not announced a second time by a later disable", async () => {
+    const { h } = await ready();
+    await h.run("awake", "start", { minutes: 30 });
+    await h.run("awake", "end");
+    await h.manager.disable("awake");
+    await h.drain();
+    expect(endedEvents(h)).toHaveLength(1);
+    expect(endedEvents(h)[0]?.payload.reason).toBe("cancelled");
   });
 });

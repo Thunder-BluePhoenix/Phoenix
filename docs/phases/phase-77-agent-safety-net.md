@@ -52,7 +52,9 @@ Every agent session can be undone, and Fawkes notices when an agent is stuck.
 
 An independent static review (read-only, not a human audit) was followed by fixes, each with tests: checkpoint rows are capped and throttled per project; bidi and format characters are stripped from preview paths; every ref deletion is guarded to the checkpoint namespace.
 
-**Not fixed (open):** the rollback race between the recompute and the writes (hundreds of milliseconds); hostile-repository git behaviour (a `core.worktree` redirect, empty filter commands, `safe.directory`) was not verified on real git; the reservation of `agent.safety.*` events is incomplete for external capabilities that declare `agent.*`; checkpoint snapshots contain any secret present in the work tree (local only, ignored files excluded).
+**Not fixed (open):** the rollback race between the recompute and the writes (hundreds of milliseconds); hostile-repository git behaviour (a `core.worktree` redirect, empty filter commands, `safe.directory`) was not verified on real git; checkpoint snapshots contain any secret present in the work tree (local only, ignored files excluded).
+
+**Fixed later (simulation only):** the `agent.safety.*` reservation for external capabilities. Manifests that could match the namespace (`agent.*`, `agent.safety.*`, ...) are refused unless Core loaded the module itself (the `agents` capability), and `CapabilityManager.publishAs` refuses `agent.safety.*` from any capability. Tested with fake and fixture capabilities only; see [agent-safety-net.md](../agent-safety-net.md#reserved-namespace-agentsafety).
 
 ### What was not built
 

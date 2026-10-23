@@ -55,6 +55,15 @@ export interface CapabilityModule {
   init?(ctx: CapabilityContext): void | Promise<void>;
   health?(ctx: CapabilityContext): HealthResult | Promise<HealthResult>;
   commands?: Record<string, CommandHandler>;
+  /**
+   * Called synchronously when this capability is disabled (`reason` is the disable reason:
+   * "user", "kill_switch", "uninstall", …) or Core is closing (`"shutdown"`), BEFORE
+   * `ctx.signal` is aborted, so `ctx.emit` still publishes. Use it to say that live work was cut
+   * short (an event); release the real resource on abort and in `shutdown` too, never only
+   * here. A throw is logged and ignored. Two disables racing each other may both call it, so
+   * make it idempotent.
+   */
+  stopping?(ctx: CapabilityContext, reason: string): void;
   shutdown?(ctx: CapabilityContext): void | Promise<void>;
 }
 

@@ -11,6 +11,7 @@ import {
   ErrorCode,
   eventDeclared,
   findSecrets,
+  isReservedEventType,
   PERMISSION_DESCRIPTIONS,
   PhoenixError,
   validateEvent,
@@ -114,7 +115,7 @@ export class CapabilityManager {
 
   /** Registers a first-party in-process capability. */
   registerBuiltin(module: CapabilityModule): CapabilityView {
-    const manifest = this.validate(module.manifest);
+    const manifest = this.validate(module.manifest, true);
     if (this.entries.has(manifest.id)) {
       throw new PhoenixError(
         ErrorCode.INVALID_REQUEST,
@@ -346,6 +347,7 @@ export class CapabilityManager {
     const entry = this.require(id);
     if (entry.status !== "enabled") return this.view(entry);
     this.stopHealth(entry);
+    this.announceStopping(entry, reason);
     entry.abort?.abort();
     try {
       if (entry.kind === "builtin") {
@@ -492,6 +494,7 @@ export class CapabilityManager {
     for (const e of this.entries.values()) {
       if (e.status !== "enabled") continue;
       this.stopHealth(e);
+      this.announceStopping(e, "shutdown");
       e.abort?.abort();
       if (e.kind === "builtin" && e.module?.shutdown) {
         await guarded(() => e.module!.shutdown!(e.ctx!), this.callTimeoutMs).catch(() => {});
@@ -687,6 +690,22 @@ export class CapabilityManager {
 
   // ── Internals ─────────────────────────────────────────────────────────────
 
+  /**
+   * Lets a builtin say that live work was cut short, while its context can still publish.
+   * Runs before the abort and before `shutdown`; a throw never blocks the disable or the close.
+   */
+  private announceStopping(entry: Entry, reason: string): void {
+    if (entry.kind !== "builtin" || !entry.module?.stopping || !entry.ctx) return;
+    try {
+      entry.module.stopping(entry.ctx, reason);
+    } catch (err) {
+      this.logger.warn("capability stopping hook failed", {
+        id: entry.manifest.id,
+        error: toPhoenixError(err).message,
+      });
+    }
+  }
+
   private publishAs(entry: Entry, event: unknown, ephemeral = false): PublishResult {
     if (entry.status !== "enabled") {
       return { ok: false, error: new PhoenixError(ErrorCode.CAPABILITY_DISABLED) };
@@ -699,6 +718,18 @@ export class CapabilityManager {
         error: new PhoenixError(
           ErrorCode.SECURITY_POLICY_BLOCKED,
           `Source must be "${entry.manifest.id}"`,
+        ),
+      };
+    }
+    // `agent.safety.*` is Core's. An in-process built-in such as `agents` may declare `agent.*`
+    // (manifest validation allows the overlap for first-party manifests only), and an external
+    // manifest that predates the rule may still hold one; neither may publish into it.
+    if (isReservedEventType(v.event.event_type)) {
+      return {
+        ok: false,
+        error: new PhoenixError(
+          ErrorCode.SECURITY_POLICY_BLOCKED,
+          `Event type "${v.event.event_type}" is reserved for Core`,
         ),
       };
     }
@@ -788,8 +819,9 @@ export class CapabilityManager {
     return this.view(entry);
   }
 
-  private validate(manifest: unknown): CapabilityManifest {
-    const r = validateManifest(manifest);
+  /** `firstParty`: a built-in module that Core itself loaded (never a manifest from outside). */
+  private validate(manifest: unknown, firstParty = false): CapabilityManifest {
+    const r = validateManifest(manifest, { allowReservedEventOverlap: firstParty });
     if (!r.ok) throw r.error;
     return r.manifest;
   }

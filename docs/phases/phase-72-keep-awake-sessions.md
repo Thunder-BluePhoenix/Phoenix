@@ -23,7 +23,7 @@ Keep the computer awake for a bounded time while agents, builds or meetings run,
 
 - [ ] macOS (`caffeinate`), Linux (`systemd-inhibit`) and Windows (`SetThreadExecutionState`). All three are written. macOS ran once for real in a guarded smoke test (`PHOENIX_REAL_AWAKE=1`, `capabilities/awake/test/real-awake.test.ts`: a real `caffeinate -t 20` held a power assertion and the process and assertion were gone after release). Unticked because **Linux (`systemd-inhibit`) and Windows (a PowerShell loop calling `SetThreadExecutionState`) were never run**, only tested against a fake runner (`inhibit.test.ts`).
 - [x] "Stay awake while agents work": a session that ends a set time after the last agent finishes. `mode: "agents_grace"` (`capabilities/awake/test/agents-grace.test.ts`, fake bus). Only events whose bus source is `agents` count; no real coding agent drove it.
-- [ ] Fawkes shows an awake indicator; history in the activity feed. The indicator is the countdown pill above. `awake.session.started|extended|ended` events are published, but the activity feed was not looked at with them in a real browser, and **Fawkes' state is not changed** (no `state_rules`, because states are fixed and WORKING while only a timer runs would be wrong). Disable, the kill switch and Core exit release the hold but publish no `awake.session.ended`.
+- [ ] Fawkes shows an awake indicator; history in the activity feed. The indicator is the countdown pill above. `awake.session.started|extended|ended` events are published, but the activity feed was not looked at with them in a real browser, and **Fawkes' state is not changed** (no `state_rules`, because states are fixed and WORKING while only a timer runs would be wrong). Disable, the kill switch and Core exit release the hold and now publish one `awake.session.ended` (`disabled`, `kill_switch`, `shutdown`) through the capability's `stopping` hook, which the manager calls before it aborts the signal; tested with fakes and a real `PhoenixRuntime` on a fake machine only.
 
 ## Deliverables
 
@@ -50,7 +50,11 @@ A static review (read-only, not a human audit) found the following; each was **f
 
 ### What was not built
 
-`state_rules` (Fawkes' state does not change), a tray countdown, a Settings entry, an `awake.session.ended` event on disable, kill switch or Core exit.
+`state_rules` (Fawkes' state does not change), a tray countdown, a Settings entry.
+
+### Ended event on disable, kill switch and Core exit
+
+The manager aborts a capability's signal before `shutdown()`, and an aborted context cannot publish. `CapabilityModule` therefore gained an optional `stopping(ctx, reason)` hook (`core/capability-manager`), called synchronously from `disable()` and `close()` before the abort (a throw is logged and ignored). Awake's `stopping` ends the session (`disabled`, `kill_switch` or `shutdown`): the hold is released first, then the one event is published through the still-valid context, so no source is forged and the later abort/`shutdown()` find no session (no duplicate). Subscribers checked: the lid-actions module maps `kill_switch|disabled|shutdown` to its own release and already also reacts to the abort; Recovery just runs a tick; the scheduled-awake service does not subscribe to the event; the web hook only refreshes status. Tests: `capabilities/awake/test/session.test.ts`, `harness.test.ts`, `core/capability-manager/test/manager.test.ts`, `core/runtime/test/awake-session-ended.test.ts`.
 
 ### What was not run
 

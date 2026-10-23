@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { describe, expect, it } from "vitest";
-import { compileSchema, eventDeclared, validateManifest, type CapabilityManifest } from "../src";
+import {
+  compileSchema,
+  eventDeclared,
+  isReservedEventType,
+  patternCoversReservedEvents,
+  validateManifest,
+  type CapabilityManifest,
+} from "../src";
 
 const base = (): CapabilityManifest => ({
   id: "git",
@@ -107,6 +114,57 @@ describe("validateManifest", () => {
     expect(validateManifest({ ...base(), events: ["securityx.*", "my.security.audit"] }).ok).toBe(
       true,
     );
+  });
+
+  describe("the agent.safety.* namespace (Phase 77) is Core's", () => {
+    const reserved = (p: string) =>
+      `/events "${p}" could match the reserved "agent.safety" event namespace`;
+
+    it.each(["agent.*", "agent.safety.*", "agent.safety.checkpoint", "agent.safety.loop"])(
+      "refuses an outside manifest that declares %s",
+      (pattern) => {
+        expect(errors({ ...base(), events: ["git.*", pattern] })).toEqual([reserved(pattern)]);
+      },
+    );
+
+    it("refuses a bare * (not a valid event pattern at all)", () => {
+      expect(errors({ ...base(), events: ["*"] }).length).toBeGreaterThan(0);
+      expect(
+        validateManifest({ ...base(), events: ["*"] }, { allowReservedEventOverlap: true }).ok,
+      ).toBe(false);
+    });
+
+    it("allows agent.* and the reserved names only when the caller marks the manifest first-party", () => {
+      const m = { ...base(), events: ["agent.*"] };
+      expect(validateManifest(m).ok).toBe(false);
+      expect(validateManifest(m, { allowReservedEventOverlap: true }).ok).toBe(true);
+      expect(validateManifest(m, { allowReservedEventOverlap: false }).ok).toBe(false);
+    });
+
+    it("still allows neighbours that cannot match a reserved name", () => {
+      const events = [
+        "agent.working",
+        "agent.started",
+        "agent.safetyx.*",
+        "agent.sa.*",
+        "agent.safe",
+      ];
+      expect(errors({ ...base(), events })).toEqual([]);
+    });
+
+    it("classifies event types and patterns", () => {
+      expect(isReservedEventType("agent.safety")).toBe(true);
+      expect(isReservedEventType("agent.safety.stall")).toBe(true);
+      expect(isReservedEventType("agent.safetyx")).toBe(false);
+      expect(isReservedEventType("agent.working")).toBe(false);
+      expect(patternCoversReservedEvents("agent.*")).toBe(true);
+      expect(patternCoversReservedEvents("agent.safety.*")).toBe(true);
+      expect(patternCoversReservedEvents("agent.safety.deep.*")).toBe(true);
+      expect(patternCoversReservedEvents("agent.safety")).toBe(true);
+      expect(patternCoversReservedEvents("agent.working")).toBe(false);
+      expect(patternCoversReservedEvents("agent.safetyx.*")).toBe(false);
+      expect(patternCoversReservedEvents("agentx.*")).toBe(false);
+    });
   });
 
   it("rejects commands using undeclared permissions", () => {

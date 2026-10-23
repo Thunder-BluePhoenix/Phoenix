@@ -409,6 +409,57 @@ describe("capabilities", () => {
     });
   });
 
+  it("external: cannot declare agent.* / agent.safety.* and cannot post agent.safety.* through ingest", async () => {
+    const { api, runtime } = await start();
+    for (const events of [["agent.*"], ["agent.safety.*"], ["agent.safety.checkpoint"], ["*"]]) {
+      const reg = await api("POST", "/api/capabilities/register", {
+        manifest: { ...manifest, id: "evil", events },
+        endpoint: "http://127.0.0.1:9",
+      });
+      expect(reg.status, events.join()).toBe(400);
+    }
+    expect(
+      (
+        await api("POST", "/api/capabilities/register", {
+          manifest: { ...manifest, id: "evil", events: ["agent.*"] },
+          endpoint: "http://127.0.0.1:9",
+        })
+      ).json.details,
+    ).toEqual(['/events "agent.*" could match the reserved "agent.safety" event namespace']);
+
+    // An external capability with an ordinary manifest is refused the reserved names at ingest.
+    const ext = createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ status: "healthy" }));
+    });
+    const listening = Promise.withResolvers<void>();
+    ext.listen(0, "127.0.0.1", () => listening.resolve());
+    await listening.promise;
+    const address = ext.address();
+    if (address === null || typeof address === "string") throw new Error("no TCP address");
+    const endpoint = `http://127.0.0.1:${address.port}`;
+    try {
+      const reg = await api("POST", "/api/capabilities/register", { manifest, endpoint });
+      await api("POST", "/api/capabilities/demo/enable", {});
+      const post = (type: string) =>
+        api("POST", "/api/capabilities/demo/events", event(type, { source: "demo" }), {
+          authorization: "",
+          "x-phoenix-capability-token": reg.json.token as string,
+        });
+      const refused = await post("agent.safety.checkpoint");
+      expect(refused.status).toBe(403);
+      expect(refused.json.code).toBe("SECURITY_POLICY_BLOCKED");
+      await runtime.bus.drain();
+      expect(
+        runtime.events
+          .recent({ limit: 100 })
+          .some((e) => e.event.event_type.startsWith("agent.safety.")),
+      ).toBe(false);
+    } finally {
+      ext.close();
+    }
+  });
+
   it("config endpoint rejects secrets", async () => {
     const { api } = await start({}, { capabilities: demo(() => 1) });
     const secret = await api("POST", "/api/capabilities/demo/config", {

@@ -183,9 +183,11 @@ as text.
   numbers from the agent's own diff or tool input). Locations are cleaned of control characters and anything that looks
   like a secret, and are clipped, but a file name can still say something misleading. The decision is bound to the
   content hash and session, not to the wording.
-- **Reservation of `agent.safety.*` events is incomplete for external capabilities.** `POST /api/events` refuses a
-  fixed list of Core-only types; an external capability whose manifest declares `agent.*` events can still emit types
-  Core does not reserve. Handoff notes only trust `agents`-source events for goals and session ends.
+- **The `agent.safety.*` namespace is closed for capability manifests and publishing** (see
+  [agent-safety-net.md](agent-safety-net.md#reserved-namespace-agentsafety); simulation only). `POST /api/events`
+  still refuses a fixed list of Core-only types, and an external capability whose manifest declares other `agent.*`
+  types is now refused too, because `agent.*` could cover the reserved names. Handoff notes only trust
+  `agents`-source events for goals and session ends.
 - Redaction (`redactSecrets`) cuts any run of more than 256 word characters to its last 256 before matching, to keep
   its cost linear on hostile input; git diff text is cut to 250,000 characters and each line to 2,000 before it
   reaches the redactor.

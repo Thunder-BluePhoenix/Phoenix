@@ -310,6 +310,49 @@ describe("lifecycle", () => {
     expect(third.manager.get("demo").status).toBe("installed");
   });
 
+  it("calls stopping before the abort, so the context can still publish, on disable and on close", async () => {
+    const { manager, bus, types } = setup();
+    const seen: { reason: string; aborted: boolean; ok: boolean }[] = [];
+    manager.registerBuiltin(
+      builtin({
+        stopping: (ctx, reason) => {
+          const result = ctx.emit({ event_type: "demo.stopping", severity: "info" } as never);
+          seen.push({ reason, aborted: ctx.signal.aborted, ok: result.ok });
+        },
+      }),
+    );
+    await manager.enable("demo");
+    await manager.disable("demo", "kill_switch");
+    await manager.enable("demo");
+    await manager.close();
+    await bus.drain();
+    expect(seen).toEqual([
+      { reason: "kill_switch", aborted: false, ok: true },
+      { reason: "shutdown", aborted: false, ok: true },
+    ]);
+    expect(types().filter((t) => t === "demo.stopping")).toHaveLength(2);
+  });
+
+  it("a stopping hook that throws never blocks the disable or the shutdown", async () => {
+    const { manager } = setup();
+    let shutdown = 0;
+    let signal: AbortSignal | undefined;
+    manager.registerBuiltin(
+      builtin({
+        init: (ctx) => void (signal = ctx.signal),
+        stopping: () => {
+          throw new Error("boom");
+        },
+        shutdown: () => void shutdown++,
+      }),
+    );
+    await manager.enable("demo");
+    await manager.disable("demo");
+    expect(manager.get("demo").status).toBe("disabled");
+    expect(signal!.aborted).toBe(true);
+    expect(shutdown).toBe(1);
+  });
+
   it("uninstall revokes permissions and deletes history unless retained", async () => {
     const { manager, permissions, events, bus } = setup();
     let ctx: { emit: (e: never) => unknown } | undefined;
@@ -356,6 +399,62 @@ describe("events from capabilities", () => {
     const r = ctx!.emit({ event_type: "deploy.started", severity: "info" } as never);
     expect(r.ok).toBe(false);
     expect(r.error?.code).toBe(ErrorCode.SECURITY_POLICY_BLOCKED);
+  });
+
+  describe("agent.safety.* belongs to Core (Phase 77)", () => {
+    const agentsLike = () => manifest({ id: "agentslike", events: ["agent.*"], state_rules: [] });
+    const safetyEvent = (type: string, source: string) =>
+      createEvent({ event_type: type, source, severity: "warning" });
+
+    it("a first-party manifest may declare agent.*, publishes agent.working, but never agent.safety.*", async () => {
+      const { manager, bus, types } = setup();
+      let ctx: { emit: (e: never) => { ok: boolean; error?: PhoenixError } } | undefined;
+      manager.registerBuiltin(builtin({ init: (c) => void (ctx = c as never) }, agentsLike()));
+      await manager.enable("agentslike");
+      expect(ctx!.emit({ event_type: "agent.working", severity: "info" } as never).ok).toBe(true);
+      for (const type of [
+        "agent.safety.checkpoint",
+        "agent.safety.loop",
+        "agent.safety.stall",
+        "agent.safety.anything.new",
+      ]) {
+        const r = ctx!.emit({ event_type: type, severity: "warning" } as never);
+        expect(r.ok, type).toBe(false);
+        expect(r.error?.code).toBe(ErrorCode.SECURITY_POLICY_BLOCKED);
+        expect(r.error?.message).toBe(`Event type "${type}" is reserved for Core`);
+      }
+      await bus.drain();
+      expect(types().filter((t) => t.startsWith("agent."))).toEqual(["agent.working"]);
+    });
+
+    it("an external manifest cannot declare agent.*, agent.safety.* or a reserved name (nor *)", async () => {
+      for (const events of [
+        ["agent.*"],
+        ["agent.safety.*"],
+        ["agent.safety.checkpoint"],
+        ["build.*", "agent.*"],
+        ["*"],
+      ]) {
+        const { manager } = setup();
+        expect(
+          await errCode(
+            manager.registerExternal({ ...agentsLike(), id: "ext", events }, "http://127.0.0.1:9"),
+          ),
+          events.join(","),
+        ).toBe(ErrorCode.INVALID_REQUEST);
+        expect(manager.list()).toEqual([]);
+      }
+      // Positive control: the same manifest with an ordinary pattern registers.
+      const { manager } = setup();
+      expect(
+        await errCode(
+          manager.registerExternal(
+            { ...agentsLike(), id: "ext", events: ["build.*"] },
+            "http://127.0.0.1:9",
+          ),
+        ),
+      ).toBe("ok");
+    });
   });
 });
 
@@ -882,6 +981,39 @@ describe("external capabilities (separate process)", () => {
       status: "failed",
       error: { code: ErrorCode.CAPABILITY_UNAVAILABLE },
     });
+  });
+
+  it("refuses agent.safety.* from an external capability at ingest, and a planted agent.* manifest cannot publish it either", async () => {
+    const { manager, bus, types } = setup();
+    const { endpoint } = await spawnExternal();
+    const { token } = await manager.registerExternal(extManifest(), endpoint);
+    await fetch(`${endpoint}/__set_token`, { method: "POST", body: JSON.stringify({ token }) });
+    await manager.enable("ext");
+    const ev = (type: string) =>
+      createEvent({ event_type: type, source: "ext", severity: "warning" });
+
+    // Declared patterns (build.*, demo.*) do not cover it: the usual "not declared" refusal.
+    const plain = manager.ingest("ext", token, ev("agent.safety.checkpoint"));
+    expect(plain.ok).toBe(false);
+    if (!plain.ok) expect(plain.error.code).toBe(ErrorCode.SECURITY_POLICY_BLOCKED);
+
+    // Defence in depth: plant a manifest that declares agent.* (what a row stored before the
+    // manifest rule existed would hold). Test-only: it is the manager's own private entry table.
+    type Planted = { manifest: CapabilityManifest };
+    const internals: { entries: Map<string, Planted> } = manager as never;
+    const planted = internals.entries.get("ext")!;
+    planted.manifest = { ...planted.manifest, events: ["agent.*"] };
+    expect(manager.ingest("ext", token, ev("agent.working")).ok).toBe(true);
+    for (const type of ["agent.safety.checkpoint", "agent.safety.loop", "agent.safety.stall"]) {
+      const refused = manager.ingest("ext", token, ev(type));
+      expect(refused.ok, type).toBe(false);
+      if (!refused.ok) {
+        expect(refused.error.code).toBe(ErrorCode.SECURITY_POLICY_BLOCKED);
+        expect(refused.error.message).toBe(`Event type "${type}" is reserved for Core`);
+      }
+    }
+    await bus.drain();
+    expect(types().filter((t) => t.startsWith("agent."))).toEqual(["agent.working"]);
   });
 
   it("shows disconnected externals after restart and resumes them on re-register", async () => {
