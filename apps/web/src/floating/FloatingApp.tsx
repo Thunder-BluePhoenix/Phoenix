@@ -4,6 +4,7 @@ import type { DragEvent, SoundPlayer } from "@phoenix/pet-runtime";
 import { visualFor } from "@phoenix/pet-states";
 import { useCallback, useEffect, useState } from "react";
 import { tauriShortcuts, type ShortcutsShell } from "../commands/shortcuts-shell";
+import { AgentApprovals } from "../components/AgentApprovals";
 import { RebirthAvatar } from "../components/RebirthAvatar";
 import { AwakeCountdown } from "../components/Awake";
 import { SourcePills } from "../components/SourcePills";
@@ -102,6 +103,7 @@ export function FloatingApp({
           </p>
         )}
       </div>
+      <AgentApprovals compact />
       <RebirthAvatar
         state={state}
         size={FLOATING_SIZE}

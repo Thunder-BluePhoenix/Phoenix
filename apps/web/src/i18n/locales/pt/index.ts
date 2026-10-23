@@ -26,8 +26,11 @@ import { shell } from "./shell";
 import { signals } from "./signals";
 import { browserProfiles } from "./browser-profiles";
 import { awakeSchedule } from "./awake-schedule";
+import { awakeSettings } from "./awake-settings";
 import { teamStatus } from "./team-status";
 import { teamWebhooks } from "./team-webhooks";
+import { serviceGlances } from "./service-glances";
+import { serviceGlancesB } from "./service-glances-b";
 
 const messages: Messages = {
   ...common,
@@ -52,11 +55,14 @@ const messages: Messages = {
   ...signals,
   ...browserProfiles,
   ...awakeSchedule,
+  ...awakeSettings,
   ...teamStatus,
   ...teamWebhooks,
   ...machine,
   ...fawkesRebirth,
   ...sounds,
+  ...serviceGlances,
+  ...serviceGlancesB,
 };
 
 export default messages;

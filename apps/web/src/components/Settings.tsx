@@ -45,6 +45,7 @@ import { EventSourcePolicySection } from "./EventSourcePolicy";
 import { FawkesRebirthSettingsSection } from "./FawkesRebirthSettings";
 import { BrowserProfilesSection } from "./BrowserProfilesSettings";
 import { MusicSitesSection } from "./MusicSitesSettings";
+import { AwakeSettingsSection } from "./AwakeSettings";
 import { ScheduledAwakeSection } from "./ScheduledAwakeSettings";
 import { StatusLightsSection } from "./StatusLightsSettings";
 import { TeamSettingsSection } from "./TeamSettings";
@@ -82,6 +83,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <SyncSettingsSection />
       <PhoneLink />
       <McpClients />
+      <AwakeSettingsSection />
       <LidActionsSettings />
       <ContinuitySettings />
       <PortRadar />

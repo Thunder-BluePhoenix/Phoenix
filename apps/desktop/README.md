@@ -10,7 +10,8 @@ Floating desktop Fawkes ([Phase 14](../../docs/phases/phase-14-floating-desktop-
 - `open_in_phoenix` accepts only plain in-app routes such as `/meetings`; the page cannot choose the host.
 - `open_mailto` opens an editable draft in your mail app; Phoenix never sends mail. It accepts only a `mailto:` link of at most 2,000 characters with no control, bidi or zero-width character. It does not inspect recipients or headers the page builds.
 - Position, "keep on top" and visibility are stored in `desktop.json` in the app data directory, not in Core's database, so Fawkes remembers its place when Core is down. Keep-on-top is off by default.
-- Quit is always available from the tray and from the right-click menu on Fawkes.
+- Quit is always available from the tray and from the right-click menu on Fawkes. Before the app exits (tray Quit, Cmd+Q, the last window closing) the shell asks Core (`GET /api/awake/quit-check`, session token, loopback). While a change still needs undoing (lid-closed mode, Phase 73) it holds the exit and shows a native dialog with **Cancel** (default) and **Quit anyway**; Core not running, no token or an unreadable answer quits normally. A second Quit while the dialog is open does not stack another. The native dialogs (AppKit, Win32, GTK) have not been run on a real desktop; see [Phase 73](../../docs/phases/phase-73-lid-closed-mode-and-recovery.md).
+- The "jump to terminal" shortcut asks Core (`GET /api/agent/sessions`, then `POST .../focus-terminal`, session token) to bring the newest active agent session's terminal to the front; Core asks you to confirm first. If Core cannot, it opens `/agents`. Not run against a real terminal; see [Phase 70](../../docs/phases/phase-70-shortcuts-i18n-demo.md).
 
 ## Island (Phase 60)
 

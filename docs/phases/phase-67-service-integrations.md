@@ -5,7 +5,7 @@
 | Stage | Stage 12 — Coucou parity and beyond |
 | Release target | Post-v2.0 track |
 | Priority | Medium |
-| Status | 🟨 Six capabilities built (installed, not enabled) and tested against mock services written from recollection of the public docs; no real API and no key was ever used, so every request and response shape is unverified; no per-service web UI beyond the generic capability card; the n8n base URL can still be repointed by a token holder (visible, not prevented); exit criterion not met |
+| Status | 🟨 Six capabilities built (installed, not enabled) and tested against mock services written from recollection of the public docs; no real API and no key was ever used, so every request and response shape is unverified; read-only web glances on the Overview for all six services (tested against a fake Core only, never in a real browser against a real Core); the n8n base URL can still be repointed by a token holder (visible, not prevented); exit criterion not met |
 | Depends on | [Phase 13 — Capability SDK, Mock Capability & Event Simulator](phase-13-capability-sdk-mock-simulator.md) |
 | Unblocks | — |
 
@@ -16,7 +16,7 @@ Bring the services developers run on into Fawkes as capabilities.
 ## Tasks — parity with Coucou
 
 - [ ] Vercel deployments, Stripe payments, n8n workflows, Resend emails, Notion, Cal.com. All six are built (`capabilities/vercel`, `stripe`, `n8n`, `resend`, `notion`, `calcom`, each with `test/*.test.ts` against a local mock server) and registered in `builtinCapabilities` as installed, not enabled (`core/runtime/test/builtins.test.ts`). Unticked because nothing was run against a real service: the mocks encode the same reading of the docs as the code, so a misreading would pass. Unverified shapes are listed in the exit criterion below.
-- [ ] Each with its own colour/mini Fawkes. Each service has its own colour and glyph (`SERVICE_SOURCE_STYLES` in `pet/assets/src/outfits/sources.ts`); there is **no per-service mini Fawkes artwork**, and no glance component per service (only the generic capability card and Settings).
+- [ ] Each with its own colour/mini Fawkes. Each service has its own colour and glyph (`SERVICE_SOURCE_STYLES` in `pet/assets/src/outfits/sources.ts`); there is **no per-service mini Fawkes artwork**, The per-service web glances are separate: all six services now have a read-only glance on the Overview (see the two Web glances sections below).
 - [x] Pollers paused when nothing is watching. Each poller waits while no authenticated WebSocket client is connected and resumes when one connects (`core/capability-manager/src/presence.ts`, `CapabilityContext.watched()` / `untilWatched()`). Tests: `core/runtime/test/viewer-presence.test.ts` (follows connections, stays watched until the last client leaves, releases a waiting poller on disable) and each capability's "makes no request while unwatched and resumes when someone watches". "Watching" means any authenticated WebSocket client, not a visible window.
 
 ## Tasks — Phoenix improvements
@@ -49,6 +49,31 @@ A static review (not a human audit) found the following; each was fixed with reg
 - `POST /api/events` refuses an `event_type` or `source` of the outbound-service families (403 `SECURITY_POLICY_BLOCKED`), so a token holder cannot forge a Vercel deploy or a Stripe payment.
 - The Vercel mapper validates the project and keys the graph node `vercel:<project>:<id>`; remote text is redacted in Vercel, n8n and Stripe events and refused emits are counted (`events_refused`); an idempotency key is bound to its target; `redeploy` aborts if the response id differs from the requested id; the confirmation summary includes the target ids.
 
+### Web glances: Vercel, Stripe, n8n
+
+Vercel, Stripe and n8n each have a read-only glance on the Overview (`VercelGlance`, `StripeGlance`, `N8nGlance` in `apps/web/src/components/ServiceGlancesA.tsx`, mounted by `ServiceGlances.tsx` on the shared `ServiceGlanceFrame.tsx`; parsers in `apps/web/src/core/service-glances-a.ts` and `service-glances.ts`). Each calls only the capability's existing read command `status`, through Core's capability command route (`POST /api/capabilities/<id>/commands/status`, then the operation); the web app never contacts a service itself. The write commands `redeploy`, `run_again` and `pause_workflow` are not reachable from these components, and the glances add no command.
+
+- **Vercel:** the latest deployments (project and target, state word, branch, time, and the deployment address as its host only when it is a plain https URL without credentials), with counts of failed and in-progress ones.
+- **Stripe:** counts and amounts only: how many of the latest charges succeeded, failed or are pending, per-currency totals, available and pending balance, and the latest payments as formatted amount + state + time. The parser accepts an amount only in the capability's own `12.34 USD` format and a count only as a small non-negative integer, and never copies the receipt link or failure code (or any field the capability does not document), so customer names, emails and card details cannot be shown even if a result carried them.
+- **n8n:** recent executions (workflow name, state, time), how many of them failed or crashed, how many workflows are active, and the host the API key is sent to (shown only if it looks like a host). No link is shown.
+- **Text:** every string from a service is cleaned (control, line-separator and bidirectional-override characters removed, whitespace collapsed, clipped) and rendered as text by React; an address becomes a link only when it is https, has no credentials and passes `new URL`, with `rel="noopener noreferrer"`.
+- **States:** not installed (nothing shown, nothing called), installed but off (prompt to enable it under Capabilities, no command called), loading, error, not configured, empty, unreadable shape, and stale (the last data stays with a warning when a refresh fails). Refresh: when one of the service's own events arrives (while the page is visible) and every 60 s, only while the page is visible; the timer stops on unmount.
+- **Tests:** `apps/web/test/service-glances-a.test.tsx` runs the glances against a fake Core with the exact `status` output shape. It covers each state, hostile text, extra sensitive fields that must not appear, visibility-gated refresh, and that the only POSTs are `…/commands/status`. Mutating the https check, the amount format check and the visibility check each made tests fail.
+- **Strings:** all new text is in `i18n/en/service-glances.ts` and the nine other locales (shared frame text and the Vercel, Stripe and n8n keys); the non-English strings are machine-translated and unreviewed.
+- **Not verified:** exercised only against a fake Core and the capability's mock-shaped output in a test DOM; no real Vercel, Stripe or n8n account, key, Core or browser was used. The `status` shapes are the ones the capabilities return in code, themselves unverified against the real services.
+
+### Web glances: Resend, Notion, Cal.com
+
+Resend, Notion and Cal.com each have a read-only glance on the Overview (`ResendGlance`, `NotionGlance`, `CalComGlance` in `apps/web/src/components/ServiceGlancesB.tsx`, mounted by `ServiceGlances.tsx` on the shared `ServiceGlanceFrame`; parsers in `apps/web/src/core/service-glances-b.ts`). Each calls only the capability's existing read command `status`, through Core's capability command route; no write command exists or is called, and the glances add none.
+
+- **Resend:** counts of the recent sent emails by delivery state (delivered, on the way, delayed, bounced, marked as spam, failed, other) and the newest send time. The parser keeps only each item's state and time: subjects, recipient domains/counts and links in the result are never copied out, so they cannot be shown.
+- **Notion:** the watched pages and databases: title (control and bidirectional characters removed, whitespace collapsed, clipped to 80 characters, rendered as text), page/database/archived, last edit time, and a link only when it is an https `notion.so` / `notion.site` address. Nothing from page bodies is read by the capability or shown.
+- **Cal.com:** upcoming bookings (cancelled and rejected dropped), soonest first, five listed then "N more": start time, confirmed/pending, and the attendee count when the capability returns it. The booking title is deliberately **not** shown (Cal.com's default titles name the attendees) and the capability does not return the event type, so the event type is not shown either. Attendee names and emails are never in the result and are never rendered.
+- **States:** not installed (nothing shown), installed but off (prompt to enable, no command called), loading, error, not configured, empty, unreadable shape, and stale (the last data stays with a warning when a refresh fails). Refresh: on matching events and every 60 s, only while the page is visible.
+- **Tests:** `apps/web/test/service-glances-b.test.tsx` runs the glances against a fake Core with the exact `status` output shape, including hostile titles, extra recipient/attendee/content fields, visibility-gated refresh, and that only `…/commands/status` is ever posted.
+- **Strings:** all new text is in `i18n/en/service-glances-b.ts` and the nine other locales; the non-English strings are machine-translated and unreviewed.
+- **Not verified:** these glances were exercised only against a fake Core and the capability's mock-shaped output in a test DOM; no real Resend, Notion or Cal.com account, key or browser was used.
+
 ### Open (not fixed)
 
 n8n is self-hosted, so `base_url` stays configurable. It is now **visible** (status `sends_key_to`, the health message and the README name the host) but **not prevented**: a session-token holder can still point it at another host and receive the stored key. Closing that needs a credential that tells a person from an agent, or a confirmation on a config change; this is an open owner decision recorded in the gap register.
@@ -59,7 +84,7 @@ n8n is self-hosted, so `base_url` stays configurable. It is now **visible** (sta
 - Stripe does not enforce a restricted key: a secret key pasted by mistake is only ever used for GET requests.
 - The confirmation prompt names the target only through its summary text; the permission gateway copies `details` for workflows only.
 
-What was not done or not run: any real service or key; per-service web glances; per-service mini Fawkes artwork; the terms and rate limits of these services were not reviewed. Open items are in the [gap register](../gaps.md).
+What was not done or not run: any real service or key; any real browser or Core run of the web glances; per-service mini Fawkes artwork; the terms and rate limits of these services were not reviewed. Open items are in the [gap register](../gaps.md).
 
 ## Notes & risks
 

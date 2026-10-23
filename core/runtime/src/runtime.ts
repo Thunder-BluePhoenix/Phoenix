@@ -107,6 +107,7 @@ import { StatusLightProvisioning } from "./status-lights/provision";
 import { FawkesRebirthService } from "./fawkes-rebirth/service";
 import { BrowserProfilesService } from "./browser-profiles/service";
 import { MusicConnectorsService } from "./music-connectors/service";
+import { QuitCheckService } from "./quit-check";
 import { ScheduledAwakeService, type ScheduledAwakeDependencies } from "./scheduled-awake/service";
 import { EventSourcePolicy } from "./event-source-policy";
 import {
@@ -323,6 +324,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly statusLights: StatusLightProvisioning;
   /** Scheduled awake windows (Phase 90): off by default; holds Phase 72's one session. */
   readonly scheduledAwake: ScheduledAwakeService;
+  /** The Phase 73 quit veto for the desktop shell's Quit: read-only; the keep-awake capability binds it. */
+  readonly quitCheck = new QuitCheckService();
   /** Fawkes rebirth (Phase 91): turns a fixed build into a cosmetic celebration. Stores two switches. */
   readonly fawkesRebirth: FawkesRebirthService;
   /** Browser profiles (Phase 96): data and policy only; there is no browser engine yet. */

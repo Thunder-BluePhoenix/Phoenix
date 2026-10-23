@@ -6,10 +6,13 @@
 //! turning dictation off in Settings, or the emergency stop, takes effect on the next key press
 //! without restarting the app.
 //!
-//! This is a deliberately tiny HTTP/1.1 client for one loopback GET: Core binds to 127.0.0.1
-//! only (ADR-0015), so there is no TLS, no redirect and no proxy to handle, and the shell does
-//! not need an HTTP crate for it. The request builder and the response parser are pure and
-//! unit-tested; `fetch` is tested against a real loopback socket.
+//! This is a deliberately tiny HTTP/1.1 client for loopback calls with the session token: Core
+//! binds to 127.0.0.1 only (ADR-0015), so there is no TLS and no proxy to handle, a redirect is
+//! never followed (any 3xx is just a status the caller refuses), and the shell does not need an
+//! HTTP crate for it. [`call`] is the one place that opens the socket; the dictation gate, the
+//! terminal jump (`terminal_jump.rs`) and the quit veto (`quit_veto.rs`) all go through it. The
+//! request builder and the response parser are pure and unit-tested; `call` is tested against a
+//! real loopback socket.
 
 use serde::Deserialize;
 use std::io::{Read, Write};
@@ -18,7 +21,8 @@ use std::time::Duration;
 
 /// Longest response the shell reads (status documents are about 1 KB).
 const MAX_RESPONSE: u64 = 256 * 1024;
-const TIMEOUT: Duration = Duration::from_millis(1500);
+/// Connect, write and (unless the caller says otherwise) read timeout.
+pub const TIMEOUT: Duration = Duration::from_millis(1500);
 const PATH: &str = "/api/dictation/status";
 
 /// Why dictation cannot start right now, in words for the person.
@@ -72,16 +76,36 @@ fn gate_with(body: &str, needs_recogniser: bool) -> Gate {
     }
 }
 
+/// The HTTP method of a call. Only these two exist: nothing else is ever sent to Core.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Method {
+    Get,
+    /// Sent with `Content-Length: 0`; the routes the shell posts to ignore the body.
+    Post,
+}
+
 /// The request bytes. The token is validated by `connection::read_token` (URL-safe base64
 /// characters only), so it cannot inject a header; a token with anything else is refused here too.
-pub fn request(port_host: &str, token: &str) -> Option<String> {
-    let clean = !token.is_empty()
+/// `path` must be an absolute path of plain URL characters (no space, CR, LF or query), so a
+/// caller can never split the request line either.
+pub fn request(method: Method, path: &str, port_host: &str, token: &str) -> Option<String> {
+    let clean_token = !token.is_empty()
         && token
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
-    clean.then(|| {
+    let clean_path = path.len() <= 300
+        && path.starts_with('/')
+        && !path.starts_with("//")
+        && path
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"/_.:%-".contains(&b));
+    (clean_token && clean_path).then(|| {
+        let (verb, framing) = match method {
+            Method::Get => ("GET", ""),
+            Method::Post => ("POST", "Content-Length: 0\r\n"),
+        };
         format!(
-            "GET {PATH} HTTP/1.1\r\nHost: {port_host}\r\nAuthorization: Bearer {token}\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+            "{verb} {path} HTTP/1.1\r\nHost: {port_host}\r\nAuthorization: Bearer {token}\r\nAccept: application/json\r\n{framing}Connection: close\r\n\r\n"
         )
     })
 }
@@ -135,6 +159,65 @@ fn dechunk(mut body: &[u8]) -> Option<Vec<u8>> {
     }
 }
 
+/// Why a loopback call did not produce an answer. Never carries the token.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CallError {
+    NoToken,
+    NotLocal,
+    BadToken,
+    BadAddress,
+    Unanswered,
+}
+
+impl CallError {
+    /// In words for the person.
+    pub fn message(self) -> &'static str {
+        match self {
+            CallError::NoToken => "Phoenix Core is not running (no session token).",
+            CallError::NotLocal => "Phoenix Core is not on this computer.",
+            CallError::BadToken => "Phoenix Core's session token is not usable.",
+            CallError::BadAddress => "Phoenix Core's address is not usable.",
+            CallError::Unanswered => "Phoenix Core did not answer.",
+        }
+    }
+}
+
+/// One authenticated loopback call: `(status code, body)`. `read_timeout` bounds the wait for the
+/// answer (a call that waits for the person, such as a confirmation, passes a longer one); the
+/// body is cut at [`MAX_RESPONSE`]. The base URL must be `http://<loopback ip>:<port>`; the token
+/// is sent nowhere else and is never logged.
+pub fn call(
+    base_url: &str,
+    token: Option<&str>,
+    method: Method,
+    path: &str,
+    read_timeout: Duration,
+) -> Result<(u16, String), CallError> {
+    let token = token.ok_or(CallError::NoToken)?;
+    let addr = base_url
+        .strip_prefix("http://")
+        .ok_or(CallError::NotLocal)?;
+    let request = request(method, path, addr, token).ok_or(CallError::BadToken)?;
+    let socket = addr
+        .parse::<SocketAddr>()
+        .map_err(|_| CallError::BadAddress)?;
+    if !socket.ip().is_loopback() {
+        return Err(CallError::NotLocal);
+    }
+    let mut stream =
+        TcpStream::connect_timeout(&socket, TIMEOUT).map_err(|_| CallError::Unanswered)?;
+    let _ = stream.set_read_timeout(Some(read_timeout));
+    let _ = stream.set_write_timeout(Some(TIMEOUT));
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|_| CallError::Unanswered)?;
+    let mut raw = Vec::new();
+    if stream.take(MAX_RESPONSE).read_to_end(&mut raw).is_err() && raw.is_empty() {
+        return Err(CallError::Unanswered);
+    }
+    parse_response(&raw).ok_or(CallError::Unanswered)
+}
+
 /// Asks Core. Any failure (Core not running, no token, a refusal, garbage) is a closed gate
 /// with a reason: dictation never starts on a guess.
 pub fn fetch(base_url: &str, token: Option<&str>) -> Gate {
@@ -148,39 +231,11 @@ pub fn fetch_paste_gate(base_url: &str, token: Option<&str>) -> Gate {
 }
 
 fn fetch_with(base_url: &str, token: Option<&str>, needs_recogniser: bool) -> Gate {
-    let Some(token) = token else {
-        return Gate::Closed("Phoenix Core is not running (no session token).".into());
-    };
-    let Some(addr) = base_url.strip_prefix("http://") else {
-        return Gate::Closed("Phoenix Core is not on this computer.".into());
-    };
-    let Some(request) = request(addr, token) else {
-        return Gate::Closed("Phoenix Core's session token is not usable.".into());
-    };
-    let Ok(socket) = addr.parse::<SocketAddr>() else {
-        return Gate::Closed("Phoenix Core's address is not usable.".into());
-    };
-    if !socket.ip().is_loopback() {
-        return Gate::Closed("Phoenix Core is not on this computer.".into());
-    }
-    let closed = || Gate::Closed("Phoenix Core did not answer.".into());
-    let Ok(mut stream) = TcpStream::connect_timeout(&socket, TIMEOUT) else {
-        return closed();
-    };
-    let _ = stream.set_read_timeout(Some(TIMEOUT));
-    let _ = stream.set_write_timeout(Some(TIMEOUT));
-    if stream.write_all(request.as_bytes()).is_err() {
-        return closed();
-    }
-    let mut raw = Vec::new();
-    if stream.take(MAX_RESPONSE).read_to_end(&mut raw).is_err() && raw.is_empty() {
-        return closed();
-    }
-    match parse_response(&raw) {
-        Some((200, body)) => gate_with(&body, needs_recogniser),
-        Some((401, _)) => Gate::Closed("Phoenix Core refused the session token.".into()),
-        Some(_) => Gate::Closed("Phoenix Core refused the dictation status request.".into()),
-        None => closed(),
+    match call(base_url, token, Method::Get, PATH, TIMEOUT) {
+        Ok((200, body)) => gate_with(&body, needs_recogniser),
+        Ok((401, _)) => Gate::Closed("Phoenix Core refused the session token.".into()),
+        Ok(_) => Gate::Closed("Phoenix Core refused the dictation status request.".into()),
+        Err(why) => Gate::Closed(why.message().into()),
     }
 }
 
@@ -259,13 +314,44 @@ mod tests {
 
     #[test]
     fn the_request_carries_the_token_and_refuses_anything_that_could_split_a_header() {
-        let text = request("127.0.0.1:4870", "abc-DEF_123").unwrap();
+        let text = request(Method::Get, PATH, "127.0.0.1:4870", "abc-DEF_123").unwrap();
         assert!(text.starts_with("GET /api/dictation/status HTTP/1.1\r\n"));
         assert!(text.contains("Authorization: Bearer abc-DEF_123\r\n"));
         assert!(text.contains("Host: 127.0.0.1:4870\r\n"));
         assert!(text.ends_with("\r\n\r\n"));
         for bad in ["", "a b", "a\r\nX: y", "a\n", "tok;en", "\u{e9}"] {
-            assert_eq!(request("127.0.0.1:1", bad), None, "{bad:?}");
+            assert_eq!(
+                request(Method::Get, PATH, "127.0.0.1:1", bad),
+                None,
+                "{bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_post_says_it_has_no_body_and_a_path_can_never_split_the_request() {
+        let text = request(Method::Post, "/api/x/y", "127.0.0.1:1", "tok").unwrap();
+        assert!(text.starts_with("POST /api/x/y HTTP/1.1\r\n"));
+        assert!(text.contains("Content-Length: 0\r\n"));
+        assert!(!request(Method::Get, PATH, "h", "t")
+            .unwrap()
+            .contains("Content-Length"));
+        let long = format!("/{}", "a".repeat(400));
+        for bad in [
+            "",
+            "api",
+            "//evil",
+            "/a b",
+            "/a?x=1",
+            "/a#b",
+            "/a\r\nX: y",
+            long.as_str(),
+        ] {
+            assert_eq!(
+                request(Method::Post, bad, "127.0.0.1:1", "tok"),
+                None,
+                "{bad:?}"
+            );
         }
     }
 
@@ -376,5 +462,93 @@ mod tests {
             fetch("https://127.0.0.1:4870", Some("t")),
             Gate::Closed(_)
         ));
+    }
+
+    #[test]
+    fn call_posts_with_the_token_and_returns_the_status_and_body() {
+        let reply =
+            b"HTTP/1.1 403 Forbidden\r\nContent-Length: 16\r\n\r\n{\"code\":\"NO\"}   ".to_vec();
+        let (base, server) = serve(reply);
+        let got = call(
+            &base,
+            Some("tok-2"),
+            Method::Post,
+            "/api/agent/sessions/a%3Ab/focus-terminal",
+            Duration::from_secs(2),
+        );
+        assert_eq!(got, Ok((403, "{\"code\":\"NO\"}   ".into())));
+        let seen = server.join().unwrap();
+        assert!(seen.starts_with("POST /api/agent/sessions/a%3Ab/focus-terminal HTTP/1.1"));
+        assert!(seen.contains("Authorization: Bearer tok-2"));
+    }
+
+    #[test]
+    fn call_never_follows_a_redirect_it_just_reports_the_status() {
+        let redirect =
+            b"HTTP/1.1 302 Found\r\nLocation: http://evil.example/\r\nContent-Length: 0\r\n\r\n"
+                .to_vec();
+        let (base, server) = serve(redirect);
+        assert_eq!(
+            call(&base, Some("t"), Method::Get, "/x", TIMEOUT),
+            Ok((302, String::new()))
+        );
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn call_reads_at_most_the_response_bound() {
+        let body = "a".repeat(MAX_RESPONSE as usize + 1000);
+        let reply = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        )
+        .into_bytes();
+        let (base, server) = serve(reply);
+        // The body is cut, so the declared length is not met: refused, not half-trusted.
+        assert_eq!(
+            call(&base, Some("t"), Method::Get, "/x", TIMEOUT),
+            Err(CallError::Unanswered)
+        );
+        let _ = server.join();
+    }
+
+    #[test]
+    fn call_gives_up_after_the_read_timeout() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let started = std::time::Instant::now();
+        let got = call(
+            &base,
+            Some("t"),
+            Method::Get,
+            "/x",
+            Duration::from_millis(150),
+        );
+        assert_eq!(got, Err(CallError::Unanswered));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        drop(listener);
+    }
+
+    #[test]
+    fn call_errors_never_contain_the_token() {
+        for why in [
+            CallError::NoToken,
+            CallError::NotLocal,
+            CallError::BadToken,
+            CallError::BadAddress,
+            CallError::Unanswered,
+        ] {
+            assert!(!why.message().contains("Bearer"));
+        }
+        assert_eq!(
+            call(
+                "http://127.0.0.1:1",
+                Some("bad token"),
+                Method::Get,
+                "/x",
+                TIMEOUT
+            ),
+            Err(CallError::BadToken)
+        );
     }
 }

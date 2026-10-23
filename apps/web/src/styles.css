@@ -2347,3 +2347,9 @@ code.break {
   border: 1px solid var(--border);
   border-radius: 6px;
 }
+
+/* Per-service glances (Phase 67) */
+.service-glance .service-glance-title,
+.service-glance .service-glance-items li {
+  overflow-wrap: anywhere;
+}

@@ -8,6 +8,7 @@ import { useAgentApprovals } from "../core/hooks";
 import type { AgentApproval } from "../core/types";
 import { useT, type MessageKey, type Translate } from "../i18n";
 import { hasHiddenChars, RevealedBlock, revealNodes, revealPlain } from "./RevealedText";
+import "./agent-approvals-compact.css";
 
 const MAX_QUESTIONS = 4;
 const ALWAYS_TTL_MINUTES = 60;
@@ -330,8 +331,11 @@ interface FocusPlan {
  * Requests from coding agents (Phase 56). Kept live by the `agent.approval.*` events, so answering
  * in one window clears the card in the others. Shows nothing while none is waiting, and nothing if
  * the list cannot be read: the ordinary approvals queue already reports an unreachable Core.
+ *
+ * `compact` is the same cards, hook and decision handling for the small floating window and the
+ * island: no intro text, no "nothing waiting" panel, and the outcome is spoken rather than drawn.
  */
-export function AgentApprovals() {
+export function AgentApprovals({ compact = false }: { compact?: boolean } = {}) {
   const t = useT();
   const { data, error, reload } = useAgentApprovals();
   const [gone, setGone] = useState<string[]>([]);
@@ -392,17 +396,24 @@ export function AgentApprovals() {
   };
 
   if (error || (pending.length === 0 && !announcement)) return null;
+  const status = (
+    <p
+      className={`approval-live small${compact ? " agent-approvals-live-compact" : ""}`}
+      role="status"
+      aria-live="polite"
+      aria-label={t("agents.agentApprovals.resultsLabel")}
+    >
+      {announcement}
+    </p>
+  );
+  if (compact && pending.length === 0) return status;
   return (
     <>
-      <p
-        className="approval-live small"
-        role="status"
-        aria-live="polite"
-        aria-label={t("agents.agentApprovals.resultsLabel")}
+      {status}
+      <section
+        aria-labelledby="agent-approvals-h"
+        className={`approvals agent-approvals${compact ? " agent-approvals-compact" : ""}`}
       >
-        {announcement}
-      </p>
-      <section aria-labelledby="agent-approvals-h" className="approvals agent-approvals">
         <h3 id="agent-approvals-h" ref={heading} tabIndex={-1}>
           {pending.length > 0
             ? t("agents.agentApprovals.headingPending")
@@ -412,7 +423,7 @@ export function AgentApprovals() {
           <p className="muted small">{t("agents.agentApprovals.nothing")}</p>
         ) : (
           <>
-            <p className="muted small">{t("agents.agentApprovals.intro")}</p>
+            {!compact && <p className="muted small">{t("agents.agentApprovals.intro")}</p>}
             <ul
               className="card-list"
               aria-label={t("agents.agentApprovals.listLabel")}

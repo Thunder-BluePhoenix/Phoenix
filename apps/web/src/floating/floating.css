@@ -18,6 +18,21 @@
     Roboto,
     sans-serif;
 }
+/* The compact agent-approval card (Phase 56) draws from these. */
+:root {
+  --aa-bg: var(--bubble-bg);
+  --aa-text: var(--bubble-text);
+  --aa-muted: #5c5f66;
+  --aa-warning: #a85400;
+  --aa-danger: var(--danger-text);
+  --aa-accent: #c2410c;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --aa-muted: #a6a7ab;
+    --aa-warning: #f08c00;
+  }
+}
 @media (prefers-color-scheme: dark) {
   :root {
     --bubble-bg: #1f2023;
@@ -52,6 +67,16 @@ body {
   min-height: 0;
   display: flex;
   align-items: flex-end;
+}
+/* Approvals waiting: the window cannot grow, so the card takes the room the bubble would use (the
+   bubble shrinks to one line, Fawkes keeps her full size) and scrolls when it is taller. */
+.floating-root > .agent-approvals-compact {
+  align-self: stretch;
+  flex: 2 1 0;
+  min-height: 0;
+}
+.floating-root:has(> .agent-approvals-compact) .bubble {
+  -webkit-line-clamp: 1;
 }
 .bubble {
   margin: 0;

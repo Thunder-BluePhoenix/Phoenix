@@ -5,7 +5,7 @@
 | Stage | Stage 13 — Insomnia parity and beyond (keep awake) |
 | Release target | Post-v2.0 track |
 | Priority | High |
-| Status | 🟨 Built and tested with recording fakes; the only real run was one guarded macOS `caffeinate` smoke test; Linux and Windows holds, killing Core mid-session, and quitting the app were never run on real systems; no tray countdown, no Settings entry, no `state_rules`; the exit criterion is not met |
+| Status | 🟨 Built and tested with recording fakes; the only real run was one guarded macOS `caffeinate` smoke test; Linux and Windows holds, killing Core mid-session, and quitting the app were never run on real systems; no tray countdown (the tray menu is Rust and is still unbuilt), no `state_rules`; a Settings → Keep awake section exists but was only tested in happy-dom against a fake Core; the exit criterion is not met |
 | Depends on | [Phase 13 — Capability SDK, Mock Capability & Event Simulator](phase-13-capability-sdk-mock-simulator.md) |
 | Unblocks | [Phase 73 — Lid-Closed Mode, Recovery & Power Floors](phase-73-lid-closed-mode-and-recovery.md), [Phase 75 — Agent Continuity: Network Failover, tmux Nudge, Browser Throttling](phase-75-agent-continuity-extras.md) |
 
@@ -29,6 +29,7 @@ Keep the computer awake for a bounded time while agents, builds or meetings run,
 
 - capabilities/awake: built (`@phoenix/capability-awake`, id `awake`, registered in `builtins.ts` as installed, not enabled; [README](../../capabilities/awake/README.md)).
 - Countdown UI in web, tray and island: web (Overview glance) and island built; floating Fawkes shows it too; **tray not built**.
+- Settings → Keep awake (`apps/web/src/components/AwakeSettings.tsx`): status, start (presets 30 min, 1 h, 2 h, 4 h or custom whole minutes 1 to 10080, optional label up to 80 characters), extend and end. Test: `apps/web/test/awake-settings.test.tsx` (fake Core, happy-dom).
 
 ## Exit criteria
 
@@ -50,7 +51,11 @@ A static review (read-only, not a human audit) found the following; each was **f
 
 ### What was not built
 
-`state_rules` (Fawkes' state does not change), a tray countdown, a Settings entry.
+`state_rules` (Fawkes' state does not change) and a tray countdown. The tray menu is Rust and is still **unbuilt**.
+
+### Settings → Keep awake
+
+`AwakeSettingsSection` is mounted in `Settings.tsx`. It reads status with the existing `useAwakeStatus` hook and sends `start`, `extend` and `end` through `useCommandAction`, that is `POST /api/capabilities/awake/commands/<name>` and then `GET /api/operations/:id`, exactly like the Overview glance and the `phoenix awake` CLI. All three are `execute` commands, so Core raises its own confirmation. The UI only waits ("Waiting for your approval in Approvals…") and reports what Core's operation says: `succeeded` (approved), `PERMISSION_DENIED` (declined), `SECURITY_POLICY_BLOCKED` (emergency stop), `OPERATION_TIMEOUT` (expired or cancelled) or any other error text. It never calls `/api/confirmations`, and a second request cannot be sent while one is pending (`useCommandAction` is single-flight; the test asserts no confirmation call is made by the UI). Duration and label are checked before any request with the same rules as the capability and the CLI (whole minutes in `[min_minutes, max_minutes]`; label 1 to 80 characters, no control, format, line-separator or variation-selector characters, U+034F); Core checks again. The text says that closing the lid still sleeps the machine (lid-closed mode is Phase 73) and that each action needs approval. If the capability is installed but not enabled, the section shows the existing enable route (`POST /api/capabilities/awake/enable`, the same call the Capabilities list makes) instead of failing, and no enable button for a disconnected capability. `useCommandAction` now also returns Core's error `code`. Strings are in `apps/web/src/i18n/*/awake-settings.ts` for all nine locales; **the non-English text is machine-translated and unreviewed**. Not looked at in a real browser or desktop window.
 
 ### Ended event on disable, kill switch and Core exit
 

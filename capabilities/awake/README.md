@@ -74,7 +74,12 @@ bare abort) the hold is still released but nothing is published.
 
 Fawkes' state is **not** changed (no `state_rules`): WORKING while only a timer runs would be wrong,
 and states are fixed. The "awake" indicator is the countdown pill in the island, floating Fawkes and
-the Overview.
+the Overview. Settings → Keep awake (`apps/web/src/components/AwakeSettings.tsx`) shows the status and
+starts, extends and ends a session through the same command route as the Overview and the CLI, so
+Core's confirmation prompt appears and the UI only waits and reports the outcome (it never answers the
+prompt); it checks the duration and label before sending, and offers the enable route when the
+capability is off. The **tray countdown is still unbuilt** (the tray menu is Rust). Non-English UI text
+is machine-translated and unreviewed.
 
 ## Adding a module (Phases 73-75)
 

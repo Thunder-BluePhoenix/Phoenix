@@ -27,6 +27,10 @@ Secret `restricted_key` is sent only as a Bearer credential to Stripe's own API 
 
 `{configured, items[], summary, balance}`: counts and per-currency totals of the latest 25 charges (succeeded / failed / pending) and the available and pending balance, formatted by the currency's decimals.
 
+## Web glance
+
+The Overview shows counts, per-currency totals, balance and the latest payments as amount + state + time. Amounts and counts only: the receipt link and failure code from `status` are not shown, and no customer, e-mail or card field is ever read. It calls only the read command `status` through Core's capability command route and never `redeploy`/`run_again`/`pause_workflow`; it refreshes on this capability's events and every 60 s, only while the page is visible. Components: `apps/web/src/components/ServiceGlancesA.tsx`; test `apps/web/test/service-glances-a.test.tsx` (fake Core only; no real account, key or browser was used). See [Phase 67](../../docs/phases/phase-67-service-integrations.md).
+
 ## How it behaves
 
 - **No history replay**; **pauses** while no client is connected; 401 waits 5 minutes (health _degraded_), 429/`Retry-After` honoured, other failures back off. Redirects are not followed, responses over 2 MiB are cut off, malformed entries skipped. Health is _degraded_ without a key.

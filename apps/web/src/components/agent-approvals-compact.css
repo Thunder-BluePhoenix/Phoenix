@@ -1,0 +1,154 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* The compact agent-approval card (Phase 56) shown in the floating window and the island. Those
+   windows load neither styles.css nor its tokens, so everything is scoped under the compact class and
+   coloured from --aa-* variables that each window's stylesheet defines. */
+.agent-approvals-compact {
+  --aa-focus: var(--focus, #4c6ef5);
+  box-sizing: border-box;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--aa-text);
+  text-align: start;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.agent-approvals-compact > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* The card's own title names the request; the heading stays for assistive technology and focus. */
+.agent-approvals-compact h3 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.agent-approvals-compact .card-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.agent-approvals-compact .card {
+  box-sizing: border-box;
+  padding: 6px 8px;
+  color: var(--aa-text);
+  background: var(--aa-bg);
+  border: 1px solid var(--aa-warning);
+  border-radius: 8px;
+}
+.agent-approvals-compact .card:focus-visible,
+.agent-approvals-compact .btn:focus-visible,
+.agent-approvals-compact input:focus-visible {
+  outline: 2px solid var(--aa-focus);
+  outline-offset: 2px;
+}
+.agent-approvals-compact .approval-summary {
+  margin: 0 0 2px;
+  font-weight: 700;
+}
+.agent-approvals-compact .approval-facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin: 2px 0;
+}
+.agent-approvals-compact .approval-facts dt {
+  margin-top: 3px;
+  font-weight: 600;
+  color: var(--aa-muted);
+}
+.agent-approvals-compact .approval-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.agent-approvals-compact .reveal-block {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+.agent-approvals-compact .reveal-mark {
+  color: var(--aa-warning);
+  font-weight: 600;
+  outline: 1px dotted currentColor;
+}
+.agent-approvals-compact .approval-missing {
+  margin: 2px 0;
+  color: var(--aa-warning);
+  font-weight: 600;
+  text-decoration: underline dotted;
+}
+.agent-approvals-compact .muted {
+  color: var(--aa-muted);
+}
+.agent-approvals-compact .error-text {
+  margin: 2px 0 0;
+  color: var(--aa-danger);
+  font-weight: 600;
+}
+.agent-approvals-compact .agent-countdown {
+  font-variant-numeric: tabular-nums;
+}
+.agent-approvals-compact .button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.agent-approvals-compact .btn {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  color: var(--aa-text);
+  background: transparent;
+  border: 1px solid var(--aa-muted);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.agent-approvals-compact .btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.agent-approvals-compact .btn-primary {
+  color: #ffffff;
+  background: var(--aa-accent);
+  border-color: var(--aa-accent);
+}
+.agent-approvals-compact fieldset {
+  min-width: 0;
+  margin: 2px 0;
+  padding: 2px 6px;
+  border: 1px solid var(--aa-muted);
+  border-radius: 6px;
+}
+.agent-approvals-compact .choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+/* Spoken, not drawn: the card leaving is the visible result of a decision. */
+.agent-approvals-live-compact {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

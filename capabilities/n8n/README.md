@@ -34,6 +34,10 @@ curl "${H[@]}" -X POST -d '{}' http://127.0.0.1:4870/api/capabilities/n8n/enable
 
 Both reject ids that are not `[A-Za-z0-9_-]{1,100}` (they would reshape the request path) and any extra field. The same `idempotency_key` for the same target never acts twice in this process (`already_requested`); a key reused for a different execution or workflow is refused. Keys are remembered per command, in memory only, until Phoenix restarts or the capability is disabled. `pause_workflow` is only reported as paused if n8n's answer names the workflow that was asked for and reports it inactive. An unknown outcome (5xx, dropped connection) is reported as such and the key is not re-sent blindly. Configuration problems (no key, no `base_url`) fail before a key is spent.
 
+## Web glance
+
+The Overview shows recent executions (workflow name, state, time), how many failed, how many workflows are active, and the host the API key is sent to. It calls only the read command `status` through Core's capability command route and never `redeploy`/`run_again`/`pause_workflow`; it refreshes on this capability's events and every 60 s, only while the page is visible. Components: `apps/web/src/components/ServiceGlancesA.tsx`; test `apps/web/test/service-glances-a.test.tsx` (fake Core only; no real account, key or browser was used). See [Phase 67](../../docs/phases/phase-67-service-integrations.md).
+
 ## How it behaves
 
 No history replay, pauses while nothing watches, 401 waits 5 minutes, 429/`Retry-After` honoured, redirects never followed, responses over 2 MiB cut off, text clipped, malformed entries skipped. Workflow names are redacted if they look like a credential. If the workflow list fails, executions are still reported (named by id). If Core refuses an event it is logged (code only) and counted as `events_refused` in `status` and the health message. Health is _degraded_ with no key or no `base_url`.

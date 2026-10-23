@@ -6,7 +6,7 @@
 // recorded from a live service. Every request is recorded so tests can prove only GET was used and
 // where credentials went. Exchange routes recompute the signature from the documented recipe and
 // answer 401 when it does not match, so a wrong signing layout fails a test.
-import { createHash, createHmac } from "node:crypto";
+import { createHash, createHmac, verify, type KeyObject } from "node:crypto";
 import { startMockService, type MockHandler, type MockService } from "@phoenix/service-kit/testing";
 
 /** Fake credentials, built at runtime (no credential-shaped literal in the tree). */
@@ -43,6 +43,17 @@ export interface MockState {
   exchangeBodies: Record<string, unknown>;
   /** Status to answer every exchange call with (default 200 after a valid signature). */
   exchangeStatus: number;
+  /** The key the Coinbase route verifies tokens against; without it every token is refused. */
+  coinbase?: CoinbaseMock;
+  /** Nonces the Coinbase route has accepted: a token may be used once. */
+  coinbaseNonces: Set<string>;
+}
+
+export interface CoinbaseMock {
+  keyName: string;
+  publicKey: KeyObject;
+  /** Epoch ms the mock server considers "now" (the test's pinned clock). */
+  now(): number;
 }
 
 const hex = (algo: string, secret: string, text: string) =>
@@ -80,6 +91,7 @@ export function defaultState(): MockState {
     accounts: {},
     exchangeBodies: {},
     exchangeStatus: 200,
+    coinbaseNonces: new Set(),
   };
 }
 
@@ -131,6 +143,52 @@ export async function startMockPortfolio(
     state,
     marketsQuery: () => lastMarketsQuery,
   };
+}
+
+/**
+ * Checks a Coinbase API-key JWT the way the documentation describes it: ES256 signature (raw
+ * r||s) against the public key, exact header and claim sets, kid = sub = the key name, a nonce
+ * never seen before, exp - nbf = 120 and a clock inside [nbf, exp), and the uri of the one
+ * request this mock serves. Returns undefined when valid, else the first fault found.
+ */
+export function verifyCoinbaseJwt(
+  token: string,
+  coinbase: CoinbaseMock,
+  seenNonces: Set<string>,
+): string | undefined {
+  const parts = token.split(".");
+  if (parts.length !== 3 || parts.some((p) => !/^[A-Za-z0-9_-]+$/.test(p))) return "malformed";
+  const [h, c, s] = parts as [string, string, string];
+  const signature = Buffer.from(s, "base64url");
+  const valid = verify(
+    "sha256",
+    Buffer.from(`${h}.${c}`),
+    { key: coinbase.publicKey, dsaEncoding: "ieee-p1363" },
+    signature,
+  );
+  if (signature.length !== 64 || !valid) return "signature";
+  const header = JSON.parse(Buffer.from(h, "base64url").toString("utf8")) as Record<
+    string,
+    unknown
+  >;
+  const claims = JSON.parse(Buffer.from(c, "base64url").toString("utf8")) as Record<
+    string,
+    unknown
+  >;
+  if (Object.keys(header).sort().join() !== "alg,kid,nonce,typ") return "header fields";
+  if (header.alg !== "ES256" || header.typ !== "JWT") return "alg/typ";
+  if (header.kid !== coinbase.keyName) return "kid";
+  if (typeof header.nonce !== "string" || !/^[0-9a-f]{32}$/.test(header.nonce)) return "nonce";
+  if (seenNonces.has(header.nonce)) return "nonce reused";
+  if (Object.keys(claims).sort().join() !== "exp,iss,nbf,sub,uri") return "claim fields";
+  if (claims.sub !== coinbase.keyName || claims.iss !== "cdp") return "sub/iss";
+  if (claims.uri !== "GET api.coinbase.com/api/v3/brokerage/accounts") return "uri";
+  const { nbf, exp } = claims;
+  if (typeof nbf !== "number" || typeof exp !== "number" || exp - nbf !== 120) return "lifetime";
+  const nowS = coinbase.now() / 1000;
+  if (nowS < nbf || nowS >= exp) return "expired";
+  seenNonces.add(header.nonce);
+  return undefined;
 }
 
 type Headers = Record<string, string | string[] | undefined>;
@@ -185,6 +243,17 @@ function exchangeReply(id: string, rest: string, h: Headers, state: MockState) {
       header(h, "sign") === hex("sha512", FAKE_SECRET, `GET\n${rest}\n\n${empty}\n${stamp}`) &&
       header(h, "key") === FAKE_KEY;
     return ok ? { status: state.exchangeStatus, body } : deny;
+  }
+  if (id === "coinbase") {
+    const [path, query = ""] = rest.split("?");
+    const auth = header(h, "authorization") ?? "";
+    const fault =
+      path !== "/api/v3/brokerage/accounts" || query !== "limit=250"
+        ? "wrong request"
+        : !state.coinbase || !auth.startsWith("Bearer ")
+          ? "no token"
+          : verifyCoinbaseJwt(auth.slice("Bearer ".length), state.coinbase, state.coinbaseNonces);
+    return fault === undefined ? { status: state.exchangeStatus, body } : deny;
   }
   return undefined;
 }

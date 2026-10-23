@@ -25,11 +25,14 @@ mod island_state;
 #[cfg(windows)]
 mod island_windows;
 mod mailto;
+mod native_dialog;
 mod pill;
 mod pill_geometry;
 mod position;
+pub mod quit_veto;
 mod settings;
 pub mod shortcuts;
+pub mod terminal_jump;
 
 use connection::{connection, locate, phoenix_url, CoreConnection, Locator};
 use island_controller::{Frame, PageEvent};
@@ -59,6 +62,9 @@ pub const SETTINGS_FILE: &str = "desktop.json";
 
 /// Opens a URL in the user's browser.
 pub type UrlOpener = Box<dyn Fn(&str) + Send + Sync>;
+/// Shows the "changes still need undoing" dialog: `Some(true)` is Quit anyway, `Some(false)` is
+/// Cancel, `None` means it could not be shown (Phoenix then stays running).
+pub type QuitAsk = Box<dyn Fn(&quit_veto::Prompt) -> Option<bool> + Send + Sync>;
 /// Looks up an environment variable.
 pub type EnvLookup = Box<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
@@ -72,6 +78,8 @@ pub struct ShellOptions {
     pub open_url: Option<UrlOpener>,
     /// Default: the process environment.
     pub env: Option<EnvLookup>,
+    /// Default: the system's own message box (`native_dialog`). Tests inject a fake.
+    pub confirm_quit: Option<QuitAsk>,
     /// Tests only: the mock runtime has no real native window, so styling it (macOS window
     /// level, Windows extended style, GTK hints) would dereference a fake handle.
     pub skip_native_window_styling: bool,
@@ -88,6 +96,11 @@ struct Shell<R: Runtime> {
     /// Where keyboard focus was when the current dictation started (set by the hotkey worker).
     focus: focus_target::FocusGuard<focus_target::SystemFocus>,
     shortcuts: shortcuts::Host,
+    /// One "jump to terminal" at a time (it can wait for the person to confirm in Core).
+    terminal_jump: terminal_jump::Guard,
+    /// Phase 73: holds every exit while Core is asked whether a change still needs undoing.
+    quit: quit_veto::Gate,
+    confirm_quit: QuitAsk,
     /// False under the mock runtime: no operating-system hotkey is ever registered there.
     native_shortcuts: bool,
 }
@@ -758,10 +771,84 @@ pub fn run_shortcut<R: Runtime>(app: &AppHandle<R>, action: shortcuts::Action) {
             }
             set_visible(app, plan.visible);
         }
+        shortcuts::Action::JumpToTerminal => jump_to_terminal(app),
         other => {
             if let Some(route) = other.route() {
                 open_route(app, route);
             }
+        }
+    }
+}
+
+/// "Jump to terminal": asks Core, with the session token, to bring the newest active agent
+/// session's terminal to the front (Core asks the person to confirm first). When Core is down,
+/// has no such terminal or answers anything unexpected, the agents page opens instead, as before.
+/// The call can wait for the confirmation, so it runs off the main thread, one at a time.
+fn jump_to_terminal<R: Runtime>(app: &AppHandle<R>) {
+    let Some(running) = app.state::<Shell<R>>().terminal_jump.begin() else {
+        return;
+    };
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let _running = running;
+        let connected = connection(&app.state::<Shell<R>>().locator);
+        let outcome = terminal_jump::jump(&|method, path, timeout| {
+            core_status::call(
+                &connected.base_url,
+                connected.token.as_deref(),
+                method,
+                path,
+                timeout,
+            )
+        });
+        if outcome == terminal_jump::Outcome::OpenAgents {
+            open_route(&app, shortcuts::TERMINAL_ROUTE);
+        }
+    });
+}
+
+/// Phase 73: an exit was requested (tray Quit, Cmd+Q, the last window closing). Returns whether
+/// the exit must be held. Asking Core can take a moment and may show a dialog, so the check runs
+/// off the main thread and the dialog (and the real exit, `app.exit(0)`, which comes back here as
+/// an approved request) on the main thread. Public for the lifecycle tests.
+pub fn quit_requested<R: Runtime>(app: &AppHandle<R>) -> bool {
+    match app.state::<Shell<R>>().quit.request() {
+        quit_veto::Request::Proceed => false,
+        quit_veto::Request::AlreadyAsking => true,
+        quit_veto::Request::Start => {
+            let app = app.clone();
+            std::thread::spawn(move || {
+                let connected = connection(&app.state::<Shell<R>>().locator);
+                let veto = match core_status::call(
+                    &connected.base_url,
+                    connected.token.as_deref(),
+                    core_status::Method::Get,
+                    quit_veto::PATH,
+                    core_status::TIMEOUT,
+                ) {
+                    Ok((status, body)) => quit_veto::parse(status, &body),
+                    Err(_) => quit_veto::Veto::Unknown,
+                };
+                let main = app.clone();
+                if app
+                    .run_on_main_thread(move || {
+                        let shell = main.state::<Shell<R>>();
+                        let next = quit_veto::resolve(
+                            &shell.quit,
+                            || veto,
+                            |prompt| (shell.confirm_quit)(prompt),
+                        );
+                        if next == quit_veto::Next::Exit {
+                            main.exit(0);
+                        }
+                    })
+                    .is_err()
+                {
+                    // The event loop is gone, so the app is already ending.
+                    app.state::<Shell<R>>().quit.answered(false);
+                }
+            });
+            true
         }
     }
 }
@@ -1119,6 +1206,7 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
                 settings_dir,
                 open_url,
                 env,
+                confirm_quit,
                 skip_native_window_styling,
             } = options;
             let settings_dir = match settings_dir {
@@ -1170,6 +1258,9 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
                 dictation: pill::Host::new(skip_native_window_styling),
                 focus: focus_target::FocusGuard::new(focus_target::SystemFocus),
                 shortcuts: shortcuts::Host::default(),
+                terminal_jump: terminal_jump::Guard::default(),
+                quit: quit_veto::Gate::default(),
+                confirm_quit: confirm_quit.unwrap_or_else(|| Box::new(native_dialog::confirm)),
                 // The mock runtime (lifecycle tests) has no hotkey manager; never touch the OS there.
                 native_shortcuts: !skip_native_window_styling,
             });
@@ -1249,7 +1340,15 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Phoenix desktop")
         .run(|app, event| {
-            // Quit from the tray, the OS, or the last window closing: keep the latest position.
+            // Quit from the tray, the OS, or the last window closing: Core is asked first whether
+            // a change still needs undoing (Phase 73); a restart cannot be held, so it is not asked.
+            if let RunEvent::ExitRequested { code, api, .. } = &event {
+                if *code != Some(tauri::RESTART_EXIT_CODE) && quit_requested(app) {
+                    api.prevent_exit();
+                    return;
+                }
+            }
+            // Keep the latest position.
             if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
                 if let Some(shell) = app.try_state::<Shell<tauri::Wry>>() {
                     shell.flush();

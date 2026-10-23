@@ -24,6 +24,7 @@ import type { EngineeringSignalsApi } from "./engineering-signals-routes";
 import type { TeamStatusApi, TeamWebhookApi } from "./team-webhook-routes";
 import type { TeamLinkApi } from "./team-link-routes";
 import type { StatusLightsApi } from "./status-light-routes";
+import type { QuitCheckApi } from "./quit-check-routes";
 import type { ScheduledAwakeApi } from "./scheduled-awake-routes";
 import type { FawkesRebirthApi } from "./fawkes-rebirth-routes";
 import type { BrowserProfilesApi } from "./browser-profile-routes";
@@ -1321,6 +1322,8 @@ export interface CoreServices {
   statusLights?: StatusLightsApi;
   /** Scheduled awake windows (Phase 90): saving one asks the user; the scheduler is off by default. */
   scheduledAwake?: ScheduledAwakeApi;
+  /** The Phase 73 quit veto, read-only, for the desktop shell's Quit; `available: false` until the keep-awake capability has run. */
+  quitCheck?: QuitCheckApi;
   /** Fawkes rebirth (Phase 91): opt-in milestones and high contrast; the celebration itself is pushed as an event. */
   fawkesRebirth?: FawkesRebirthApi;
   /** Browser profiles (Phase 96): bookmarks, sync choices and extension approvals; absent without an OS secret store. */

@@ -4,6 +4,7 @@ import type { SoundPlayer } from "@phoenix/pet-runtime";
 import { visualFor } from "@phoenix/pet-states";
 import { useEffect, useState, type CSSProperties } from "react";
 import { tauriShortcuts, type ShortcutsShell } from "../commands/shortcuts-shell";
+import { AgentApprovals } from "../components/AgentApprovals";
 import { RebirthAvatar } from "../components/RebirthAvatar";
 import { AwakeCountdown } from "../components/Awake";
 import { SourcePills } from "../components/SourcePills";
@@ -160,6 +161,7 @@ export function IslandApp({
                   {bubble ?? state.explanation}
                 </p>
               )}
+              <AgentApprovals compact />
               <SourcePills pills={pills} selected={selected} />
               <AwakeCountdown />
               {state.recording && (

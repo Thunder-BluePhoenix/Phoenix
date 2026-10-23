@@ -35,7 +35,7 @@ import {
 import { continuityModule } from "./continuity";
 import { createLidActionsModule, lidActionsModule } from "./lid-actions";
 import type { DockerIdle } from "./lid-actions/types";
-import { recoveryModule } from "./power";
+import { powerServices, recoveryModule, type QuitCheck } from "./power";
 import {
   AwakeError,
   realEnv,
@@ -52,6 +52,7 @@ export * from "./inhibit";
 export * from "./session";
 export * from "./system";
 export type { DockerIdle, DockerIdleState } from "./lid-actions/types";
+export type { QuitCheck } from "./power";
 
 /**
  * Modules added by later phases. Append yours here (one import, one entry):
@@ -169,6 +170,14 @@ export interface AwakeCapabilityOptions {
    * answer is always unknown and Docker is never frozen. Ignored when `modules` is given.
    */
   dockerIdle?: DockerIdle;
+  /**
+   * Told about the Phase 73 quit veto each time the capability is enabled: a function that asks the
+   * recovery manager whether a change still needs undoing (`undefined` when no recovery module
+   * runs). It is deliberately NOT cleared when the capability is disabled or stops, because an undo
+   * that failed at that moment is still pending and must still veto a Quit. The host (Core) uses it
+   * to answer the desktop shell's Quit; the veto never removes or undoes a journal entry.
+   */
+  onQuitCheck?: (check: (() => QuitCheck) | undefined) => void;
 }
 
 const SESSION_EVENTS = [
@@ -385,6 +394,8 @@ export function createAwakeCapability(options: AwakeCapabilityOptions = {}): Cap
       stopSignal = () => ctx.signal.removeEventListener("abort", onAbort);
       const deps: AwakeDeps = { env, session: controller, battery, feed, batteryPollMs };
       composed.init(ctx, deps);
+      const services = powerServices(deps);
+      options.onQuitCheck?.(services ? () => services.canQuit() : undefined);
     },
     commands: composed.commands,
     health(): { status: "healthy"; message: string } {

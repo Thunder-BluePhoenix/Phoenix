@@ -15,6 +15,7 @@ import { DEFAULT_PRICE_URL, PRICE_SOURCE_NAME, fetchQuotes, type Quote } from ".
 import { coinId, priceHoldings, totals, type Snapshot } from "./snapshot";
 
 export * from "./amount";
+export * from "./coinbase-jwt";
 export * from "./collect";
 export * from "./exchanges";
 export * from "./networks";
@@ -197,7 +198,7 @@ export function createPortfolioCapability(options: PortfolioCapabilityOptions = 
       name: "Portfolio",
       version: "0.1.0",
       description:
-        "Read-only crypto portfolio: balances of public addresses on 16 networks and of 5 exchanges (read-only API keys), with 7-day sparklines and 24-hour change. Display only. It can only read: nothing in it can place, move or exchange funds. Prices are third-party estimates that Phoenix does not verify.",
+        "Read-only crypto portfolio: balances of public addresses on 16 networks and of 6 exchanges (read-only API keys), with 7-day sparklines and 24-hour change. Display only. It can only read: nothing in it can place, move or exchange funds. Prices are third-party estimates that Phoenix does not verify.",
       license: "GPL-3.0-or-later",
       homepage: "https://github.com/Thunder-BluePhoenix/Phoenix",
       events: ["portfolio.snapshot.*"],
@@ -210,11 +211,16 @@ export function createPortfolioCapability(options: PortfolioCapabilityOptions = 
       healthcheck: { interval_ms: 60_000 },
       secrets: exchangeSecretNames().map((name) => ({
         name,
-        description: name.endsWith("_passphrase")
-          ? "API key passphrase of the read-only key (OKX and KuCoin require one)."
-          : name.endsWith("_secret")
-            ? "API secret of a READ-ONLY key: create the key with the read permission only and every other permission off."
-            : "API key of a READ-ONLY key: create the key with the read permission only and every other permission off.",
+        description:
+          name === "coinbase_key"
+            ? "Coinbase API key NAME of a view-only key, in the form organizations/{org}/apiKeys/{key}. Create the key with the ECDSA signature algorithm (not Ed25519) and the View permission only."
+            : name === "coinbase_secret"
+              ? "Coinbase API key private key (ECDSA, P-256, PEM) of that view-only key, pasted on ONE line with the line breaks written as \\n, as the CDP portal shows it. Phoenix signs a fresh short-lived token for each read and never sends the key itself."
+              : name.endsWith("_passphrase")
+                ? "API key passphrase of the read-only key (OKX and KuCoin require one)."
+                : name.endsWith("_secret")
+                  ? "API secret of a READ-ONLY key: create the key with the read permission only and every other permission off."
+                  : "API key of a READ-ONLY key: create the key with the read permission only and every other permission off.",
       })),
       commands: [
         {

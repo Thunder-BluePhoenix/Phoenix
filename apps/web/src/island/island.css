@@ -16,6 +16,15 @@
     Roboto,
     sans-serif;
 }
+/* The compact agent-approval card (Phase 56) draws from these. */
+:root {
+  --aa-bg: var(--island-bg);
+  --aa-text: var(--island-text);
+  --aa-muted: var(--island-muted);
+  --aa-warning: var(--warning);
+  --aa-danger: var(--danger);
+  --aa-accent: #c2410c;
+}
 html,
 body {
   margin: 0;
@@ -98,6 +107,20 @@ body {
   align-items: flex-start;
   gap: 8px;
   padding: 4px 16px 14px;
+}
+/* The expanded island has a fixed height: the card shares the body with the one-line state text
+   and the open button, and scrolls when it is taller than what is left. */
+.island-root[data-state="expanded"] .island-body {
+  flex: 1 1 0;
+  min-height: 0;
+}
+.island-body > .agent-approvals-compact {
+  align-self: stretch;
+  flex: 1 1 0;
+  min-height: 0;
+}
+.island-body:has(> .agent-approvals-compact) .island-text {
+  -webkit-line-clamp: 1;
 }
 .island-text {
   margin: 0;

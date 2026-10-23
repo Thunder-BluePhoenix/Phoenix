@@ -1,0 +1,56 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+import type { serviceGlances as enServiceGlances } from "../../en/service-glances";
+
+/** Machine-translated; unreviewed (see ../../README.md). */
+export const serviceGlances: Record<keyof typeof enServiceGlances, string> = {
+  "services.glance.heading": "{name} एक नज़र में",
+  "services.glance.disabled": "{name} बंद है। यहाँ देखने के लिए क्षमताएँ में इसे चालू करें।",
+  "services.glance.loading": "लोड हो रहा है…",
+  "services.glance.error": "{name} पढ़ा नहीं जा सका।",
+  "services.glance.stale": "{name} ताज़ा नहीं हो सका; आख़िरी डेटा दिखाया जा रहा है।",
+  "services.glance.unreadable": "{name} ने ऐसा डेटा लौटाया जिसे यह पेज नहीं पढ़ सकता।",
+  "services.glance.updated": "अपडेट: {time}",
+  "services.glance.state.unknown": "अज्ञात",
+  "services.glance.vercel.notConfigured":
+    "डिप्लॉयमेंट देखने के लिए सेटिंग्स में Vercel टोकन जोड़ें।",
+  "services.glance.vercel.empty": "अभी कोई डिप्लॉयमेंट नहीं।",
+  "services.glance.vercel.summary": "हाल के डिप्लॉयमेंट: {count}",
+  "services.glance.vercel.failed": "विफल: {count}",
+  "services.glance.vercel.building": "जारी: {count}",
+  "services.glance.vercel.state.queued": "कतार में",
+  "services.glance.vercel.state.initializing": "शुरू हो रहा है",
+  "services.glance.vercel.state.building": "बन रहा है",
+  "services.glance.vercel.state.ready": "तैयार",
+  "services.glance.vercel.state.error": "विफल",
+  "services.glance.vercel.state.canceled": "रद्द",
+  "services.glance.stripe.notConfigured":
+    "भुगतान देखने के लिए सेटिंग्स में केवल-पढ़ने वाली सीमित Stripe कुंजी जोड़ें।",
+  "services.glance.stripe.empty": "हाल का कोई भुगतान नहीं।",
+  "services.glance.stripe.counted": "गिने गए हाल के भुगतान: {count}",
+  "services.glance.stripe.succeeded": "सफल: {count}",
+  "services.glance.stripe.failed": "विफल: {count}",
+  "services.glance.stripe.pending": "लंबित: {count}",
+  "services.glance.stripe.received": "प्राप्त: {amounts}",
+  "services.glance.stripe.failedAmount": "विफल राशियाँ: {amounts}",
+  "services.glance.stripe.available": "उपलब्ध शेष: {amounts}",
+  "services.glance.stripe.pendingBalance": "लंबित शेष: {amounts}",
+  "services.glance.stripe.privacy": "केवल राशियाँ और गिनती। ग्राहक और कार्ड कभी नहीं दिखाए जाते।",
+  "services.glance.stripe.state.succeeded": "सफल",
+  "services.glance.stripe.state.failed": "विफल",
+  "services.glance.stripe.state.pending": "लंबित",
+  "services.glance.stripe.state.refunded": "वापस किया गया",
+  "services.glance.n8n.notConfigured":
+    "निष्पादन देखने के लिए सेटिंग्स में अपना n8n पता डालें और API कुंजी जोड़ें।",
+  "services.glance.n8n.empty": "हाल का कोई निष्पादन नहीं।",
+  "services.glance.n8n.summary": "हाल के निष्पादन: {count}",
+  "services.glance.n8n.failed": "विफल: {count}",
+  "services.glance.n8n.workflows": "सक्रिय वर्कफ़्लो: {total} में से {active}",
+  "services.glance.n8n.host": "API कुंजी {host} को भेजी जाती है",
+  "services.glance.n8n.state.success": "सफल",
+  "services.glance.n8n.state.error": "विफल",
+  "services.glance.n8n.state.crashed": "क्रैश",
+  "services.glance.n8n.state.running": "चल रहा है",
+  "services.glance.n8n.state.waiting": "प्रतीक्षा में",
+  "services.glance.n8n.state.new": "कतार में",
+};

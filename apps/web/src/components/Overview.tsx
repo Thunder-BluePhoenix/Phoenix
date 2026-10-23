@@ -17,6 +17,7 @@ import { MeetingsGlance } from "./Meetings";
 import { NowPlayingGlance } from "./NowPlaying";
 import { PortfolioGlance } from "./Portfolio";
 import { PowerRecoveryGlance } from "./PowerRecovery";
+import { ServiceGlances } from "./ServiceGlances";
 import { CurrentTask } from "./TaskView";
 
 /** How many tasks the panel lists before "Show all": enough to see what is happening, few enough
@@ -87,6 +88,7 @@ export function Overview({ state, tasks }: { state: PetState; tasks: ActiveTask[
       <AgentsGlance />
       <FrappeSites />
       <NowPlayingGlance />
+      <ServiceGlances />
       <PortfolioGlance />
       <MeetingsGlance />
       <AwakeGlance />

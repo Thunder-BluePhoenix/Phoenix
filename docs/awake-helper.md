@@ -72,8 +72,11 @@ Low Power Mode from the floors is reported unavailable.
    (pid + process start time, so a reused pid is not trusted).
 4. The launchd backstop undoes the two privileged kinds if their session ended or their owner died,
    within about a minute.
-5. `canQuit()` says no while anything still needs undoing, but it is **not yet wired to the desktop shell's
-   Quit or to Core's shutdown path**, so Quit does not consult it today (see the gap register);
+5. `canQuit()` says no while anything still needs undoing. The desktop shell's Quit asks Core
+   (`GET /api/awake/quit-check`) and, while something is pending, holds the exit and tells you what is
+   still in place with **Cancel** or **Quit anyway** (a native dialog that has not been run on a real
+   desktop). Core's own shutdown by a signal is not vetoed: it starts the undo and the backstop and the
+   next launch are the net;
    `awake.recovery.pending` (severity warning, Fawkes WARNING) fires when an undo fails.
 
 A journal line that does not parse or whose checksum is wrong is counted and shown, never acted on.

@@ -24,6 +24,10 @@ Events carry `email_id`, `subject` (clipped), `status`, `to_count`, `to_domains`
 - **Failures.** 401 → degraded, wait 5 min; 429 → degraded, wait for `Retry-After` (an hour at most); other errors back off exponentially to 5 min. Redirects are refused, responses over 2 MiB are refused. Without a key the capability is degraded and calls nothing.
 - **Untrusted text.** Subjects are clipped to 200 characters, control characters removed, credential-shaped text redacted; ids that could change a URL are dropped. Nothing from Resend is ever treated as an instruction. The key is sent only to Resend's own API origin in the `Authorization` header and appears in no log, event or error.
 
+## Web glance
+
+The Overview shows a read-only glance (`ResendGlance`, apps/web) built from the `status` command only: counts of the recent emails by delivery state and the newest send time. Subjects, recipient domains and links are never shown.
+
 ## Not verified
 
 The mock (`testing/mock-resend.ts`) was written from Resend's public API reference. **Nothing was tested against the real Resend API.** Unconfirmed: the exact `created_at` format variants, whether `last_event` can hold values other than the ones documented, and rate-limit headers.

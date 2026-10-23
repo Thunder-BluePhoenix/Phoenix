@@ -9,8 +9,8 @@
 //! stacking, pixels and Quit; those were checked by hand on macOS.
 
 use phoenix_desktop::{
-    builder, handle_menu, menu_snapshot, ShellOptions, ISLAND_LABEL, SETTINGS_FILE, TRAY_ID,
-    WINDOW_LABEL,
+    builder, handle_menu, menu_snapshot, quit_requested, run_shortcut, shortcuts, ShellOptions,
+    ISLAND_LABEL, SETTINGS_FILE, TRAY_ID, WINDOW_LABEL,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -35,6 +35,7 @@ fn start(settings_dir: &Path) -> Started {
         env: Some(Box::new(|k| {
             (k == "PHOENIX_PORT").then(|| "4999".to_string())
         })),
+        confirm_quit: None,
         skip_native_window_styling: true,
     };
     let mut app = builder::<MockRuntime>(options)
@@ -284,6 +285,172 @@ fn mute_toggles_and_is_remembered() {
     assert_eq!(saved(dir.path())["muted"], false);
 }
 
+/// A shell wired to a fake Core on a loopback port, with its token in `data_dir` and a fake
+/// dialog that records what it was asked and answers `answer`.
+fn start_with_fake_core(
+    settings_dir: &Path,
+    port: u16,
+    data_dir: &Path,
+    asked: Arc<Mutex<Vec<String>>>,
+    answer: Option<bool>,
+    opened: Arc<Mutex<Vec<String>>>,
+) -> App<MockRuntime> {
+    let (port, data_dir) = (port.to_string(), data_dir.to_string_lossy().into_owned());
+    let options = ShellOptions {
+        settings_dir: Some(settings_dir.to_path_buf()),
+        open_url: Some(Box::new(move |url| {
+            opened.lock().unwrap().push(url.to_string())
+        })),
+        env: Some(Box::new(move |k| match k {
+            "PHOENIX_PORT" => Some(port.clone()),
+            "PHOENIX_DATA_DIR" => Some(data_dir.clone()),
+            _ => None,
+        })),
+        confirm_quit: Some(Box::new(move |prompt| {
+            asked.lock().unwrap().push(prompt.message.clone());
+            answer
+        })),
+        skip_native_window_styling: true,
+    };
+    let mut app = builder::<MockRuntime>(options)
+        .build(mock_context(noop_assets()))
+        .expect("app builds");
+    #[allow(deprecated)]
+    app.run_iteration(|_, _| {});
+    app
+}
+
+/// Serves `body` to every request on a free loopback port until the test process ends; returns
+/// the port and the request lines seen so far (the line and the `Authorization` header).
+fn fake_core(body: &'static str) -> (u16, Arc<Mutex<Vec<String>>>) {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let log = seen.clone();
+    std::thread::spawn(move || {
+        while let Ok((mut stream, _)) = listener.accept() {
+            let mut raw = Vec::new();
+            let mut buf = [0u8; 512];
+            while !raw.windows(4).any(|w| w == b"\r\n\r\n") {
+                let n = stream.read(&mut buf).unwrap();
+                if n == 0 {
+                    break;
+                }
+                raw.extend_from_slice(&buf[..n]);
+            }
+            let text = String::from_utf8_lossy(&raw).into_owned();
+            let auth = text.lines().find(|l| l.starts_with("Authorization:"));
+            log.lock().unwrap().push(format!(
+                "{} | {}",
+                text.lines().next().unwrap_or(""),
+                auth.unwrap_or("")
+            ));
+            let reply = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(reply.as_bytes());
+        }
+    });
+    (port, seen)
+}
+
+fn jump_to_terminal_asks_core_with_the_token_then_opens_the_agents_page_when_there_is_no_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    std::fs::write(data.path().join("session.token"), "life-token_3").unwrap();
+    let (port, seen) = fake_core(r#"{"sessions":[]}"#);
+    let opened = Arc::new(Mutex::new(Vec::new()));
+    let app = start_with_fake_core(
+        dir.path(),
+        port,
+        data.path(),
+        Arc::default(),
+        None,
+        opened.clone(),
+    );
+    run_shortcut(app.handle(), shortcuts::Action::JumpToTerminal);
+    wait_until(|| !opened.lock().unwrap().is_empty());
+    assert_eq!(
+        *opened.lock().unwrap(),
+        [format!("http://127.0.0.1:{port}/#/agents")]
+    );
+    // Core was asked for the sessions, with the session token, and nothing else was sent.
+    assert_eq!(
+        *seen.lock().unwrap(),
+        ["GET /api/agent/sessions HTTP/1.1 | Authorization: Bearer life-token_3"]
+    );
+}
+
+fn wait_until(mut done: impl FnMut() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !done() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(done(), "timed out");
+}
+
+fn quit_with_a_pending_change_is_held_and_asks_the_person_who_cancels() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    std::fs::write(data.path().join("session.token"), "life-token_1").unwrap();
+    let (port, seen) = fake_core(
+        r#"{"available":true,"can_quit":false,"count":1,"pending":[{"kind":"pmset.disablesleep","at":1}]}"#,
+    );
+    let asked = Arc::new(Mutex::new(Vec::new()));
+    let app = start_with_fake_core(
+        dir.path(),
+        port,
+        data.path(),
+        asked.clone(),
+        Some(false),
+        Arc::default(),
+    );
+
+    // The exit is held; Core is asked with the session token; the dialog names the change.
+    assert!(quit_requested(app.handle()));
+    wait_until(|| asked.lock().unwrap().len() == 1);
+    assert!(asked.lock().unwrap()[0].contains("sleep is switched off for a closed lid"));
+    // Cancel keeps Phoenix running and the next Quit asks again (it is not silently approved).
+    // A request while the first dialog is still open is held without a second dialog; once Cancel
+    // has been answered, a request asks again.
+    wait_until(|| {
+        assert!(
+            quit_requested(app.handle()),
+            "a pending change never lets Quit through"
+        );
+        asked.lock().unwrap().len() == 2
+    });
+    let seen = seen.lock().unwrap().clone();
+    assert!(seen.len() >= 2);
+    for line in seen {
+        assert_eq!(
+            line,
+            "GET /api/awake/quit-check HTTP/1.1 | Authorization: Bearer life-token_1"
+        );
+    }
+}
+
+fn a_dialog_that_cannot_be_shown_keeps_phoenix_running() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    std::fs::write(data.path().join("session.token"), "life-token_2").unwrap();
+    let (port, seen) = fake_core(r#"{"available":true,"can_quit":false}"#);
+    let asked = Arc::new(Mutex::new(Vec::new()));
+    let app = start_with_fake_core(
+        dir.path(),
+        port,
+        data.path(),
+        asked.clone(),
+        None,
+        Arc::default(),
+    );
+    assert!(quit_requested(app.handle()));
+    wait_until(|| asked.lock().unwrap().len() == 1);
+    assert!(!seen.lock().unwrap().is_empty());
+}
+
 /// Calls a Tauri command on `webview` the way a page would (with the app's own invoke key).
 fn invoke(
     invoke_key: &str,
@@ -384,7 +551,7 @@ fn main() {
     #[cfg(target_os = "linux")]
     gtk::init().expect("GTK failed to initialise: is a display available (xvfb-run)?");
 
-    let tests: [(&str, fn()); 15] = [
+    let tests: [(&str, fn()); 18] = [
         (
             "starts with window, tray and full menu",
             starts_with_window_tray_and_full_menu,
@@ -429,6 +596,18 @@ fn main() {
         (
             "shortcut commands work from the pet window and refuse any other",
             shortcut_commands_work_from_the_pet_window_and_refuse_any_other,
+        ),
+        (
+            "jump to terminal asks Core, then falls back to the agents page",
+            jump_to_terminal_asks_core_with_the_token_then_opens_the_agents_page_when_there_is_no_session,
+        ),
+        (
+            "quit with a pending change is held and cancel keeps running",
+            quit_with_a_pending_change_is_held_and_asks_the_person_who_cancels,
+        ),
+        (
+            "a dialog that cannot be shown keeps Phoenix running",
+            a_dialog_that_cannot_be_shown_keeps_phoenix_running,
         ),
     ];
     for (name, test) in tests {

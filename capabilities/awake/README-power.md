@@ -28,7 +28,7 @@ fall back to the defaults.
 
 ## For other modules (Lid74)
 
-`powerServices(deps)` returns `{ recovery, lid, helper, registerReverter, canQuit, tick }`. Journal
+`powerServices(deps)` returns `{ recovery, lid, helper, registerReverter, canQuit, tick }` (`canQuit` also feeds `GET /api/awake/quit-check` through `onQuitCheck`). Journal
 a change with `recovery.change(kind, apply, undo, doApply, sessionId)`; register how to undo it with
 `registerReverter(kind, fn)` in your `init` (reconcile runs after every module's init). Throw
 `NotAppliedError` from `doApply` when nothing changed. The launchd backstop only undoes the pmset
@@ -46,8 +46,10 @@ after `SHUTDOWN_WAIT_MS` (10 s).
 - `safety.acknowledge` is an ordinary approvable command: command handlers receive no actor, so Core's
   approval cannot tell a person from an agent. The command text and the `text_sha256` binding are the
   only distinction.
-- Quit veto: Core shutdown has no veto hook and the Tauri shell was not edited. `canQuit()` and the
-  `awake.recovery.quit_refused` event exist; nothing consults them yet.
+- Quit veto: Core exposes `canQuit()` read-only as `GET /api/awake/quit-check` (session token; kinds and
+  times only; wired through the `onQuitCheck` option of `createAwakeCapability`, not cleared when the
+  capability stops), and the desktop shell's Quit asks it and shows a Cancel / Quit anyway dialog while a
+  change is pending. Core's own shutdown by a signal is not vetoed. The dialog never ran on a real desktop.
 - A privileged change cannot be undone synchronously (sudo is async). Disable marks the session ended
   in the journal and starts the undo; the backstop and next launch are the net.
 - Never run for real: the helper, sudoers rule, launchd job, `pmset`, `ioreg` and `pmset -g therm` output

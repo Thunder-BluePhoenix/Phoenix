@@ -301,7 +301,7 @@ export function useGraphNeighbors(nodeId: string, depth: 1 | 2) {
 interface CommandOperation<T> {
   status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
   result?: T;
-  error?: { message: string };
+  error?: { message: string; code?: string };
 }
 
 const COMMAND_CHECKS = 40;
@@ -384,9 +384,11 @@ export interface CommandRun<T> {
   state: CommandRunState;
   result: T | null;
   error: string | null;
+  /** Core's error code for a failed run (for example `PERMISSION_DENIED` when the user said no). */
+  code: string | null;
 }
 
-const IDLE_RUN = { state: "idle", result: null, error: null } as const;
+const IDLE_RUN = { state: "idle", result: null, error: null, code: null } as const;
 
 /**
  * Runs one capability command that may need the user's approval and follows it to the end:
@@ -404,14 +406,14 @@ export function useCommandAction<T = unknown>(capabilityId: string, command: str
     async (input: unknown) => {
       if (inFlight.current) return;
       inFlight.current = true;
-      setCurrent({ state: "requesting", result: null, error: null });
+      setCurrent({ state: "requesting", result: null, error: null, code: null });
       try {
         const op = await client.request<{ id: string }>(
           "POST",
           `/api/capabilities/${encodeURIComponent(capabilityId)}/commands/${encodeURIComponent(command)}`,
           { input },
         );
-        setCurrent({ state: "waiting", result: null, error: null });
+        setCurrent({ state: "waiting", result: null, error: null, code: null });
         setOperationId(op.id);
       } catch (err) {
         inFlight.current = false;
@@ -419,6 +421,7 @@ export function useCommandAction<T = unknown>(capabilityId: string, command: str
           state: "failed",
           result: null,
           error: err instanceof ApiError ? err.message : "Request failed",
+          code: err instanceof ApiError ? err.code : null,
         });
       }
     },
@@ -442,19 +445,21 @@ export function useCommandAction<T = unknown>(capabilityId: string, command: str
         );
         if (stopped) return;
         if (op.status === "succeeded") {
-          return finish({ state: "succeeded", result: op.result ?? null, error: null });
+          return finish({ state: "succeeded", result: op.result ?? null, error: null, code: null });
         }
         if (op.status === "failed" || op.status === "cancelled") {
           return finish({
             state: "failed",
             result: null,
             error: op.error?.message ?? "The request did not finish",
+            code: op.error?.code ?? null,
           });
         }
         setCurrent({
           state: op.status === "running" ? "running" : "waiting",
           result: null,
           error: null,
+          code: null,
         });
       } catch (err) {
         if (stopped) return;
@@ -462,6 +467,7 @@ export function useCommandAction<T = unknown>(capabilityId: string, command: str
           state: "failed",
           result: null,
           error: err instanceof ApiError ? err.message : "Phoenix Core is unreachable",
+          code: err instanceof ApiError ? err.code : null,
         });
       }
       window.clearTimeout(timer);

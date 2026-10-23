@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { formatNumber } from "./format";
 import { useCapabilities, useCommandResult } from "./hooks";
 import type { ActiveLocale } from "../i18n";
+import type { CapabilityView } from "./types";
 
 export type AwakeMode = "timed" | "agents_grace";
 
@@ -107,6 +108,27 @@ export function parseMinutesInput(text: string, min: number, max: number): numbe
   return n >= min && n <= max ? n : null;
 }
 
+/** The longest label (the capability's `reason`) Core accepts. */
+export const AWAKE_MAX_LABEL_LENGTH = 80;
+
+/**
+ * Characters a person cannot see: control, format (zero-width, bidi, tag), line and paragraph
+ * separators, variation selectors and U+034F. The same class as `UNSEEN` in
+ * capabilities/awake/src/session.ts, which stays the authority; this only saves a round trip.
+ */
+const UNSEEN_LABEL_CHARS = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Variation_Selector}\u034f]/u;
+
+/**
+ * The label to send for what the user typed: `undefined` for none (blank), `null` when it is not
+ * acceptable (too long, or it has control or invisible characters), else the trimmed text.
+ */
+export function parseAwakeLabel(text: string): string | undefined | null {
+  const label = text.trim();
+  if (label === "") return undefined;
+  if (label.length > AWAKE_MAX_LABEL_LENGTH || UNSEEN_LABEL_CHARS.test(label)) return null;
+  return label;
+}
+
 // ── Injectable time ──────────────────────────────────────────────────────────
 
 export interface AwakeUiClock {
@@ -197,14 +219,18 @@ export type AwakeAvailability = "absent" | "disabled" | "ready";
 
 export interface AwakeStatusView {
   availability: AwakeAvailability;
+  /** The capability's own state while it is installed, so a failed one is not offered "turn on". */
+  capabilityStatus: CapabilityView["status"] | null;
   status: AwakeStatus | null;
   error: string | null;
   reload(): Promise<void>;
+  /** Re-reads which capabilities are enabled (after turning Keep awake on). */
+  reloadCapabilities(): Promise<void>;
 }
 
 /** The capability's state and its status, refreshed on every awake.session.* event. */
 export function useAwakeStatus(): AwakeStatusView {
-  const { data: caps } = useCapabilities();
+  const { data: caps, reload: reloadCapabilities } = useCapabilities();
   const cap = caps.find((c) => c.id === "awake");
   const on = cap?.status === "enabled";
   const { data, error, reload } = useCommandResult<unknown>("awake", "status", on, (type) =>
@@ -212,8 +238,10 @@ export function useAwakeStatus(): AwakeStatusView {
   );
   return {
     availability: cap === undefined ? "absent" : on ? "ready" : "disabled",
+    capabilityStatus: cap?.status ?? null,
     status: on ? readAwakeStatus(data) : null,
     error,
     reload,
+    reloadCapabilities,
   };
 }

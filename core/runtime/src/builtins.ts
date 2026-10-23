@@ -3,6 +3,7 @@
 import {
   createAwakeCapability,
   type DockerIdle,
+  type QuitCheck,
   type SessionController,
 } from "@phoenix/capability-awake";
 import { createAgentsCapability, type AgentsServices } from "@phoenix/capability-agents";
@@ -40,6 +41,8 @@ export interface BuiltinHost {
   statusLights?: StatusLightsOptions;
   /** Phase 90: told about the live keep-awake session so the scheduler can hold the same one. */
   onAwakeSession?: (session: SessionController | undefined) => void;
+  /** Phase 73: told how to ask the recovery manager whether a change still needs undoing (the quit veto). */
+  onAwakeQuitCheck?: (check: (() => QuitCheck) | undefined) => void;
   /** Phase 74: whether Docker has running containers, for the lid-close "freeze Docker" action. */
   dockerIdle?: DockerIdle;
   /** Phase 83: where the calendar keeps its reminder de-dup keys, so a restart does not remind again. */
@@ -86,6 +89,7 @@ export function builtinCapabilities(
     createAwakeCapability({
       feed: () => agentsServices?.()?.events,
       ...(host.onAwakeSession ? { onSession: host.onAwakeSession } : {}),
+      ...(host.onAwakeQuitCheck ? { onQuitCheck: host.onAwakeQuitCheck } : {}),
       ...(host.dockerIdle ? { dockerIdle: host.dockerIdle } : {}),
     }),
     createIssuesCapability(),

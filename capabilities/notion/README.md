@@ -26,6 +26,10 @@ Payload: `page_id`/`database_id`, `title` (clipped), `archived`, `edited_at`, `u
 - **Failures.** 404/403/malformed on one item degrade that item only; 401 pauses 5 min; 429 waits `Retry-After`; redirects and responses over 2 MiB are refused. Without a token or a `watch` list nothing is called.
 - **Untrusted text.** Titles are clipped, control characters removed, credential-shaped text redacted; ids are validated as UUIDs before they reach a URL; non-https links are dropped. The token never appears in a log, event or error.
 
+## Web glance
+
+The Overview shows a read-only glance (`NotionGlance`, apps/web) built from the `status` command only: each watched item's cleaned, clipped title, kind and last edit time, with a link only for a Notion address. Nothing from page bodies is shown.
+
 ## Not verified
 
 The mock (`testing/mock-notion.ts`) was written from Notion's public API reference. **Nothing was tested against the real Notion API.** Unconfirmed: that `last_edited_time` of a page changes for every kind of edit Notion considers one (it is minute-granular in Notion), and the exact shape of `in_trash`.

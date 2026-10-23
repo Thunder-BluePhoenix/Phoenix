@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 //
-// The five supported exchanges. Each is listed ONLY because its documented balance endpoint is a
+// The supported exchanges. Each is listed ONLY because its documented balance endpoint is a
 // GET that a read-only API key can call. The key and secret come from named secrets; requests are
-// signed with HMAC from node:crypto. Spot/funding balances only. Shapes and signing recipes follow
+// signed with HMAC (Coinbase: an ES256 JWT, see coinbase-jwt.ts) from node:crypto. Spot/funding
+// balances only. Shapes and signing recipes follow
 // each exchange's public documentation and were NOT checked against the live services (README).
 import { createHmac, createHash } from "node:crypto";
 import { expectArray, expectObject, isObject, str } from "@phoenix/service-kit";
 import { decimalString } from "./amount";
+import { COINBASE_HOST, buildJwt, checkKeyName, loadPrivateKey } from "./coinbase-jwt";
 
 export interface ExchangeBalance {
   asset: string;
@@ -39,6 +41,8 @@ export interface ExchangeSpec {
 }
 
 const RECV_WINDOW = "5000";
+/** Accounts per page asked of Coinbase (its documented maximum). */
+const COINBASE_PAGE = 250;
 /** SHA-512 of the empty string: the "body hash" of a request without a body (Gate). */
 const EMPTY_SHA512 = createHash("sha512").update("").digest("hex");
 
@@ -193,6 +197,37 @@ export const EXCHANGES: readonly ExchangeSpec[] = [
     },
     parse(body) {
       return collect(expectArray(body), (b) => balance(b.currency, b.available, b.locked));
+    },
+  },
+  {
+    id: "coinbase",
+    name: "Coinbase",
+    baseUrl: `https://${COINBASE_HOST}`,
+    // The key NAME (organizations/{org}/apiKeys/{key}) and the multi-line ECDSA private key.
+    secrets: { key: "coinbase_key", secret: "coinbase_secret" },
+    sign(c, nowMs) {
+      // The JWT's `uri` claim names the fixed path only; the query string is not part of it.
+      const path = "/api/v3/brokerage/accounts";
+      const token = buildJwt(checkKeyName(c.key), loadPrivateKey(c.secret), path, nowMs);
+      return {
+        path: `${path}?limit=${COINBASE_PAGE}`,
+        headers: { Authorization: `Bearer ${token}` },
+      };
+    },
+    parse(body) {
+      const o = expectObject(body);
+      // A second page would mean a silent understatement: refuse rather than show a partial total.
+      if (o.has_next !== false) unusable();
+      return collect(expectArray(o.accounts), (a) => {
+        // Spot crypto (and vault) accounts only: fiat has no price here, futures are not spot.
+        if (a.type !== "ACCOUNT_TYPE_CRYPTO" && a.type !== "ACCOUNT_TYPE_VAULT") return undefined;
+        if (typeof a.currency !== "string" || !/^[A-Za-z0-9]{1,20}$/.test(a.currency)) {
+          return undefined;
+        }
+        const available = isObject(a.available_balance) ? a.available_balance : undefined;
+        const hold = isObject(a.hold) ? a.hold : undefined;
+        return balance(a.currency, available?.value, hold?.value ?? "0");
+      });
     },
   },
 ];

@@ -74,6 +74,7 @@ try {
           feed: () => runtime.bus,
         },
         onAwakeSession: (session) => runtime.scheduledAwake.bindSession(session),
+        onAwakeQuitCheck: (check) => runtime.quitCheck.bind(check),
         dockerIdle: dockerIdleFrom({
           invokeAndWait: (...args) => runtime.capabilities.invokeAndWait(...args),
         }),

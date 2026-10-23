@@ -24,6 +24,10 @@ Payload: `booking_uid`, `title` (clipped), `status`, `start`/`end`, `attendee_co
 - **Failures.** 401 pauses 5 min; 429 waits `Retry-After`; redirects and responses over 2 MiB are refused. Without a key nothing is called.
 - **Untrusted text.** Booking titles are typed by whoever booked: clipped to 200 characters, control characters removed, credential-shaped text redacted, never treated as instructions. Links must be https. The key never appears in a log, event or error.
 
+## Web glance
+
+The Overview shows a read-only glance (`CalComGlance`, apps/web) built from the `status` command only: upcoming bookings' start time, status and attendee count. Booking titles (which can name attendees), attendee names and emails are never shown.
+
 ## Not verified
 
 The mock (`testing/mock-calcom.ts`) was written from the Cal.com API v2 reference. **Nothing was tested against the real Cal.com API.** Unconfirmed: that `status=upcoming,unconfirmed,cancelled`, `afterStart` and `sortStart` behave as assumed (a combined status filter, whether cancelled bookings in the past window are returned), the `cal-api-version` value `2024-08-13` for this endpoint, and how rescheduled bookings link to each other (`rescheduledFromUid`/`rescheduledToUid`).

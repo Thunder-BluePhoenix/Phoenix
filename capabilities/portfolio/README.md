@@ -34,19 +34,47 @@ unauthenticated GETs of a public address), so the override moves nothing secret.
 for exchanges. Addresses are validated per network against a strict pattern before
 they reach a URL.
 
-## Exchanges (5): documented balance endpoint is a GET with a read-only key
+## Exchanges (6): documented balance endpoint is a GET with a read-only key
 
 binance (`/api/v3/account`), bybit (`/v5/account/wallet-balance`), okx (`/api/v5/account/balance`),
-kucoin (`/api/v1/accounts`), gate (`/api/v4/spot/accounts`). Requests are signed with HMAC from
-`node:crypto`. **Excluded: Kraken** (private endpoints are POST-only) and Coinbase Advanced Trade (JWT
-signing needs a vendor library or a long ES256 flow; not attempted). Spot/funding balances only.
+kucoin (`/api/v1/accounts`), gate (`/api/v4/spot/accounts`): requests signed with HMAC from
+`node:crypto`. coinbase (Advanced Trade `GET /api/v3/brokerage/accounts?limit=250`): see below.
+**Excluded: Kraken** (private endpoints are POST-only). Spot/funding balances only.
 
 Secrets (named, stored in the OS secret store): `binance_key`, `binance_secret`, `bybit_key`,
 `bybit_secret`, `okx_key`, `okx_secret`, `okx_passphrase`, `kucoin_key`, `kucoin_secret`,
-`kucoin_passphrase`, `gate_key`, `gate_secret`. A key is sent only to that exchange's own host. There is
-deliberately no config setting to change it: anyone holding the API token could otherwise point a stored
-exchange key at a host of their choosing. Tests inject a local mock through the code-only
-`exchangeUrls` creation option.
+`kucoin_passphrase`, `gate_key`, `gate_secret`, `coinbase_key`, `coinbase_secret`. A key is sent only to
+that exchange's own host. There is deliberately no config setting to change it: anyone holding the API
+token could otherwise point a stored exchange key at a host of their choosing. Tests inject a local mock
+through the code-only `exchangeUrls` creation option.
+
+### Coinbase (ES256 JWT, `src/coinbase-jwt.ts`)
+
+Coinbase has no shared secret: each request carries `Authorization: Bearer <JWT>` signed with an ECDSA
+P-256 private key. Phoenix builds it with `node:crypto` only (no dependency, no vendor SDK):
+
+- Header `{alg: "ES256", kid: <key name>, nonce: <16 random bytes, hex>, typ: "JWT"}`; claims
+  `{sub: <key name>, iss: "cdp", nbf, exp: nbf + 120, uri: "GET api.coinbase.com/api/v3/brokerage/accounts"}`.
+  The signature is the raw 64-byte `r||s` (`dsaEncoding: "ieee-p1363"`), base64url.
+- **A new token for every request** (new nonce, `nbf` from the capability clock), 120 s lifetime, never
+  cached. The `uri` claim is built from the fixed method, host and path in code, never from input, and
+  excludes the query string; `buildJwt` has no method parameter, so a non-GET token cannot be made.
+- `coinbase_key` is the key _name_ (`organizations/{org}/apiKeys/{key}`, validated against that shape);
+  `coinbase_secret` is the PEM private key. Create the key in the CDP portal with the **ECDSA** signature
+  algorithm (Ed25519 is not supported by this API) and the **View** permission only. The portal shows
+  the PEM on one line with `\n` escapes, and a stored secret must be one line, so that form is
+  accepted and turned back into newlines. Before use the key is parsed and refused unless it is an
+  unencrypted EC key on P-256 (Ed25519, RSA, P-384, secp256k1, public keys, encrypted keys, garbage and
+  anything over 4096 characters are all refused with a fixed message that never echoes the key).
+- One GET to the exchange host (`api.coinbase.com`, https only; loopback http only for tests). The
+  response is read through `ReadOnlyClient` (2 MB cap), parsed defensively: only `ACCOUNT_TYPE_CRYPTO`
+  and `ACCOUNT_TYPE_VAULT` accounts, `available_balance + hold` as plain decimal strings, a currency
+  code of letters and digits, unknown fields ignored. Fiat and futures accounts are not counted. If the
+  response says there is another page (`has_next` not `false`) the source fails rather than showing a
+  partial total; only the portfolio's own accounts are read, so 250 accounts is the limit.
+- `test/coinbase.test.ts` generates a P-256 key pair at test time; its mock verifies signature, exact
+  header and claim sets, `kid = sub`, nonce uniqueness, `exp - nbf = 120`, the clock window and the
+  `uri`, and refuses an expired, altered or replayed token.
 
 ## Prices, 24h change, sparklines
 
@@ -74,9 +102,13 @@ snapshot lives in memory only (nothing is stored on disk).
 
 ## Not verified
 
-No real network, indexer, exchange or price service was contacted. Response shapes and the five signing
+No real network, indexer, exchange or price service was contacted. Response shapes and the six signing
 recipes come from each service's public documentation and are exercised only against a local mock
-that recomputes each signature from the same recipe, so a documentation misreading would pass here and
+that recomputes or verifies each signature from the same reading (Coinbase: the mock verifies the ES256
+JWT with the public key of a pair generated at test time, but the header, claims and `uri` rule are
+Phoenix's reading of Coinbase's documentation; real Coinbase and a real CDP key were never used, so whether
+Coinbase accepts the token, and whether the query string really stays out of `uri`, is unconfirmed),
+so a documentation misreading would pass here and
 fail live. Free public indexers rate-limit; 16 networks x several addresses may be throttled (shown as
 a failed source). `xrpscan` field naming (`xrpBalance`) and Blockscout's `coin_balance` are the shapes
 most worth checking first.

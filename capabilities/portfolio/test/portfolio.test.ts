@@ -439,7 +439,9 @@ describe("exchanges (read-only keys, signed GET)", () => {
   it("the secrets are named per exchange, and no key is ever returned or stored in config", async () => {
     await ready({ secrets: SECRETS });
     const view = h!.manager.get("portfolio");
-    expect(view.secrets.map((x) => x.name).sort()).toEqual(Object.keys(SECRETS).sort());
+    expect(view.secrets.map((x) => x.name).sort()).toEqual(
+      [...Object.keys(SECRETS), "coinbase_key", "coinbase_secret"].sort(),
+    );
     expect(JSON.stringify(view)).not.toContain(FAKE_SECRET);
     expect(() =>
       h!.manager.configure("portfolio", { exchanges: ["binance"], binance_secret: FAKE_SECRET }),
@@ -449,7 +451,7 @@ describe("exchanges (read-only keys, signed GET)", () => {
 });
 
 describe("only GET is ever sent", () => {
-  it("every request in a full cycle (16 networks, 5 exchanges, prices) is a GET", async () => {
+  it("every request in a full cycle (16 networks, 6 exchanges, prices) is a GET", async () => {
     await ready({
       state: (s) => {
         s.exchangeBodies.binance = { balances: [] };
@@ -476,7 +478,14 @@ describe("only GET is ever sent", () => {
       ["snapshot", "read"],
     ]);
     expect(NETWORKS).toHaveLength(16);
-    expect(EXCHANGES.map((e) => e.id)).toEqual(["binance", "bybit", "okx", "kucoin", "gate"]);
+    expect(EXCHANGES.map((e) => e.id)).toEqual([
+      "binance",
+      "bybit",
+      "okx",
+      "kucoin",
+      "gate",
+      "coinbase",
+    ]);
   });
 });
 

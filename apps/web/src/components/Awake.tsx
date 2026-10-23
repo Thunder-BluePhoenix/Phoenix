@@ -26,14 +26,17 @@ const EXTENDS: readonly number[] = [15, 60];
 const DEFAULT_GRACE_MINUTES = 10;
 
 /** "15 minutes" / "4 hours" for a whole number of minutes, in the language on screen. */
-function duration(t: Translate, minutes: number): string {
+export function duration(t: Translate, minutes: number): string {
   return minutes % 60 === 0 && minutes >= 60
     ? t("power.awake.duration.hours", { hours: minutes / 60 })
     : t("power.awake.duration.minutes", { minutes });
 }
 
 /** Seconds left in a session now, counting down between status reads. */
-function useRemaining(session: AwakeSessionView | undefined, clock: AwakeUiClock): number | null {
+export function useRemaining(
+  session: AwakeSessionView | undefined,
+  clock: AwakeUiClock,
+): number | null {
   const now = useNow(clock, session?.ends_at != null);
   return session ? secondsLeft(session.ends_at, now) : null;
 }

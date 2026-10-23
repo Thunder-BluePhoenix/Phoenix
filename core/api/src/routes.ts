@@ -25,6 +25,7 @@ import { calendarRoutes } from "./calendar-routes";
 import { teamStatusRoutes, teamWebhookRoutes } from "./team-webhook-routes";
 import { teamLinkRoutes } from "./team-link-routes";
 import { statusLightRoutes } from "./status-light-routes";
+import { quitCheckRoutes } from "./quit-check-routes";
 import { scheduledAwakeRoutes } from "./scheduled-awake-routes";
 import { fawkesRebirthRoutes } from "./fawkes-rebirth-routes";
 import { browserProfileRoutes } from "./browser-profile-routes";
@@ -432,6 +433,7 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...(s.teamLink ? teamLinkRoutes(s.teamLink) : []),
     ...(s.statusLights ? statusLightRoutes(s.statusLights) : []),
     ...(s.scheduledAwake ? scheduledAwakeRoutes(s.scheduledAwake) : []),
+    ...(s.quitCheck ? quitCheckRoutes(s.quitCheck) : []),
     ...(s.fawkesRebirth ? fawkesRebirthRoutes(s.fawkesRebirth) : []),
     ...(s.browserProfiles ? browserProfileRoutes(s.browserProfiles) : []),
     ...(s.musicConnectors ? musicConnectorRoutes(s.musicConnectors) : []),
