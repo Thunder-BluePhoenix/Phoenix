@@ -39,4 +39,43 @@ export const focus = {
   "focus.screenshot.tracker.github": "GitHub",
   "focus.screenshot.tracker.linear": "Linear",
   "focus.screenshot.tracker.jira": "Jira",
+  "focus.issueDraft.title": "Issue from an image you have",
+  "focus.issueDraft.intro":
+    "Drop, paste or choose a PNG or JPEG you already have, write the issue, and review exactly what will be sent. Phoenix does not capture your screen. The issue is created on GitHub only after you confirm here and again in Approvals.",
+  "focus.issueDraft.unavailable.capability":
+    "The GitHub integration is not enabled, or it cannot create issues, so nothing can be created.",
+  "focus.issueDraft.unavailable.token":
+    "No GitHub write token is set for the GitHub integration, so nothing can be created.",
+  "focus.issueDraft.dropLabel": "Drop an image for the issue",
+  "focus.issueDraft.dropHint": "Drop or paste a PNG or JPEG here, or {choose}.",
+  "focus.issueDraft.choose": "choose an image…",
+  "focus.issueDraft.chooseLabel": "Choose an image for the issue",
+  "focus.issueDraft.imageAlt": "Image for the issue: {name}",
+  "focus.issueDraft.imageRemove": "Remove the image",
+  "focus.issueDraft.oneImage": "Add one image at a time.",
+  "focus.issueDraft.imageRequired": "Add an image first.",
+  "focus.issueDraft.titleRequired": "Write a title for the issue.",
+  "focus.issueDraft.titleTooLong": "The title can have at most {max} characters.",
+  "focus.issueDraft.bodyTooLong": "The description can have at most {max} characters.",
+  "focus.issueDraft.secretInTitle":
+    "The title looks like it contains a password, key or token. Remove it; nothing was sent.",
+  "focus.issueDraft.secretInBody":
+    "The description looks like it contains a password, key or token. Remove it; nothing was sent.",
+  "focus.issueDraft.secretInBoth":
+    "The title and the description look like they contain a password, key or token. Remove it; nothing was sent.",
+  "focus.issueDraft.previewRepository": "Repository: {repository}",
+  "focus.issueDraft.previewTitle": "Title: {title}",
+  "focus.issueDraft.previewBody": "Description, exactly as it will be sent:",
+  "focus.issueDraft.previewNoBody": "No description will be sent.",
+  "focus.issueDraft.imageLocal":
+    "The image ({name}) is NOT sent. GitHub issues are created from text only, so the image stays on this device and is not saved. Add it to the issue yourself if you want it there.",
+  "focus.issueDraft.approval":
+    "Nothing is created yet. After you press the button, Phoenix asks for your approval in Approvals before anything is sent to GitHub.",
+  "focus.issueDraft.create": "Ask to create the issue",
+  "focus.issueDraft.waiting": "Waiting for your approval in Approvals…",
+  "focus.issueDraft.denied": "You declined, so nothing was sent to GitHub.",
+  "focus.issueDraft.blocked": "The emergency stop is on, so nothing was sent to GitHub.",
+  "focus.issueDraft.timeout":
+    "The request was not approved in time or was cancelled; nothing was sent.",
+  "focus.issueDraft.failed": "The issue could not be created: {message}",
 } as const;

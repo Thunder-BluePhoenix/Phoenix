@@ -43,4 +43,16 @@ export const teamWebhooks: Record<keyof typeof enTeamWebhooks, string> = {
   "teamWebhooks.create.typesNamespace": "Un tipo de evento debe empezar por uno de: {namespaces}.",
   "teamWebhooks.create.limit": "Has llegado al límite de {max} fuentes. Elimina una primero.",
   "teamWebhooks.create.submit": "Crear fuente",
+  "teamWebhooks.row.disabledNote":
+    "Esta fuente está desactivada: Phoenix rechaza todo lo que se le envía.",
+  "teamWebhooks.toggle.enable": "Activar",
+  "teamWebhooks.toggle.disable": "Desactivar",
+  "teamWebhooks.toggle.enableLabel": "Activar la fuente {id}",
+  "teamWebhooks.toggle.disableLabel": "Desactivar la fuente {id}",
+  "teamWebhooks.rotate.button": "Rotar secreto",
+  "teamWebhooks.rotate.label": "Rotar el secreto de la fuente {id}",
+  "teamWebhooks.rotate.ask":
+    "¿Rotar el secreto de {id}? El secreto anterior deja de funcionar de inmediato, así que la herramienta emisora será rechazada hasta que le des el nuevo secreto.",
+  "teamWebhooks.secret.rotatedNote":
+    "Este es el nuevo secreto. El anterior ha dejado de funcionar; actualiza la herramienta emisora con este.",
 };

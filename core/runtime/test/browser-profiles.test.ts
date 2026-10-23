@@ -14,6 +14,7 @@ import {
   type PermissionDecision,
   type SignedExtension,
 } from "../src/browser-profiles";
+import { pinnedSigners } from "../src/browser-profiles/signer-registry";
 import { SyncRuntime } from "../src/sync";
 
 class Settings {
@@ -121,7 +122,7 @@ async function device(
     settings as never,
     secrets,
     adapter,
-    options.signers ?? TRUSTED,
+    pinnedSigners(options.signers ?? TRUSTED),
     decide,
   );
   return { manager, settings, secrets, sync, asked, recovery };
@@ -502,7 +503,7 @@ describe("encrypted two-device round trip", () => {
         b.settings as never,
         b.secrets,
         { ...adapterOf(b.sync), inspect: () => attacker.sync.inspect() },
-        TRUSTED,
+        pinnedSigners(TRUSTED),
       );
       const revision = attacker.sync.inspect().items[0]!.revision;
       expect(() => accepter.accept(id, revision)).toThrow(/Invalid|Duplicate|changed/);
@@ -636,7 +637,7 @@ describe("extensions need a trusted signature and explicit approval", () => {
       new Settings() as never,
       new MemorySecretStore(),
       undefined,
-      TRUSTED,
+      pinnedSigners(TRUSTED),
     );
     const b = noGateway.create("B");
     noGateway.install(b.id, signed(manifest()));
@@ -683,7 +684,7 @@ describe("extensions need a trusted signature and explicit approval", () => {
       settings as never,
       secrets,
       undefined,
-      TRUSTED,
+      pinnedSigners(TRUSTED),
       async () => true,
     );
     const { id } = trusting.create("A");
@@ -694,7 +695,7 @@ describe("extensions need a trusted signature and explicit approval", () => {
       settings as never,
       secrets,
       undefined,
-      {},
+      pinnedSigners({}),
       async () => true,
     );
     expect(await distrusting.authorize(id, "reader", "pageAction", ORIGIN)).toBe(false);

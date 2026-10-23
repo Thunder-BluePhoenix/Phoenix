@@ -42,4 +42,43 @@ export const focus: Record<keyof typeof enFocus, string> = {
   "focus.screenshot.tracker.github": "GitHub",
   "focus.screenshot.tracker.linear": "Linear",
   "focus.screenshot.tracker.jira": "Jira",
+  "focus.issueDraft.title": "Ticket à partir d’une image que vous avez",
+  "focus.issueDraft.intro":
+    "Déposez, collez ou choisissez un PNG ou JPEG que vous avez déjà, rédigez le ticket et vérifiez exactement ce qui sera envoyé. Phoenix ne capture pas votre écran. Le ticket n’est créé sur GitHub qu’après votre confirmation ici, puis dans Approbations.",
+  "focus.issueDraft.unavailable.capability":
+    "L’intégration GitHub n’est pas activée ou ne peut pas créer de tickets ; rien ne peut être créé.",
+  "focus.issueDraft.unavailable.token":
+    "Aucun jeton d’écriture GitHub n’est défini pour l’intégration GitHub ; rien ne peut être créé.",
+  "focus.issueDraft.dropLabel": "Déposer une image pour le ticket",
+  "focus.issueDraft.dropHint": "Déposez ou collez un PNG ou JPEG ici, ou {choose}.",
+  "focus.issueDraft.choose": "choisissez une image…",
+  "focus.issueDraft.chooseLabel": "Choisir une image pour le ticket",
+  "focus.issueDraft.imageAlt": "Image pour le ticket : {name}",
+  "focus.issueDraft.imageRemove": "Retirer l’image",
+  "focus.issueDraft.oneImage": "Ajoutez une seule image à la fois.",
+  "focus.issueDraft.imageRequired": "Ajoutez d’abord une image.",
+  "focus.issueDraft.titleRequired": "Rédigez un titre pour le ticket.",
+  "focus.issueDraft.titleTooLong": "Le titre peut contenir au plus {max} caractères.",
+  "focus.issueDraft.bodyTooLong": "La description peut contenir au plus {max} caractères.",
+  "focus.issueDraft.secretInTitle":
+    "Le titre semble contenir un mot de passe, une clé ou un jeton. Retirez-le ; rien n’a été envoyé.",
+  "focus.issueDraft.secretInBody":
+    "La description semble contenir un mot de passe, une clé ou un jeton. Retirez-le ; rien n’a été envoyé.",
+  "focus.issueDraft.secretInBoth":
+    "Le titre et la description semblent contenir un mot de passe, une clé ou un jeton. Retirez-le ; rien n’a été envoyé.",
+  "focus.issueDraft.previewRepository": "Dépôt : {repository}",
+  "focus.issueDraft.previewTitle": "Titre : {title}",
+  "focus.issueDraft.previewBody": "Description, exactement telle qu’elle sera envoyée :",
+  "focus.issueDraft.previewNoBody": "Aucune description ne sera envoyée.",
+  "focus.issueDraft.imageLocal":
+    "L’image ({name}) n’est PAS envoyée. Les tickets GitHub sont créés à partir de texte seulement ; l’image reste sur cet appareil et n’est pas enregistrée. Ajoutez-la vous-même au ticket si vous le souhaitez.",
+  "focus.issueDraft.approval":
+    "Rien n’est encore créé. Après avoir appuyé sur le bouton, Phoenix demande votre approbation dans Approbations avant d’envoyer quoi que ce soit à GitHub.",
+  "focus.issueDraft.create": "Demander la création du ticket",
+  "focus.issueDraft.waiting": "En attente de votre approbation dans Approbations…",
+  "focus.issueDraft.denied": "Vous avez refusé ; rien n’a été envoyé à GitHub.",
+  "focus.issueDraft.blocked": "L’arrêt d’urgence est activé ; rien n’a été envoyé à GitHub.",
+  "focus.issueDraft.timeout":
+    "La demande n’a pas été approuvée à temps ou a été annulée ; rien n’a été envoyé.",
+  "focus.issueDraft.failed": "Le ticket n’a pas pu être créé : {message}",
 };

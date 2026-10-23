@@ -41,4 +41,15 @@ export const teamWebhooks: Record<keyof typeof enTeamWebhooks, string> = {
   "teamWebhooks.create.typesNamespace": "يجب أن يبدأ نوع الحدث بأحد ما يلي: {namespaces}.",
   "teamWebhooks.create.limit": "بلغت الحد الأقصى وهو {max} مصدرًا. احذف واحدًا أولًا.",
   "teamWebhooks.create.submit": "إنشاء المصدر",
+  "teamWebhooks.row.disabledNote": "هذا المصدر معطّل: يرفض Phoenix كل ما يُرسل إليه.",
+  "teamWebhooks.toggle.enable": "تفعيل",
+  "teamWebhooks.toggle.disable": "تعطيل",
+  "teamWebhooks.toggle.enableLabel": "تفعيل المصدر {id}",
+  "teamWebhooks.toggle.disableLabel": "تعطيل المصدر {id}",
+  "teamWebhooks.rotate.button": "تدوير السر",
+  "teamWebhooks.rotate.label": "تدوير سر المصدر {id}",
+  "teamWebhooks.rotate.ask":
+    "هل تريد تدوير سر {id}؟ يتوقف السر القديم عن العمل فورًا، لذا سيُرفض الطلب من الأداة المرسِلة إلى أن تعطيها السر الجديد.",
+  "teamWebhooks.secret.rotatedNote":
+    "هذا هو السر الجديد. توقف السر القديم عن العمل؛ حدّث الأداة المرسِلة بهذا السر.",
 };

@@ -114,6 +114,16 @@ body {
   flex: 1 1 0;
   min-height: 0;
 }
+.island-root[data-drop-over="true"] .island-bar {
+  outline: 2px dashed var(--info);
+  outline-offset: -3px;
+}
+.island-drop[data-tone="warning"] {
+  color: var(--warning);
+}
+.island-drop[data-tone="info"] {
+  color: var(--info);
+}
 .island-body > .agent-approvals-compact {
   align-self: stretch;
   flex: 1 1 0;

@@ -385,6 +385,10 @@ export const capture: Record<keyof typeof encapture, string> = {
     "{n, plural, one {Se adjuntó # elemento.} other {Se adjuntaron # elementos.}} Aún no se ha enviado nada a ninguna parte.",
   "capture.attachments.notice.nothingAttached": "No se adjuntó nada.",
   "capture.attachments.notice.withProblems": "{head} {problems}",
+  "capture.attachments.nativeDrop.folder":
+    "{name}: no se puede soltar una carpeta aquí. Usa el cuadro de chat o el Pet Panel.",
+  "capture.attachments.nativeDrop.skipped":
+    "Solo se usan los primeros {max} archivos de lo que sueltas; se ignoraron {n} más.",
   "capture.attachments.mail.subject": "Sobre: {name}",
   "capture.attachments.mail.empty": "Escribe primero lo que quieres compartir.",
   "capture.attachments.mail.tooLong":

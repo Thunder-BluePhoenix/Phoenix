@@ -3,6 +3,7 @@
 import { createHash, createPublicKey, randomUUID, verify } from "node:crypto";
 import type { SecretStore, SettingsStore } from "@phoenix/persistence";
 import { isRecord } from "../mcp/guards";
+import { pinnedSigners, type ExtensionTrust, type TrustRefusal } from "./signer-registry";
 
 export interface Bookmark {
   id: string;
@@ -43,7 +44,20 @@ export interface SignedExtension {
 export interface InstalledExtension {
   manifest: ExtensionManifest;
   signer: string;
+  /** The install-time signature, re-verified against the signer's current key on every use. */
+  signature?: string;
   approved: boolean;
+}
+/** Why an installed extension is not trusted now; closed set, safe to show and log. */
+export type ExtensionRefusal = TrustRefusal | "signature_missing" | "signature_invalid";
+/**
+ * An installed extension as reported: trust is recomputed from the signer registry on every read,
+ * so a later revocation shows at once. `revoked`/`untrusted` extensions report `approved: false`
+ * and can never be approved or authorised.
+ */
+export interface ExtensionView extends Omit<InstalledExtension, "signature"> {
+  status: "trusted" | "revoked" | "untrusted";
+  reason?: ExtensionRefusal;
 }
 interface State {
   profiles: BrowserProfile[];
@@ -275,6 +289,40 @@ function parseSynced(id: string, value: unknown): SyncedProfile {
   requireValid(itemsUnique(bookmarks) && itemsUnique(history), "Duplicate synced entries");
   return { name: value.name.trim(), bookmarks, history };
 }
+type Evaluation = { trusted: true } | { trusted: false; reason: ExtensionRefusal };
+/** sha256 hex of the signed bytes: what a registry revocation of a manifest names. */
+export function manifestSha256(manifest: ExtensionManifest): string {
+  return createHash("sha256").update(canonicalManifest(manifest)).digest("hex");
+}
+function validSignature(
+  manifest: ExtensionManifest,
+  signature: string,
+  publicKey: string,
+): boolean {
+  try {
+    return verify(
+      null,
+      Buffer.from(canonicalManifest(manifest)),
+      createPublicKey(publicKey),
+      Buffer.from(signature, "base64"),
+    );
+  } catch {
+    return false; // A malformed key or signature is an invalid signature.
+  }
+}
+function view(extension: InstalledExtension, evaluation: Evaluation): ExtensionView {
+  const shown = { manifest: extension.manifest, signer: extension.signer };
+  if (evaluation.trusted) return { ...shown, approved: extension.approved, status: "trusted" };
+  const revoked =
+    evaluation.reason === "signer_revoked" || evaluation.reason === "manifest_revoked";
+  return {
+    ...shown,
+    approved: false,
+    status: revoked ? "revoked" : "untrusted",
+    reason: evaluation.reason,
+  };
+}
+
 interface Candidate {
   value: unknown;
   /** True when the revision is a staged remote conflict that must be resolved to the remote side. */
@@ -287,8 +335,11 @@ export class BrowserProfileManager {
     private readonly settings: Pick<SettingsStore, "get" | "set">,
     private readonly secrets: SecretStore,
     private readonly syncAdapter?: EncryptedProfileSync,
-    /** Signer id to PEM (SPKI) Ed25519 public key. Removing a signer disables its extensions. */
-    private readonly trustedSigners: Readonly<Record<string, string>> = {},
+    /**
+     * Who may sign extensions, asked at install and again on every read and `authorize`. A
+     * `SignerRegistry` adds revocation and expiry; `pinnedSigners(map)` is a static host map.
+     */
+    private readonly trust: ExtensionTrust = pinnedSigners({}),
     private readonly permission?: PermissionDecision,
   ) {}
   private state(): State {
@@ -524,42 +575,35 @@ export class BrowserProfileManager {
     return copy(profile);
   }
   /** Verifies the signature and stores the extension unapproved; it cannot run until approve(). */
-  install(profileId: string, extension: SignedExtension): InstalledExtension {
+  install(profileId: string, extension: SignedExtension): ExtensionView {
     this.profile(this.state(), profileId);
     requireValid(isRecord(extension), "Invalid extension manifest");
     const manifest = normalizeManifest(extension.manifest);
     const { signer, signature } = extension;
-    const signerKey =
-      validId(signer) && Object.hasOwn(this.trustedSigners, signer)
-        ? this.trustedSigners[signer]
-        : undefined;
-    requireValid(typeof signerKey === "string", "Untrusted extension signer");
+    requireValid(validId(signer), "Untrusted extension signer");
+    const decision = this.trust.resolve(signer, manifestSha256(manifest));
+    if (!decision.trusted) {
+      requireValid(decision.reason !== "unknown_signer", "Untrusted extension signer");
+      throw new ProfileError(`Extension refused: ${decision.reason}`);
+    }
     requireValid(
       typeof signature === "string" &&
         signature.length <= 1024 &&
         /^[A-Za-z0-9+/]+={0,2}$/.test(signature),
       "Invalid extension signature",
     );
-    let valid = false;
-    try {
-      valid = verify(
-        null,
-        Buffer.from(canonicalManifest(manifest)),
-        createPublicKey(signerKey),
-        Buffer.from(signature, "base64"),
-      );
-    } catch {
-      // Malformed key or signature is treated as an invalid signature.
-    }
-    requireValid(valid, "Invalid extension signature");
+    requireValid(
+      validSignature(manifest, signature, decision.publicKey),
+      "Invalid extension signature",
+    );
     const state = this.state();
-    const installed: InstalledExtension = { manifest, signer, approved: false };
+    const installed: InstalledExtension = { manifest, signer, signature, approved: false };
     state.extensions[profileId] = [
       ...(state.extensions[profileId] ?? []).filter((item) => item.manifest.id !== manifest.id),
       installed,
     ];
     this.save(state);
-    return copy(installed);
+    return copy(view(installed, { trusted: true }));
   }
   approve(profileId: string, extensionId: string, approved: boolean): void {
     requireValid(typeof approved === "boolean", "Invalid extension approval");
@@ -567,7 +611,10 @@ export class BrowserProfileManager {
     this.profile(state, profileId);
     const extension = state.extensions[profileId]?.find((item) => item.manifest.id === extensionId);
     requireValid(!!extension, "Unknown extension");
-    (extension as InstalledExtension).approved = approved;
+    const found = extension as InstalledExtension;
+    // Only a trusted extension can be approved; withdrawing approval is always allowed.
+    requireValid(!approved || this.evaluate(found).trusted, "Untrusted extension signer");
+    found.approved = approved;
     this.save(state);
   }
   uninstall(profileId: string, extensionId: string): void {
@@ -581,9 +628,24 @@ export class BrowserProfileManager {
     state.extensions[profileId] = before.filter((item) => item.manifest.id !== extensionId);
     this.save(state);
   }
-  extensions(profileId: string): InstalledExtension[] {
+  /**
+   * Installed extensions with trust recomputed now: a signer or manifest revoked after install
+   * reads `revoked` here and reports `approved: false`, whatever was stored.
+   */
+  extensions(profileId: string): ExtensionView[] {
     this.profile(this.state(), profileId);
-    return copy(this.state().extensions[profileId] ?? []);
+    return (this.state().extensions[profileId] ?? []).map((item) =>
+      copy(view(item, this.evaluate(item))),
+    );
+  }
+  private evaluate(extension: InstalledExtension): Evaluation {
+    const decision = this.trust.resolve(extension.signer, manifestSha256(extension.manifest));
+    if (!decision.trusted) return { trusted: false, reason: decision.reason };
+    if (extension.signature === undefined) return { trusted: false, reason: "signature_missing" };
+    // The stored signature must verify under the signer's key as it is now (rotation included).
+    if (!validSignature(extension.manifest, extension.signature, decision.publicKey))
+      return { trusted: false, reason: "signature_invalid" };
+    return { trusted: true };
   }
   /**
    * Gate each operation again; fails closed. The extension must be approved, still signed by a
@@ -602,7 +664,7 @@ export class BrowserProfileManager {
     );
     if (
       !extension?.approved ||
-      !Object.hasOwn(this.trustedSigners, extension.signer) ||
+      !this.evaluate(extension).trusted ||
       !extension.manifest.permissions.includes(permission) ||
       !validOrigin(origin) || // origins match exactly; there are no wildcards
       !extension.manifest.origins.includes(origin) ||

@@ -200,6 +200,46 @@ describe("focus mode and quiet hours", () => {
     expect(colours(r.a).at(-1)).toBe(rgb("ERROR"));
   });
 
+  it("follows focus changes by itself when the host supplies focusChanges, and stops when disabled", async () => {
+    const t = new FakeTransport();
+    const focus = { on: false };
+    const listeners = new Set<() => void>();
+    const capability = createStatusLightsCapability({
+      devices: () => [{ id: "desk", kind: "luxafor", transport: t }],
+      feed: () => h?.bus,
+      focusMode: () => focus.on,
+      focusChanges: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    });
+    h = createHarness({ modules: [capability] });
+    h.manager.configure("status-lights", { devices: ["desk"] });
+    await h.enable("status-lights");
+    expect(listeners.size).toBe(1);
+    h.bus.publish(
+      createEvent({
+        source: "agents",
+        event_type: "agent.failed",
+        severity: "info",
+        payload: { agent_id: "x" },
+      }),
+    );
+    await h.drain();
+    focus.on = true;
+    for (const listener of [...listeners]) listener(); // no refresh() call from the host
+    await h.drain();
+    await Promise.resolve();
+    expect(colours(t).at(-1)).toBe(rgb("IDLE"));
+    focus.on = false;
+    for (const listener of [...listeners]) listener();
+    await h.drain();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    expect(colours(t).at(-1)).toBe(rgb("ERROR"));
+    await h.manager.disable("status-lights");
+    expect(listeners.size).toBe(0);
+  });
+
   it("quiet hours from config darken the lights, even for a recording", async () => {
     const r = await ready({
       devices: ["desk"],

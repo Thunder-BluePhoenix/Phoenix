@@ -471,4 +471,18 @@ describe("tracked agent sessions", () => {
     const thrower = new SessionTarget(sid, { send: () => Promise.reject(new Error("x")) });
     expect(await thrower.deliver(false)).toBe("failed");
   });
+
+  it("through the module with no seam (what a real Core does): the session is reported 'unavailable', nothing is typed anywhere and the report carries no text", async () => {
+    const r = await continuityRig({
+      config: config({ panes: [], sessions: [sid], enter: true }),
+      withSession: false,
+    });
+    await outage(r);
+    expect(r.sys.runs).toEqual([]);
+    const reports = r.events.filter((e) => e.event_type === "awake.nudge.result");
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.payload).toEqual({ target: sid, kind: "session", outcome: "unavailable" });
+    expect(JSON.stringify(r.events)).not.toContain("continue");
+    r.shutdown();
+  });
 });

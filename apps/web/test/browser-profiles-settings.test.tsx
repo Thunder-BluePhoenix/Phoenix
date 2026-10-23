@@ -57,6 +57,7 @@ const EXTENSION = {
   },
   signer: "host-signer",
   approved: false,
+  status: "trusted",
 };
 
 /** A request body's field, narrowed instead of cast. */
@@ -269,6 +270,22 @@ describe("browser profiles card", () => {
     await click(ext.getByRole("button", { name: "Remove extension ext-dark" }));
     expect(api.calls.filter((c) => c.method === "DELETE")).toHaveLength(1);
     expect(ext.getByText("No extensions.")).toBeTruthy();
+  });
+
+  it("shows a revoked extension as revoked and cannot approve it", async () => {
+    await mount(
+      <BrowserProfilesSection />,
+      profileRoutes({
+        "GET /api/browser/profiles/prof_work/extensions": () => ({
+          extensions: [{ ...EXTENSION, approved: false, status: "revoked" }],
+        }),
+      }),
+    );
+    const ext = card("Work");
+    expect(ext.getByText("Revoked")).toBeTruthy();
+    expect(ext.queryByText("Not approved")).toBeNull();
+    const approve = ext.getByRole("button", { name: "Approve extension ext-dark" });
+    expect(approve.hasAttribute("disabled")).toBe(true);
   });
 
   it("shows only 'not available' with no controls when Core answers 503", async () => {

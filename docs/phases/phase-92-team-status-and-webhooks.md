@@ -5,7 +5,7 @@
 | Stage | Stage 14 — Phoenix originals |
 | Release target | Post-v2.0 track |
 | Priority | Low |
-| Status | 🟨 Built as code and wired into Core; every check is simulated (fakes, in-memory state, two real Cores through a loopback relay). Incoming-webhook routes and team presence (`TeamLinkService`, `/api/team/*`) are constructed by the runtime (both need an OS secret store; absent in the demo runtime). **Not done:** a pairing flow beyond copying the id and public key by hand, any real teammate or relay host. A Settings section now lists, creates and deletes webhook sources (simulated Core in tests only). Neither exit criterion is met |
+| Status | 🟨 Built as code and wired into Core; every check is simulated (fakes, in-memory state, two real Cores through a loopback relay). Incoming-webhook routes and team presence (`TeamLinkService`, `/api/team/*`) are constructed by the runtime (both need an OS secret store; absent in the demo runtime). **Not done:** a pairing flow beyond copying the id and public key by hand, any real teammate or relay host. A Settings section now lists, creates, enables/disables, rotates and deletes webhook sources (simulated Core in tests only). Neither exit criterion is met |
 | Depends on | [Phase 87 — Remote Access Relay](phase-87-remote-access-relay.md) |
 | Unblocks | — |
 
@@ -27,7 +27,7 @@ Optional shared status for a team, and a universal way to drive Fawkes.
 ## Exit criteria
 
 - [ ] Two Phoenix installs see each other's shared state. **Unmet.** Two real Cores in one test process saw each other's state through a loopback `createRelayServer`; no second machine, no real relay host and no pairing flow.
-- [ ] A webhook from a real service drives Fawkes. **Unmet.** The route is registered and tested over loopback (`core/runtime/test/team-webhooks-wiring.test.ts`), but no real service sent a webhook. A Settings section (`TeamWebhooks.tsx`) now creates and deletes sources, tested only against a fake Core.
+- [ ] A webhook from a real service drives Fawkes. **Unmet.** The route is registered and tested over loopback (`core/runtime/test/team-webhooks-wiring.test.ts`), but no real service sent a webhook. A Settings section (`TeamWebhooks.tsx`) now creates, enables/disables, rotates and deletes sources, tested only against a fake Core.
 
 ## Implementation notes
 
@@ -51,7 +51,7 @@ A static read-only review by tools (not a human audit) found three issues, each 
 
 ### What was not built
 
-A pairing flow beyond copying the id and public key by hand, a rotate-secret and per-source enable control in the new webhook Settings section (`apps/web/src/components/TeamWebhooks.tsx`; team presence is in `TeamSettings.tsx`), any real teammate or relay host, and relay `write()`-false backpressure beyond the test seam. Dedupe and rate-limit state is in memory only.
+A pairing flow beyond copying the id and public key by hand, any real teammate or relay host, and relay `write()`-false backpressure beyond the test seam. Dedupe and rate-limit state is in memory only (the rotate and enable controls in `TeamWebhooks.tsx` do not change that).
 
 ### What was not run
 

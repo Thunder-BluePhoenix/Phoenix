@@ -3,6 +3,7 @@
 import type { SoundPlayer } from "@phoenix/pet-runtime";
 import { visualFor } from "@phoenix/pet-states";
 import { useEffect, useState, type CSSProperties } from "react";
+import { tauriFileDrop, type FileDropShell } from "../commands/file-drop-shell";
 import { tauriShortcuts, type ShortcutsShell } from "../commands/shortcuts-shell";
 import { AgentApprovals } from "../components/AgentApprovals";
 import { RebirthAvatar } from "../components/RebirthAvatar";
@@ -11,6 +12,7 @@ import { SourcePills } from "../components/SourcePills";
 import { useWornOutfit } from "../core/appearance";
 import { useDisplayedState } from "../core/context";
 import { useMute } from "../core/mute";
+import { nativeDropActive, useNativeDropText, useNativeFileDrop } from "../core/native-drop";
 import { useSoundHost } from "../core/sounds";
 import { usePillSwitcher, useSwitchPillsShortcut } from "../core/pill-switch";
 import { usePetSettings } from "../core/hooks";
@@ -73,11 +75,14 @@ export function useFrame(shell: IslandShell | null): IslandFrame {
 export function IslandApp({
   shell,
   shortcuts,
+  fileDrop,
   sounds,
 }: {
   shell: IslandShell | null;
   /** The desktop's mute flag (null in a browser, where nothing is muted). */
   shortcuts?: ShortcutsShell | null;
+  /** Files dropped on the window itself (null in a browser, where the page gets HTML5 drops). */
+  fileDrop?: FileDropShell | null;
   /** The pet's sound player, when the host has one; silenced while the desktop is muted. */
   sounds?: SoundPlayer;
 }) {
@@ -85,6 +90,10 @@ export function IslandApp({
   // Looked up once: a new shell object on every render would resubscribe to the mute event.
   const [own] = useState(() => tauriShortcuts());
   const shortcutsShell = shortcuts === undefined ? own : shortcuts;
+  const [ownDrop] = useState(() => tauriFileDrop());
+  const nativeDrop = useNativeFileDrop(fileDrop === undefined ? ownDrop : fileDrop);
+  const dropText = useNativeDropText(nativeDrop);
+  const dropActive = nativeDropActive(nativeDrop);
   // A host-injected player (tests) wins; otherwise the window uses the Phase 59 sound host.
   const soundHost = useSoundHost();
   const mute = useMute(shortcutsShell, sounds ?? soundHost.player);
@@ -97,7 +106,11 @@ export function IslandApp({
   const bubble = useBubble(state);
   const outfit = useWornOutfit();
   const frame = useFrame(shell);
-  const { active, urgent } = activityOf(state);
+  const petActivity = activityOf(state);
+  // A drag over the island, a file being read and the result on screen keep the island from
+  // settling back to hidden (it is "busy" for the shell) until the result has been shown.
+  const active = petActivity.active || dropActive;
+  const { urgent } = petActivity;
 
   useEffect(() => {
     shell?.send({ kind: "activity", active, urgent });
@@ -124,6 +137,7 @@ export function IslandApp({
       data-state={frame.state}
       data-notch={frame.layout.has_notch ? "true" : "false"}
       data-tone={visual.tone}
+      data-drop-over={nativeDrop.over ? "true" : "false"}
       style={style}
       onPointerEnter={() => shell?.send({ kind: "pointer_enter" })}
       onPointerLeave={() => shell?.send({ kind: "pointer_leave" })}
@@ -149,13 +163,33 @@ export function IslandApp({
             </div>
             {frame.layout.has_notch && <div className="island-notch" aria-hidden="true" />}
             <div className="island-ear island-ear-right">
-              <span className="island-label" data-tone={visual.tone}>
-                {state.recording ? t("common.petState.RECORDING") : stateText}
-              </span>
+              {dropText ? (
+                <span
+                  className="island-label"
+                  title={dropText}
+                  {...(expanded ? { "aria-hidden": true } : { role: "status" })}
+                  data-tone={nativeDrop.notice?.problem ? "warning" : "info"}
+                >
+                  {dropText}
+                </span>
+              ) : (
+                <span className="island-label" data-tone={visual.tone}>
+                  {state.recording ? t("common.petState.RECORDING") : stateText}
+                </span>
+              )}
             </div>
           </div>
           {expanded && (
             <div className="island-body">
+              {dropText && (
+                <p
+                  className="island-text island-drop"
+                  role="status"
+                  data-tone={nativeDrop.notice?.problem ? "warning" : "info"}
+                >
+                  {dropText}
+                </p>
+              )}
               {state.explanation && (
                 <p className="island-text" data-tone={visual.tone}>
                   {bubble ?? state.explanation}

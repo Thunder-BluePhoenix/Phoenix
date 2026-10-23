@@ -373,6 +373,10 @@ export const capture: Record<keyof typeof encapture, string> = {
     "{n, plural, other {# item}} dilampirkan. Belum ada yang dikirim ke mana pun.",
   "capture.attachments.notice.nothingAttached": "Tidak ada yang dilampirkan.",
   "capture.attachments.notice.withProblems": "{head} {problems}",
+  "capture.attachments.nativeDrop.folder":
+    "{name}: folder tidak bisa dijatuhkan di sini. Gunakan kotak obrolan atau Pet Panel.",
+  "capture.attachments.nativeDrop.skipped":
+    "Hanya {max} file pertama dari satu penjatuhan yang dipakai; {n} lainnya diabaikan.",
   "capture.attachments.mail.subject": "Tentang: {name}",
   "capture.attachments.mail.empty": "Tulis dulu apa yang ingin Anda bagikan.",
   "capture.attachments.mail.tooLong":

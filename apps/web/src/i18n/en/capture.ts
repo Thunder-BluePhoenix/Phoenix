@@ -374,6 +374,10 @@ export const capture = {
     "Attached {n, plural, one {# item} other {# items}}. Nothing has been sent anywhere yet.",
   "capture.attachments.notice.nothingAttached": "Nothing was attached.",
   "capture.attachments.notice.withProblems": "{head} {problems}",
+  "capture.attachments.nativeDrop.folder":
+    "{name}: a folder cannot be dropped here. Use the chat box or the Pet Panel instead.",
+  "capture.attachments.nativeDrop.skipped":
+    "Only the first {max} files of a drop are used; {n} more were ignored.",
   "capture.attachments.mail.subject": "About: {name}",
   "capture.attachments.mail.empty": "Write what you want to share first.",
   "capture.attachments.mail.tooLong":

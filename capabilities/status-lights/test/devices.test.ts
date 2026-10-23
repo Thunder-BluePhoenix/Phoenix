@@ -3,15 +3,29 @@
 //
 // What each kind of light is sent for each state. Simulated: a recording transport, no device.
 import { describe, expect, it } from "vitest";
-import { COLORS, lifxSetColor, setDevice, type Device, type LightState } from "../src";
+import {
+  COLORS,
+  hsbkFor,
+  lifxSetColor,
+  lifxSetLightPower,
+  setDevice,
+  type Device,
+  type LightState,
+} from "../src";
 import { FakeTransport, HUE_RESOURCE } from "../testing/fakes";
 
 const signal = new AbortController().signal;
 const STATES = Object.keys(COLORS) as LightState[];
 
-function make(kind: Device["kind"], resource?: string) {
+function make(kind: Device["kind"], resource?: string, mac?: string) {
   const transport = new FakeTransport();
-  const device: Device = { id: "d", kind, transport, ...(resource ? { resource } : {}) };
+  const device: Device = {
+    id: "d",
+    kind,
+    transport,
+    ...(resource ? { resource } : {}),
+    ...(mac ? { mac } : {}),
+  };
   return { transport, device };
 }
 
@@ -73,30 +87,53 @@ describe("Luxafor", () => {
 });
 
 describe("LIFX", () => {
-  it("builds a 49 byte SetColor (102) frame whose size field matches", () => {
-    const frame = lifxSetColor(COLORS.RECORDING);
-    const view = new DataView(frame.buffer);
-    expect(frame.length).toBe(49);
-    expect(view.getUint16(0, true)).toBe(49);
-    expect(view.getUint16(32, true)).toBe(102);
-    expect(view.getUint16(37, true)).toBe(0); // hue: red
-    expect(view.getUint16(39, true)).toBe(65535); // fully saturated
-    expect(view.getUint16(41, true)).toBe(65535); // full brightness
-  });
+  const mac = "d073d5012345";
+  const types = (transport: FakeTransport) =>
+    transport.sent.map((s) => {
+      const bytes = s.via === "report" ? s.bytes : new Uint8Array(0);
+      return new DataView(bytes.buffer, bytes.byteOffset).getUint16(32, true);
+    });
 
-  it("maps blue to a blue hue and black to zero brightness", () => {
-    const blue = new DataView(lifxSetColor(COLORS.WORKING).buffer);
-    const hue = (blue.getUint16(37, true) / 65535) * 360;
-    expect(hue).toBeGreaterThan(200);
-    expect(hue).toBeLessThan(235);
-    expect(new DataView(lifxSetColor(COLORS.IDLE).buffer).getUint16(41, true)).toBe(0);
-  });
-
-  it("is sent through the report channel", async () => {
-    const { transport, device } = make("lifx");
+  it("is sent through the report channel: colour (102), then power on (117)", async () => {
+    const { transport, device } = make("lifx", undefined, mac);
     await setDevice(device, "ERROR", signal);
-    expect(transport.sent[0]?.via).toBe("report");
+    expect(transport.sent.every((s) => s.via === "report")).toBe(true);
+    expect(types(transport)).toEqual([102, 117]);
+    const [colour, power] = transport.sent.map((s) => (s.via === "report" ? s.bytes : undefined));
+    expect([...colour!]).toEqual([...lifxSetColor(mac, hsbkFor(COLORS.ERROR, 35))]);
+    expect([...power!]).toEqual([...lifxSetLightPower(mac, true)]);
   });
+
+  it("is only power off for IDLE", async () => {
+    const { transport, device } = make("lifx", undefined, mac);
+    await setDevice(device, "IDLE", signal);
+    expect(types(transport)).toEqual([117]);
+    const sent = transport.sent[0];
+    expect([...(sent?.via === "report" ? sent.bytes : [])]).toEqual([
+      ...lifxSetLightPower(mac, false),
+    ]);
+  });
+
+  it("uses the Key Light brightness: dim for WORKING, full for RECORDING", async () => {
+    const levels: number[] = [];
+    for (const state of ["WORKING", "RECORDING"] as const) {
+      const { transport, device } = make("lifx", undefined, mac);
+      await setDevice(device, state, signal);
+      const sent = transport.sent[0];
+      const bytes = sent?.via === "report" ? sent.bytes : new Uint8Array(49);
+      levels.push(new DataView(bytes.buffer, bytes.byteOffset).getUint16(41, true));
+    }
+    expect(levels).toEqual([Math.round(0.35 * 65535), 65535]);
+  });
+
+  it.each([undefined, "", "not-a-serial", "000000000000"])(
+    "refuses a device serial that is not valid (%s) and sends nothing",
+    async (badMac) => {
+      const { transport, device } = make("lifx", undefined, badMac);
+      await expect(setDevice(device, "ERROR", signal)).rejects.toThrow("serial");
+      expect(transport.sent).toEqual([]);
+    },
+  );
 });
 
 describe("Elgato Key Light", () => {

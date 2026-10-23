@@ -31,6 +31,8 @@ export interface BrowserExtension {
   manifest: { id: string; version: string; origins: string[]; permissions: string[] };
   signer: string;
   approved: boolean;
+  /** Recomputed by Core from the signer registry on every read. */
+  status: "trusted" | "revoked" | "untrusted";
 }
 
 export const MUSIC_SITE_IDS = ["youtube", "soundcloud", "bandcamp", "spotify-web"] as const;

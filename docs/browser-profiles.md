@@ -34,11 +34,27 @@ Nothing leaves the device unless **both** are true: the account-level encrypted 
 
 Small API: `pageAction` and `contentScript`, each tied to declared exact origins (no wildcards, no paths).
 
-1. `install(profileId, signedExtension)` verifies an Ed25519 signature over `canonicalManifest(manifest)` (fixed field order) against a key in the `trustedSigners` map (signer id → SPKI PEM). Unknown manifest fields, untrusted signers, malformed keys/signatures and tampered manifests are rejected. The extension is stored **unapproved**.
+1. `install(profileId, signedExtension)` asks the manager's trust source (`ExtensionTrust`: a `SignerRegistry`, or `pinnedSigners(map)` for a static host map) whether the signer may sign this manifest, then verifies an Ed25519 signature over `canonicalManifest(manifest)` (fixed field order) against the key it returns. Unknown manifest fields, untrusted/revoked/expired signers, revoked manifests, malformed keys/signatures and tampered manifests are rejected. The extension is stored **unapproved**, with its signature, so it can be re-verified later.
 2. `approve(profileId, extensionId, true)` is the explicit user approval. Re-installing (e.g. a new version) resets approval.
-3. `authorize(profileId, extensionId, permission, origin)` is checked on every operation and fails closed: the extension must be approved, its signer still trusted, the permission and exact origin declared, and the injected `PermissionDecision` (the permission/tool gateway, which also audits) must agree. Without a gateway the answer is always `false`.
+3. `authorize(profileId, extensionId, permission, origin)` is checked on every operation and fails closed: the extension must be approved, its signer and manifest hash still trusted **now** (registry re-consulted, signature re-verified under the signer's current key), the permission and exact origin declared, and the injected `PermissionDecision` (the permission/tool gateway, which also audits) must agree. Without a gateway the answer is always `false`.
 
 The `contentScript` text is data. Only a host-side sandbox that has received a positive `authorize` may run it.
+
+## Signer registry, distribution and revocation
+
+`core/runtime/src/browser-profiles/signer-registry.ts`. Offline, like the capability registry ([capabilities/registry.md](capabilities/registry.md)): there is **no network code**. Distribution is a signed JSON file that the Core host puts on disk and Core reads.
+
+- **Root key.** An Ed25519 public key (SPKI PEM) pinned by whoever builds Core (`RuntimeOptions.extensionSignerRegistry.rootPublicKey`; `main.ts` reads it from the file named by `PHOENIX_EXTENSION_SIGNER_ROOT_KEY_FILE`). It is never fetched and never read from the document. `PHOENIX_EXTENSION_SIGNER_REGISTRY_FILE` names the registry file; both variables are required together. When set, the registry **replaces** `extensionSigners`.
+- **Document.** `{ "registry": {...}, "signature": base64url }`, at most 256 KiB. The signature is Ed25519 over `canonicalJson(registry)` (the repo's `@phoenix/workflows` canonicaliser). Body: `format_version: 1`, `sequence` (integer >= 1), `issued_at`, `expires_at` (ISO UTC milliseconds, lifetime at most 90 days), up to 200 `signers` (`id`, `public_key`, `valid_from`, optional `expires_at`, `status` `active|disabled`) and up to 1000 `revocations` (`kind` `signer|manifest`, `target` = signer id or sha256 hex of `canonicalManifest`, `revoked_at` not after `issued_at`, `reason` from the closed set `key_compromise | malicious_extension | vulnerability | superseded | policy_violation | signer_retired`). Unknown fields anywhere, duplicate ids, non-Ed25519 keys and every other malformed field are refused.
+- **Refusal codes** (the whole error message; no ids, bytes or key material): `INVALID_ROOT_KEY, OVERSIZE, MALFORMED, UNKNOWN_FIELD, INVALID_FIELD, DUPLICATE_ID, BAD_SIGNATURE, ROLLBACK, EXPIRED, NOT_YET_VALID, STORAGE`. A refused document leaves the previous one in force.
+- **Rollback.** A document must have a `sequence` above the last accepted one. The last accepted sequence and document are persisted in the settings store (`browser.signer-registry.v1`, the same store that holds profile state), tagged with a fingerprint of the root. On start the stored document is **re-verified** against the pinned root, so a doctored row cannot add a signer. Re-reading the identical accepted bytes is a no-op.
+- **Expiry.** A document past `expires_at` is not accepted, and once the accepted one expires every extension is refused (`registry_expired`) until a fresher document is loaded. With no document loaded the answer is `registry_missing`. A document issued more than five minutes in the future is refused.
+- **Decisions** (`resolve(signer, manifestSha256)`): `unknown_signer, signer_revoked, manifest_revoked, signer_disabled, signer_expired, signer_not_yet_valid, registry_missing, registry_expired`. Revocation outranks everything else.
+- **Retroactive revocation.** Trust is recomputed on every `extensions()` read and every `authorize()`. An installed extension whose signer or manifest hash is revoked reads `status: "revoked"` (`reason` is the closed code) with `approved: false`, cannot be approved again, and `authorize()` answers `false`; one that is merely no longer trusted (expired signer or document, key rotation that invalidates its stored signature, an extension stored before signatures were kept) reads `status: "untrusted"`. Withdrawing approval and uninstalling still work. The signature itself is never returned by a route.
+- **Loading.** `BrowserProfilesService.loadSignerRegistry()` reads the host file (no symlinks, size-capped) and activates it; Core calls it at start and logs only the error message when it is refused (Core still starts, with extensions untrusted). No HTTP route loads or changes the registry. A running Core picks up a new file only when `loadSignerRegistry()` is called again; there is no file watcher and no scheduled refresh.
+- **Settings UI.** The extension list shows "Revoked" / "Signer not trusted" and disables Approve for them (strings machine-translated and unreviewed in the eight non-English locales).
+
+Evidence is simulated: `core/runtime/test/signer-registry.test.ts` (25 tests, keys generated at test time) and two wiring tests in `browser-profiles-wiring.test.ts` that write registry files to a temp directory.
 
 ## How it is wired
 
@@ -48,7 +64,7 @@ The `contentScript` text is data. Only a host-side sandbox that has received a p
 - **Sync** reuses the Phase 45 `SyncRuntime`, and only runs after account sync is configured **and** the profile opted in. The relay holds only sealed envelopes.
 - **Credentials** never come back from any route and are deleted with the profile.
 - **Delete** returns `purge_partition`: Core cannot clear a webview store that does not exist, so the host must purge the partition named by the profile.
-- **Extension signers** come only from `RuntimeOptions.extensionSigners` (default none). No route can add one, so by default no extension can be installed. Installing checks the Ed25519 signature (`POST …/extensions`).
+- **Extension signers** come only from the host: `RuntimeOptions.extensionSignerRegistry` (signed registry, above) or else `RuntimeOptions.extensionSigners` (static map, default none, no revocation). No route can add one, so by default no extension can be installed. Installing checks the Ed25519 signature (`POST …/extensions`).
 - **Approval.** Approving an extension asks the user through the permission gateway and the request blocks. Withdrawing approval and uninstalling never ask. Every `authorize()` is decided by the gateway; it fails closed, and the kill switch makes it answer no.
 - **Privacy.** Profiles, bookmarks, history and credential names are privacy row `browser_profiles`.
 - **Settings section:** `apps/web/src/components/BrowserProfilesSettings.tsx` (profiles, sync opt-in, import, publish, other devices, extensions).
@@ -58,6 +74,6 @@ Still the host's job: honor `partition` in a webview and purge it on delete, and
 ## Limitations
 
 - Evidence is simulated: two Cores in one test process share a fake relay and use the real `SyncRuntime` crypto. The exit criterion "bookmarks round-trip between two devices encrypted end to end" is demonstrated only in that simulation, not on real devices or a real relay.
-- No browser engine, partition purge, extension sandbox (extension scripts are stored as data and never run), or signer distribution/revocation service exists.
+- No browser engine, partition purge or extension sandbox exists (extension scripts are stored as data and never run). Signer distribution is a host-supplied file; there is no network fetch, no scheduled refresh and no signing tool or issuing service for the registry (the root key holder must produce documents elsewhere). The static `extensionSigners` map still has no revocation.
 - Sync stores one item per profile (last writer wins after a user-confirmed accept); there is no per-bookmark merge.
 - The sync item value is limited by `SyncRuntime` to about 32 KB serialized, so very large profiles cannot be published.

@@ -387,6 +387,10 @@ export const capture: Record<keyof typeof encapture, string> = {
     "{n, plural, one {# élément joint} many {# d’éléments joints} other {# éléments joints}}. Rien n’a encore été envoyé nulle part.",
   "capture.attachments.notice.nothingAttached": "Rien n’a été joint.",
   "capture.attachments.notice.withProblems": "{head} {problems}",
+  "capture.attachments.nativeDrop.folder":
+    "{name} : un dossier ne peut pas être déposé ici. Utilisez plutôt la zone de discussion ou le Pet Panel.",
+  "capture.attachments.nativeDrop.skipped":
+    "Seuls les {max} premiers fichiers d’un dépôt sont utilisés ; {n} de plus ont été ignorés.",
   "capture.attachments.mail.subject": "À propos de : {name}",
   "capture.attachments.mail.empty": "Écrivez d’abord ce que vous voulez partager.",
   "capture.attachments.mail.tooLong":

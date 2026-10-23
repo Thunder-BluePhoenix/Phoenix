@@ -25,6 +25,7 @@ fn main() {
             "shortcuts_reset",
             "shortcuts_set_enabled",
             "shortcuts_set_muted",
+            "read_dropped_file",
         ]),
     ))
     .expect("Tauri build failed");

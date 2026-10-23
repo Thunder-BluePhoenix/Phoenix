@@ -447,6 +447,6 @@ describe("status lights", () => {
     mountLights({});
     const s = await lightsSection();
     await s.findByText(/Only fixed colours are sent/);
-    expect(s.getByText(/Only the Elgato Key Light is supported/)).toBeTruthy();
+    expect(s.getByText(/Only the Elgato Key Light and LIFX are supported/)).toBeTruthy();
   });
 });

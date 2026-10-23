@@ -42,4 +42,43 @@ export const focus: Record<keyof typeof enFocus, string> = {
   "focus.screenshot.tracker.github": "GitHub",
   "focus.screenshot.tracker.linear": "Linear",
   "focus.screenshot.tracker.jira": "Jira",
+  "focus.issueDraft.title": "Задача из имеющегося у вас изображения",
+  "focus.issueDraft.intro":
+    "Перетащите, вставьте или выберите уже имеющийся PNG или JPEG, напишите задачу и проверьте, что именно будет отправлено. Phoenix не снимает ваш экран. Задача создаётся на GitHub только после вашего подтверждения здесь и ещё раз в разделе «Подтверждения».",
+  "focus.issueDraft.unavailable.capability":
+    "Интеграция с GitHub не включена или не может создавать задачи, поэтому ничего создать нельзя.",
+  "focus.issueDraft.unavailable.token":
+    "Для интеграции с GitHub не задан токен записи, поэтому ничего создать нельзя.",
+  "focus.issueDraft.dropLabel": "Перетащите изображение для задачи",
+  "focus.issueDraft.dropHint": "Перетащите или вставьте сюда PNG или JPEG либо {choose}.",
+  "focus.issueDraft.choose": "выберите изображение…",
+  "focus.issueDraft.chooseLabel": "Выбрать изображение для задачи",
+  "focus.issueDraft.imageAlt": "Изображение для задачи: {name}",
+  "focus.issueDraft.imageRemove": "Убрать изображение",
+  "focus.issueDraft.oneImage": "Добавляйте по одному изображению.",
+  "focus.issueDraft.imageRequired": "Сначала добавьте изображение.",
+  "focus.issueDraft.titleRequired": "Напишите заголовок задачи.",
+  "focus.issueDraft.titleTooLong": "Заголовок может содержать не более {max} символов.",
+  "focus.issueDraft.bodyTooLong": "Описание может содержать не более {max} символов.",
+  "focus.issueDraft.secretInTitle":
+    "Заголовок похож на содержащий пароль, ключ или токен. Удалите его; ничего не отправлено.",
+  "focus.issueDraft.secretInBody":
+    "Описание похоже на содержащее пароль, ключ или токен. Удалите его; ничего не отправлено.",
+  "focus.issueDraft.secretInBoth":
+    "Заголовок и описание похожи на содержащие пароль, ключ или токен. Удалите его; ничего не отправлено.",
+  "focus.issueDraft.previewRepository": "Репозиторий: {repository}",
+  "focus.issueDraft.previewTitle": "Заголовок: {title}",
+  "focus.issueDraft.previewBody": "Описание в точности так, как оно будет отправлено:",
+  "focus.issueDraft.previewNoBody": "Описание отправлено не будет.",
+  "focus.issueDraft.imageLocal":
+    "Изображение ({name}) НЕ отправляется. Задачи GitHub создаются только из текста; изображение остаётся на этом устройстве и не сохраняется. При желании добавьте его в задачу сами.",
+  "focus.issueDraft.approval":
+    "Пока ничего не создано. После нажатия кнопки Phoenix запросит ваше подтверждение в разделе «Подтверждения», прежде чем что-либо отправить на GitHub.",
+  "focus.issueDraft.create": "Запросить создание задачи",
+  "focus.issueDraft.waiting": "Ожидание вашего подтверждения в разделе «Подтверждения»…",
+  "focus.issueDraft.denied": "Вы отклонили запрос; на GitHub ничего не отправлено.",
+  "focus.issueDraft.blocked": "Аварийная остановка включена; на GitHub ничего не отправлено.",
+  "focus.issueDraft.timeout":
+    "Запрос не был подтверждён вовремя или был отменён; ничего не отправлено.",
+  "focus.issueDraft.failed": "Не удалось создать задачу: {message}",
 };

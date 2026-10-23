@@ -94,6 +94,31 @@ body {
   overflow: hidden;
   overflow-wrap: anywhere;
 }
+/* A file dragged onto the window, being read, or the result of the drop (Phase 62). */
+.drop-status {
+  margin: 0;
+  max-width: 100%;
+  padding: 4px 10px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--bubble-text);
+  background: var(--bubble-bg);
+  border: 1px solid var(--info);
+  border-radius: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.drop-status[data-drop="problem"] {
+  border-color: var(--warning);
+}
+.floating-root[data-drop-over="true"] {
+  outline: 2px dashed var(--info);
+  outline-offset: -3px;
+  border-radius: 16px;
+}
 .bubble[data-tone="danger"] {
   border-color: var(--danger);
 }

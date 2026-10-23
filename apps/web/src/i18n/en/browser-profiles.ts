@@ -47,6 +47,8 @@ export const browserProfiles = {
   "browserProfiles.ext.noneListed": "none",
   "browserProfiles.ext.approved": "Approved",
   "browserProfiles.ext.notApproved": "Not approved",
+  "browserProfiles.ext.revoked": "Revoked",
+  "browserProfiles.ext.untrusted": "Signer not trusted",
   "browserProfiles.ext.approve": "Approve",
   "browserProfiles.ext.approveLabel": "Approve extension {id}",
   "browserProfiles.ext.withdraw": "Withdraw approval",

@@ -112,11 +112,14 @@ export class TmuxPaneTarget implements NudgeTarget {
 }
 
 /**
- * Delivers text to a Phoenix-tracked agent session. The agents capability has `session.send`
- * (it writes `text + "\n"` to the session's stdin) but a capability cannot call another
- * capability's command from inside Core, and `session.send` always appends a newline, so it
- * cannot honour "Enter off". No such seam exists yet: GAP. This interface is that seam; a host
- * that implements it must send `text` and press Enter only if `enter` is true.
+ * The seam a host would implement to type into a Phoenix-tracked agent session. DESIGN DECISION
+ * (Phase 75): Phoenix does not implement it, so `SessionTarget` reports `unavailable` in a real
+ * Core. Typing into a tracked session is `agents.session.send`-class input: an `execute` command
+ * that needs the user's confirmation every time (Phase 34, rule 1), which an unattended nudge
+ * during an outage cannot get, and which a direct write into the session manager would bypass. And
+ * a tracked session is a pipe, not a terminal: "Enter off" would leave an unterminated line in the
+ * agent's stdin to be glued onto the next message. See README-continuity.md, section 3.
+ * A host that implements this must send `text` and a newline only if `enter` is true.
  */
 export interface AgentSessionInput {
   send(sessionId: string, text: string, enter: boolean): Promise<boolean>;

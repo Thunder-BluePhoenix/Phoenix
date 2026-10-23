@@ -372,6 +372,10 @@ export const capture: Record<keyof typeof encapture, string> = {
     "{n, plural, one {# आइटम} other {# आइटम}} संलग्न किए गए। अभी तक कुछ भी कहीं नहीं भेजा गया है।",
   "capture.attachments.notice.nothingAttached": "कुछ भी संलग्न नहीं किया गया।",
   "capture.attachments.notice.withProblems": "{head} {problems}",
+  "capture.attachments.nativeDrop.folder":
+    "{name}: फ़ोल्डर यहाँ नहीं छोड़ा जा सकता। इसके बजाय चैट बॉक्स या Pet Panel का उपयोग करें।",
+  "capture.attachments.nativeDrop.skipped":
+    "एक बार में केवल पहली {max} फ़ाइलें ली जाती हैं; {n} और छोड़ दी गईं।",
   "capture.attachments.mail.subject": "विषय: {name}",
   "capture.attachments.mail.empty": "पहले वह लिखें जो आप साझा करना चाहते हैं।",
   "capture.attachments.mail.tooLong":

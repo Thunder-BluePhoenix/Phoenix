@@ -42,4 +42,42 @@ export const focus: Record<keyof typeof enFocus, string> = {
   "focus.screenshot.tracker.github": "GitHub",
   "focus.screenshot.tracker.linear": "Linear",
   "focus.screenshot.tracker.jira": "Jira",
+  "focus.issueDraft.title": "আপনার কাছে থাকা ছবি থেকে ইস্যু",
+  "focus.issueDraft.intro":
+    "আপনার কাছে আগে থেকেই থাকা একটি PNG বা JPEG এখানে ছাড়ুন, পেস্ট করুন বা বেছে নিন, ইস্যু লিখুন এবং ঠিক কী পাঠানো হবে তা দেখুন। Phoenix আপনার স্ক্রিন ক্যাপচার করে না। এখানে এবং আবার অনুমোদনে নিশ্চিত করার পরেই GitHub-এ ইস্যু তৈরি হয়।",
+  "focus.issueDraft.unavailable.capability":
+    "GitHub ইন্টিগ্রেশন চালু নেই বা ইস্যু তৈরি করতে পারে না, তাই কিছু তৈরি করা যাবে না।",
+  "focus.issueDraft.unavailable.token":
+    "GitHub ইন্টিগ্রেশনের জন্য GitHub লেখার টোকেন সেট করা নেই, তাই কিছু তৈরি করা যাবে না।",
+  "focus.issueDraft.dropLabel": "ইস্যুর জন্য ছবি ছাড়ুন",
+  "focus.issueDraft.dropHint": "এখানে PNG বা JPEG ছাড়ুন বা পেস্ট করুন, অথবা {choose}।",
+  "focus.issueDraft.choose": "ছবি বেছে নিন…",
+  "focus.issueDraft.chooseLabel": "ইস্যুর জন্য ছবি বেছে নিন",
+  "focus.issueDraft.imageAlt": "ইস্যুর জন্য ছবি: {name}",
+  "focus.issueDraft.imageRemove": "ছবি সরান",
+  "focus.issueDraft.oneImage": "একবারে একটি ছবি যোগ করুন।",
+  "focus.issueDraft.imageRequired": "আগে একটি ছবি যোগ করুন।",
+  "focus.issueDraft.titleRequired": "ইস্যুর শিরোনাম লিখুন।",
+  "focus.issueDraft.titleTooLong": "শিরোনামে সর্বোচ্চ {max}টি অক্ষর থাকতে পারে।",
+  "focus.issueDraft.bodyTooLong": "বিবরণে সর্বোচ্চ {max}টি অক্ষর থাকতে পারে।",
+  "focus.issueDraft.secretInTitle":
+    "শিরোনামে পাসওয়ার্ড, কী বা টোকেনের মতো কিছু আছে বলে মনে হচ্ছে। সেটি সরান; কিছুই পাঠানো হয়নি।",
+  "focus.issueDraft.secretInBody":
+    "বিবরণে পাসওয়ার্ড, কী বা টোকেনের মতো কিছু আছে বলে মনে হচ্ছে। সেটি সরান; কিছুই পাঠানো হয়নি।",
+  "focus.issueDraft.secretInBoth":
+    "শিরোনাম ও বিবরণে পাসওয়ার্ড, কী বা টোকেনের মতো কিছু আছে বলে মনে হচ্ছে। সেটি সরান; কিছুই পাঠানো হয়নি।",
+  "focus.issueDraft.previewRepository": "রিপোজিটরি: {repository}",
+  "focus.issueDraft.previewTitle": "শিরোনাম: {title}",
+  "focus.issueDraft.previewBody": "বিবরণ, ঠিক যেভাবে পাঠানো হবে:",
+  "focus.issueDraft.previewNoBody": "কোনো বিবরণ পাঠানো হবে না।",
+  "focus.issueDraft.imageLocal":
+    "ছবিটি ({name}) পাঠানো হয় না। GitHub ইস্যু শুধু টেক্সট থেকে তৈরি হয়; ছবি এই ডিভাইসেই থাকে এবং সংরক্ষিত হয় না। চাইলে নিজে ইস্যুতে যোগ করুন।",
+  "focus.issueDraft.approval":
+    "এখনও কিছু তৈরি হয়নি। বোতাম চাপার পরে, GitHub-এ কিছু পাঠানোর আগে Phoenix অনুমোদন-এ আপনার সম্মতি চাইবে।",
+  "focus.issueDraft.create": "ইস্যু তৈরির অনুরোধ করুন",
+  "focus.issueDraft.waiting": "অনুমোদন-এ আপনার সম্মতির অপেক্ষা…",
+  "focus.issueDraft.denied": "আপনি প্রত্যাখ্যান করেছেন; GitHub-এ কিছুই পাঠানো হয়নি।",
+  "focus.issueDraft.blocked": "জরুরি বন্ধ চালু আছে; GitHub-এ কিছুই পাঠানো হয়নি।",
+  "focus.issueDraft.timeout": "অনুরোধ সময়মতো অনুমোদিত হয়নি বা বাতিল হয়েছে; কিছুই পাঠানো হয়নি।",
+  "focus.issueDraft.failed": "ইস্যু তৈরি করা যায়নি: {message}",
 };

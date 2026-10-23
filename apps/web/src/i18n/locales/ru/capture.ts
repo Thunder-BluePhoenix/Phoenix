@@ -383,6 +383,10 @@ export const capture: Record<keyof typeof encapture, string> = {
     "Прикреплено: {n, plural, one {# элемент} few {# элемента} many {# элементов} other {# элемента}}. Пока ничего никуда не отправлено.",
   "capture.attachments.notice.nothingAttached": "Ничего не прикреплено.",
   "capture.attachments.notice.withProblems": "{head} {problems}",
+  "capture.attachments.nativeDrop.folder":
+    "{name}: сюда нельзя перетащить папку. Используйте поле чата или Pet Panel.",
+  "capture.attachments.nativeDrop.skipped":
+    "Используются только первые {max} файлов; ещё {n} проигнорировано.",
   "capture.attachments.mail.subject": "О: {name}",
   "capture.attachments.mail.empty": "Сначала напишите, чем хотите поделиться.",
   "capture.attachments.mail.tooLong":

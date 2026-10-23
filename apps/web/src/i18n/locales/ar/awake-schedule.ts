@@ -60,11 +60,12 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.lights.intro":
     "يمكن لـ Fawkes عرض ما يفعله على ضوء في شبكتك. لا يُتصل بالضوء إلا إذا أضفته هنا وسمحت لـ Fawkes بإضاءته وكانت ميزة أضواء الحالة مفعّلة.",
   "awakeSchedule.lights.limits":
-    "تُرسل ألوان ثابتة فقط، ولا يُرسل أي نص أبدًا. يُدعم حاليًا Elgato Key Light فقط.",
+    "تُرسل ألوان ثابتة فقط، ولا يُرسل أي نص أبدًا. يُدعم حاليًا Elgato Key Light وLIFX فقط؛ تُضاف إضاءة LIFX عبر واجهة Core البرمجية مع رقمها التسلسلي.",
   "awakeSchedule.lights.capabilityOff": "ميزة أضواء الحالة غير مفعّلة. فعّلها هنا أو في التكاملات.",
   "awakeSchedule.lights.enable": "تفعيل",
   "awakeSchedule.lights.empty": "لم تُضف أي أضواء.",
   "awakeSchedule.lights.line": "Key Light على {address}",
+  "awakeSchedule.lights.lineLifx": "ضوء LIFX على {address}",
   "awakeSchedule.lights.allow": "السماح لـ Fawkes بإضاءة هذا الضوء",
   "awakeSchedule.lights.allowNamed": "السماح لـ Fawkes بإضاءة {name}",
   "awakeSchedule.lights.remove": "إزالة",

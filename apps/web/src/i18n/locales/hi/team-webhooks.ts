@@ -43,4 +43,16 @@ export const teamWebhooks: Record<keyof typeof enTeamWebhooks, string> = {
     "इवेंट प्रकार इनमें से किसी एक से शुरू होना चाहिए: {namespaces}।",
   "teamWebhooks.create.limit": "आप {max} स्रोतों की सीमा तक पहुँच गए हैं। पहले एक हटाएँ।",
   "teamWebhooks.create.submit": "स्रोत बनाएँ",
+  "teamWebhooks.row.disabledNote":
+    "यह स्रोत अक्षम है: इसे भेजा गया सब कुछ Phoenix अस्वीकार करता है।",
+  "teamWebhooks.toggle.enable": "सक्षम करें",
+  "teamWebhooks.toggle.disable": "अक्षम करें",
+  "teamWebhooks.toggle.enableLabel": "स्रोत {id} सक्षम करें",
+  "teamWebhooks.toggle.disableLabel": "स्रोत {id} अक्षम करें",
+  "teamWebhooks.rotate.button": "सीक्रेट बदलें",
+  "teamWebhooks.rotate.label": "स्रोत {id} का सीक्रेट बदलें",
+  "teamWebhooks.rotate.ask":
+    "{id} का सीक्रेट बदलें? पुराना सीक्रेट तुरंत काम करना बंद कर देता है, इसलिए नया सीक्रेट देने तक भेजने वाला टूल अस्वीकार किया जाएगा।",
+  "teamWebhooks.secret.rotatedNote":
+    "यह नया सीक्रेट है। पुराना सीक्रेट काम करना बंद कर चुका है; भेजने वाले टूल में यही डालें।",
 };

@@ -457,6 +457,7 @@ describe("untrusted content is data, never a device command", () => {
       kind,
       transport: new FakeTransport(),
       ...(kind === "hue" ? { resource: HUE_RESOURCE } : {}),
+      ...(kind === "lifx" ? { mac: "d073d5012345" } : {}),
     }));
     const feed = new FakeFeed();
     const c = new StatusLightsController({

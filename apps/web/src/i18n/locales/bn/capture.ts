@@ -373,6 +373,10 @@ export const capture: Record<keyof typeof encapture, string> = {
     "{n, plural, one {#টি আইটেম} other {#টি আইটেম}} সংযুক্ত হয়েছে। এখনো কোথাও কিছু পাঠানো হয়নি।",
   "capture.attachments.notice.nothingAttached": "কিছুই সংযুক্ত হয়নি।",
   "capture.attachments.notice.withProblems": "{head} {problems}",
+  "capture.attachments.nativeDrop.folder":
+    "{name}: এখানে ফোল্ডার ফেলা যায় না। এর বদলে চ্যাট বক্স বা Pet Panel ব্যবহার করুন।",
+  "capture.attachments.nativeDrop.skipped":
+    "একবারে প্রথম {max}টি ফাইলই ব্যবহার করা হয়; আরও {n}টি উপেক্ষা করা হয়েছে।",
   "capture.attachments.mail.subject": "বিষয়: {name}",
   "capture.attachments.mail.empty": "আগে যা শেয়ার করতে চান তা লিখুন।",
   "capture.attachments.mail.tooLong":

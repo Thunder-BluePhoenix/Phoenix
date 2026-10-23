@@ -61,12 +61,13 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.lights.intro":
     "Fawkes dapat menampilkan apa yang sedang dikerjakannya pada lampu di jaringan Anda sendiri. Lampu hanya dihubungi jika Anda menambahkannya di sini, mengizinkan Fawkes menyalakannya, dan kemampuan Lampu status diaktifkan.",
   "awakeSchedule.lights.limits":
-    "Hanya warna tetap yang dikirim, tidak pernah teks. Saat ini hanya Elgato Key Light yang didukung.",
+    "Hanya warna tetap yang dikirim, tidak pernah teks. Saat ini hanya Elgato Key Light dan LIFX yang didukung; lampu LIFX ditambahkan lewat API Core dengan nomor serinya.",
   "awakeSchedule.lights.capabilityOff":
     "Kemampuan Lampu status belum diaktifkan. Aktifkan di sini atau di Integrasi.",
   "awakeSchedule.lights.enable": "Aktifkan",
   "awakeSchedule.lights.empty": "Belum ada lampu yang ditambahkan.",
   "awakeSchedule.lights.line": "Key Light di {address}",
+  "awakeSchedule.lights.lineLifx": "Lampu LIFX di {address}",
   "awakeSchedule.lights.allow": "Izinkan Fawkes menyalakan lampu ini",
   "awakeSchedule.lights.allowNamed": "Izinkan Fawkes menyalakan {name}",
   "awakeSchedule.lights.remove": "Hapus",

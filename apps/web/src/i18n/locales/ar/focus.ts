@@ -41,4 +41,42 @@ export const focus: Record<keyof typeof enFocus, string> = {
   "focus.screenshot.tracker.github": "GitHub",
   "focus.screenshot.tracker.linear": "Linear",
   "focus.screenshot.tracker.jira": "Jira",
+  "focus.issueDraft.title": "بلاغ من صورة لديك",
+  "focus.issueDraft.intro":
+    "أفلت أو الصق أو اختر صورة PNG أو JPEG لديك بالفعل، واكتب البلاغ، وراجع بالضبط ما سيُرسل. لا يلتقط Phoenix شاشتك. لا يُنشأ البلاغ على GitHub إلا بعد تأكيدك هنا ثم مرة أخرى في الموافقات.",
+  "focus.issueDraft.unavailable.capability":
+    "تكامل GitHub غير مفعّل أو لا يستطيع إنشاء بلاغات، لذا لا يمكن إنشاء شيء.",
+  "focus.issueDraft.unavailable.token":
+    "لم يُعيَّن رمز كتابة GitHub لتكامل GitHub، لذا لا يمكن إنشاء شيء.",
+  "focus.issueDraft.dropLabel": "أفلت صورة للبلاغ",
+  "focus.issueDraft.dropHint": "أفلت أو الصق صورة PNG أو JPEG هنا، أو {choose}.",
+  "focus.issueDraft.choose": "اختر صورة…",
+  "focus.issueDraft.chooseLabel": "اختيار صورة للبلاغ",
+  "focus.issueDraft.imageAlt": "صورة للبلاغ: {name}",
+  "focus.issueDraft.imageRemove": "إزالة الصورة",
+  "focus.issueDraft.oneImage": "أضف صورة واحدة في كل مرة.",
+  "focus.issueDraft.imageRequired": "أضف صورة أولاً.",
+  "focus.issueDraft.titleRequired": "اكتب عنواناً للبلاغ.",
+  "focus.issueDraft.titleTooLong": "يمكن أن يحتوي العنوان على {max} حرفاً كحد أقصى.",
+  "focus.issueDraft.bodyTooLong": "يمكن أن يحتوي الوصف على {max} حرفاً كحد أقصى.",
+  "focus.issueDraft.secretInTitle":
+    "يبدو أن العنوان يحتوي على كلمة مرور أو مفتاح أو رمز. أزله؛ لم يُرسل شيء.",
+  "focus.issueDraft.secretInBody":
+    "يبدو أن الوصف يحتوي على كلمة مرور أو مفتاح أو رمز. أزله؛ لم يُرسل شيء.",
+  "focus.issueDraft.secretInBoth":
+    "يبدو أن العنوان والوصف يحتويان على كلمة مرور أو مفتاح أو رمز. أزله؛ لم يُرسل شيء.",
+  "focus.issueDraft.previewRepository": "المستودع: {repository}",
+  "focus.issueDraft.previewTitle": "العنوان: {title}",
+  "focus.issueDraft.previewBody": "الوصف، تماماً كما سيُرسل:",
+  "focus.issueDraft.previewNoBody": "لن يُرسل أي وصف.",
+  "focus.issueDraft.imageLocal":
+    "الصورة ({name}) لا تُرسل. تُنشأ بلاغات GitHub من النص فقط؛ تبقى الصورة على هذا الجهاز ولا تُحفظ. أضفها إلى البلاغ بنفسك إن أردت.",
+  "focus.issueDraft.approval":
+    "لم يُنشأ شيء بعد. بعد الضغط على الزر يطلب Phoenix موافقتك في الموافقات قبل إرسال أي شيء إلى GitHub.",
+  "focus.issueDraft.create": "طلب إنشاء البلاغ",
+  "focus.issueDraft.waiting": "في انتظار موافقتك في الموافقات…",
+  "focus.issueDraft.denied": "لقد رفضت؛ لم يُرسل شيء إلى GitHub.",
+  "focus.issueDraft.blocked": "الإيقاف الطارئ مفعّل؛ لم يُرسل شيء إلى GitHub.",
+  "focus.issueDraft.timeout": "لم تتم الموافقة على الطلب في الوقت المناسب أو أُلغي؛ لم يُرسل شيء.",
+  "focus.issueDraft.failed": "تعذر إنشاء البلاغ: {message}",
 };

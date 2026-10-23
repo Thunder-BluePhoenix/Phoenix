@@ -47,6 +47,8 @@ export const browserProfiles: Record<keyof typeof enBrowserProfiles, string> = {
   "browserProfiles.ext.noneListed": "कोई नहीं",
   "browserProfiles.ext.approved": "स्वीकृत",
   "browserProfiles.ext.notApproved": "स्वीकृत नहीं",
+  "browserProfiles.ext.revoked": "निरस्त",
+  "browserProfiles.ext.untrusted": "हस्ताक्षरकर्ता भरोसेमंद नहीं",
   "browserProfiles.ext.approve": "स्वीकृत करें",
   "browserProfiles.ext.approveLabel": "एक्सटेंशन {id} स्वीकृत करें",
   "browserProfiles.ext.withdraw": "स्वीकृति वापस लें",

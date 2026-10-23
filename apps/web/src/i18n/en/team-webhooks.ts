@@ -45,4 +45,17 @@ export const teamWebhooks = {
   "teamWebhooks.create.typesNamespace": "An event type must start with one of: {namespaces}.",
   "teamWebhooks.create.limit": "You have reached the limit of {max} sources. Delete one first.",
   "teamWebhooks.create.submit": "Create source",
+
+  "teamWebhooks.row.disabledNote":
+    "This source is disabled: Phoenix refuses everything sent to it.",
+  "teamWebhooks.toggle.enable": "Enable",
+  "teamWebhooks.toggle.disable": "Disable",
+  "teamWebhooks.toggle.enableLabel": "Enable source {id}",
+  "teamWebhooks.toggle.disableLabel": "Disable source {id}",
+  "teamWebhooks.rotate.button": "Rotate secret",
+  "teamWebhooks.rotate.label": "Rotate the secret of source {id}",
+  "teamWebhooks.rotate.ask":
+    "Rotate the secret of {id}? The old secret stops working immediately, so the sending tool is refused until you give it the new secret.",
+  "teamWebhooks.secret.rotatedNote":
+    "This is the new secret. The old secret has stopped working; update the sending tool with this one.",
 } as const;

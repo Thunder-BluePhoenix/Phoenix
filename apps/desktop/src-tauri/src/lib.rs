@@ -12,6 +12,7 @@ mod core_status;
 mod dictation_hotkey;
 mod dictation_keys;
 mod dictation_paste;
+pub mod file_drop;
 mod focus_target;
 mod island;
 mod island_controller;
@@ -96,6 +97,9 @@ struct Shell<R: Runtime> {
     /// Where keyboard focus was when the current dictation started (set by the hotkey worker).
     focus: focus_target::FocusGuard<focus_target::SystemFocus>,
     shortcuts: shortcuts::Host,
+    /// Phase 62: the files just dropped on the floating or island window, which the page may read
+    /// once each (`read_dropped_file`).
+    file_drop: file_drop::Registry,
     /// One "jump to terminal" at a time (it can wait for the person to confirm in Core).
     terminal_jump: terminal_jump::Guard,
     /// Phase 73: holds every exit while Core is asked whether a change still needs undoing.
@@ -235,6 +239,28 @@ fn open_mailto<R: Runtime>(
     // open_in_phoenix). Tests inspect the URL without launching a real mail app.
     (shell.open_url)(&url);
     Ok(())
+}
+
+/// Hands the bytes of a file that was just dropped on the asking window (a number from the
+/// `file-drop://drop` event) to its page. Each number works once, for a minute, and only for the
+/// window it was dropped on: there is no way to name a path, so this cannot read any other file.
+#[tauri::command]
+async fn read_dropped_file<R: Runtime>(
+    window: WebviewWindow<R>,
+    shell: tauri::State<'_, Shell<R>>,
+    id: u64,
+) -> Result<tauri::ipc::Response, file_drop::Refusal> {
+    if !file_drop::is_drop_target(window.label()) {
+        return Err(file_drop::FORBIDDEN);
+    }
+    let path = shell
+        .file_drop
+        .take(id, window.label(), std::time::Instant::now())?;
+    let bytes = tauri::async_runtime::spawn_blocking(move || file_drop::read_regular_file(&path))
+        .await
+        .map_err(|_| file_drop::UNREADABLE)?
+        .map_err(file_drop::Refusal::from)?;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 /// The pill acknowledges that its event listeners are registered before it can accept a key.
@@ -1195,7 +1221,8 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
             shortcuts_set,
             shortcuts_reset,
             shortcuts_set_enabled,
-            shortcuts_set_muted
+            shortcuts_set_muted,
+            read_dropped_file
         ])
         .setup(move |app| {
             let handle = app.handle();
@@ -1258,6 +1285,7 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
                 dictation: pill::Host::new(skip_native_window_styling),
                 focus: focus_target::FocusGuard::new(focus_target::SystemFocus),
                 shortcuts: shortcuts::Host::default(),
+                file_drop: file_drop::Registry::default(),
                 terminal_jump: terminal_jump::Guard::default(),
                 quit: quit_veto::Gate::default(),
                 confirm_quit: confirm_quit.unwrap_or_else(|| Box::new(native_dialog::confirm)),
@@ -1307,6 +1335,15 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
                         shell.remember(|s| s.position = Some(Point { x: p.x, y: p.y }));
                     }
                 }
+            }
+            // Phase 62: a file dragged onto the floating or island window (native drop; the page
+            // gets no HTML5 drop event there). Other windows are ignored.
+            if let WindowEvent::DragDrop(drag) = event {
+                file_drop::on_drag(
+                    window.app_handle(),
+                    window.label(),
+                    file_drop::Drag::from(drag),
+                );
             }
             if window.label() == pill::LABEL && matches!(event, WindowEvent::Destroyed) {
                 if let Some(shell) = window.app_handle().try_state::<Shell<R>>() {

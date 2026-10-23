@@ -385,6 +385,262 @@ describe("incoming webhook sources settings", () => {
     expect(cleanLabel("x".repeat(80))).toBe(`${"x".repeat(64)}…`);
   });
 
+  it("shows a disabled source as disabled and sends the exact enable/disable body, showing Core's answer", async () => {
+    const world: World = {
+      status: {
+        enabled: true,
+        sources: [source(), source({ id: "alerts-prod", enabled: false })],
+      },
+    };
+    const { api } = open(world, {
+      "PUT /api/team/webhooks/sources/*": (body, url) => {
+        const id = decodeURIComponent(url.pathname.split("/").pop() ?? "");
+        const { enabled } = asMaster(body);
+        world.status = {
+          ...world.status,
+          sources: world.status.sources.map((s) => (s.id === id ? { ...s, enabled } : s)),
+        };
+        return world.status;
+      },
+    });
+    const s = await section();
+    await s.findByText("ci-main");
+    expect(
+      s.getAllByText("This source is disabled: Phoenix refuses everything sent to it."),
+    ).toHaveLength(1);
+    expect(s.getByText("Disabled")).toBeTruthy();
+
+    fireEvent.click(s.getByRole("button", { name: "Disable source ci-main" }));
+    await s.findByRole("button", { name: "Enable source ci-main" });
+    expect(
+      s.getAllByText("This source is disabled: Phoenix refuses everything sent to it."),
+    ).toHaveLength(2);
+    expect(s.queryByText("Enabled")).toBeNull();
+
+    fireEvent.click(s.getByRole("button", { name: "Enable source alerts-prod" }));
+    await s.findByRole("button", { name: "Disable source alerts-prod" });
+    expect(
+      s.getAllByText("This source is disabled: Phoenix refuses everything sent to it."),
+    ).toHaveLength(1);
+    expect(writes(api)).toEqual([
+      { method: "PUT", path: "/api/team/webhooks/sources/ci-main", body: { enabled: false } },
+      { method: "PUT", path: "/api/team/webhooks/sources/alerts-prod", body: { enabled: true } },
+    ]);
+  });
+
+  it("does not flip the switch itself: Core's refusal is shown as text and the state stays", async () => {
+    const { api } = open(
+      { status: { enabled: true, sources: [source()] } },
+      {
+        "PUT /api/team/webhooks/sources/ci-main": () =>
+          new Response(
+            JSON.stringify({ code: "RESOURCE_NOT_FOUND", message: "No such source <b>x</b>" }),
+            { status: 404 },
+          ),
+      },
+    );
+    const s = await section();
+    await s.findByText("ci-main");
+    fireEvent.click(s.getByRole("button", { name: "Disable source ci-main" }));
+    const alert = await s.findByRole("alert");
+    expect(alert.textContent).toBe("No such source <b>x</b>");
+    expect(alert.querySelector("b")).toBeNull();
+    expect(s.getByRole("button", { name: "Disable source ci-main" })).toBeTruthy();
+    expect(s.queryByText(/This source is disabled/)).toBeNull();
+    expect(writes(api)).toHaveLength(1);
+  });
+
+  it("rotates only after confirmation, shows the new secret once, then clears it", async () => {
+    const NEW_SECRET = "n3w-secret-9876543210zyxwvutsrqponmlkjihgfedcba";
+    const world: World = { status: { enabled: true, sources: [source()] } };
+    const { api, container } = open(world, {
+      "POST /api/team/webhooks/sources/ci-main/rotate": () => ({
+        source: world.status.sources[0],
+        secret: NEW_SECRET,
+      }),
+    });
+    const writeText = vi.fn(async () => undefined);
+    stubClipboard(writeText);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const s = await section();
+    await s.findByText("ci-main");
+
+    fireEvent.click(s.getByRole("button", { name: "Rotate the secret of source ci-main" }));
+    expect(s.getByText(/old secret stops working immediately/)).toBeTruthy();
+    expect(writes(api)).toEqual([]);
+
+    // Cancelling sends nothing and shows nothing.
+    fireEvent.click(s.getByRole("button", { name: "Cancel" }));
+    expect(writes(api)).toEqual([]);
+    expect(s.queryByLabelText("Signing secret")).toBeNull();
+
+    fireEvent.click(s.getByRole("button", { name: "Rotate the secret of source ci-main" }));
+    fireEvent.click(s.getByRole("button", { name: "Confirm" }));
+    const shown = (await s.findByLabelText("Signing secret")) as HTMLInputElement;
+    expect(shown.value).toBe(NEW_SECRET);
+    expect(shown.readOnly).toBe(true);
+    expect(writes(api)).toEqual([
+      { method: "POST", path: "/api/team/webhooks/sources/ci-main/rotate", body: {} },
+    ]);
+    expect(s.getByText(/shown only once/)).toBeTruthy();
+    expect(s.getByText(/The old secret has stopped working/)).toBeTruthy();
+    expect(s.getByText("Secret for ci-main")).toBeTruthy();
+    expect((s.getByLabelText("Address to send to (on this Core)") as HTMLInputElement).value).toBe(
+      "/api/webhooks/in/ci-main",
+    );
+    expect(container.textContent?.split(NEW_SECRET).length).toBe(1);
+    // The confirmation closed, so the row offers the actions again.
+    expect(s.queryByRole("button", { name: "Confirm" })).toBeNull();
+
+    fireEvent.click(s.getByRole("button", { name: "Copy secret" }));
+    await s.findByText("Copied to the clipboard.");
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(NEW_SECRET);
+
+    fireEvent.click(s.getByRole("button", { name: "I have saved it, close" }));
+    expect(s.queryByLabelText("Signing secret")).toBeNull();
+    expect(s.queryByText("Copied to the clipboard.")).toBeNull();
+    expect(document.body.innerHTML).not.toContain(NEW_SECRET);
+    expect(screen.queryByDisplayValue(NEW_SECRET)).toBeNull();
+    expect(log).not.toHaveBeenCalled();
+    log.mockRestore();
+
+    // Reloading from Core never brings it back.
+    cleanup();
+    open(world);
+    const again = await section();
+    await again.findByText("ci-main");
+    expect(again.queryByLabelText("Signing secret")).toBeNull();
+    expect(document.body.innerHTML).not.toContain(NEW_SECRET);
+  });
+
+  it("a second rotate replaces the panel and the earlier secret is gone from the page", async () => {
+    const FIRST = "first-secret-0123456789abcdefghijklmnopqrstuvwx";
+    const SECOND = "second-secret-abcdefghijklmnopqrstuvwxyz0123456";
+    const world: World = {
+      status: { enabled: true, sources: [source(), source({ id: "alerts-prod" })] },
+    };
+    const secrets = [FIRST, SECOND];
+    const { api, container } = open(world, {
+      "POST /api/team/webhooks/sources/ci-main/rotate": () => ({
+        source: world.status.sources[0],
+        secret: secrets.shift(),
+      }),
+      "POST /api/team/webhooks/sources/alerts-prod/rotate": () => ({
+        source: world.status.sources[1],
+        secret: secrets.shift(),
+      }),
+    });
+    const s = await section();
+    await s.findByText("alerts-prod");
+
+    fireEvent.click(s.getByRole("button", { name: "Rotate the secret of source ci-main" }));
+    fireEvent.click(s.getByRole("button", { name: "Confirm" }));
+    await waitFor(() =>
+      expect((s.getByLabelText("Signing secret") as HTMLInputElement).value).toBe(FIRST),
+    );
+
+    fireEvent.click(s.getByRole("button", { name: "Rotate the secret of source alerts-prod" }));
+    fireEvent.click(s.getByRole("button", { name: "Confirm" }));
+    await waitFor(() =>
+      expect((s.getByLabelText("Signing secret") as HTMLInputElement).value).toBe(SECOND),
+    );
+    expect(s.getByText("Secret for alerts-prod")).toBeTruthy();
+    expect(s.getAllByLabelText("Signing secret")).toHaveLength(1);
+    expect(container.innerHTML).not.toContain(FIRST);
+    expect(screen.queryByDisplayValue(FIRST)).toBeNull();
+    expect(writes(api).map((c) => c.path)).toEqual([
+      "/api/team/webhooks/sources/ci-main/rotate",
+      "/api/team/webhooks/sources/alerts-prod/rotate",
+    ]);
+  });
+
+  it("deleting the rotated source clears its secret", async () => {
+    const world: World = { status: { enabled: true, sources: [source()] } };
+    open(world, {
+      "POST /api/team/webhooks/sources/ci-main/rotate": () => ({
+        source: world.status.sources[0],
+        secret: SECRET,
+      }),
+      "DELETE /api/team/webhooks/sources/ci-main": () => {
+        world.status = { enabled: true, sources: [] };
+        return world.status;
+      },
+    });
+    const s = await section();
+    await s.findByText("ci-main");
+    fireEvent.click(s.getByRole("button", { name: "Rotate the secret of source ci-main" }));
+    fireEvent.click(s.getByRole("button", { name: "Confirm" }));
+    await s.findByLabelText("Signing secret");
+    fireEvent.click(s.getByRole("button", { name: "Delete source ci-main" }));
+    fireEvent.click(s.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(s.queryByLabelText("Signing secret")).toBeNull());
+    expect(document.body.innerHTML).not.toContain(SECRET);
+  });
+
+  it("shows Core's refusal to rotate as text, shows no secret and keeps an earlier panel", async () => {
+    const world: World = {
+      status: { enabled: true, sources: [source(), source({ id: "alerts-prod" })] },
+    };
+    open(world, {
+      "POST /api/team/webhooks/sources/ci-main/rotate": () => ({
+        source: world.status.sources[0],
+        secret: SECRET,
+      }),
+      "POST /api/team/webhooks/sources/alerts-prod/rotate": () =>
+        new Response(
+          JSON.stringify({ code: "INTERNAL", message: "secret store locked <img src=x>" }),
+          { status: 500 },
+        ),
+    });
+    const s = await section();
+    await s.findByText("alerts-prod");
+    fireEvent.click(s.getByRole("button", { name: "Rotate the secret of source ci-main" }));
+    fireEvent.click(s.getByRole("button", { name: "Confirm" }));
+    await s.findByLabelText("Signing secret");
+
+    fireEvent.click(s.getByRole("button", { name: "Rotate the secret of source alerts-prod" }));
+    fireEvent.click(s.getByRole("button", { name: "Confirm" }));
+    const alert = await s.findByRole("alert");
+    expect(alert.textContent).toBe("secret store locked <img src=x>");
+    expect(alert.querySelector("img")).toBeNull();
+    // The failure shows nothing new; the panel still holds the secret Core did give.
+    expect((s.getByLabelText("Signing secret") as HTMLInputElement).value).toBe(SECRET);
+    expect(s.getByText("Secret for ci-main")).toBeTruthy();
+  });
+
+  it("sends hostile source names encoded to the toggle and rotate routes, rendered inert", async () => {
+    const hostile = '<img src=x onerror="alert(1)">\u202Eevil\u200B';
+    const shown = '<img src=x onerror="alert(1)">evil';
+    const world: World = {
+      status: {
+        enabled: true,
+        sources: [source({ id: hostile, path: `/api/webhooks/in/${hostile}` })],
+      },
+    };
+    const { api, container } = open(world, {
+      "PUT /api/team/webhooks/sources/*": () => ({
+        enabled: true,
+        sources: [{ ...world.status.sources[0]!, enabled: false }],
+      }),
+    });
+    const s = await section();
+    await s.findByText(shown);
+
+    fireEvent.click(s.getByRole("button", { name: `Disable source ${shown}` }));
+    await s.findByText(/This source is disabled/);
+    fireEvent.click(s.getByRole("button", { name: `Rotate the secret of source ${shown}` }));
+    expect(s.getByText(new RegExp("Rotate the secret of .*evil\\?"))).toBeTruthy();
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.textContent).not.toMatch(/[\u202e\u200b]/);
+    expect(writes(api)).toEqual([
+      {
+        method: "PUT",
+        path: `/api/team/webhooks/sources/${encodeURIComponent(hostile)}`,
+        body: { enabled: false },
+      },
+    ]);
+  });
+
   it("shows Core's words when the list cannot be loaded", async () => {
     mountWith(<TeamWebhooksSection />, {
       "GET /api/team/webhooks": () =>

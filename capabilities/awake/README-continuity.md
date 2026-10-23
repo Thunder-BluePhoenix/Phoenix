@@ -143,12 +143,32 @@ and resumes with the targets not yet done), learned from `kage.*`, `dictation.*`
 events; with no event feed the answer is "protected" (fail closed). Audit: `awake.nudge.result` with
 the pane id (or session id), kind and outcome only: never the text, the command or any output.
 
-**GAP, tracked sessions:** the agents capability can write to a session's stdin (`session.send`),
-but it always appends a newline (it cannot honour "Enter off") and a capability cannot call another
-capability's command from inside Core. No safe terminal-input mechanism exists, so `SessionTarget`
-defines the interface (`AgentSessionInput.send(sessionId, text, enter)`), is tested with a fake, and
-without an injected implementation reports `unavailable`. Phase 58's terminal focuser raises a
-window; it does not type. Nothing real is wired.
+**DESIGN DECISION, tracked sessions are not nudged (not built, on purpose):** `SessionTarget` and
+`AgentSessionInput.send(sessionId, text, enter)` exist and are tested with a fake, but Core supplies no
+implementation, so a listed session always reports `unavailable` and nothing is typed (tested through the
+module, `nudge.test.ts`). A safe path would have to hold all of the following, and it cannot:
+
+- **Confirmation.** `agents.session.send` is `execute` + `shell_command`, so the permission gateway
+  asks the user every time (Phase 34, rule 1; `needsConfirmation`). A background nudge cannot answer
+  that prompt, and the only ways to skip it are a bypass: writing straight into the session manager
+  from Core, or a capability-to-capability call that skips the gateway. Both are refused. Going
+  through the gateway (`invokeAndWait("agents", "session.send", …)` as `awake`) is allowed by the
+  model but would raise an approval request during every outage (it expires after 5 minutes) and show
+  the user a prompt they did not start; an agent left alone overnight would simply not be nudged. That
+  is the opposite of the feature, so it was not built.
+- **Enter off.** `session.send` always appends a newline. A tracked session is a pipe to the agent's
+  stdin, not a terminal (Phase 34: "an interactive `claude` session cannot be orchestrated yet", no
+  pty). With a pipe, "type `continue` without Enter" does not leave text in an input box: it leaves an
+  unterminated line in the agent's stdin that is glued onto the next message the user sends. A new
+  raw-send command would only add that hazard; "Enter off" has no safe meaning here.
+- **User typing.** There is no signal for "the user typed recently" or "the agent is at a prompt",
+  only the `running`/`waiting` state, which comes from `waiting_prompts` text matching.
+
+Nothing in the agents capability changed: `session.send` still appends exactly one newline, still
+needs confirmation and still refuses under the kill switch. To nudge an agent, run it in tmux and list
+the pane (the tmux path above works with Enter off). Revisit if Phoenix gains a pty-backed session or
+a user-approved standing grant for one session's input. Phase 58's terminal focuser raises a window; it
+does not type.
 
 **GAP, a half-typed line (S2):** the nudge cannot know whether the program's input box already
 holds text you were typing; `continue` is appended to it (and sent with Enter if `enter` is on).

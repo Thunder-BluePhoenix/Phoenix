@@ -9,14 +9,14 @@
 //! stacking, pixels and Quit; those were checked by hand on macOS.
 
 use phoenix_desktop::{
-    builder, handle_menu, menu_snapshot, quit_requested, run_shortcut, shortcuts, ShellOptions,
-    ISLAND_LABEL, SETTINGS_FILE, TRAY_ID, WINDOW_LABEL,
+    builder, file_drop, handle_menu, menu_snapshot, quit_requested, run_shortcut, shortcuts,
+    ShellOptions, ISLAND_LABEL, SETTINGS_FILE, TRAY_ID, WINDOW_LABEL,
 };
 use serde_json::Value;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tauri::test::{mock_context, noop_assets, MockRuntime};
-use tauri::{App, Manager};
+use tauri::{App, Listener, Manager};
 
 struct Started {
     app: App<MockRuntime>,
@@ -458,6 +458,16 @@ fn invoke(
     cmd: &str,
     args: serde_json::Value,
 ) -> Result<Value, Value> {
+    invoke_raw(invoke_key, webview, cmd, args).map(|body| body.deserialize::<Value>().unwrap())
+}
+
+/// Like [`invoke`], but hands back the response body untouched (a command that answers with bytes).
+fn invoke_raw(
+    invoke_key: &str,
+    webview: &tauri::WebviewWindow<MockRuntime>,
+    cmd: &str,
+    args: serde_json::Value,
+) -> Result<tauri::ipc::InvokeResponseBody, Value> {
     let request = tauri::webview::InvokeRequest {
         cmd: cmd.into(),
         callback: tauri::ipc::CallbackFn(0),
@@ -473,7 +483,7 @@ fn invoke(
         headers: Default::default(),
         invoke_key: invoke_key.to_string(),
     };
-    tauri::test::get_ipc_response(webview, request).map(|body| body.deserialize::<Value>().unwrap())
+    tauri::test::get_ipc_response(webview, request)
 }
 
 fn shortcut_commands_work_from_the_pet_window_and_refuse_any_other() {
@@ -545,13 +555,106 @@ fn shortcut_commands_work_from_the_pet_window_and_refuse_any_other() {
     assert_eq!(saved(dir.path())["muted"], true);
 }
 
+/// Phase 62: a drop on the pet window is announced with numbers and names (no path), and only
+/// those numbers read a file, once, by the window that was dropped on.
+fn a_dropped_file_is_announced_without_its_path_and_read_once_by_its_window_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = start(dir.path());
+    let pet = s.app.get_webview_window(WINDOW_LABEL).expect("pet window");
+    let key = s.app.invoke_key().to_string();
+    let dropped = dir.path().join("dropped.txt");
+    std::fs::write(&dropped, b"dropped bytes").unwrap();
+
+    let announced = Arc::new(Mutex::new(Vec::<String>::new()));
+    let sink = announced.clone();
+    pet.listen(file_drop::DROP_EVENT, move |event| {
+        sink.lock().unwrap().push(event.payload().to_string());
+    });
+    file_drop::on_drag(
+        s.app.handle(),
+        WINDOW_LABEL,
+        file_drop::Drag::Drop(vec![dropped.clone()]),
+    );
+    wait_until(|| !announced.lock().unwrap().is_empty());
+    let payload: Value = serde_json::from_str(&announced.lock().unwrap()[0]).unwrap();
+    assert_eq!(payload["files"][0]["name"], "dropped.txt");
+    assert_eq!(payload["files"][0]["size"], 13);
+    assert!(
+        !payload.to_string().contains(dir.path().to_str().unwrap()),
+        "the page is never told a path"
+    );
+    let id = payload["files"][0]["id"].as_u64().unwrap();
+
+    // Another window cannot use the number; a window that is not a drop target is refused outright.
+    let island = tauri::WebviewWindowBuilder::new(
+        &s.app,
+        ISLAND_LABEL,
+        tauri::WebviewUrl::App("island.html".into()),
+    )
+    .build()
+    .expect("island window");
+    let wrong_window = invoke(
+        &key,
+        &island,
+        "read_dropped_file",
+        serde_json::json!({"id": id}),
+    )
+    .expect_err("the island did not receive that drop");
+    assert_eq!(wrong_window["code"], "not_dropped");
+    let other = tauri::WebviewWindowBuilder::new(
+        &s.app,
+        "stranger",
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .build()
+    .expect("other window");
+    let forbidden = invoke(
+        &key,
+        &other,
+        "read_dropped_file",
+        serde_json::json!({"id": id}),
+    )
+    .expect_err("not a drop target");
+    assert_eq!(forbidden["code"], "forbidden");
+
+    // The window it was dropped on reads it once; a second ask and an invented number read nothing.
+    let body = invoke_raw(
+        &key,
+        &pet,
+        "read_dropped_file",
+        serde_json::json!({"id": id}),
+    )
+    .expect("read");
+    let tauri::ipc::InvokeResponseBody::Raw(bytes) = body else {
+        panic!("the file comes back as bytes");
+    };
+    assert_eq!(bytes, b"dropped bytes");
+    for again in [id, id + 1000] {
+        let refused = invoke_raw(
+            &key,
+            &pet,
+            "read_dropped_file",
+            serde_json::json!({"id": again}),
+        )
+        .expect_err("refused");
+        assert_eq!(refused["code"], "not_dropped");
+    }
+    // A drop on a window that is not a target announces nothing and registers nothing.
+    file_drop::on_drag(
+        s.app.handle(),
+        "phoenix-pill",
+        file_drop::Drag::Drop(vec![dropped]),
+    );
+    assert_eq!(announced.lock().unwrap().len(), 1);
+}
+
 fn main() {
     // Tauri's Linux runtime builds GTK menus, which need GTK initialised (and a display; CI
     // runs this under xvfb). Without this the mock runtime panics in gtk::Menu::new.
     #[cfg(target_os = "linux")]
     gtk::init().expect("GTK failed to initialise: is a display available (xvfb-run)?");
 
-    let tests: [(&str, fn()); 18] = [
+    let tests: [(&str, fn()); 19] = [
         (
             "starts with window, tray and full menu",
             starts_with_window_tray_and_full_menu,
@@ -608,6 +711,10 @@ fn main() {
         (
             "a dialog that cannot be shown keeps Phoenix running",
             a_dialog_that_cannot_be_shown_keeps_phoenix_running,
+        ),
+        (
+            "a dropped file is announced without its path and read once by its window only",
+            a_dropped_file_is_announced_without_its_path_and_read_once_by_its_window_only,
         ),
     ];
     for (name, test) in tests {

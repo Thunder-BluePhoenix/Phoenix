@@ -59,12 +59,13 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.lights.intro":
     "Fawkes आपके अपने नेटवर्क की किसी लाइट पर दिखा सकता है कि वह क्या कर रहा है। लाइट से तभी संपर्क किया जाता है जब आपने उसे यहाँ जोड़ा हो, Fawkes को उसे जलाने की अनुमति दी हो, और “स्टेटस लाइट” क्षमता चालू हो।",
   "awakeSchedule.lights.limits":
-    "केवल निश्चित रंग भेजे जाते हैं, कभी कोई टेक्स्ट नहीं। अभी केवल Elgato Key Light समर्थित है।",
+    "केवल निश्चित रंग भेजे जाते हैं, कभी कोई टेक्स्ट नहीं। अभी केवल Elgato Key Light और LIFX समर्थित हैं; LIFX लाइट Core API से उसके सीरियल के साथ जोड़ी जाती है।",
   "awakeSchedule.lights.capabilityOff":
     "“स्टेटस लाइट” क्षमता चालू नहीं है। इसे यहाँ या “इंटीग्रेशन” में चालू करें।",
   "awakeSchedule.lights.enable": "चालू करें",
   "awakeSchedule.lights.empty": "कोई लाइट नहीं जोड़ी गई।",
   "awakeSchedule.lights.line": "{address} पर Key Light",
+  "awakeSchedule.lights.lineLifx": "{address} पर LIFX लाइट",
   "awakeSchedule.lights.allow": "Fawkes को यह लाइट जलाने दें",
   "awakeSchedule.lights.allowNamed": "Fawkes को {name} जलाने दें",
   "awakeSchedule.lights.remove": "हटाएँ",

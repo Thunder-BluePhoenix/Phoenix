@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import { readFileSync, statSync } from "node:fs";
 import { loadConfig, type PhoenixConfig } from "@phoenix/config";
 import { createLogger } from "@phoenix/logging";
 import { KeychainSecretStore, type SecretStore } from "@phoenix/persistence";
@@ -8,6 +9,7 @@ import { settingsReminderStore } from "./calendar";
 import { dockerIdleFrom } from "./docker-idle";
 import { PhoenixRuntime } from "./runtime";
 import { explainStartupError } from "./startup-errors";
+import { statusLightsHost } from "./status-lights/host";
 
 /**
  * Prints why Core cannot start and exits. Failures a user can fix get one plain sentence; anything
@@ -50,6 +52,29 @@ if (
     ),
   );
 }
+// Browser-extension signer registry (docs/browser-profiles.md): both are host-chosen local files.
+// The root key is pinned here, never fetched and never taken from the registry document.
+const signerRootKeyFile = process.env.PHOENIX_EXTENSION_SIGNER_ROOT_KEY_FILE;
+const signerRegistryFile = process.env.PHOENIX_EXTENSION_SIGNER_REGISTRY_FILE;
+if (Boolean(signerRootKeyFile) !== Boolean(signerRegistryFile)) {
+  fail(
+    new Error(
+      "PHOENIX_EXTENSION_SIGNER_ROOT_KEY_FILE and PHOENIX_EXTENSION_SIGNER_REGISTRY_FILE are required together",
+    ),
+  );
+}
+let extensionSignerRegistry: { rootPublicKey: string; registryFile: string } | undefined;
+if (signerRootKeyFile && signerRegistryFile) {
+  try {
+    if (statSync(signerRootKeyFile).size > 16 * 1024) throw new Error("root key file too large");
+    extensionSignerRegistry = {
+      rootPublicKey: readFileSync(signerRootKeyFile, "utf8"),
+      registryFile: signerRegistryFile,
+    };
+  } catch {
+    fail(new Error("PHOENIX_EXTENSION_SIGNER_ROOT_KEY_FILE could not be read"));
+  }
+}
 let runtime: PhoenixRuntime;
 try {
   runtime = new PhoenixRuntime({
@@ -59,6 +84,7 @@ try {
     ...(trustedKeyFile && indexFile && artifactDirectory
       ? { registry: { trustedKeyFile, indexFile, artifactDirectory } }
       : {}),
+    ...(extensionSignerRegistry ? { extensionSignerRegistry } : {}),
     ...(whisperModelPath ? { whisperModelPath } : {}),
     ...(visionModel ? { visionModel } : {}),
     capabilities: builtinCapabilities(
@@ -69,10 +95,7 @@ try {
           runtime.planning.reviewContext(id, runtime.memory.settings().allow_sensitive_meetings),
       }),
       {
-        statusLights: {
-          devices: () => runtime.statusLights.devices(),
-          feed: () => runtime.bus,
-        },
+        statusLights: statusLightsHost(() => runtime),
         onAwakeSession: (session) => runtime.scheduledAwake.bindSession(session),
         onAwakeQuitCheck: (check) => runtime.quitCheck.bind(check),
         dockerIdle: dockerIdleFrom({

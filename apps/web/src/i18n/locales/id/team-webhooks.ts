@@ -43,4 +43,16 @@ export const teamWebhooks: Record<keyof typeof enTeamWebhooks, string> = {
   "teamWebhooks.create.typesNamespace": "Jenis event harus diawali salah satu dari: {namespaces}.",
   "teamWebhooks.create.limit": "Anda mencapai batas {max} sumber. Hapus satu dulu.",
   "teamWebhooks.create.submit": "Buat sumber",
+  "teamWebhooks.row.disabledNote":
+    "Sumber ini dinonaktifkan: Phoenix menolak semua yang dikirim kepadanya.",
+  "teamWebhooks.toggle.enable": "Aktifkan",
+  "teamWebhooks.toggle.disable": "Nonaktifkan",
+  "teamWebhooks.toggle.enableLabel": "Aktifkan sumber {id}",
+  "teamWebhooks.toggle.disableLabel": "Nonaktifkan sumber {id}",
+  "teamWebhooks.rotate.button": "Putar rahasia",
+  "teamWebhooks.rotate.label": "Putar rahasia sumber {id}",
+  "teamWebhooks.rotate.ask":
+    "Putar rahasia {id}? Rahasia lama langsung berhenti berfungsi, sehingga alat pengirim ditolak sampai Anda memberinya rahasia baru.",
+  "teamWebhooks.secret.rotatedNote":
+    "Ini rahasia baru. Rahasia lama sudah berhenti berfungsi; perbarui alat pengirim dengan yang ini.",
 };

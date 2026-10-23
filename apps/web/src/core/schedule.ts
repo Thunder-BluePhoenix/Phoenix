@@ -127,18 +127,20 @@ export function readScheduledAwake(raw: unknown): ScheduledAwake | null {
 
 // ── Status lights ────────────────────────────────────────────────────────────
 
-export interface ProvisionedLight {
+export type ProvisionedLight = {
   id: string;
-  kind: "key-light";
   address: string;
   port: number | null;
-}
+} & ({ kind: "key-light" } | { kind: "lifx"; mac: string });
 
 function readLight(raw: unknown): ProvisionedLight | null {
   if (!isRecord(raw)) return null;
-  const { id, kind, address, port } = raw;
-  if (typeof id !== "string" || kind !== "key-light" || typeof address !== "string") return null;
-  return { id, kind, address, port: typeof port === "number" ? port : null };
+  const { id, kind, address, port, mac } = raw;
+  if (typeof id !== "string" || typeof address !== "string") return null;
+  const base = { id, address, port: typeof port === "number" ? port : null };
+  if (kind === "key-light") return { ...base, kind };
+  if (kind === "lifx" && typeof mac === "string") return { ...base, kind, mac };
+  return null;
 }
 
 /** GET/PUT /api/status-lights/devices, or null if the answer is not shaped like one. */
@@ -146,12 +148,13 @@ export function readLights(raw: unknown): ProvisionedLight[] | null {
   return isRecord(raw) && Array.isArray(raw.lights) ? readAll(raw.lights, readLight) : null;
 }
 
-/** A light as the PUT body spells it: the port only when Core reported one. */
+/** A light as the PUT body spells it: the port only when Core reported one, the serial for LIFX. */
 export const lightBody = (light: ProvisionedLight) => ({
   id: light.id,
   kind: light.kind,
   address: light.address,
   ...(light.port === null ? {} : { port: light.port }),
+  ...(light.kind === "lifx" ? { mac: light.mac } : {}),
 });
 
 /** The ids the status-lights capability's `devices` setting allows, from its stored config. */

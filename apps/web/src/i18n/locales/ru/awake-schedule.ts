@@ -61,12 +61,13 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.lights.intro":
     "Fawkes может показывать, что он делает, на лампе в вашей собственной сети. К лампе обращаются, только если вы добавили её здесь, разрешили Fawkes её включать и включена возможность «Индикаторы состояния».",
   "awakeSchedule.lights.limits":
-    "Отправляются только фиксированные цвета, никогда текст. Пока поддерживается только Elgato Key Light.",
+    "Отправляются только фиксированные цвета, никогда текст. Пока поддерживаются только Elgato Key Light и LIFX; лампа LIFX добавляется через API Core с её серийным номером.",
   "awakeSchedule.lights.capabilityOff":
     "Возможность «Индикаторы состояния» не включена. Включите её здесь или в «Интеграциях».",
   "awakeSchedule.lights.enable": "Включить",
   "awakeSchedule.lights.empty": "Лампы не добавлены.",
   "awakeSchedule.lights.line": "Key Light по адресу {address}",
+  "awakeSchedule.lights.lineLifx": "Лампа LIFX по адресу {address}",
   "awakeSchedule.lights.allow": "Разрешить Fawkes включать эту лампу",
   "awakeSchedule.lights.allowNamed": "Разрешить Fawkes включать {name}",
   "awakeSchedule.lights.remove": "Удалить",

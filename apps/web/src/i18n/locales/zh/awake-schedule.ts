@@ -56,11 +56,13 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.lights.loadFailed": "无法加载状态灯。",
   "awakeSchedule.lights.intro":
     "Fawkes 可以通过你自己网络上的灯来显示它正在做什么。只有当你在此添加了灯、允许 Fawkes 点亮它、并且已启用“状态灯”功能时，才会联系该灯。",
-  "awakeSchedule.lights.limits": "只发送固定颜色，绝不发送任何文字。目前只支持 Elgato Key Light。",
+  "awakeSchedule.lights.limits":
+    "只发送固定颜色，绝不发送任何文字。目前只支持 Elgato Key Light 和 LIFX；LIFX 灯通过 Core API 连同序列号添加。",
   "awakeSchedule.lights.capabilityOff": "“状态灯”功能未启用。可在此处或“集成”中启用。",
   "awakeSchedule.lights.enable": "启用",
   "awakeSchedule.lights.empty": "尚未添加任何灯。",
   "awakeSchedule.lights.line": "位于 {address} 的 Key Light",
+  "awakeSchedule.lights.lineLifx": "位于 {address} 的 LIFX 灯",
   "awakeSchedule.lights.allow": "允许 Fawkes 点亮此灯",
   "awakeSchedule.lights.allowNamed": "允许 Fawkes 点亮 {name}",
   "awakeSchedule.lights.remove": "移除",

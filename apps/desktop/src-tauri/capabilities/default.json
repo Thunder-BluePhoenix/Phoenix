@@ -18,6 +18,7 @@
     "allow-shortcuts-set",
     "allow-shortcuts-reset",
     "allow-shortcuts-set-enabled",
-    "allow-shortcuts-set-muted"
+    "allow-shortcuts-set-muted",
+    "allow-read-dropped-file"
   ]
 }

@@ -26,7 +26,7 @@ export interface LocalRegistryConfig {
 const MAX_KEY_BYTES = 16 * 1024;
 const MAX_INDEX_BYTES = 1024 * 1024;
 
-async function localFile(path: string, maxBytes: number): Promise<Buffer> {
+export async function localFile(path: string, maxBytes: number): Promise<Buffer> {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const stat = await file.stat();

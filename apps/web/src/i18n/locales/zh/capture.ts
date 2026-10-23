@@ -349,6 +349,9 @@ export const capture: Record<keyof typeof encapture, string> = {
     "已附加 {n, plural, other {# 项}}。目前尚未向任何地方发送内容。",
   "capture.attachments.notice.nothingAttached": "没有附加任何内容。",
   "capture.attachments.notice.withProblems": "{head} {problems}",
+  "capture.attachments.nativeDrop.folder":
+    "{name}：不能把文件夹拖到这里。请改用聊天框或 Pet Panel。",
+  "capture.attachments.nativeDrop.skipped": "一次拖放只使用前 {max} 个文件；另有 {n} 个被忽略。",
   "capture.attachments.mail.subject": "关于：{name}",
   "capture.attachments.mail.empty": "请先写下你想分享的内容。",
   "capture.attachments.mail.tooLong": "消息比 {limit} 个字符的上限多出 {over} 个字符。请缩短。",

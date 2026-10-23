@@ -45,4 +45,16 @@ export const teamWebhooks: Record<keyof typeof enTeamWebhooks, string> = {
   "teamWebhooks.create.limit":
     "Vous avez atteint la limite de {max} sources. Supprimez-en une d'abord.",
   "teamWebhooks.create.submit": "Créer la source",
+  "teamWebhooks.row.disabledNote":
+    "Cette source est désactivée : Phoenix refuse tout ce qui lui est envoyé.",
+  "teamWebhooks.toggle.enable": "Activer",
+  "teamWebhooks.toggle.disable": "Désactiver",
+  "teamWebhooks.toggle.enableLabel": "Activer la source {id}",
+  "teamWebhooks.toggle.disableLabel": "Désactiver la source {id}",
+  "teamWebhooks.rotate.button": "Renouveler le secret",
+  "teamWebhooks.rotate.label": "Renouveler le secret de la source {id}",
+  "teamWebhooks.rotate.ask":
+    "Renouveler le secret de {id} ? L'ancien secret cesse de fonctionner immédiatement, donc l'outil émetteur sera refusé tant que vous ne lui aurez pas donné le nouveau secret.",
+  "teamWebhooks.secret.rotatedNote":
+    "Voici le nouveau secret. L'ancien a cessé de fonctionner ; mettez à jour l'outil émetteur avec celui-ci.",
 };

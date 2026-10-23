@@ -156,6 +156,11 @@ export interface RuntimeOptions {
   focus?: { clock?: FocusClock; dnd?: FocusDndReader };
   /** Signer id to Ed25519 public key (SPKI PEM) of who may sign browser extensions. Empty: none. */
   extensionSigners?: Readonly<Record<string, string>>;
+  /**
+   * Signed signer registry for browser extensions (replaces `extensionSigners` when set): the
+   * pinned root key (Ed25519, SPKI PEM) and the local file the host updates. Read at start.
+   */
+  extensionSignerRegistry?: { rootPublicKey: string; registryFile: string; now?: () => number };
   /** Ollama base URL (loopback only). Defaults to http://127.0.0.1:11434. */
   ollamaUrl?: string;
   /** Anthropic base URL; tests only. */
@@ -1026,6 +1031,9 @@ export class PhoenixRuntime implements CoreServices {
       permissions: this.permissions,
       audit: this.permissions.audit,
       ...(options.extensionSigners ? { signers: options.extensionSigners } : {}),
+      ...(options.extensionSignerRegistry
+        ? { signerRegistry: options.extensionSignerRegistry }
+        : {}),
     });
     this.demo =
       options.demo === false
@@ -1127,6 +1135,14 @@ export class PhoenixRuntime implements CoreServices {
   async start(): Promise<{ host: string; port: number }> {
     // Resume an unexpired focus session from its stored end instant before the API can be read.
     this.focus.restore();
+    // Fail closed, not fatal: a refused or missing registry file leaves the last accepted one (or
+    // none) in force, so extensions stay untrusted rather than Core failing to start.
+    if (this.options.extensionSignerRegistry)
+      await this.browserProfiles.loadSignerRegistry().catch((error: unknown) => {
+        this.logger.warn("Extension signer registry not loaded", {
+          error: error instanceof Error ? error.message : "unknown",
+        });
+      });
     this.api = new ApiServer({
       services: this,
       token: this.token,
@@ -1352,7 +1368,7 @@ export class PhoenixRuntime implements CoreServices {
       {
         id: "status_lights_devices",
         description:
-          "Status lights (Phase 88): the LAN address and port of each Key Light you added, in settings. Consent to use a light is a separate setting of the status-lights capability. Nothing is contacted until both exist and the capability is enabled; only fixed colours are ever sent.",
+          "Status lights (Phase 88): the LAN address and port of each Key Light or LIFX light you added (and the serial of each LIFX light), in settings. Consent to use a light is a separate setting of the status-lights capability. Nothing is contacted until both exist and the capability is enabled; only fixed colours are ever sent.",
         count: this.statusLights.lights().length,
         deleted_with: "replace the list with an empty one (PUT /api/status-lights/devices)",
       },

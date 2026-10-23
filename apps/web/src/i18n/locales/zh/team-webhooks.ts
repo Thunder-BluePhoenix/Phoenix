@@ -39,4 +39,14 @@ export const teamWebhooks: Record<keyof typeof enTeamWebhooks, string> = {
   "teamWebhooks.create.typesNamespace": "事件类型必须以下列之一开头：{namespaces}。",
   "teamWebhooks.create.limit": "已达到 {max} 个来源的上限。请先删除一个。",
   "teamWebhooks.create.submit": "创建来源",
+  "teamWebhooks.row.disabledNote": "此来源已停用：Phoenix 会拒绝发送给它的一切内容。",
+  "teamWebhooks.toggle.enable": "启用",
+  "teamWebhooks.toggle.disable": "停用",
+  "teamWebhooks.toggle.enableLabel": "启用来源 {id}",
+  "teamWebhooks.toggle.disableLabel": "停用来源 {id}",
+  "teamWebhooks.rotate.button": "轮换密钥",
+  "teamWebhooks.rotate.label": "轮换来源 {id} 的密钥",
+  "teamWebhooks.rotate.ask":
+    "轮换 {id} 的密钥？旧密钥会立即失效，因此在你把新密钥交给发送工具之前，它会被拒绝。",
+  "teamWebhooks.secret.rotatedNote": "这是新密钥。旧密钥已失效；请用这个密钥更新发送工具。",
 };

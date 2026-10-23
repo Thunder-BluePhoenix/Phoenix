@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { generateKeyPairSync, sign } from "node:crypto";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { canonicalJson } from "@phoenix/workflows";
 import { MemorySecretStore } from "@phoenix/persistence";
 import type { Envelope, RelayEntry, SyncTransport } from "@phoenix/sync";
 import { afterEach, describe, expect, it } from "vitest";
@@ -289,5 +293,93 @@ describe("browser extensions through the running Core", () => {
       400,
     );
     expect((await core.api("PUT", "/api/browser/signers", { mine: pem(mine) })).status).toBe(404);
+  });
+});
+
+describe("browser extension signer registry through the running Core", () => {
+  const rootKeys = generateKeyPairSync("ed25519");
+  const stamp = (ms: number) => new Date(ms).toISOString();
+
+  /** A root-signed registry file naming `acme`, optionally revoking it; keys exist only in memory. */
+  function registryFile(path: string, sequence: number, revoked: boolean): void {
+    const now = Date.now();
+    const registry = {
+      format_version: 1,
+      sequence,
+      issued_at: stamp(now - 60_000),
+      expires_at: stamp(now + 24 * 3_600_000),
+      signers: [
+        {
+          id: "acme",
+          public_key: pem(signerKeys),
+          valid_from: stamp(now - 3_600_000),
+          status: "active",
+        },
+      ],
+      revocations: revoked
+        ? [
+            {
+              kind: "signer",
+              target: "acme",
+              revoked_at: stamp(now - 60_000),
+              reason: "key_compromise",
+            },
+          ]
+        : [],
+    };
+    const signature = sign(null, Buffer.from(canonicalJson(registry)), rootKeys.privateKey);
+    writeFileSync(path, JSON.stringify({ registry, signature: signature.toString("base64url") }));
+  }
+
+  it("loads a file from disk, then a later file revokes an installed extension; a rollback is refused", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "phoenix-signers-")), "signers.json");
+    registryFile(file, 2, false);
+    const core = await startCore(
+      {},
+      {
+        secrets: new MemorySecretStore(),
+        runtime: {
+          extensionSignerRegistry: { rootPublicKey: pem(rootKeys), registryFile: file },
+        },
+      },
+    );
+    cleanups.push(() => core.runtime.stop());
+    const id = await create(core);
+    const url = `/api/browser/profiles/${id}/extensions`;
+    expect((await core.api("POST", url, extension())).json).toMatchObject({ status: "trusted" });
+
+    registryFile(file, 3, true);
+    await core.runtime.browserProfiles.loadSignerRegistry();
+    const listed = (await core.api("GET", url)).json.extensions;
+    expect(listed).toEqual([
+      expect.objectContaining({ status: "revoked", reason: "signer_revoked", approved: false }),
+    ]);
+    expect((await core.api("POST", url, extension())).status).toBe(400);
+
+    registryFile(file, 2, false);
+    await expect(core.runtime.browserProfiles.loadSignerRegistry()).rejects.toThrow("ROLLBACK");
+    expect((await core.api("GET", url)).json.extensions[0].status).toBe("revoked");
+  });
+
+  it("refuses every extension when the configured file is missing or signed by another root", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "phoenix-signers-")), "signers.json");
+    const core = await startCore(
+      {},
+      {
+        secrets: new MemorySecretStore(),
+        runtime: {
+          extensionSignerRegistry: { rootPublicKey: pem(strangerKeys), registryFile: file },
+        },
+      },
+    );
+    cleanups.push(() => core.runtime.stop());
+    const id = await create(core);
+    const url = `/api/browser/profiles/${id}/extensions`;
+    expect((await core.api("POST", url, extension())).status).toBe(400);
+    registryFile(file, 1, false);
+    await expect(core.runtime.browserProfiles.loadSignerRegistry()).rejects.toThrow(
+      "BAD_SIGNATURE",
+    );
+    expect((await core.api("POST", url, extension())).status).toBe(400);
   });
 });

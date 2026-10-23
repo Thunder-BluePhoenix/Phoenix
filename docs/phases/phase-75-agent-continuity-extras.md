@@ -21,7 +21,7 @@ Keep long agent runs going through network drops and throttled browsers.
 
 ## Tasks — Phoenix improvements
 
-- [ ] The nudge targets Phoenix-tracked agent sessions (Phase 34), not only tmux. **Interface only.** `SessionTarget` and `AgentSessionInput.send(sessionId, text, enter)` exist and are tested with a fake; the agents capability's `session.send` always appends a newline, so no safe terminal-input path exists and nothing is wired.
+- [ ] The nudge targets Phoenix-tracked agent sessions (Phase 34), not only tmux. **Design decision: not built.** `SessionTarget` and `AgentSessionInput.send(sessionId, text, enter)` exist and are tested with a fake, and a real Core supplies no implementation, so a listed session reports `unavailable` and nothing is typed (`nudge.test.ts`, through the module). The reason is in [README-continuity.md](../../capabilities/awake/README-continuity.md) section 3: `session.send` needs the user's confirmation every time and a background nudge cannot answer it (the only alternative is a bypass of the permission gateway, which is refused); a tracked session is a pipe, not a terminal, so "Enter off" would leave an unterminated line in the agent's stdin; and there is no "user typed recently" signal. Nudging an agent works through a tmux pane.
 - [x] Network events appear in the activity feed and Fawkes state. `awake.network.down` (warning) and `awake.network.up` are published; `awake.network.down` maps to the existing WARNING state with a 6-hour TTL so a lost `up` cannot leave it stuck, and `awake.network.up` clears it (`network.test.ts`, `manifest.test.ts`). No new state was added. Verified with fakes; the activity feed was not looked at in a real browser.
 
 ## Deliverables
@@ -51,7 +51,7 @@ An independent static review (read-only, not a human audit) was followed by a ha
 
 ### What was not built
 
-Nudging Phoenix-tracked agent sessions (interface only).
+Nudging Phoenix-tracked agent sessions: a design decision, not an omission (see the exit-criterion note above). The seam stays as an interface; no host implements it, and the agents capability's `session.send` is unchanged (still one appended newline, still confirmed, still refused under the kill switch).
 
 ### What was not run
 

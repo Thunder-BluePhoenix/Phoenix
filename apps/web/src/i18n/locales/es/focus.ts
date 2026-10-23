@@ -42,4 +42,42 @@ export const focus: Record<keyof typeof enFocus, string> = {
   "focus.screenshot.tracker.github": "GitHub",
   "focus.screenshot.tracker.linear": "Linear",
   "focus.screenshot.tracker.jira": "Jira",
+  "focus.issueDraft.title": "Incidencia a partir de una imagen que tienes",
+  "focus.issueDraft.intro":
+    "Suelta, pega o elige un PNG o JPEG que ya tengas, escribe la incidencia y revisa exactamente lo que se enviará. Phoenix no captura tu pantalla. La incidencia se crea en GitHub solo después de que confirmes aquí y otra vez en Aprobaciones.",
+  "focus.issueDraft.unavailable.capability":
+    "La integración de GitHub no está activada o no puede crear incidencias; no se puede crear nada.",
+  "focus.issueDraft.unavailable.token":
+    "No hay un token de escritura de GitHub para la integración de GitHub; no se puede crear nada.",
+  "focus.issueDraft.dropLabel": "Suelta una imagen para la incidencia",
+  "focus.issueDraft.dropHint": "Suelta o pega aquí un PNG o JPEG, o {choose}.",
+  "focus.issueDraft.choose": "elige una imagen…",
+  "focus.issueDraft.chooseLabel": "Elegir una imagen para la incidencia",
+  "focus.issueDraft.imageAlt": "Imagen para la incidencia: {name}",
+  "focus.issueDraft.imageRemove": "Quitar la imagen",
+  "focus.issueDraft.oneImage": "Añade una sola imagen a la vez.",
+  "focus.issueDraft.imageRequired": "Añade primero una imagen.",
+  "focus.issueDraft.titleRequired": "Escribe un título para la incidencia.",
+  "focus.issueDraft.titleTooLong": "El título puede tener como máximo {max} caracteres.",
+  "focus.issueDraft.bodyTooLong": "La descripción puede tener como máximo {max} caracteres.",
+  "focus.issueDraft.secretInTitle":
+    "El título parece contener una contraseña, clave o token. Quítalo; no se envió nada.",
+  "focus.issueDraft.secretInBody":
+    "La descripción parece contener una contraseña, clave o token. Quítalo; no se envió nada.",
+  "focus.issueDraft.secretInBoth":
+    "El título y la descripción parecen contener una contraseña, clave o token. Quítalo; no se envió nada.",
+  "focus.issueDraft.previewRepository": "Repositorio: {repository}",
+  "focus.issueDraft.previewTitle": "Título: {title}",
+  "focus.issueDraft.previewBody": "Descripción, exactamente como se enviará:",
+  "focus.issueDraft.previewNoBody": "No se enviará ninguna descripción.",
+  "focus.issueDraft.imageLocal":
+    "La imagen ({name}) NO se envía. Las incidencias de GitHub se crean solo con texto; la imagen se queda en este dispositivo y no se guarda. Añádela tú mismo a la incidencia si quieres que esté allí.",
+  "focus.issueDraft.approval":
+    "Todavía no se crea nada. Después de pulsar el botón, Phoenix pide tu aprobación en Aprobaciones antes de enviar nada a GitHub.",
+  "focus.issueDraft.create": "Pedir la creación de la incidencia",
+  "focus.issueDraft.waiting": "Esperando tu aprobación en Aprobaciones…",
+  "focus.issueDraft.denied": "Rechazaste la solicitud; no se envió nada a GitHub.",
+  "focus.issueDraft.blocked": "La parada de emergencia está activada; no se envió nada a GitHub.",
+  "focus.issueDraft.timeout": "La solicitud no se aprobó a tiempo o se canceló; no se envió nada.",
+  "focus.issueDraft.failed": "No se pudo crear la incidencia: {message}",
 };

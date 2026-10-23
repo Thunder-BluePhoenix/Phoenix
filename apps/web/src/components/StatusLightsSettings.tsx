@@ -106,7 +106,12 @@ export function StatusLightsSection() {
                 <li key={light.id}>
                   <strong>{light.id}</strong>{" "}
                   <span className="small">
-                    {t("awakeSchedule.lights.line", { address: light.address })}
+                    {t(
+                      light.kind === "lifx"
+                        ? "awakeSchedule.lights.lineLifx"
+                        : "awakeSchedule.lights.line",
+                      { address: light.address },
+                    )}
                   </span>{" "}
                   <label>
                     <input

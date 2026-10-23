@@ -60,12 +60,13 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.lights.intro":
     "Fawkes puede mostrar lo que hace en una luz de tu propia red. Solo se contacta una luz si la añadiste aquí, permitiste que Fawkes la encienda y la capacidad Luces de estado está habilitada.",
   "awakeSchedule.lights.limits":
-    "Solo se envían colores fijos, nunca texto. Por ahora solo se admite Elgato Key Light.",
+    "Solo se envían colores fijos, nunca texto. Por ahora solo se admiten Elgato Key Light y LIFX; una luz LIFX se añade mediante la API de Core con su número de serie.",
   "awakeSchedule.lights.capabilityOff":
     "La capacidad Luces de estado no está habilitada. Habilítala aquí o en Integraciones.",
   "awakeSchedule.lights.enable": "Habilitar",
   "awakeSchedule.lights.empty": "No se añadió ninguna luz.",
   "awakeSchedule.lights.line": "Key Light en {address}",
+  "awakeSchedule.lights.lineLifx": "Luz LIFX en {address}",
   "awakeSchedule.lights.allow": "Permitir que Fawkes encienda esta luz",
   "awakeSchedule.lights.allowNamed": "Permitir que Fawkes encienda {name}",
   "awakeSchedule.lights.remove": "Quitar",

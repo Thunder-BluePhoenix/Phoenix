@@ -19,6 +19,7 @@ import type { Device, DeviceKind } from "./devices";
 export * from "./controller";
 export * from "./deck";
 export * from "./devices";
+export * from "./lifx";
 export * from "./serial";
 
 export const DEFAULT_AWAKE_MINUTES = 30;
@@ -33,6 +34,8 @@ export interface StatusLightsOptions {
   feed?: () => StatusFeed | undefined;
   /** Focus mode state, read at every update (the host calls `refresh()` when it changes). */
   focusMode?: () => boolean;
+  /** Subscribes to focus mode changes; the capability re-evaluates its lights on each one, while enabled. */
+  focusChanges?: (listener: () => void) => () => void;
   /** Stream Deck surface and Core-side actions, read each time the capability is enabled. */
   deck?: () => { surface: DeckSurface; actions: DeckActions } | undefined;
   now?: () => number;
@@ -107,6 +110,7 @@ export function createStatusLightsCapability(
   let emitted: CapabilityContext["emit"] | undefined;
   let consented: ReadonlySet<string> = new Set();
   let provisioned: readonly Device[] = [];
+  let unsubscribeFocus: (() => void) | undefined;
   /** Devices whose last write failed; one warning per failure streak, one recovery. */
   const failing = new Set<string>();
 
@@ -124,6 +128,8 @@ export function createStatusLightsCapability(
   }
 
   function stopAll(): void {
+    unsubscribeFocus?.();
+    unsubscribeFocus = undefined;
     deck?.stop();
     deck = undefined;
     controller?.stop();
@@ -256,6 +262,10 @@ export function createStatusLightsCapability(
         deck.start();
       }
       lights.start();
+      unsubscribeFocus = options.focusChanges?.(() => {
+        lights.refreshPolicy();
+        deck?.render();
+      });
     },
     commands: {
       status(): StatusLightsStatus {
@@ -290,6 +300,8 @@ export function createStatusLightsCapability(
     },
     async shutdown() {
       const lights = controller;
+      unsubscribeFocus?.();
+      unsubscribeFocus = undefined;
       deck?.stop();
       deck = undefined;
       controller = undefined;

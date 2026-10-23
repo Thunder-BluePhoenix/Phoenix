@@ -3,14 +3,17 @@
 import type { DragEvent, SoundPlayer } from "@phoenix/pet-runtime";
 import { visualFor } from "@phoenix/pet-states";
 import { useCallback, useEffect, useState } from "react";
+import { tauriFileDrop, type FileDropShell } from "../commands/file-drop-shell";
 import { tauriShortcuts, type ShortcutsShell } from "../commands/shortcuts-shell";
 import { AgentApprovals } from "../components/AgentApprovals";
+import { NativeDropStatus } from "../components/NativeDropStatus";
 import { RebirthAvatar } from "../components/RebirthAvatar";
 import { AwakeCountdown } from "../components/Awake";
 import { SourcePills } from "../components/SourcePills";
 import { useWornOutfit } from "../core/appearance";
 import { useDisplayedState } from "../core/context";
 import { useMute } from "../core/mute";
+import { useNativeFileDrop } from "../core/native-drop";
 import { useSoundHost } from "../core/sounds";
 import { usePillSwitcher, useSwitchPillsShortcut } from "../core/pill-switch";
 import { usePetSettings } from "../core/hooks";
@@ -56,11 +59,14 @@ export function useBubble(state: PetState): string | null {
 export function FloatingApp({
   shell,
   shortcuts,
+  fileDrop,
   sounds,
 }: {
   shell: DesktopShell | null;
   /** The desktop's mute flag and shortcuts (null in a browser, where nothing is muted). */
   shortcuts?: ShortcutsShell | null;
+  /** Files dropped on the window itself (null in a browser, where the page gets HTML5 drops). */
+  fileDrop?: FileDropShell | null;
   /** The pet's sound player, when the host has one; silenced while the desktop is muted. */
   sounds?: SoundPlayer;
 }) {
@@ -68,6 +74,8 @@ export function FloatingApp({
   // Looked up once: a new shell object on every render would resubscribe to the mute event.
   const [own] = useState(() => tauriShortcuts());
   const shortcutsShell = shortcuts === undefined ? own : shortcuts;
+  const [ownDrop] = useState(() => tauriFileDrop());
+  const nativeDrop = useNativeFileDrop(fileDrop === undefined ? ownDrop : fileDrop);
   // A host-injected player (tests) wins; otherwise the window uses the Phase 59 sound host.
   const soundHost = useSoundHost();
   const mute = useMute(shortcutsShell, sounds ?? soundHost.player);
@@ -90,6 +98,7 @@ export function FloatingApp({
   return (
     <div
       className="floating-root"
+      data-drop-over={nativeDrop.over ? "true" : "false"}
       onContextMenu={(e) => {
         e.preventDefault();
         shell?.showMenu();
@@ -103,6 +112,7 @@ export function FloatingApp({
           </p>
         )}
       </div>
+      <NativeDropStatus drop={nativeDrop} className="drop-status" />
       <AgentApprovals compact />
       <RebirthAvatar
         state={state}

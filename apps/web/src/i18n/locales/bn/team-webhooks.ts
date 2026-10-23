@@ -44,4 +44,16 @@ export const teamWebhooks: Record<keyof typeof enTeamWebhooks, string> = {
     "ইভেন্টের ধরন এগুলোর একটি দিয়ে শুরু হতে হবে: {namespaces}।",
   "teamWebhooks.create.limit": "আপনি {max}টি সোর্সের সীমায় পৌঁছেছেন। আগে একটি মুছুন।",
   "teamWebhooks.create.submit": "সোর্স তৈরি করুন",
+  "teamWebhooks.row.disabledNote":
+    "এই সোর্সটি নিষ্ক্রিয়: এতে পাঠানো সবকিছু Phoenix প্রত্যাখ্যান করে।",
+  "teamWebhooks.toggle.enable": "সক্রিয় করুন",
+  "teamWebhooks.toggle.disable": "নিষ্ক্রিয় করুন",
+  "teamWebhooks.toggle.enableLabel": "সোর্স {id} সক্রিয় করুন",
+  "teamWebhooks.toggle.disableLabel": "সোর্স {id} নিষ্ক্রিয় করুন",
+  "teamWebhooks.rotate.button": "সিক্রেট বদলান",
+  "teamWebhooks.rotate.label": "সোর্স {id}-এর সিক্রেট বদলান",
+  "teamWebhooks.rotate.ask":
+    "{id}-এর সিক্রেট বদলাবেন? পুরোনো সিক্রেট সঙ্গে সঙ্গে কাজ করা বন্ধ করবে, তাই নতুন সিক্রেট না দেওয়া পর্যন্ত প্রেরক টুল প্রত্যাখ্যাত হবে।",
+  "teamWebhooks.secret.rotatedNote":
+    "এটি নতুন সিক্রেট। পুরোনো সিক্রেট কাজ করা বন্ধ করেছে; প্রেরক টুলে এটি দিন।",
 };

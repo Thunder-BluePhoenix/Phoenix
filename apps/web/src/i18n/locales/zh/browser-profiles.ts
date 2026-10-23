@@ -45,6 +45,8 @@ export const browserProfiles: Record<keyof typeof enBrowserProfiles, string> = {
   "browserProfiles.ext.noneListed": "无",
   "browserProfiles.ext.approved": "已批准",
   "browserProfiles.ext.notApproved": "未批准",
+  "browserProfiles.ext.revoked": "已撤销",
+  "browserProfiles.ext.untrusted": "签名者不受信任",
   "browserProfiles.ext.approve": "批准",
   "browserProfiles.ext.approveLabel": "批准扩展 {id}",
   "browserProfiles.ext.withdraw": "撤回批准",

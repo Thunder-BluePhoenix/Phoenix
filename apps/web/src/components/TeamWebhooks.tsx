@@ -25,6 +25,8 @@ interface OneTimeSecret {
   id: string;
   path: string;
   secret: string;
+  /** True when this secret replaced an earlier one, so the panel says the old one no longer works. */
+  rotated: boolean;
 }
 
 /**
@@ -63,7 +65,9 @@ function Sources({
   const { run, busy, error } = useAction();
   const [secret, setSecret] = useState<OneTimeSecret | null>(null);
   const [copyNote, setCopyNote] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<{ id: string; action: "delete" | "rotate" } | null>(
+    null,
+  );
 
   const setMaster = async (enabled: boolean) => {
     const next = await run<WebhookStatus>("PUT", TEAM_WEBHOOKS_PATH, { enabled });
@@ -85,8 +89,39 @@ function Sources({
 
   const created = (made: WebhookSourceSecret) => {
     setCopyNote(null);
-    setSecret({ id: made.source.id, path: made.source.path, secret: made.secret });
+    setSecret({ id: made.source.id, path: made.source.path, secret: made.secret, rotated: false });
     void onChanged();
+  };
+
+  // The enable switch shows what Core answers, never what was asked for.
+  const setSourceEnabled = async (source: WebhookSource, enabled: boolean) => {
+    const next = await run<WebhookStatus>(
+      "PUT",
+      `${TEAM_WEBHOOK_SOURCES_PATH}/${encodeURIComponent(source.id)}`,
+      { enabled },
+    );
+    if (next) onStatus(next);
+  };
+
+  // Core replaces the secret and the old one stops working at once. The new one arrives in this
+  // response only, goes into the same one-time panel as a created secret, and replaces any secret
+  // that panel was showing.
+  const rotate = async (source: WebhookSource) => {
+    const made = await run<WebhookSourceSecret>(
+      "POST",
+      `${TEAM_WEBHOOK_SOURCES_PATH}/${encodeURIComponent(source.id)}/rotate`,
+    );
+    if (made) {
+      setConfirming(null);
+      setCopyNote(null);
+      setSecret({
+        id: made.source.id,
+        path: made.source.path,
+        secret: made.secret,
+        rotated: true,
+      });
+      void onChanged();
+    }
   };
 
   const copy = async () => {
@@ -123,6 +158,7 @@ function Sources({
             {t("teamWebhooks.secret.title", { id: cleanLabel(secret.id) })}
           </h3>
           <p className="error-text small">{t("teamWebhooks.secret.warning")}</p>
+          {secret.rotated && <p className="small">{t("teamWebhooks.secret.rotatedNote")}</p>}
           <label className="field" htmlFor={`${ids}-secret-path`}>
             {t("teamWebhooks.secret.path")}
             <input id={`${ids}-secret-path`} type="text" readOnly value={secret.path} />
@@ -169,6 +205,9 @@ function Sources({
                     {t(source.enabled ? "common.status.enabled" : "common.status.disabled")}
                   </span>
                 </div>
+                {!source.enabled && (
+                  <div className="small">{t("teamWebhooks.row.disabledNote")}</div>
+                )}
                 <div className="small">
                   {t("teamWebhooks.row.path", { path: cleanLabel(source.path) })}
                 </div>
@@ -182,14 +221,23 @@ function Sources({
                     ? t("teamWebhooks.row.never")
                     : t("teamWebhooks.row.last", { time: cleanLabel(source.lastAcceptedAt) })}
                 </div>
-                {confirming === source.id ? (
+                {confirming?.id === source.id ? (
                   <div className="button-row wrap">
-                    <span className="small">{t("teamWebhooks.delete.ask", { id: name })}</span>
+                    <span className="small">
+                      {t(
+                        confirming.action === "delete"
+                          ? "teamWebhooks.delete.ask"
+                          : "teamWebhooks.rotate.ask",
+                        { id: name },
+                      )}
+                    </span>
                     <button
                       type="button"
                       className="btn btn-danger"
                       disabled={busy}
-                      onClick={() => void remove(source)}
+                      onClick={() =>
+                        void (confirming.action === "delete" ? remove(source) : rotate(source))
+                      }
                     >
                       {t("common.button.confirm")}
                     </button>
@@ -198,15 +246,44 @@ function Sources({
                     </button>
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    className="btn btn-danger-outline"
-                    disabled={busy}
-                    aria-label={t("teamWebhooks.delete.label", { id: name })}
-                    onClick={() => setConfirming(source.id)}
-                  >
-                    {t("common.button.delete")}
-                  </button>
+                  <div className="button-row wrap">
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={busy}
+                      aria-label={t(
+                        source.enabled
+                          ? "teamWebhooks.toggle.disableLabel"
+                          : "teamWebhooks.toggle.enableLabel",
+                        { id: name },
+                      )}
+                      onClick={() => void setSourceEnabled(source, !source.enabled)}
+                    >
+                      {t(
+                        source.enabled
+                          ? "teamWebhooks.toggle.disable"
+                          : "teamWebhooks.toggle.enable",
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={busy}
+                      aria-label={t("teamWebhooks.rotate.label", { id: name })}
+                      onClick={() => setConfirming({ id: source.id, action: "rotate" })}
+                    >
+                      {t("teamWebhooks.rotate.button")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger-outline"
+                      disabled={busy}
+                      aria-label={t("teamWebhooks.delete.label", { id: name })}
+                      onClick={() => setConfirming({ id: source.id, action: "delete" })}
+                    >
+                      {t("common.button.delete")}
+                    </button>
+                  </div>
                 )}
               </li>
             );

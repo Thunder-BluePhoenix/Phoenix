@@ -231,7 +231,7 @@ export function imageMime(
 const HIDDEN = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/u;
 
 /** A name worth showing in a message: no hidden characters, not too long. */
-function shown(name: string): string {
+export function shown(name: string): string {
   // eslint-disable-next-line no-control-regex
   const plain = name.replace(
     /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/gu,
@@ -539,14 +539,14 @@ export function useAttachmentUpload(onDone?: () => void) {
   const running = useRef(false);
 
   const upload = useCallback(
-    async (source: DroppedSource, origin: UploadOrigin = "drop") => {
+    async (source: DroppedSource, origin: UploadOrigin = "drop", earlier: string[] = []) => {
       if (running.current) return;
       running.current = true;
       setBusy(true);
       setNotice(null);
       try {
         const read = await readDropped(source, origin);
-        const problems = [...read.notes];
+        const problems = [...earlier, ...read.notes];
         let added = 0;
         for (const payload of read.payloads) {
           try {

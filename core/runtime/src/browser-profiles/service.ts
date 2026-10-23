@@ -12,15 +12,23 @@
 import type { AuditLog, PermissionGateway } from "@phoenix/permissions";
 import type { SecretStore, SettingsStore } from "@phoenix/persistence";
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
+import { localFile } from "../registry";
 import {
   BrowserProfileManager,
   ProfileError,
   type BrowserProfile,
   type EncryptedProfileSync,
   type ExtensionPermission,
-  type InstalledExtension,
+  type ExtensionView,
   type SyncItemView,
 } from "./index";
+import {
+  MAX_SIGNER_REGISTRY_BYTES,
+  pinnedSigners,
+  SignerRegistry,
+  SignerRegistryError,
+  type SignerRegistryStatus,
+} from "./signer-registry";
 
 /** A profile as the API shows it: no history (it can be large) and no credential names. */
 export interface ProfileSummary {
@@ -49,6 +57,13 @@ export interface BrowserProfilesDependencies {
    * Empty by default: with no signer, no extension can be installed.
    */
   signers?: Readonly<Record<string, string>>;
+  /**
+   * Signed signer registry (docs/browser-profiles.md): when set it replaces `signers`, adds
+   * revocation and expiry, and an extension is untrusted until a valid document is loaded.
+   * `rootPublicKey` (Ed25519, SPKI PEM) is pinned by whoever builds Core; `registryFile` is a
+   * local file the host chose, read with `loadSignerRegistry()`. Never supplied by the API.
+   */
+  signerRegistry?: { rootPublicKey: string; registryFile: string; now?: () => number };
 }
 
 function summary(profile: BrowserProfile, extensions: number): ProfileSummary {
@@ -83,19 +98,63 @@ function rethrow(error: unknown): never {
 
 export class BrowserProfilesService {
   private readonly manager: BrowserProfileManager | undefined;
+  private readonly signerRegistry: SignerRegistry | undefined;
 
   constructor(private readonly d: BrowserProfilesDependencies) {
     // Credentials need the OS secret store; without one the whole feature stays out of reach
     // rather than falling back to storing them anywhere else.
+    this.signerRegistry = d.signerRegistry
+      ? new SignerRegistry({
+          rootPublicKey: d.signerRegistry.rootPublicKey,
+          store: d.settings,
+          ...(d.signerRegistry.now ? { now: d.signerRegistry.now } : {}),
+        })
+      : undefined;
     this.manager = d.secrets
-      ? new BrowserProfileManager(d.settings, d.secrets, d.sync, d.signers ?? {}, (request) =>
-          this.decide(request),
+      ? new BrowserProfileManager(
+          d.settings,
+          d.secrets,
+          d.sync,
+          this.signerRegistry ?? pinnedSigners(d.signers ?? {}),
+          (request) => this.decide(request),
         )
       : undefined;
   }
 
   available(): boolean {
     return this.manager !== undefined;
+  }
+
+  /**
+   * Reads the host-chosen registry file and activates it if it verifies against the pinned root.
+   * No path or document text leaves here: a refusal is the closed code only. Revocation applies to
+   * already-installed extensions at once (their `status` becomes `revoked`).
+   */
+  async loadSignerRegistry(): Promise<{ changed: boolean; sequence: number }> {
+    const registry = this.signerRegistry;
+    const file = this.d.signerRegistry?.registryFile;
+    if (!registry || !file)
+      throw new PhoenixError(ErrorCode.CAPABILITY_UNAVAILABLE, "Signer registry not configured");
+    try {
+      const loaded = registry.load(await localFile(file, MAX_SIGNER_REGISTRY_BYTES));
+      if (loaded.changed) this.note("signer_registry_loaded", { sequence: loaded.sequence });
+      return loaded;
+    } catch (error) {
+      if (error instanceof SignerRegistryError) {
+        this.note("signer_registry_refused", { code: error.code });
+        throw new PhoenixError(
+          ErrorCode.SECURITY_POLICY_BLOCKED,
+          `Signer registry verification failed: ${error.code}`,
+        );
+      }
+      // Do not expose the configured path or filesystem detail.
+      throw new PhoenixError(ErrorCode.CAPABILITY_UNAVAILABLE, "Signer registry file unavailable");
+    }
+  }
+
+  /** Null when no registry is configured (the static `signers` map, if any, is in force). */
+  signerRegistryStatus(): SignerRegistryStatus | null {
+    return this.signerRegistry?.status() ?? null;
   }
 
   /** Counts for the privacy inventory. */
@@ -230,11 +289,11 @@ export class BrowserProfilesService {
 
   // ── Extensions ────────────────────────────────────────────────────────────
 
-  extensions(id: string): InstalledExtension[] {
+  extensions(id: string): ExtensionView[] {
     return translated(() => this.need().extensions(id));
   }
 
-  install(id: string, input: unknown): InstalledExtension {
+  install(id: string, input: unknown): ExtensionView {
     const installed = translated(() => this.need().install(id, input as never));
     this.note("extension_install", { profile: id, extension: installed.manifest.id });
     return installed;
@@ -244,7 +303,7 @@ export class BrowserProfilesService {
    * Approving is what lets an extension be authorised at all, so it is a user decision that asks.
    * Withdrawing approval only removes access and never asks.
    */
-  async approve(id: string, extensionId: string, input: unknown): Promise<InstalledExtension[]> {
+  async approve(id: string, extensionId: string, input: unknown): Promise<ExtensionView[]> {
     const approved = field(input, "approved");
     const manager = this.need();
     if (approved === true) {
@@ -269,7 +328,7 @@ export class BrowserProfilesService {
     return manager.extensions(id);
   }
 
-  uninstall(id: string, extensionId: string): InstalledExtension[] {
+  uninstall(id: string, extensionId: string): ExtensionView[] {
     translated(() => this.need().uninstall(id, extensionId));
     this.note("extension_uninstall", { profile: id, extension: extensionId });
     return this.need().extensions(id);

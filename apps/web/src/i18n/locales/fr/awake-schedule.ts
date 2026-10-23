@@ -60,12 +60,13 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.lights.intro":
     "Fawkes peut montrer ce qu’il fait sur une lumière de votre propre réseau. Une lumière n’est contactée que si vous l’avez ajoutée ici, autorisé Fawkes à l’allumer et activé la capacité Voyants d’état.",
   "awakeSchedule.lights.limits":
-    "Seules des couleurs fixes sont envoyées, jamais de texte. Seul l’Elgato Key Light est pris en charge pour l’instant.",
+    "Seules des couleurs fixes sont envoyées, jamais de texte. Seuls l’Elgato Key Light et LIFX sont pris en charge pour l’instant ; une lumière LIFX s’ajoute via l’API de Core avec son numéro de série.",
   "awakeSchedule.lights.capabilityOff":
     "La capacité Voyants d’état n’est pas activée. Activez-la ici ou dans Intégrations.",
   "awakeSchedule.lights.enable": "Activer",
   "awakeSchedule.lights.empty": "Aucune lumière ajoutée.",
   "awakeSchedule.lights.line": "Key Light à l’adresse {address}",
+  "awakeSchedule.lights.lineLifx": "Lumière LIFX à l’adresse {address}",
   "awakeSchedule.lights.allow": "Autoriser Fawkes à allumer cette lumière",
   "awakeSchedule.lights.allowNamed": "Autoriser Fawkes à allumer {name}",
   "awakeSchedule.lights.remove": "Retirer",

@@ -3,42 +3,67 @@
 //
 // Which physical lights Core may reach, and how. Provisioning (an address) is separate from
 // consent: a light here is never contacted until its id is also listed in the status-lights
-// capability's own `devices` setting. Only the Elgato Key Light has a transport so far: a plain
-// HTTP PUT to a LAN address. Hue (bridge pairing and key), Luxafor (USB HID) and LIFX (UDP) need
-// transports that nothing here can test, so they cannot be provisioned yet.
+// capability's own `devices` setting. Two kinds have a transport: the Elgato Key Light (a plain
+// HTTP PUT to a LAN address) and LIFX (one unicast UDP datagram per command, acknowledged). Hue
+// (bridge pairing and key) and Luxafor (USB HID) need transports that nothing here can test, so
+// they cannot be provisioned yet.
 import type { Device, DeviceTransport } from "@phoenix/capability-status-lights";
+import { parseLifxMac, LIFX_PORT } from "@phoenix/capability-status-lights";
 import type { AuditLog } from "@phoenix/permissions";
 import type { SettingsStore } from "@phoenix/persistence";
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
+import { isLocalIPv4, isLocalUnicastIPv4 } from "./lan-address";
+import { lifxTransport, type LifxTransportOptions } from "./lifx-transport";
 
 export const STATUS_LIGHT_DEVICES_KEY = "status-lights.provisioned";
 const MAX_LIGHTS = 16;
 const ID = /^[a-zA-Z0-9_.:-]{1,160}$/;
 const KEY_LIGHT_PORT = 9123;
+const FIELDS = ["id", "kind", "address", "port", "mac"];
 const WRITE_TIMEOUT_MS = 5_000;
 
-/** A provisioned light as stored and shown. The address is the owner's own LAN address. */
-export interface ProvisionedLight {
-  id: string;
-  kind: "key-light";
-  /** An IPv4 literal on a private, link-local or loopback range; never a hostname. */
-  address: string;
-  port: number;
+/**
+ * A provisioned light as stored and shown. The address is the owner's own LAN address. Entries
+ * stored before LIFX existed are Key Lights with exactly these fields and stay valid unchanged.
+ */
+export type ProvisionedLight =
+  | {
+      id: string;
+      kind: "key-light";
+      /** An IPv4 literal on a private, link-local or loopback range; never a hostname. */
+      address: string;
+      port: number;
+    }
+  | {
+      id: string;
+      kind: "lifx";
+      /** A unicast IPv4 literal on a private, link-local or loopback range; never a hostname or broadcast. */
+      address: string;
+      /** 56700 on a real light. */
+      port: number;
+      /** The light's serial as 12 lower-case hex digits. */
+      mac: string;
+    };
+
+function validPort(port: unknown): port is number {
+  return typeof port === "number" && Number.isInteger(port) && port > 0 && port < 65_536;
 }
 
-/** True for 10/8, 172.16/12, 192.168/16, 169.254/16 and 127/8: the owner's own network. */
-export function isLocalIPv4(address: string): boolean {
-  const parts = address.split(".");
-  if (parts.length !== 4 || !parts.every((p) => /^(0|[1-9]\d{0,2})$/.test(p))) return false;
-  const [a, b] = parts.map(Number) as [number, number, number, number];
-  if (parts.some((p) => Number(p) > 255)) return false;
-  return (
-    a === 10 ||
-    a === 127 ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) ||
-    (a === 169 && b === 254)
-  );
+/** One entry, normalised (`mac` lower-case hex), or null. `kind` is required. */
+function parseLight(entry: unknown): ProvisionedLight | null {
+  if (entry === null || typeof entry !== "object") return null;
+  const { id, kind, address, port, mac } = entry as Record<string, unknown>;
+  if (typeof id !== "string" || !ID.test(id) || !validPort(port) || typeof address !== "string")
+    return null;
+  if (kind === "key-light")
+    return mac === undefined && isLocalIPv4(address) ? { id, kind, address, port } : null;
+  if (kind !== "lifx") return null;
+  const serial = parseLifxMac(mac);
+  // A real LIFX light always listens on 56700; another port is only for a fake light on loopback.
+  const portOk = port === LIFX_PORT || address.startsWith("127.");
+  return serial !== null && portOk && isLocalUnicastIPv4(address)
+    ? { id, kind, address, port, mac: serial }
+    : null;
 }
 
 /** Parses the stored value; an entry that no longer validates is dropped rather than contacted. */
@@ -46,21 +71,8 @@ export function parseLights(value: unknown): ProvisionedLight[] {
   if (!Array.isArray(value)) return [];
   const lights: ProvisionedLight[] = [];
   for (const entry of value) {
-    if (entry === null || typeof entry !== "object") continue;
-    const { id, kind, address, port } = entry as Record<string, unknown>;
-    if (
-      typeof id === "string" &&
-      ID.test(id) &&
-      kind === "key-light" &&
-      typeof address === "string" &&
-      isLocalIPv4(address) &&
-      typeof port === "number" &&
-      Number.isInteger(port) &&
-      port > 0 &&
-      port < 65_536 &&
-      !lights.some((l) => l.id === id)
-    )
-      lights.push({ id, kind, address, port });
+    const light = parseLight(entry);
+    if (light && !lights.some((l) => l.id === light.id)) lights.push(light);
   }
   return lights;
 }
@@ -77,14 +89,14 @@ export function validateLights(input: unknown): ProvisionedLight[] {
   const lights: ProvisionedLight[] = [];
   for (const entry of list) {
     const o = entry !== null && typeof entry === "object" ? (entry as Record<string, unknown>) : {};
-    if (Object.keys(o).some((k) => !["id", "kind", "address", "port"].includes(k)))
+    if (Object.keys(o).some((k) => !FIELDS.includes(k)))
       throw new PhoenixError(ErrorCode.INVALID_REQUEST, "A light has unexpected fields");
-    const candidate = { ...o, port: o.port ?? KEY_LIGHT_PORT };
-    const [light] = parseLights([candidate]);
+    const defaultPort = o.kind === "lifx" ? LIFX_PORT : KEY_LIGHT_PORT;
+    const light = parseLight({ ...o, port: o.port ?? defaultPort });
     if (!light)
       throw new PhoenixError(
         ErrorCode.INVALID_REQUEST,
-        'Each light needs an "id", kind "key-light" and a LAN "address" (an IPv4 literal on your own network)',
+        'Each light needs an "id", a kind ("key-light", or "lifx" with its 12 hex digit serial as "mac") and a LAN "address" (an IPv4 literal on your own network)',
       );
     if (lights.some((l) => l.id === light.id))
       throw new PhoenixError(ErrorCode.INVALID_REQUEST, `Duplicate light id "${light.id}"`);
@@ -121,6 +133,7 @@ export class StatusLightProvisioning {
     private readonly settings: SettingsStore,
     private readonly audit: Pick<AuditLog, "record">,
     private readonly fetcher?: typeof fetch,
+    private readonly lifx?: LifxTransportOptions,
   ) {}
 
   lights(): ProvisionedLight[] {
@@ -136,17 +149,32 @@ export class StatusLightProvisioning {
       action: "status_lights.provisioned",
       capabilityId: "status-lights",
       decision: "allowed",
-      details: { count: lights.length },
+      details: {
+        count: lights.length,
+        kinds: lights.map((light) => light.kind),
+      },
     });
     return lights;
   }
 
   /** The lights as the capability wants them: ids with a transport. Consent is not decided here. */
   devices(): Device[] {
-    return this.lights().map((light) => ({
-      id: light.id,
-      kind: light.kind,
-      transport: keyLightTransport(light, this.fetcher),
-    }));
+    return this.lights().map((light) =>
+      light.kind === "lifx"
+        ? {
+            id: light.id,
+            kind: light.kind,
+            mac: light.mac,
+            transport: lifxTransport(
+              { address: light.address, port: light.port, mac: light.mac },
+              this.lifx,
+            ),
+          }
+        : {
+            id: light.id,
+            kind: light.kind,
+            transport: keyLightTransport(light, this.fetcher),
+          },
+    );
   }
 }

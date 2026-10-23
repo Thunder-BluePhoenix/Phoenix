@@ -43,4 +43,16 @@ export const teamWebhooks: Record<keyof typeof enTeamWebhooks, string> = {
   "teamWebhooks.create.typesNamespace": "Тип события должен начинаться с одного из: {namespaces}.",
   "teamWebhooks.create.limit": "Достигнут предел в {max} источников. Сначала удалите один.",
   "teamWebhooks.create.submit": "Создать источник",
+  "teamWebhooks.row.disabledNote":
+    "Этот источник отключён: Phoenix отклоняет всё, что ему отправляют.",
+  "teamWebhooks.toggle.enable": "Включить",
+  "teamWebhooks.toggle.disable": "Отключить",
+  "teamWebhooks.toggle.enableLabel": "Включить источник {id}",
+  "teamWebhooks.toggle.disableLabel": "Отключить источник {id}",
+  "teamWebhooks.rotate.button": "Сменить секрет",
+  "teamWebhooks.rotate.label": "Сменить секрет источника {id}",
+  "teamWebhooks.rotate.ask":
+    "Сменить секрет {id}? Старый секрет перестаёт работать сразу, поэтому отправляющий инструмент будет отклоняться, пока вы не передадите ему новый секрет.",
+  "teamWebhooks.secret.rotatedNote":
+    "Это новый секрет. Старый перестал работать; обновите отправляющий инструмент этим секретом.",
 };

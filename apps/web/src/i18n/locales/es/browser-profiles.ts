@@ -49,6 +49,8 @@ export const browserProfiles: Record<keyof typeof enBrowserProfiles, string> = {
   "browserProfiles.ext.noneListed": "ninguno",
   "browserProfiles.ext.approved": "Aprobada",
   "browserProfiles.ext.notApproved": "No aprobada",
+  "browserProfiles.ext.revoked": "Revocada",
+  "browserProfiles.ext.untrusted": "Firmante no confiable",
   "browserProfiles.ext.approve": "Aprobar",
   "browserProfiles.ext.approveLabel": "Aprobar la extensión {id}",
   "browserProfiles.ext.withdraw": "Retirar aprobación",

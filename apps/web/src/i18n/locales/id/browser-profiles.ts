@@ -47,6 +47,8 @@ export const browserProfiles: Record<keyof typeof enBrowserProfiles, string> = {
   "browserProfiles.ext.noneListed": "tidak ada",
   "browserProfiles.ext.approved": "Disetujui",
   "browserProfiles.ext.notApproved": "Belum disetujui",
+  "browserProfiles.ext.revoked": "Dicabut",
+  "browserProfiles.ext.untrusted": "Penanda tangan tidak tepercaya",
   "browserProfiles.ext.approve": "Setujui",
   "browserProfiles.ext.approveLabel": "Setujui ekstensi {id}",
   "browserProfiles.ext.withdraw": "Tarik persetujuan",

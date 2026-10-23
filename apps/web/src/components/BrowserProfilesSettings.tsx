@@ -292,7 +292,7 @@ function ExtensionsPanel({
         <p className="muted small">{t("browserProfiles.ext.none")}</p>
       ) : state.phase === "ready" ? (
         <ul className="card-list">
-          {state.data.extensions.map(({ manifest, approved }) => {
+          {state.data.extensions.map(({ manifest, approved, status }) => {
             const none = t("browserProfiles.ext.noneListed");
             return (
               <li key={manifest.id} className="card">
@@ -301,7 +301,15 @@ function ExtensionsPanel({
                   {t("browserProfiles.ext.version", { version: manifest.version })}
                 </span>{" "}
                 <span className="small">
-                  {t(approved ? "browserProfiles.ext.approved" : "browserProfiles.ext.notApproved")}
+                  {t(
+                    status === "revoked"
+                      ? "browserProfiles.ext.revoked"
+                      : status === "untrusted"
+                        ? "browserProfiles.ext.untrusted"
+                        : approved
+                          ? "browserProfiles.ext.approved"
+                          : "browserProfiles.ext.notApproved",
+                  )}
                 </span>
                 <p className="muted small memory-text">
                   {t("browserProfiles.ext.origins", {
@@ -330,7 +338,7 @@ function ExtensionsPanel({
                     <button
                       type="button"
                       className="btn"
-                      disabled={busy}
+                      disabled={busy || status !== "trusted"}
                       aria-label={t("browserProfiles.ext.approveLabel", { id: manifest.id })}
                       onClick={() => void approve(manifest.id, true)}
                     >

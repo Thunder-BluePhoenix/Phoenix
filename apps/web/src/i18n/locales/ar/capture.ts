@@ -371,6 +371,10 @@ export const capture: Record<keyof typeof encapture, string> = {
     "تم إرفاق {n, plural, zero {# عنصر} one {عنصر واحد} two {عنصرين} few {# عناصر} many {# عنصرًا} other {# عنصر}}. لم يُرسل شيء إلى أي مكان بعد.",
   "capture.attachments.notice.nothingAttached": "لم يتم إرفاق أي شيء.",
   "capture.attachments.notice.withProblems": "{head} {problems}",
+  "capture.attachments.nativeDrop.folder":
+    "{name}: لا يمكن إسقاط مجلد هنا. استخدم مربع الدردشة أو Pet Panel بدلًا من ذلك.",
+  "capture.attachments.nativeDrop.skipped":
+    "تُستخدم أول {max} ملفات فقط من الإسقاط؛ وتم تجاهل {n} إضافية.",
   "capture.attachments.mail.subject": "بخصوص: {name}",
   "capture.attachments.mail.empty": "اكتب أولًا ما تريد مشاركته.",
   "capture.attachments.mail.tooLong": "تزيد الرسالة بمقدار {over} حرف عن الحد {limit}. اختصرها.",
