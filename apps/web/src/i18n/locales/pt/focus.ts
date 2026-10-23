@@ -15,6 +15,9 @@ export const focus: Record<keyof typeof enFocus, string> = {
   "focus.osDnd": "Não Perturbe do sistema ativo",
   "focus.osUnknown": "Estado de Não Perturbe indisponível",
   "focus.refresh": "Atualizar estado do sistema",
+  "focus.pomodoro": "Iniciar Pomodoro",
+  "focus.systemUnavailable":
+    "Não há Não Perturbe do sistema disponível; o modo de foco controla apenas as notificações do Phoenix.",
   "focus.screenshot.title": "Captura para ocorrência",
   "focus.screenshot.capture": "Selecionar região da tela…",
   "focus.screenshot.permission": "É necessária permissão para gravar a tela.",

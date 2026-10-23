@@ -8,6 +8,7 @@ export * from "./ui-routes";
 export * from "./attachment-routes";
 export * from "./demo-routes";
 export * from "./dictation-routes";
+export * from "./focus-routes";
 export * from "./mcp-routes";
 export * from "./handoff-routes";
 export * from "./recap-routes";

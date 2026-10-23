@@ -35,12 +35,16 @@ try {
 }
 const trustedKeyFile = process.env.PHOENIX_REGISTRY_TRUSTED_KEY_FILE;
 const indexFile = process.env.PHOENIX_REGISTRY_INDEX_FILE;
+const artifactDirectory = process.env.PHOENIX_REGISTRY_ARTIFACT_DIR;
 const whisperModelPath = process.env.PHOENIX_WHISPER_MODEL_PATH;
 const visionModel = process.env.PHOENIX_VISION_MODEL;
-if ((trustedKeyFile === undefined) !== (indexFile === undefined)) {
+if (
+  ![trustedKeyFile, indexFile, artifactDirectory].every(Boolean) &&
+  [trustedKeyFile, indexFile, artifactDirectory].some(Boolean)
+) {
   fail(
     new Error(
-      "Both PHOENIX_REGISTRY_TRUSTED_KEY_FILE and PHOENIX_REGISTRY_INDEX_FILE are required",
+      "PHOENIX_REGISTRY_TRUSTED_KEY_FILE, PHOENIX_REGISTRY_INDEX_FILE and PHOENIX_REGISTRY_ARTIFACT_DIR are required together",
     ),
   );
 }
@@ -50,7 +54,9 @@ try {
     config,
     logger,
     ...(secrets ? { secrets } : {}),
-    ...(trustedKeyFile && indexFile ? { registry: { trustedKeyFile, indexFile } } : {}),
+    ...(trustedKeyFile && indexFile && artifactDirectory
+      ? { registry: { trustedKeyFile, indexFile, artifactDirectory } }
+      : {}),
     ...(whisperModelPath ? { whisperModelPath } : {}),
     ...(visionModel ? { visionModel } : {}),
     capabilities: builtinCapabilities(

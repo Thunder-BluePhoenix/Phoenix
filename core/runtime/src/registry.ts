@@ -2,14 +2,25 @@
 // Copyright (C) 2026 Phoenix contributors
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
+import { validateOutfitPack } from "../../../pet/assets/src/outfits";
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
-import { RegistryError, RegistryService, type RegistryVersions } from "@phoenix/registry";
+import {
+  RegistryError,
+  RegistryService,
+  type RegistryEntry,
+  type RegistryVersions,
+} from "@phoenix/registry";
+import type { PermissionGateway } from "@phoenix/permissions";
+import { installSkin } from "./fawkes-rebirth/skins";
+import type { OutfitPack } from "../../../pet/assets/src/types";
+import type { AppearanceRuntime } from "./appearance";
 import type { RegistryApi } from "@phoenix/api";
 
 /** Both paths are chosen by the Core host, never by the HTTP caller. */
 export interface LocalRegistryConfig {
   trustedKeyFile: string;
   indexFile: string;
+  artifactDirectory: string;
 }
 
 const MAX_KEY_BYTES = 16 * 1024;
@@ -49,6 +60,8 @@ export class LocalRegistryRuntime implements RegistryApi {
   constructor(
     private readonly config: LocalRegistryConfig | undefined,
     private readonly versions: RegistryVersions,
+    private readonly permissions?: PermissionGateway,
+    private readonly appearance?: AppearanceRuntime,
   ) {}
 
   private async verified() {
@@ -81,25 +94,37 @@ export class LocalRegistryRuntime implements RegistryApi {
   }
 
   async browse() {
-    if (!this.config?.trustedKeyFile || !this.config.indexFile)
+    if (!this.config?.trustedKeyFile || !this.config.indexFile || !this.config.artifactDirectory)
       return { configured: false as const, sandbox_status: "unavailable" as const, entries: [] };
     const { service, index } = await this.verified();
     return {
       configured: true as const,
       sandbox_status: "unavailable" as const,
       provenance: service.provenance(index),
-      entries: index.entries.map(
-        ({ id, version, manifest, permissions, data_categories, license }) => ({
-          id,
-          version,
-          name: manifest.name,
-          description: manifest.description,
-          permissions,
-          data_categories,
-          license,
+      entries: index.entries.map((entry) => {
+        if (entry.kind === "skin-pack")
+          return {
+            kind: "skin-pack" as const,
+            id: entry.id,
+            version: entry.version,
+            name: entry.name,
+            description: entry.description,
+            license: entry.license,
+            installable: true as const,
+          };
+        const capability = entry as RegistryEntry;
+        return {
+          kind: "capability" as const,
+          id: capability.id,
+          version: capability.version,
+          name: capability.manifest.name,
+          description: capability.manifest.description,
+          permissions: capability.permissions,
+          data_categories: capability.data_categories,
+          license: capability.license,
           installable: false as const,
-        }),
-      ),
+        };
+      }),
     };
   }
 
@@ -107,6 +132,77 @@ export class LocalRegistryRuntime implements RegistryApi {
     const { service, index } = await this.verified();
     try {
       return service.preview(index, id, version);
+    } catch (error) {
+      return registryError(error);
+    }
+  }
+
+  async installSkin(id: string, version: string): Promise<unknown> {
+    if (!this.config?.artifactDirectory || !this.permissions || !this.appearance)
+      throw new PhoenixError(
+        ErrorCode.CAPABILITY_UNAVAILABLE,
+        "Local registry skin installation not configured",
+      );
+    const { service, index } = await this.verified();
+    try {
+      const preview = service.preview(index, id, version);
+      if (!("kind" in preview) || preview.kind !== "skin-pack")
+        throw new PhoenixError(
+          ErrorCode.SECURITY_POLICY_BLOCKED,
+          "Registry entry is not a data-only skin pack",
+        );
+      const entry = preview.entry;
+      const action = await this.permissions.authorize({
+        capabilityId: "registry-skins",
+        command: "skin.install",
+        permissions: [],
+        sideEffect: "write",
+        summary: `Install skin ${entry.id} ${entry.version} (${entry.license})`,
+        details: {
+          id: entry.id,
+          version: entry.version,
+          license: entry.license,
+          signer: preview.provenance.signer_key_id,
+          index_sha256: preview.provenance.index_sha256,
+          artifact_sha256: entry.artifact.sha256,
+        },
+      });
+      try {
+        await installSkin(id, version, entry.license, {
+          preview: async () => ({
+            id: entry.id,
+            version: entry.version,
+            license: entry.license,
+            artifact: entry.artifact,
+            provenance: preview.provenance,
+          }),
+          fetch: async () =>
+            service.readLocalSkinArtifact(index, id, version, this.config!.artifactDirectory),
+          validate: (input) => validateOutfitPack(input) as OutfitPack,
+          install: async (pack) => {
+            this.appearance!.importPack(pack);
+          },
+        });
+        this.permissions.recordOutcome(action, "succeeded", {
+          id,
+          version,
+          license: entry.license,
+          signer: preview.provenance.signer_key_id,
+          index_sha256: preview.provenance.index_sha256,
+          artifact_sha256: entry.artifact.sha256,
+        });
+        return this.appearance.get();
+      } catch (error) {
+        this.permissions.recordOutcome(action, "failed", {
+          id,
+          version,
+          license: entry.license,
+          signer: preview.provenance.signer_key_id,
+          index_sha256: preview.provenance.index_sha256,
+          artifact_sha256: entry.artifact.sha256,
+        });
+        throw error;
+      }
     } catch (error) {
       return registryError(error);
     }

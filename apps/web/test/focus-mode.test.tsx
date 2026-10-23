@@ -1,53 +1,57 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 // @vitest-environment happy-dom
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { createRoot, type Root } from "react-dom/client";
-import { act } from "react";
-import { FocusController, type FocusNotification } from "../../../core/runtime/src/focus";
 import { FocusMode } from "../src/components/FocusMode";
+import { PhoenixClient } from "../src/core/client";
+import { CoreProvider } from "../src/core/context";
+import { fakeApi } from "./fake-api";
+import { FakeWebSocket } from "./fake-ws";
 
-let root: Root | null = null;
-let host: HTMLDivElement | null = null;
-afterEach(() => {
-  if (root) act(() => root?.unmount());
-  host?.remove();
-  root = null;
-  host = null;
-});
+const inactive = { manual: false, osDnd: null, active: false, remainingMs: null, held: 0 };
+
+afterEach(cleanup);
 
 describe("FocusMode", () => {
-  it("starts and stops manually while displaying held notifications", async () => {
-    host = document.createElement("div");
-    document.body.append(host);
-    root = createRoot(host);
-    const delivered: string[] = [];
-    const controller = new FocusController<FocusNotification>(
-      { now: () => 0, setTimeout: () => 1, clearTimeout: () => undefined },
-      { read: async () => false },
-      (notification) => {
-        delivered.push(notification.id);
-      },
+  it("starts manual focus and a selected Pomodoro through Core", async () => {
+    const api = fakeApi({
+      "GET /api/focus": () => inactive,
+      "POST /api/focus": (body) => ({
+        manual: true,
+        osDnd: null,
+        active: true,
+        remainingMs: body && typeof body === "object" && "minutes" in body ? 1_500_000 : null,
+        held: 0,
+      }),
+    });
+    const client = new PhoenixClient({
+      token: "tok",
+      baseUrl: "http://127.0.0.1:4870",
+      WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+      fetchImpl: api.fetchImpl,
+    });
+    render(
+      <CoreProvider client={client}>
+        <FocusMode />
+      </CoreProvider>,
     );
-    await act(async () => {
-      root?.render(<FocusMode controller={controller} />);
-    });
-    await act(async () => {
-      host
-        ?.querySelector("button:last-of-type")
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await act(async () => {
-      controller.receive({ id: "ordinary", severity: "warning" });
-    });
-    expect(host.textContent).toContain("Notifications held: 1");
-    expect(delivered).toEqual([]);
-    await act(async () => {
-      host
-        ?.querySelector("button:last-of-type")
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(delivered).toEqual(["ordinary"]);
-    expect(host.textContent).toContain("Focus is off");
+
+    await screen.findByText(
+      "System Do Not Disturb is unavailable; Focus mode only controls Phoenix notifications.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Start focus" }));
+    await waitFor(() => expect(api.posts("/api/focus")[0]?.body).toEqual({}));
+
+    cleanup();
+    render(
+      <CoreProvider client={client}>
+        <FocusMode />
+      </CoreProvider>,
+    );
+    await screen.findByRole("button", { name: "Start Pomodoro" });
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Start Pomodoro" }));
+    await waitFor(() => expect(api.posts("/api/focus")[1]?.body).toEqual({ minutes: 30 }));
   });
 });

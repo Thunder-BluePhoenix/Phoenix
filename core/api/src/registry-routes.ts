@@ -17,6 +17,11 @@ export function registryRoutes(services: CoreServices): Route[] {
         throw new PhoenixError(ErrorCode.CAPABILITY_UNAVAILABLE, "Local registry not configured");
       return registry.preview(params.id!, params.version!);
     }),
+    route("POST", "/api/registry/skins/:id/:version/install", ({ params }) => {
+      if (!registry)
+        throw new PhoenixError(ErrorCode.CAPABILITY_UNAVAILABLE, "Local registry not configured");
+      return registry.installSkin(params.id!, params.version!);
+    }),
     route("POST", "/api/registry/:id/:version/install", () => {
       if (!registry)
         throw new PhoenixError(

@@ -15,6 +15,9 @@ export const focus: Record<keyof typeof enFocus, string> = {
   "focus.osDnd": "وضع عدم الإزعاج في النظام نشط",
   "focus.osUnknown": "حالة عدم الإزعاج غير متاحة",
   "focus.refresh": "تحديث حالة تركيز النظام",
+  "focus.pomodoro": "بدء بومودورو",
+  "focus.systemUnavailable":
+    "ميزة عدم الإزعاج في النظام غير متاحة؛ وضع التركيز يتحكم فقط في إشعارات Phoenix.",
   "focus.screenshot.title": "لقطة شاشة إلى مشكلة",
   "focus.screenshot.capture": "اختر منطقة الشاشة…",
   "focus.screenshot.permission": "يلزم إذن تسجيل الشاشة.",

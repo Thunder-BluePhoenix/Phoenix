@@ -43,8 +43,13 @@ export interface Confirmation {
   permissions: readonly Permission[];
   requestedAt: string;
   expiresAt: string;
-  /** Sanitized workflow ids only; never arbitrary request.details or tool inputs. */
-  details?: { workflow?: string; run?: string; step?: string };
+  /** Workflow linkage or the tightly bounded, Core-prepared daily-digest preview. */
+  details?: {
+    workflow?: string;
+    run?: string;
+    step?: string;
+    dailyDigest?: { preview: string; citedSourceCount: number };
+  };
 }
 
 export interface PermissionGatewayOptions {
@@ -265,19 +270,33 @@ export class PermissionGateway {
     return true;
   }
 
-  private workflowIds(details: Record<string, unknown> | undefined): {
-    workflow?: string;
-    run?: string;
-    step?: string;
-  } {
-    if (!details) return {};
-    const safe: { workflow?: string; run?: string; step?: string } = {};
-    for (const field of ["workflow", "run", "step"] as const) {
-      const value = details[field];
-      if (typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/.test(value))
-        safe[field] = value;
+  private confirmationDetails(request: ActionRequest): NonNullable<Confirmation["details"]> {
+    if (request.capabilityId === "workflows") {
+      const source = request.details;
+      const workflow: { workflow?: string; run?: string; step?: string } = {};
+      for (const field of ["workflow", "run", "step"] as const) {
+        const value = source?.[field];
+        if (typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/.test(value))
+          workflow[field] = value;
+      }
+      return workflow;
     }
-    return safe;
+    if (request.capabilityId !== "chat-approvals" || request.command !== "post_daily_digest")
+      return {};
+    const preview = request.details?.digest_preview;
+    const citedSourceCount = request.details?.cited_source_count;
+    if (
+      typeof preview !== "string" ||
+      preview.length === 0 ||
+      preview.length > 1_200 ||
+      /[\u0000-\u001f\u007f]/.test(preview) ||
+      typeof citedSourceCount !== "number" ||
+      !Number.isInteger(citedSourceCount) ||
+      citedSourceCount < 0 ||
+      citedSourceCount > 120
+    )
+      return {};
+    return { dailyDigest: { preview, citedSourceCount } };
   }
 
   private confirm(request: ActionRequest, signal?: AbortSignal): Promise<string> {
@@ -287,6 +306,7 @@ export class PermissionGateway {
       );
     const id = newId("conf");
     const nowMs = this.now();
+    const details = this.confirmationDetails(request);
     const confirmation: Confirmation = {
       id,
       capabilityId: request.capabilityId,
@@ -296,9 +316,7 @@ export class PermissionGateway {
       permissions: request.permissions,
       requestedAt: new Date(nowMs).toISOString(),
       expiresAt: new Date(nowMs + this.timeoutMs).toISOString(),
-      ...(request.capabilityId === "workflows"
-        ? { details: this.workflowIds(request.details) }
-        : {}),
+      ...(Object.keys(details).length ? { details } : {}),
     };
 
     this.audit.record({

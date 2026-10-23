@@ -233,6 +233,6 @@ export class WebSocketHub {
 
 function channelFor(event: PhoenixEvent): Channel | undefined {
   if (event.event_type.startsWith("capability.")) return "capability.health";
-  if (event.event_type === "notification.created") return "notification.created";
+  if (event.event_type === "focus.notification.deliver") return "notification.created";
   return undefined;
 }

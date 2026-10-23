@@ -115,6 +115,8 @@ export const agents = {
   "agents.approvals.risk": "Risk",
   "agents.approvals.noRisk": "No risk level was provided.",
   "agents.approvals.permissions": "Permissions used",
+  "agents.approvals.digestPreview": "Digest preview",
+  "agents.approvals.citedSources": "Cited sources",
   "agents.approvals.noPermissions": "None listed.",
   "agents.approvals.workflowStep": "Workflow step",
   "agents.approvals.workflowApproval": "Workflow approval",

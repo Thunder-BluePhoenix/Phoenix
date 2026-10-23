@@ -483,6 +483,14 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   "automation.registry.sandbox":
     "सैंडबॉक्स: अनुपलब्ध। इंस्टॉलेशन अक्षम है; कोई इंस्टॉल अनुरोध नहीं भेजा जाएगा।",
 
+  "automation.registry.skinPack": "केवल-डेटा स्किन पैक",
+  "automation.registry.skinDataOnly":
+    "केवल-डेटा Phoenix पोशाक पैक। यह कोड नहीं चला सकता और न अनुमति मांग सकता है।",
+  "automation.registry.installSkin": "स्किन स्थापित करें {name} {version}",
+  "automation.registry.installPending":
+    "इस हस्ताक्षरित स्किन को स्थापित करने से पहले Core पुष्टि की प्रतीक्षा है।",
+  "automation.registry.installSucceeded": "हस्ताक्षरित स्किन Wardrobe में स्थापित हो गई।",
+  "automation.registry.installFailed": "स्किन स्थापना विफल: {error}",
   // ---- encrypted sync (SyncSettings.tsx) ----
   "automation.sync.title": "एन्क्रिप्टेड सिंक",
   "automation.sync.intro":

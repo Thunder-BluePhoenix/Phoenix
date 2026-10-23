@@ -481,6 +481,13 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   "automation.registry.sandbox":
     "البيئة المعزولة: غير متاحة. التثبيت معطّل؛ لن يُرسل أي طلب تثبيت.",
 
+  "automation.registry.skinPack": "حزمة مظهر بيانات فقط",
+  "automation.registry.skinDataOnly":
+    "حزمة مظهر Phoenix للبيانات فقط. لا يمكنها تشغيل شيفرة أو طلب صلاحيات.",
+  "automation.registry.installSkin": "ثبّت المظهر {name} {version}",
+  "automation.registry.installPending": "بانتظار تأكيد Core قبل تثبيت هذا المظهر الموقّع.",
+  "automation.registry.installSucceeded": "ثُبِّت المظهر الموقّع في خزانة الملابس.",
+  "automation.registry.installFailed": "فشل تثبيت المظهر: {error}",
   // ---- encrypted sync (SyncSettings.tsx) ----
   "automation.sync.title": "المزامنة المشفّرة",
   "automation.sync.intro":

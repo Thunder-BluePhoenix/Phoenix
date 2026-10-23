@@ -489,6 +489,14 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   "automation.registry.sandbox":
     "Sandbox: tidak tersedia. Pemasangan dinonaktifkan; tidak ada permintaan pemasangan yang akan dikirim.",
 
+  "automation.registry.skinPack": "paket skin khusus data",
+  "automation.registry.skinDataOnly":
+    "Paket pakaian Phoenix khusus data. Paket ini tidak dapat menjalankan kode atau meminta izin.",
+  "automation.registry.installSkin": "Pasang skin {name} {version}",
+  "automation.registry.installPending":
+    "Menunggu konfirmasi Core sebelum memasang skin bertanda tangan ini.",
+  "automation.registry.installSucceeded": "Skin bertanda tangan dipasang di Wardrobe.",
+  "automation.registry.installFailed": "Pemasangan skin gagal: {error}",
   // ---- encrypted sync (SyncSettings.tsx) ----
   "automation.sync.title": "Sinkronisasi terenkripsi",
   "automation.sync.intro":

@@ -15,6 +15,9 @@ export const focus: Record<keyof typeof enFocus, string> = {
   "focus.osDnd": "Ne pas déranger du système est actif",
   "focus.osUnknown": "État Ne pas déranger indisponible",
   "focus.refresh": "Actualiser le statut du système",
+  "focus.pomodoro": "Démarrer un Pomodoro",
+  "focus.systemUnavailable":
+    "Ne pas déranger du système est indisponible ; le mode concentration ne contrôle que les notifications Phoenix.",
   "focus.screenshot.title": "Capture vers un ticket",
   "focus.screenshot.capture": "Choisir une zone de l’écran…",
   "focus.screenshot.permission": "Autorisation d’enregistrement d’écran requise.",

@@ -19,6 +19,9 @@ type RegistryListing = {
   version: string;
   name: string;
   description: string;
+  kind: "capability" | "skin-pack";
+  license: string;
+  installable: boolean;
 };
 type RegistryBrowse =
   | { configured: false; sandbox_status: "unavailable"; entries: [] }
@@ -28,7 +31,7 @@ type RegistryBrowse =
       provenance: RegistryProvenance;
       entries: RegistryListing[];
     };
-type RegistryPreview = {
+type CapabilityPreview = {
   entry: {
     id: string;
     version: string;
@@ -45,6 +48,25 @@ type RegistryPreview = {
   license_policy: string;
   installable: false;
 };
+type SkinPreview = {
+  kind: "skin-pack";
+  entry: {
+    kind: "skin-pack";
+    id: string;
+    version: string;
+    name: string;
+    description: string;
+    license: "CC-BY-4.0";
+    artifact: { sha256: string; size: number };
+  };
+  provenance: RegistryProvenance;
+  installable: true;
+};
+type RegistryPreview = CapabilityPreview | SkinPreview;
+
+function isSkinPreview(preview: RegistryPreview): preview is SkinPreview {
+  return "kind" in preview && preview.kind === "skin-pack";
+}
 
 /** Browse verified, host-configured local metadata only; executable installation is not offered. */
 export function RegistrySettingsSection() {
@@ -55,6 +77,8 @@ export function RegistrySettingsSection() {
   const [selected, setSelected] = useState<RegistryListing | null>(null);
   const [preview, setPreview] = useState<RegistryPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [installing, setInstalling] = useState(false);
+  const [installMessage, setInstallMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let current = true;
@@ -98,6 +122,28 @@ export function RegistrySettingsSection() {
       current = false;
     };
   }, [client, selected]);
+
+  const install = async () => {
+    if (!preview || !isSkinPreview(preview)) return;
+    setInstalling(true);
+    setInstallMessage(t("automation.registry.installPending"));
+    try {
+      await client.request(
+        "POST",
+        `/api/registry/skins/${encodeURIComponent(preview.entry.id)}/${encodeURIComponent(preview.entry.version)}/install`,
+      );
+      await client.request("GET", "/api/fawkes/appearance");
+      setInstallMessage(t("automation.registry.installSucceeded"));
+    } catch (error) {
+      setInstallMessage(
+        t("automation.registry.installFailed", {
+          error: error instanceof Error ? error.message : t("automation.registry.unavailable"),
+        }),
+      );
+    } finally {
+      setInstalling(false);
+    }
+  };
 
   return (
     <section aria-labelledby="registry-h" className="card">
@@ -149,6 +195,7 @@ export function RegistrySettingsSection() {
                 onClick={() => setSelected(entry)}
               >
                 {t("automation.registry.preview", { name: entry.name, version: entry.version })}
+                {entry.kind === "skin-pack" ? ` (${t("automation.registry.skinPack")})` : ""}
               </button>
               <span> — {entry.description}</span>
             </li>
@@ -169,71 +216,113 @@ export function RegistrySettingsSection() {
             preview.entry.id === selected.id &&
             preview.entry.version === selected.version && (
               <div>
-                <h3>
-                  {preview.entry.manifest.name} {preview.entry.version}
-                </h3>
-                <p>{preview.entry.manifest.description}</p>
-                <h4>{t("automation.registry.permissions")}</h4>
-                {preview.entry.permissions.length ? (
-                  <ul>
-                    {preview.entry.permissions.map((permission) => (
-                      <li key={permission}>
-                        {permission}:{" "}
-                        {preview.permission_descriptions[permission] ??
-                          t("automation.registry.noDescription")}
-                      </li>
-                    ))}
-                  </ul>
+                {isSkinPreview(preview) ? (
+                  <>
+                    <h3>
+                      {preview.entry.name} {preview.entry.version}
+                    </h3>
+                    <p>{preview.entry.description}</p>
+                    <p className="small">{t("automation.registry.skinDataOnly")}</p>
+                    <h4>{t("automation.registry.licence")}</h4>
+                    <p>{preview.entry.license}</p>
+                    <h4>{t("automation.registry.provenance")}</h4>
+                    <p>
+                      {t.rich("automation.registry.indexSignature", {
+                        signer: <code>{preview.provenance.signer_key_id}</code>,
+                      })}
+                    </p>
+                    <p>
+                      {t.rich("automation.registry.indexHash", {
+                        hash: <code>{preview.provenance.index_sha256}</code>,
+                      })}
+                    </p>
+                    <p>
+                      {t.rich("automation.registry.artifact", {
+                        hash: <code>{preview.entry.artifact.sha256}</code>,
+                        bytes: preview.entry.artifact.size,
+                      })}
+                    </p>
+                    <button type="button" onClick={install} disabled={installing}>
+                      {t("automation.registry.installSkin", {
+                        name: preview.entry.name,
+                        version: preview.entry.version,
+                      })}
+                    </button>
+                    {installMessage && (
+                      <p className="small" role="status">
+                        {installMessage}
+                      </p>
+                    )}
+                  </>
                 ) : (
-                  <p>{t("automation.registry.noneDeclared")}</p>
+                  <>
+                    <h3>
+                      {preview.entry.manifest.name} {preview.entry.version}
+                    </h3>
+                    <p>{preview.entry.manifest.description}</p>
+                    <h4>{t("automation.registry.permissions")}</h4>
+                    {preview.entry.permissions.length ? (
+                      <ul>
+                        {preview.entry.permissions.map((permission) => (
+                          <li key={permission}>
+                            {permission}:{" "}
+                            {preview.permission_descriptions[permission] ??
+                              t("automation.registry.noDescription")}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>{t("automation.registry.noneDeclared")}</p>
+                    )}
+                    <h4>{t("automation.registry.dataCategories")}</h4>
+                    {preview.data_categories.length ? (
+                      <ul>
+                        {preview.data_categories.map((category) => (
+                          <li key={category}>{category}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>{t("automation.registry.noneDeclared")}</p>
+                    )}
+                    <h4>{t("automation.registry.licence")}</h4>
+                    <p>
+                      {t("automation.registry.licenceLine", {
+                        licence: preview.entry.license,
+                        policy: preview.license_policy,
+                      })}
+                    </p>
+                    <h4>{t("automation.registry.security")}</h4>
+                    <dl>
+                      <dt>{t("automation.registry.securityContact")}</dt>
+                      <dd>{preview.entry.security.contact}</dd>
+                      <dt>{t("automation.registry.advisories")}</dt>
+                      <dd>{preview.entry.security.advisory_url}</dd>
+                    </dl>
+                    <h4>{t("automation.registry.provenance")}</h4>
+                    <p>
+                      {t.rich("automation.registry.indexSignature", {
+                        signer: <code>{preview.provenance.signer_key_id}</code>,
+                      })}
+                    </p>
+                    <p>
+                      {t.rich("automation.registry.signature", {
+                        signature: <code>{preview.provenance.signature}</code>,
+                      })}
+                    </p>
+                    <p>
+                      {t.rich("automation.registry.indexHash", {
+                        hash: <code>{preview.provenance.index_sha256}</code>,
+                      })}
+                    </p>
+                    <p>
+                      {t.rich("automation.registry.artifact", {
+                        hash: <code>{preview.entry.artifact.sha256}</code>,
+                        bytes: preview.entry.artifact.size,
+                      })}
+                    </p>
+                    <p className="muted small">{t("automation.registry.sandbox")}</p>
+                  </>
                 )}
-                <h4>{t("automation.registry.dataCategories")}</h4>
-                {preview.data_categories.length ? (
-                  <ul>
-                    {preview.data_categories.map((category) => (
-                      <li key={category}>{category}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p>{t("automation.registry.noneDeclared")}</p>
-                )}
-                <h4>{t("automation.registry.licence")}</h4>
-                <p>
-                  {t("automation.registry.licenceLine", {
-                    licence: preview.entry.license,
-                    policy: preview.license_policy,
-                  })}
-                </p>
-                <h4>{t("automation.registry.security")}</h4>
-                <dl>
-                  <dt>{t("automation.registry.securityContact")}</dt>
-                  <dd>{preview.entry.security.contact}</dd>
-                  <dt>{t("automation.registry.advisories")}</dt>
-                  <dd>{preview.entry.security.advisory_url}</dd>
-                </dl>
-                <h4>{t("automation.registry.provenance")}</h4>
-                <p>
-                  {t.rich("automation.registry.indexSignature", {
-                    signer: <code>{preview.provenance.signer_key_id}</code>,
-                  })}
-                </p>
-                <p>
-                  {t.rich("automation.registry.signature", {
-                    signature: <code>{preview.provenance.signature}</code>,
-                  })}
-                </p>
-                <p>
-                  {t.rich("automation.registry.indexHash", {
-                    hash: <code>{preview.provenance.index_sha256}</code>,
-                  })}
-                </p>
-                <p>
-                  {t.rich("automation.registry.artifact", {
-                    hash: <code>{preview.entry.artifact.sha256}</code>,
-                    bytes: preview.entry.artifact.size,
-                  })}
-                </p>
-                <p className="muted small">{t("automation.registry.sandbox")}</p>
               </div>
             )}
         </div>

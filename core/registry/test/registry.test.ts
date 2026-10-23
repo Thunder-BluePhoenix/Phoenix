@@ -5,7 +5,7 @@ import { mkdtemp, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { RegistryService, type RegistryIndex } from "../src/index";
+import { RegistryService, type RegistryEntry, type RegistryIndex } from "../src/index";
 
 const { privateKey, publicKey } = generateKeyPairSync("ed25519");
 const service = new RegistryService(new Map([["testkey", publicKey]]), {
@@ -26,7 +26,7 @@ function canonical(value: unknown): string {
     .map((key) => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`)
     .join(",")}}`;
 }
-function index(): RegistryIndex {
+function index(): { format_version: 1; entries: RegistryEntry[] } {
   const artifact = Buffer.from("locally trusted bytes, never executed");
   return {
     format_version: 1,
@@ -108,15 +108,93 @@ describe("local signed capability registry", () => {
       expect.objectContaining({ code: "UNTRUSTED_INDEX" }),
     );
     expect(() => {
-      trusted.entries[0]!.permissions.push("camera");
+      (trusted.entries[0] as RegistryEntry).permissions.push("camera");
     }).toThrow();
+  });
+
+  it("accepts only strict CC-BY data-only skin metadata", () => {
+    const artifact = Buffer.from(
+      '{"format":"phoenix-outfit","version":1,"id":"moon-hat","name":"Moon hat","author":"Phoenix","license":"CC-BY-4.0","layers":[]}',
+    );
+    const skins: RegistryIndex = {
+      format_version: 1,
+      entries: [
+        {
+          kind: "skin-pack",
+          id: "moon-hat",
+          version: "1.0.0",
+          name: "Moon hat",
+          description: "A data-only outfit.",
+          license: "CC-BY-4.0",
+          compatibility: { core: "0.1.0", protocol: "1" },
+          artifact: {
+            file: "moon-hat.json",
+            sha256: createHash("sha256").update(artifact).digest("hex"),
+            size: artifact.length,
+          },
+        },
+      ],
+    };
+    const trusted = service.loadIndex(signed(skins));
+    expect(service.preview(trusted, "moon-hat", "1.0.0")).toMatchObject({
+      kind: "skin-pack",
+      installable: true,
+      entry: { license: "CC-BY-4.0", artifact: { size: artifact.length } },
+    });
+    (skins.entries[0] as unknown as Record<string, unknown>).permissions = [];
+    expect(() => service.loadIndex(signed(skins))).toThrowError(
+      expect.objectContaining({ code: "INVALID_INDEX" }),
+    );
+  });
+
+  it("reads only matching local skin bytes without following links", async () => {
+    const artifact = Buffer.from(
+      '{"format":"phoenix-outfit","version":1,"id":"moon-hat","name":"Moon hat","author":"Phoenix","license":"CC-BY-4.0","layers":[]}',
+    );
+    const skins: RegistryIndex = {
+      format_version: 1,
+      entries: [
+        {
+          kind: "skin-pack",
+          id: "moon-hat",
+          version: "1.0.0",
+          name: "Moon hat",
+          description: "A data-only outfit.",
+          license: "CC-BY-4.0",
+          compatibility: { core: "0.1.0", protocol: "1" },
+          artifact: {
+            file: "moon-hat.json",
+            sha256: createHash("sha256").update(artifact).digest("hex"),
+            size: artifact.length,
+          },
+        },
+      ],
+    };
+    const directory = await mkdtemp(join(tmpdir(), "phoenix-skins-"));
+    dirs.push(directory);
+    const trusted = service.loadIndex(signed(skins));
+    const file = join(directory, "moon-hat.json");
+    await writeFile(file, artifact);
+    await expect(
+      service.readLocalSkinArtifact(trusted, "moon-hat", "1.0.0", directory),
+    ).resolves.toEqual(artifact);
+    await writeFile(file, Buffer.concat([artifact, Buffer.from(" ")]));
+    await expect(
+      service.readLocalSkinArtifact(trusted, "moon-hat", "1.0.0", directory),
+    ).rejects.toMatchObject({ code: "ARTIFACT_MISMATCH" });
+    const sameSizeTamper = Buffer.from(artifact);
+    sameSizeTamper[0] = "[".charCodeAt(0);
+    await writeFile(file, sameSizeTamper);
+    await expect(
+      service.readLocalSkinArtifact(trusted, "moon-hat", "1.0.0", directory),
+    ).rejects.toMatchObject({ code: "ARTIFACT_MISMATCH" });
   });
 
   it.each([
     [
       "path traversal",
       (value: RegistryIndex) => {
-        value.entries[0]!.artifact.file = "../malicious.mjs";
+        (value.entries[0] as RegistryEntry).artifact.file = "../malicious.mjs";
       },
       "INVALID_INDEX",
     ],
@@ -130,7 +208,7 @@ describe("local signed capability registry", () => {
     [
       "prototype metadata",
       (value: RegistryIndex) => {
-        Object.defineProperty(value.entries[0]!.manifest, "__proto__", {
+        Object.defineProperty((value.entries[0] as RegistryEntry).manifest, "__proto__", {
           value: { polluted: true },
           enumerable: true,
         });
@@ -140,42 +218,44 @@ describe("local signed capability registry", () => {
     [
       "permission mismatch",
       (value: RegistryIndex) => {
-        value.entries[0]!.permissions = [];
+        (value.entries[0] as RegistryEntry).permissions = [];
       },
       "PERMISSION_MISMATCH",
     ],
     [
       "data-category mismatch",
       (value: RegistryIndex) => {
-        value.entries[0]!.data_categories = [];
+        (value.entries[0] as RegistryEntry).data_categories = [];
       },
       "PERMISSION_MISMATCH",
     ],
     [
       "forbidden licence",
       (value: RegistryIndex) => {
-        value.entries[0]!.license = value.entries[0]!.manifest.license = "Proprietary";
+        (value.entries[0] as RegistryEntry).license = (
+          value.entries[0] as RegistryEntry
+        ).manifest.license = "Proprietary";
       },
       "FORBIDDEN_LICENSE",
     ],
     [
       "incompatible SDK",
       (value: RegistryIndex) => {
-        value.entries[0]!.compatibility.sdk = "0.2.0";
+        (value.entries[0] as RegistryEntry).compatibility.sdk = "0.2.0";
       },
       "INCOMPATIBLE_VERSION",
     ],
     [
       "incompatible protocol",
       (value: RegistryIndex) => {
-        Object.assign(value.entries[0]!.compatibility, { protocol: "2" });
+        Object.assign((value.entries[0] as RegistryEntry).compatibility, { protocol: "2" });
       },
       "INCOMPATIBLE_VERSION",
     ],
     [
       "incompatible Core",
       (value: RegistryIndex) => {
-        value.entries[0]!.compatibility.core = "0.2.0";
+        (value.entries[0] as RegistryEntry).compatibility.core = "0.2.0";
       },
       "INCOMPATIBLE_VERSION",
     ],

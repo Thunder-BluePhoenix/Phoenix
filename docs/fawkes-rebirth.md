@@ -17,7 +17,7 @@ Three injectable pieces. All evidence is simulated: tests use injected fakes, a 
 
 `installSkin(id, version, expectedLicense, host)` bridges a **verified registry entry** to the existing `phoenix-outfit` v1 wardrobe format. Order: `preview` → check entry (id/version match, `signature_status: "verified"`, signer key id, 64-hex index digest, licence equal to the licence the user was shown and consented to, artifact digest and size ≤ 100 kB) → `fetch` (host-supplied, permission-gated and audited; never a URL from the pack) → size + SHA-256 check → strict UTF-8 JSON parse → host `validate` (`validateOutfitPack`: allow-listed SVG, no scripts/external refs) → pack id/licence must match the registry entry → `install`. Any failure throws before `install`. The pack carries no code.
 
-The host UI must display the licence and provenance (signer key id) and obtain explicit consent before calling it.
+The local signed-registry path is wired: a strict `kind: "skin-pack"` entry is data-only and `CC-BY-4.0` only. `POST /api/registry/skins/:id/:version/install` has no request body, reads only a verified safe-basename artifact from the host-owned configured directory, and requires a Core `write` confirmation whose audited detail binds the exact id/version/licence/signer/index digest/artifact digest. It then uses `AppearanceRuntime.importPack`; manual imports remain separate. The Settings registry preview distinguishes skins from executable capabilities and shows licence, signer/index provenance and digest/size before the dedicated install request. All evidence remains local simulated fixtures; no community registry, network source or real skin install exists.
 
 ## Web — `apps/web/src/components/FawkesRebirth.tsx`
 
@@ -43,11 +43,11 @@ Wraps the existing `FawkesAvatar`. Props: `celebration` (`{kind, id}` from the g
 ## Still not done
 
 - Any CI adapter other than GitHub.
-- A skin-pack registry kind and an install UI with licence and signer consent. `installSkin` is only exercised with fakes.
+- Community skin publishing, remote discovery, real registry or real skin install; the signed skin-pack path uses local fixtures only.
 - Spoken announcements: `speak` is not supplied.
 - Real artwork beyond the CSS pulse.
 - A real CI run: rebirth has only been fed by fake GitHub events.
 
 ## Limitations
 
-No real CI adapter or registry skin source exists yet; the registry has no skin-pack kind wired. "A community skin installs with its licence shown" is covered only for the installer logic with fakes, not an end-user flow. No original rebirth artwork beyond the CSS pulse. Spoken output depends on a host speech backend that is not provided.
+No real CI adapter or registry skin source exists. Local data-only skin installation is tested using signed temporary fixtures only; it is not a community marketplace or real-world registry validation. No original rebirth artwork beyond the CSS pulse. Spoken output depends on a host speech backend that is not provided.

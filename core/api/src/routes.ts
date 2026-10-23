@@ -10,6 +10,7 @@ import { agentRoutes } from "./agent-routes";
 import { autonomyRoutes } from "./autonomy-routes";
 import { graphRoutes } from "./graph-routes";
 import { meetingReviewRoutes } from "./meeting-routes";
+import { focusRoutes } from "./focus-routes";
 import { memoryRoutes } from "./memory-routes";
 import { planRoutes } from "./plan-routes";
 import { workflowRoutes } from "./workflow-routes";
@@ -334,6 +335,7 @@ export function buildRoutes(s: CoreServices): Route[] {
       notes().setPreferences(await body()),
     ),
 
+    ...(s.focus ? focusRoutes(s.focus) : []),
     ...proactiveRoutes(s),
 
     // ── Permissions, confirmations, audit, kill switch ──────────────────────
@@ -422,7 +424,7 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...mcpRoutes(s),
     ...handoffRoutes(s),
     ...phoneRoutes(s),
-    ...(s.digest ? digestRoutes(s.digest) : []),
+    ...(s.digest ? digestRoutes(s.digest, s.digestSlack) : []),
     ...(s.calendar ? calendarRoutes(s.calendar) : []),
     ...(s.engineeringSignals ? engineeringSignalsRoutes(s.engineeringSignals) : []),
     ...(s.teamWebhooks ? teamWebhookRoutes(s.teamWebhooks) : []),

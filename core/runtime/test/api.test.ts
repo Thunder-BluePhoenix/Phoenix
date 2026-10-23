@@ -527,7 +527,50 @@ describe("notifications and event descriptions", () => {
       (await api("POST", "/api/notifications/preferences", { min_severity: "loud" })).status,
     ).toBe(400);
   });
+});
 
+describe("focus notification delivery", () => {
+  it("holds ordinary live delivery but immediately passes approval and error notifications", async () => {
+    const { api, port, runtime } = await start();
+    const c = ws(port);
+    await c.opened;
+    c.send({ type: "subscribe", channels: ["notification.created"] });
+    await c.next((m) => m.type === "subscribed");
+
+    expect((await api("POST", "/api/focus", {})).json).toMatchObject({ manual: true, held: 0 });
+    await api("POST", "/api/events", event("build.warning", { severity: "warning" }));
+    await runtime.bus.drain();
+    expect(c.messages.filter((m) => m.channel === "notification.created")).toEqual([]);
+    expect((await api("GET", "/api/notifications")).json.unread).toBe(1);
+
+    await api(
+      "POST",
+      "/api/events",
+      event("security.confirmation.requested", { severity: "warning", requires_action: true }),
+    );
+    const approval = await c.next((m) => m.channel === "notification.created");
+    expect(approval.data.payload.notification).toMatchObject({
+      eventType: "security.confirmation.requested",
+    });
+
+    await api("POST", "/api/events", event("build.failed", { severity: "error" }));
+    const failure = await c.next((m) => m.channel === "notification.created");
+    expect(failure.data.payload.notification).toMatchObject({ eventType: "build.failed" });
+
+    expect((await api("DELETE", "/api/focus")).json).toMatchObject({ manual: false, held: 0 });
+    const released = await c.next((m) => m.channel === "notification.created");
+    expect(released.data.payload.notification).toMatchObject({ eventType: "build.warning" });
+  });
+
+  it("rejects unauthenticated and invalid focus mutations", async () => {
+    const { api } = await start();
+    expect((await api("POST", "/api/focus", { minutes: 0 })).status).toBe(400);
+    expect((await api("POST", "/api/focus", { minutes: 25, extra: true })).status).toBe(400);
+    expect((await api("POST", "/api/focus", {}, { authorization: "" })).status).toBe(401);
+  });
+});
+
+describe("event descriptions", () => {
   it("event history carries human descriptions", async () => {
     const { api, runtime } = await start();
     await api("POST", "/api/events", event("deploy.started", { payload: { environment: "prod" } }));

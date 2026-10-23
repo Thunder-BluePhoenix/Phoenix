@@ -53,9 +53,12 @@ function mount(
 }
 
 describe("daily digest page", () => {
-  it("shows each activity with a local source link and copies the citation; sending is unavailable", async () => {
+  it("shows each activity with a local source link and copies the citation", async () => {
     const copy = vi.fn(async (_text: string) => {});
-    const api = mount(() => <DailyDigestPage copy={copy} />, { "GET /api/digest": () => digest() });
+    const api = mount(() => <DailyDigestPage copy={copy} />, {
+      "GET /api/digest": () => digest(),
+      "GET /api/digest/slack": () => ({ enabled: false, available: false, reason: "disabled" }),
+    });
     expect(await screen.findByText("Fixed parser")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Source" }).getAttribute("href")).toBe(
       `#/digest/commit/${SHA}`,
@@ -66,9 +69,19 @@ describe("daily digest page", () => {
         expect.stringContaining(`Fixed parser (#/digest/commit/${SHA})`),
       ),
     );
-    expect(screen.getByText(/Slack and Teams sending is unavailable/)).toBeTruthy();
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(api.calls.filter((call) => call.method !== "GET")).toEqual([]);
+    expect(screen.getByText("Daily-digest Slack delivery is off.")).toBeTruthy();
+    expect(api.calls.filter((call) => call.method === "POST")).toEqual([]);
+  });
+
+  it("discloses Slack content, saves the opt-in, and displays the confirmation wait", async () => {
+    mount(() => <DailyDigestPage />, {
+      "GET /api/digest": () => digest(),
+      "GET /api/digest/slack": () => ({ enabled: true, available: true, reason: "ready" }),
+      "POST /api/digest/slack": () => new Promise(() => {}),
+    });
+    expect(await screen.findByText(/unverified event claims/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Send to Slack" }));
+    expect(await screen.findByText("Waiting for your Core confirmation…")).toBeTruthy();
   });
 
   it("finding 1: labels unavailable, partial and unattributed sources and puts them in the copy", async () => {

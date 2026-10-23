@@ -97,6 +97,8 @@ export const agents: Record<keyof typeof enagents, string> = {
   "agents.approvals.risk": "Risiko",
   "agents.approvals.noRisk": "Tingkat risiko tidak disediakan.",
   "agents.approvals.permissions": "Izin yang digunakan",
+  "agents.approvals.digestPreview": "Pratinjau ringkasan",
+  "agents.approvals.citedSources": "Sumber yang dikutip",
   "agents.approvals.noPermissions": "Tidak ada yang terdaftar.",
   "agents.approvals.workflowStep": "Langkah alur kerja",
   "agents.approvals.workflowApproval": "Persetujuan alur kerja",

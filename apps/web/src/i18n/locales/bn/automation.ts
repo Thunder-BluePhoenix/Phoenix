@@ -485,6 +485,14 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   "automation.registry.sandbox":
     "স্যান্ডবক্স: অনুপলব্ধ। ইনস্টল বন্ধ আছে; কোনো ইনস্টল অনুরোধ পাঠানো হবে না।",
 
+  "automation.registry.skinPack": "শুধু-ডেটা স্কিন প্যাক",
+  "automation.registry.skinDataOnly":
+    "শুধু-ডেটা Phoenix পোশাক প্যাক। এটি কোড চালাতে বা অনুমতি চাইতে পারে না।",
+  "automation.registry.installSkin": "স্কিন ইনস্টল করুন {name} {version}",
+  "automation.registry.installPending":
+    "এই স্বাক্ষরিত স্কিন ইনস্টলের আগে Core নিশ্চিতকরণের অপেক্ষায়।",
+  "automation.registry.installSucceeded": "স্বাক্ষরিত স্কিন Wardrobe-এ ইনস্টল হয়েছে।",
+  "automation.registry.installFailed": "স্কিন ইনস্টল ব্যর্থ: {error}",
   // ---- encrypted sync (SyncSettings.tsx) ----
   "automation.sync.title": "এনক্রিপ্টেড সিঙ্ক",
   "automation.sync.intro":

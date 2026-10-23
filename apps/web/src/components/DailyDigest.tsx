@@ -84,6 +84,19 @@ export function DailyDigestCommitPage({ sha }: { sha: string }) {
 }
 
 type Section = "yesterday" | "today" | "blockers" | "endOfDay";
+type DigestSlackStatus = {
+  enabled: boolean;
+  available: boolean;
+  reason:
+    | "ready"
+    | "disabled"
+    | "chat_unavailable"
+    | "slack_unconfigured"
+    | "missing_token"
+    | "emergency_stop";
+};
+
+type DigestSlackResult = { ok: true; day: string; cited_sources: number };
 
 export function DailyDigestPage({
   load,
@@ -100,6 +113,10 @@ export function DailyDigestPage({
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [slack, setSlack] = useState<DigestSlackStatus | null>(null);
+  const [slackBusy, setSlackBusy] = useState(false);
+  const [slackResult, setSlackResult] = useState<DigestSlackResult | null>(null);
+  const [slackError, setSlackError] = useState(false);
   useEffect(() => {
     let live = true;
     setDigest(null);
@@ -116,6 +133,20 @@ export function DailyDigestPage({
       live = false;
     };
   }, [client, day, load]);
+  useEffect(() => {
+    let live = true;
+    void client
+      .request<DigestSlackStatus>("GET", "/api/digest/slack")
+      .then((value) => {
+        if (live) setSlack(value);
+      })
+      .catch(() => {
+        if (live) setSlack(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [client]);
   const headings: Record<Section, string> = {
     yesterday: t("digest.yesterday"),
     today: t("digest.today"),
@@ -154,6 +185,37 @@ export function DailyDigestPage({
       setError(true);
     } finally {
       setBusy(false);
+    }
+  }
+  async function setSlackEnabled(value: boolean) {
+    if (slackBusy) return;
+    setSlackBusy(true);
+    setSlackError(false);
+    setSlackResult(null);
+    try {
+      setSlack(
+        await client.request<DigestSlackStatus>("PUT", "/api/digest/slack", { enabled: value }),
+      );
+    } catch {
+      setSlackError(true);
+    } finally {
+      setSlackBusy(false);
+    }
+  }
+  async function sendToSlack() {
+    if (!digest || slackBusy || !slack?.available) return;
+    setSlackBusy(true);
+    setSlackError(false);
+    setSlackResult(null);
+    try {
+      const path = day
+        ? `/api/digest/${encodeURIComponent(digest.day)}/slack`
+        : "/api/digest/slack";
+      setSlackResult(await client.request<DigestSlackResult>("POST", path, {}));
+    } catch {
+      setSlackError(true);
+    } finally {
+      setSlackBusy(false);
     }
   }
   return (
@@ -199,7 +261,36 @@ export function DailyDigestPage({
             {t("digest.copy")}
           </button>
           {copied && <span role="status">{t("digest.copied")}</span>}
-          <p>{t("digest.sendUnavailable")}</p>
+          <section aria-label={t("digest.slackHeading")}>
+            <h2>{t("digest.slackHeading")}</h2>
+            <p>{t("digest.slackDisclosure")}</p>
+            {slack ? (
+              <>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={slack.enabled}
+                    disabled={slackBusy}
+                    onChange={(event) => void setSlackEnabled(event.target.checked)}
+                  />{" "}
+                  {t("digest.slackOptIn")}
+                </label>
+                {!slack.available && <p role="status">{t(`digest.slack.${slack.reason}`)}</p>}
+                <button
+                  type="button"
+                  disabled={!slack.available || slackBusy}
+                  onClick={() => void sendToSlack()}
+                >
+                  {t("digest.sendSlack")}
+                </button>
+              </>
+            ) : (
+              <p role="status">{t("digest.slackUnavailable")}</p>
+            )}
+            {slackBusy && <p role="status">{t("digest.slackWaiting")}</p>}
+            {slackError && <p role="alert">{t("digest.slackError")}</p>}
+            {slackResult && <p role="status">{t("digest.slackSent", { day: slackResult.day })}</p>}
+          </section>
         </>
       )}
     </section>

@@ -94,7 +94,7 @@ export class ApiServer {
       }
       if (req.method === "OPTIONS") {
         res.writeHead(204, {
-          "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS",
           "access-control-allow-headers": "authorization, content-type",
           "access-control-max-age": "600",
         });

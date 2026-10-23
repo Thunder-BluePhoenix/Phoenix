@@ -63,8 +63,13 @@ export interface Confirmation {
   permissions: string[];
   requestedAt: string;
   expiresAt: string;
-  /** Safe workflow identifiers only; other policy requests have no details. */
-  details?: { workflow?: string; run?: string; step?: string };
+  /** Safe workflow linkage or a Core-prepared, bounded daily-digest preview. */
+  details?: {
+    workflow?: string;
+    run?: string;
+    step?: string;
+    dailyDigest?: { preview: string; citedSourceCount: number };
+  };
   /** Optional, present only for a request raised by an active agent run (Phase 31). */
   task_id?: string;
   risk?: AgentRisk;

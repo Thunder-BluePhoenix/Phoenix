@@ -496,6 +496,14 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   "automation.registry.sandbox":
     "Песочница: недоступна. Установка отключена; запрос на установку не будет отправлен.",
 
+  "automation.registry.skinPack": "пакет внешнего вида только с данными",
+  "automation.registry.skinDataOnly":
+    "Пакет наряда Phoenix только с данными. Он не может выполнять код или запрашивать разрешения.",
+  "automation.registry.installSkin": "Установить внешний вид {name} {version}",
+  "automation.registry.installPending":
+    "Ожидание подтверждения Core перед установкой этого подписанного внешнего вида.",
+  "automation.registry.installSucceeded": "Подписанный внешний вид установлен в гардеробе.",
+  "automation.registry.installFailed": "Не удалось установить внешний вид: {error}",
   // ---- encrypted sync (SyncSettings.tsx) ----
   "automation.sync.title": "Зашифрованная синхронизация",
   "automation.sync.intro":

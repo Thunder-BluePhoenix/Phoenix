@@ -15,6 +15,9 @@ export const focus: Record<keyof typeof enFocus, string> = {
   "focus.osDnd": "সিস্টেমে বিরক্ত করবেন না চালু",
   "focus.osUnknown": "সিস্টেমের বিরক্ত করবেন না অবস্থা অনুপলব্ধ",
   "focus.refresh": "সিস্টেম ফোকাস অবস্থা রিফ্রেশ করুন",
+  "focus.pomodoro": "পোমোডোরো শুরু করুন",
+  "focus.systemUnavailable":
+    "সিস্টেম ডু নট ডিস্টার্ব উপলব্ধ নয়; ফোকাস মোড শুধু Phoenix বিজ্ঞপ্তি নিয়ন্ত্রণ করে।",
   "focus.screenshot.title": "স্ক্রিনশট থেকে ইস্যু",
   "focus.screenshot.capture": "স্ক্রিনের অংশ বাছুন…",
   "focus.screenshot.permission": "স্ক্রিন রেকর্ডিং অনুমতি প্রয়োজন।",

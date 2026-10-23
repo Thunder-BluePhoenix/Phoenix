@@ -107,6 +107,8 @@ export const agents: Record<keyof typeof enagents, string> = {
   "agents.approvals.risk": "风险",
   "agents.approvals.noRisk": "未提供风险等级。",
   "agents.approvals.permissions": "使用的权限",
+  "agents.approvals.digestPreview": "摘要预览",
+  "agents.approvals.citedSources": "引用的来源",
   "agents.approvals.noPermissions": "未列出。",
   "agents.approvals.workflowStep": "工作流步骤",
   "agents.approvals.workflowApproval": "工作流批准",

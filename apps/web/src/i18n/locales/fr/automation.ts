@@ -501,6 +501,14 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   "automation.registry.sandbox":
     "Bac à sable : indisponible. L’installation est désactivée ; aucune demande d’installation ne sera envoyée.",
 
+  "automation.registry.skinPack": "pack d’apparence de données uniquement",
+  "automation.registry.skinDataOnly":
+    "Pack de tenue Phoenix de données uniquement. Il ne peut ni exécuter de code ni demander des autorisations.",
+  "automation.registry.installSkin": "Installer l’apparence {name} {version}",
+  "automation.registry.installPending":
+    "En attente de la confirmation de Core avant d’installer cette apparence signée.",
+  "automation.registry.installSucceeded": "Apparence signée installée dans la garde-robe.",
+  "automation.registry.installFailed": "Échec de l’installation de l’apparence : {error}",
   // ---- encrypted sync (SyncSettings.tsx) ----
   "automation.sync.title": "Synchronisation chiffrée",
   "automation.sync.intro":

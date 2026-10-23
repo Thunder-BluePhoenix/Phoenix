@@ -108,6 +108,8 @@ export const agents: Record<keyof typeof enagents, string> = {
   "agents.approvals.risk": "ঝুঁকি",
   "agents.approvals.noRisk": "কোনো ঝুঁকির মাত্রা দেওয়া হয়নি।",
   "agents.approvals.permissions": "ব্যবহৃত অনুমতি",
+  "agents.approvals.digestPreview": "ডাইজেস্ট প্রিভিউ",
+  "agents.approvals.citedSources": "উদ্ধৃত উৎস",
   "agents.approvals.noPermissions": "কিছু তালিকাভুক্ত নেই।",
   "agents.approvals.workflowStep": "ওয়ার্কফ্লো ধাপ",
   "agents.approvals.workflowApproval": "ওয়ার্কফ্লো অনুমোদন",

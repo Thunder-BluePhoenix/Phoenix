@@ -62,15 +62,14 @@ const SEVERITY_RANK: Record<Severity, number> = { info: 0, success: 1, warning: 
  */
 const ALWAYS_NOTIFY = new Set(["kage.summary.ready", "calendar.meeting.starting_soon"]);
 
-/** Bookkeeping events that never notify on their own. */
 const NEVER_NOTIFY_PREFIXES = [
   "pet.",
   "notification.",
+  "focus.",
   "system.",
   "capability.health",
   "capability.registered",
 ];
-
 const DUPLICATE_WINDOW_MS = 30_000;
 const MAX_STORED = 1000;
 
@@ -309,7 +308,10 @@ export class NotificationService {
         event_type: "notification.created",
         source: "core",
         severity: n.severity,
-        payload: { notification: n as unknown as Record<string, unknown> },
+        payload: {
+          notification: n as unknown as Record<string, unknown>,
+          requires_action: event.requires_action === true,
+        },
       }),
       { ephemeral: true },
     );

@@ -18,6 +18,22 @@ export const digest: Record<keyof typeof endigest, string> = {
   "digest.loading": "Carregando resumo…",
   "digest.copy": "Copiar com fontes",
   "digest.copied": "Copiado",
+  "digest.slackHeading": "Enviar para o Slack",
+  "digest.slackDisclosure":
+    "O envio compartilha este resumo, atividade citada, alegações de eventos não verificados e possível conteúdo derivado de reuniões com o canal Slack configurado. O Core pede confirmação antes de cada envio.",
+  "digest.slackOptIn": "Permitir entrega do resumo diário ao Slack",
+  "digest.sendSlack": "Enviar para o Slack",
+  "digest.slack.disabled": "A entrega do resumo diário ao Slack está desativada.",
+  "digest.slack.chat_unavailable": "Primeiro ative as aprovações de chat.",
+  "digest.slack.slack_unconfigured": "Primeiro configure e ative o Slack em Aprovações de chat.",
+  "digest.slack.missing_token": "O token configurado do bot Slack não está disponível.",
+  "digest.slack.emergency_stop": "A entrega está bloqueada pela parada de emergência.",
+  "digest.slack.ready": "A entrega ao Slack está pronta.",
+  "digest.slackUnavailable": "A entrega do resumo diário ao Slack não está disponível.",
+  "digest.slackWaiting": "Aguardando sua confirmação no Core…",
+  "digest.slackError":
+    "Não foi possível concluir a entrega ao Slack. Nada foi repetido automaticamente.",
+  "digest.slackSent": "O resumo diário de {day} foi enviado ao Slack.",
   "digest.sendUnavailable":
     "O envio para Slack e Teams está indisponível até conectar uma integração aprovada.",
   "digest.back": "Voltar ao resumo",

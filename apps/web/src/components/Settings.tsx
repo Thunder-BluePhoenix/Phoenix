@@ -48,6 +48,7 @@ import { ScheduledAwakeSection } from "./ScheduledAwakeSettings";
 import { StatusLightsSection } from "./StatusLightsSettings";
 import { TeamSettingsSection } from "./TeamSettings";
 import { FawkesAppearanceSection } from "./Wardrobe";
+import { FocusMode } from "./FocusMode";
 
 /** Settings (PRD v2.0 §16, FR-014): Fawkes, notifications, capabilities, privacy, memory, AI. */
 export function SettingsPage({ state }: { state: PetState }) {
@@ -59,6 +60,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <FawkesSettings />
       <FawkesAppearanceSection />
       <NotificationSettings />
+      <FocusMode />
       <CapabilitySettings recording={state.recording} />
       <PrivacySettings />
       <MemorySettingsSection />

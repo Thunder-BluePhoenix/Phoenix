@@ -85,6 +85,7 @@ import { UiSettingsRuntime } from "./ui-settings";
 import { ProactiveRuntime } from "./proactive";
 import { RetrievalRuntime } from "./retrieval";
 import { DailyDigestService } from "./daily-digest/service";
+import { DailyDigestSlackService } from "./daily-digest/slack";
 import { CalendarService, StoreMeetingPrepQuery } from "./calendar";
 import { assertDeployAllowed } from "./calendar/freeze";
 import { ENGINEERING_SIGNALS_ROOTS_KEY, EngineeringSignalsRuntime } from "./engineering-signals";
@@ -98,6 +99,7 @@ import { SyncRuntime, type SyncTransportFactory } from "./sync";
 import { DemoRuntime, type DemoTuning } from "./demo";
 import { TeamWebhooks, WEBHOOK_SETTINGS_KEY } from "./team-status/webhooks";
 import { ChatApprovalsService, CHAT_APPROVALS_CAPABILITY } from "./chat-approvals/service";
+import { createChatTransport } from "./chat-approvals";
 import type { HttpTransport } from "@phoenix/capability-chat-approvals";
 import { RemoteRelayService, type RemoteRelayServiceDeps } from "./remote-relay/service";
 import { TeamLinkService, type TeamLinkDependencies } from "./team-status/link";
@@ -107,6 +109,12 @@ import { BrowserProfilesService } from "./browser-profiles/service";
 import { MusicConnectorsService } from "./music-connectors/service";
 import { ScheduledAwakeService, type ScheduledAwakeDependencies } from "./scheduled-awake/service";
 import { EventSourcePolicy } from "./event-source-policy";
+import {
+  FocusController,
+  type FocusClock,
+  type FocusDndReader,
+  type FocusNotification,
+} from "./focus";
 import { WorkflowsRuntime } from "./workflows";
 
 export interface PetSettings {
@@ -142,6 +150,8 @@ export interface RuntimeOptions {
   teamLink?: Pick<TeamLinkDependencies, "fetcher" | "clock" | "sleep" | "heartbeat">;
   /** Scheduler tuning (tests inject a clock and a power source; production reads this machine). */
   scheduledAwake?: Pick<ScheduledAwakeDependencies, "clock" | "power" | "env">;
+  /** Focus delivery tuning. The DND reader is read-only; Core has no OS DND adapter by default. */
+  focus?: { clock?: FocusClock; dnd?: FocusDndReader };
   /** Signer id to Ed25519 public key (SPKI PEM) of who may sign browser extensions. Empty: none. */
   extensionSigners?: Readonly<Record<string, string>>;
   /** Ollama base URL (loopback only). Defaults to http://127.0.0.1:11434. */
@@ -223,6 +233,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly permissions: PermissionGateway;
   readonly capabilities: CapabilityManager;
   readonly notifications: NotificationService;
+  /** In-memory gate for notification display and push delivery; notification history is unaffected. */
+  readonly focus: FocusController<FocusNotification>;
   readonly meetings: MeetingStore;
   readonly privacy: PrivacyService;
   readonly ai: AiRuntime;
@@ -239,6 +251,8 @@ export class PhoenixRuntime implements CoreServices {
   /** Incoming webhooks (Phase 92): off by default; absent without an OS secret store. */
   readonly teamWebhooks: TeamWebhooks | undefined;
   readonly digest: DailyDigestService;
+  /** User-triggered digest Slack delivery; absent without OS secret storage or in the demo runtime. */
+  readonly digestSlack: DailyDigestSlackService | undefined;
   /** Knowledge graph and provenance (Phase 38). */
   readonly graph: GraphRuntime;
   readonly sync: SyncRuntime;
@@ -336,6 +350,7 @@ export class PhoenixRuntime implements CoreServices {
   private readonly stopMeetingSync: () => void;
   /** Gives up the claim on the data directory (see lockDatabaseFile). */
   private readonly releaseDatabase: () => void;
+  private readonly stopFocusDelivery: () => void;
   private api: ApiServer | null = null;
   private ticker: NodeJS.Timeout | null = null;
   private readonly startedAt = Date.now();
@@ -411,6 +426,54 @@ export class PhoenixRuntime implements CoreServices {
       state: this.state,
       logger: this.logger,
     });
+    const clock: FocusClock = options.focus?.clock ?? {
+      now: Date.now,
+      setTimeout: (callback, milliseconds) => setTimeout(callback, milliseconds),
+      clearTimeout: (handle) => clearTimeout(handle as NodeJS.Timeout),
+    };
+    this.focus = new FocusController(
+      clock,
+      options.focus?.dnd ?? { read: async () => null },
+      (notification) => {
+        const result = this.bus.publish(
+          createEvent({
+            event_type: "focus.notification.deliver",
+            source: "core",
+            severity: notification.severity,
+            payload: { notification: notification as unknown as Record<string, unknown> },
+          }),
+          { ephemeral: true },
+        );
+        if (!result.ok)
+          this.logger.warn("failed to deliver focus notification", { code: result.error.code });
+      },
+    );
+    this.stopFocusDelivery = this.bus.subscribe(
+      "focus.delivery",
+      "notification.created",
+      (event) => {
+        const notification = event.payload.notification;
+        if (
+          notification === null ||
+          typeof notification !== "object" ||
+          Array.isArray(notification) ||
+          !("id" in notification) ||
+          !("severity" in notification) ||
+          typeof notification.id !== "string" ||
+          (notification.severity !== "info" &&
+            notification.severity !== "success" &&
+            notification.severity !== "warning" &&
+            notification.severity !== "error")
+        ) {
+          return;
+        }
+        const focusNotification: FocusNotification = notification as FocusNotification;
+        this.focus.receive({
+          ...focusNotification,
+          requiresAction: event.payload.requires_action === true,
+        });
+      },
+    );
 
     this.meetings = new MeetingStore(this.db);
     this.stopMeetingSync = syncMeetings({
@@ -599,6 +662,21 @@ export class PhoenixRuntime implements CoreServices {
       meetingsAllowed: () => this.memory.settings().allow_sensitive_meetings,
       meetings: () => this.meetings.list({ limit: 500 }),
     });
+    const chatTransport = options.chatTransport ?? createChatTransport();
+    this.digestSlack =
+      options.secrets && options.demo !== false
+        ? new DailyDigestSlackService({
+            digest: this.digest,
+            permissions: this.permissions,
+            audit: this.permissions.audit,
+            settings: this.settings,
+            secrets: options.secrets,
+            transport: chatTransport,
+            chatConfig: () => this.capabilities.get(CHAT_APPROVALS_CAPABILITY).config,
+            chatEnabled: () =>
+              this.capabilities.get(CHAT_APPROVALS_CAPABILITY).status === "enabled",
+          })
+        : undefined;
 
     const policyStore = new PolicyStore(this.db);
     this.autonomy = new AutonomyController(policyStore, this.permissions.audit, () =>
@@ -637,7 +715,7 @@ export class PhoenixRuntime implements CoreServices {
             config: () => this.capabilities.get(CHAT_APPROVALS_CAPABILITY).config,
             enabled: () => this.capabilities.get(CHAT_APPROVALS_CAPABILITY).status === "enabled",
             killSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
-            ...(options.chatTransport ? { transport: options.chatTransport } : {}),
+            transport: chatTransport,
           });
     if (this.chatApprovals) this.capabilities.registerBuiltin(this.chatApprovals.module);
     this.agentRelay = new AgentRelay({
@@ -941,11 +1019,12 @@ export class PhoenixRuntime implements CoreServices {
             bus: this.bus,
             createRuntime: (demoOptions) => new PhoenixRuntime(demoOptions),
           });
-    this.registry = new LocalRegistryRuntime(options.registry, {
-      sdk: "0.1.0",
-      core: "0.1.0",
-      protocol: "1",
-    });
+    this.registry = new LocalRegistryRuntime(
+      options.registry,
+      { sdk: "0.1.0", core: "0.1.0", protocol: "1" },
+      this.permissions,
+      this.appearance,
+    );
 
     this.privacy = new PrivacyService({
       dataDir: this.config.dataDir,
@@ -1422,6 +1501,8 @@ export class PhoenixRuntime implements CoreServices {
       await this.memory.close();
       this.notifications.close();
       this.permissions.close();
+      this.focus.dispose();
+      this.stopFocusDelivery();
       await this.bus.drain();
       this.bus.close();
       if (this.options.writeTokenFile ?? true) {

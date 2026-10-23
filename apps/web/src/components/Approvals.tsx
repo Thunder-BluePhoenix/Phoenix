@@ -100,6 +100,14 @@ function ApprovalCard({
             ? c.permissions.join(", ")
             : t("agents.approvals.noPermissions")}
         </dd>
+        {c.details?.dailyDigest && (
+          <>
+            <dt>{t("agents.approvals.digestPreview")}</dt>
+            <dd className="memory-text">{c.details.dailyDigest.preview}</dd>
+            <dt>{t("agents.approvals.citedSources")}</dt>
+            <dd>{c.details.dailyDigest.citedSourceCount}</dd>
+          </>
+        )}
         {c.details?.run && c.details.step && (
           <>
             <dt>{t("agents.approvals.workflowStep")}</dt>

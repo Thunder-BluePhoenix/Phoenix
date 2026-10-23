@@ -13,6 +13,8 @@ import {
 
 /** Registry input is local and explicitly trusted; no network lookup or executable evaluation. */
 export interface RegistryEntry {
+  /** Omitted capability discriminator preserves index v1 compatibility. */
+  kind?: undefined;
   id: string;
   version: string;
   manifest: CapabilityManifest;
@@ -23,9 +25,21 @@ export interface RegistryEntry {
   artifact: { file: string; sha256: string; size: number };
   security: { contact: string; advisory_url: string };
 }
+export type CapabilityRegistryEntry = RegistryEntry;
+/** A signed, data-only outfit artifact. It intentionally has no manifest, permissions or security links. */
+export interface SkinPackRegistryEntry {
+  kind: "skin-pack";
+  id: string;
+  version: string;
+  name: string;
+  description: string;
+  license: "CC-BY-4.0";
+  compatibility: { core: string; protocol: "1" };
+  artifact: { file: string; sha256: string; size: number };
+}
 export interface RegistryIndex {
   format_version: 1;
-  entries: RegistryEntry[];
+  entries: (RegistryEntry | SkinPackRegistryEntry)[];
 }
 export interface SignedIndex {
   index: RegistryIndex;
@@ -49,19 +63,28 @@ export interface RegistryVersions {
   core: string;
   protocol: "1";
 }
-export interface RegistryPreview {
-  entry: RegistryEntry;
-  provenance: RegistryProvenance;
-  permission_descriptions: Record<string, string>;
-  data_categories: string[];
-  license_policy: string;
-  sandbox_status: "unavailable";
-  installable: false;
-}
+export type RegistryPreview =
+  | {
+      entry: CapabilityRegistryEntry;
+      provenance: RegistryProvenance;
+      permission_descriptions: Record<string, string>;
+      data_categories: string[];
+      license_policy: string;
+      sandbox_status: "unavailable";
+      installable: false;
+    }
+  | {
+      entry: SkinPackRegistryEntry;
+      provenance: RegistryProvenance;
+      kind: "skin-pack";
+      installable: true;
+    };
 
 const MAX_INDEX_BYTES = 1024 * 1024;
 const MAX_ARTIFACT_BYTES = 50 * 1024 * 1024;
+const MAX_SKIN_ARTIFACT_BYTES = 100_000;
 const IDENTIFIER = /^[a-z][a-z0-9_-]{1,63}$/;
+const SKIN_IDENTIFIER = /^[a-z][a-z0-9-]{1,31}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$/;
 const SAFE_FILE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
@@ -79,7 +102,7 @@ const SPDX_ALLOWED: Readonly<Record<string, true>> = {
 const FIELDS = {
   envelope: ["index", "key_id", "signature"],
   index: ["format_version", "entries"],
-  entry: [
+  capabilityEntry: [
     "id",
     "version",
     "manifest",
@@ -90,7 +113,18 @@ const FIELDS = {
     "artifact",
     "security",
   ],
+  skinEntry: [
+    "kind",
+    "id",
+    "version",
+    "name",
+    "description",
+    "license",
+    "compatibility",
+    "artifact",
+  ],
   compatibility: ["sdk", "core", "protocol"],
+  skinCompatibility: ["core", "protocol"],
   artifact: ["file", "sha256", "size"],
   security: ["contact", "advisory_url"],
 } as const;
@@ -184,8 +218,52 @@ function safeTree(value: unknown, depth = 0): void {
     }
   }
 }
-function validateEntry(value: unknown, versions: RegistryVersions): RegistryEntry {
-  const e = record(value, FIELDS.entry, "entry");
+function validateEntry(
+  value: unknown,
+  versions: RegistryVersions,
+): RegistryEntry | SkinPackRegistryEntry {
+  const discriminator =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>).kind
+      : undefined;
+  if (discriminator === "skin-pack") {
+    const e = record(value, FIELDS.skinEntry, "skin-pack entry");
+    const id = text(e.id, "skin id");
+    if (!SKIN_IDENTIFIER.test(id)) reject("INVALID_INDEX", "Invalid skin id");
+    const version = text(e.version, "skin version");
+    if (!VERSION.test(version)) reject("INVALID_INDEX", "Invalid skin version");
+    text(e.name, "skin name");
+    text(e.description, "skin description", 1_024);
+    if (e.license !== "CC-BY-4.0")
+      reject("FORBIDDEN_LICENSE", "Skin artwork licence must be CC-BY-4.0");
+    const compatibility = record(e.compatibility, FIELDS.skinCompatibility, "skin compatibility");
+    const core = text(compatibility.core, "core compatibility");
+    if (!VERSION.test(core) || !compareVersion(versions.core, core))
+      reject("INCOMPATIBLE_VERSION", "Requires compatible Core version");
+    if (compatibility.protocol !== versions.protocol)
+      reject("INCOMPATIBLE_VERSION", "Unsupported protocol major");
+    const artifact = record(e.artifact, FIELDS.artifact, "skin artifact");
+    const file = text(artifact.file, "artifact filename", 128);
+    if (
+      !SAFE_FILE.test(file) ||
+      file === "." ||
+      file === ".." ||
+      file.startsWith(".") ||
+      isAbsolute(file) ||
+      basename(file) !== file
+    )
+      reject("INVALID_INDEX", "Unsafe artifact path");
+    if (typeof artifact.sha256 !== "string" || !SHA256.test(artifact.sha256))
+      reject("INVALID_INDEX", "Invalid artifact digest");
+    if (
+      !Number.isSafeInteger(artifact.size) ||
+      (artifact.size as number) < 1 ||
+      (artifact.size as number) > MAX_SKIN_ARTIFACT_BYTES
+    )
+      reject("INVALID_INDEX", "Invalid skin artifact size");
+    return e as unknown as SkinPackRegistryEntry;
+  }
+  const e = record(value, FIELDS.capabilityEntry, "entry");
   const id = text(e.id, "id");
   if (!IDENTIFIER.test(id)) reject("INVALID_INDEX", "Invalid capability id");
   const version = text(e.version, "version");
@@ -246,7 +324,7 @@ function validateEntry(value: unknown, versions: RegistryVersions): RegistryEntr
     !/^https:\/\/[^\s/]+(?:\/[^\s]*)?$/.test(advisory)
   )
     reject("INVALID_INDEX", "Security contact must be mailto and advisory HTTPS");
-  return e as unknown as RegistryEntry;
+  return e as unknown as CapabilityRegistryEntry;
 }
 
 /** Prevent callers mutating a verified disclosure or artifact digest after signature checks. */
@@ -327,13 +405,16 @@ export class RegistryService {
     const provenance = this.provenance(index);
     const entry = index.entries.find((e) => e.id === id && e.version === version);
     if (!entry) reject("NOT_FOUND", "Capability version not in trusted index");
+    if (entry.kind === "skin-pack")
+      return { provenance, entry, kind: "skin-pack", installable: true };
+    const capability = entry as RegistryEntry;
     return {
       provenance,
-      entry,
+      entry: capability,
       permission_descriptions: Object.fromEntries(
-        entry.permissions.map((p) => [p, PERMISSION_DESCRIPTIONS[p]]),
+        capability.permissions.map((p) => [p, PERMISSION_DESCRIPTIONS[p]]),
       ),
-      data_categories: [...entry.data_categories],
+      data_categories: [...capability.data_categories],
       license_policy:
         "Reviewed SPDX allowlist compatible with Phoenix GPL-3.0; redistribution still requires independent legal review.",
       sandbox_status: "unavailable",
@@ -360,6 +441,41 @@ export class RegistryService {
       for await (const chunk of handle.createReadStream({ autoClose: false })) hash.update(chunk);
       if (hash.digest("hex") !== entry.artifact.sha256)
         reject("ARTIFACT_MISMATCH", "Artifact checksum differs");
+    } finally {
+      await handle.close();
+    }
+  }
+
+  /** Reads a verified data-only skin from the host-owned artifact directory; never evaluates it. */
+  async readLocalSkinArtifact(
+    index: VerifiedRegistryIndex,
+    id: string,
+    version: string,
+    trustedDirectory: string,
+  ): Promise<Uint8Array> {
+    const preview = this.preview(index, id, version);
+    if (!("kind" in preview) || preview.kind !== "skin-pack")
+      reject("NOT_SKIN_PACK", "Registry entry is not a skin pack");
+    const directory = await realpath(trustedDirectory);
+    const file = join(directory, preview.entry.artifact.file);
+    const resolved = await realpath(file);
+    if (resolved !== directory && !resolved.startsWith(`${directory}/`))
+      reject("ARTIFACT_MISMATCH", "Artifact escapes trusted directory");
+    const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const stat = await handle.stat();
+      if (
+        !stat.isFile() ||
+        stat.size !== preview.entry.artifact.size ||
+        stat.size > MAX_SKIN_ARTIFACT_BYTES
+      )
+        reject("ARTIFACT_MISMATCH", "Artifact type or size differs");
+      const bytes = Buffer.allocUnsafe(stat.size);
+      const { bytesRead } = await handle.read(bytes, 0, stat.size, 0);
+      if (bytesRead !== stat.size) reject("ARTIFACT_MISMATCH", "Artifact size changed during read");
+      if (createHash("sha256").update(bytes).digest("hex") !== preview.entry.artifact.sha256)
+        reject("ARTIFACT_MISMATCH", "Artifact checksum differs");
+      return bytes;
     } finally {
       await handle.close();
     }

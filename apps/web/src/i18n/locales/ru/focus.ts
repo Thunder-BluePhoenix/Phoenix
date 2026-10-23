@@ -15,6 +15,9 @@ export const focus: Record<keyof typeof enFocus, string> = {
   "focus.osDnd": "Системный режим «Не беспокоить» активен",
   "focus.osUnknown": "Состояние «Не беспокоить» недоступно",
   "focus.refresh": "Обновить состояние системы",
+  "focus.pomodoro": "Запустить Помодоро",
+  "focus.systemUnavailable":
+    "Системный режим «Не беспокоить» недоступен; режим концентрации управляет только уведомлениями Phoenix.",
   "focus.screenshot.title": "Снимок экрана в задачу",
   "focus.screenshot.capture": "Выбрать область экрана…",
   "focus.screenshot.permission": "Требуется разрешение на запись экрана.",

@@ -15,6 +15,8 @@ export const focus: Record<keyof typeof enFocus, string> = {
   "focus.osDnd": "系统勿扰模式已开启",
   "focus.osUnknown": "无法获取系统勿扰状态",
   "focus.refresh": "刷新系统专注状态",
+  "focus.pomodoro": "开始番茄钟",
+  "focus.systemUnavailable": "系统勿扰模式不可用；专注模式仅控制 Phoenix 通知。",
   "focus.screenshot.title": "截图创建问题",
   "focus.screenshot.capture": "选择屏幕区域…",
   "focus.screenshot.permission": "需要屏幕录制权限。",

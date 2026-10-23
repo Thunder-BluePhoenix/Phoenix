@@ -13,6 +13,7 @@ afterEach(() => {
 });
 
 const entry = {
+  kind: "capability" as const,
   id: "sample",
   version: "1.2.3",
   name: "Sample capability",
@@ -101,6 +102,51 @@ describe("Capability registry settings", () => {
     expect(s.getByText(/Sandbox: unavailable\. Installation is disabled/)).toBeTruthy();
     expect(s.queryByRole("button", { name: /install/i })).toBeNull();
     expect(api.posts("/api/registry/sample/1.2.3/install")).toHaveLength(0);
+  });
+
+  it("shows a data-only skin disclosure before using the dedicated install route", async () => {
+    const skin = {
+      kind: "skin-pack" as const,
+      id: "moon-hat",
+      version: "1.0.0",
+      name: "Moon hat",
+      description: "A data-only outfit.",
+      license: "CC-BY-4.0",
+      installable: true,
+    };
+    const { api } = openAt("#/settings", {
+      "GET /api/registry": () => ({ ...browse, entries: [skin] }),
+      "GET /api/registry/moon-hat/1.0.0": () => ({
+        kind: "skin-pack",
+        provenance,
+        entry: { ...skin, artifact: { sha256: "c".repeat(64), size: 123 } },
+        installable: true,
+      }),
+      "POST /api/registry/skins/moon-hat/1.0.0/install": () => ({}),
+      "GET /api/fawkes/appearance": () => ({
+        outfit: "none",
+        hemisphere: "north",
+        packs: [],
+        sources: {},
+        builtin: [],
+        known: [],
+        glyphs: [],
+        limits: { packs: 8, pack_bytes: 200000, sources: 64 },
+      }),
+    });
+    const s = await panel();
+    fireEvent.click(await s.findByRole("button", { name: /Preview Moon hat 1.0.0/ }));
+    const install = await s.findByRole("button", { name: "Install skin Moon hat 1.0.0" });
+    expect(s.getByText(/Data-only Phoenix outfit pack/)).toBeTruthy();
+    expect(s.getByText("CC-BY-4.0")).toBeTruthy();
+    expect(s.getByText(new RegExp("c".repeat(64)))).toBeTruthy();
+    expect(api.posts("/api/registry/skins/moon-hat/1.0.0/install")).toHaveLength(0);
+    fireEvent.click(install);
+    await waitFor(() =>
+      expect(api.posts("/api/registry/skins/moon-hat/1.0.0/install")).toHaveLength(1),
+    );
+    expect(api.posts("/api/registry/skins/moon-hat/1.0.0/install")[0]?.body).toBeUndefined();
+    expect(api.posts("/api/registry/moon-hat/1.0.0/install")).toHaveLength(0);
   });
 
   it("renders untrusted registry strings as inert text", async () => {

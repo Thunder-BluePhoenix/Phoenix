@@ -17,6 +17,23 @@ export const digest: Record<keyof typeof endigest, string> = {
   "digest.loading": "Chargement du résumé…",
   "digest.copy": "Copier avec les sources",
   "digest.copied": "Copié",
+  "digest.slackHeading": "Envoyer vers Slack",
+  "digest.slackDisclosure":
+    "L’envoi partage ce résumé, l’activité citée, les affirmations d’événements non vérifiées et le contenu potentiellement issu de réunions avec le canal Slack configuré. Core demande confirmation avant chaque envoi.",
+  "digest.slackOptIn": "Autoriser l’envoi du résumé quotidien vers Slack",
+  "digest.sendSlack": "Envoyer vers Slack",
+  "digest.slack.disabled": "L’envoi du résumé quotidien vers Slack est désactivé.",
+  "digest.slack.chat_unavailable": "Activez d’abord les approbations de chat.",
+  "digest.slack.slack_unconfigured":
+    "Configurez et activez d’abord Slack dans les approbations de chat.",
+  "digest.slack.missing_token": "Le jeton du bot Slack configuré est indisponible.",
+  "digest.slack.emergency_stop": "L’envoi est bloqué par l’arrêt d’urgence.",
+  "digest.slack.ready": "L’envoi vers Slack est prêt.",
+  "digest.slackUnavailable": "L’envoi du résumé quotidien vers Slack est indisponible.",
+  "digest.slackWaiting": "En attente de votre confirmation Core…",
+  "digest.slackError":
+    "L’envoi vers Slack n’a pas pu être terminé. Aucun nouvel essai automatique n’a été effectué.",
+  "digest.slackSent": "Le résumé quotidien du {day} a été envoyé vers Slack.",
   "digest.sendUnavailable":
     "L’envoi vers Slack et Teams est indisponible sans intégration approuvée.",
   "digest.back": "Retour au résumé",

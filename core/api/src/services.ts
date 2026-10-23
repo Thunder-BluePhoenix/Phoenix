@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import type { DailyDigestSlackService } from "./digest-routes";
 import type { AgentApprovalsApi } from "./agent-approval-routes";
 import type { DictationApi } from "./dictation-routes";
 import type { NotetakerApi } from "./notetaker-routes";
@@ -29,6 +30,7 @@ import type { BrowserProfilesApi } from "./browser-profile-routes";
 import type { MusicConnectorsApi } from "./music-connector-routes";
 import type { ChatApprovalsApi } from "./chat-approval-routes";
 import type { RemoteRelayApi } from "./remote-relay-routes";
+import type { FocusApi } from "./focus-routes";
 import type { PhoenixConfig } from "@phoenix/config";
 import type { EventBus } from "@phoenix/event-bus";
 import type { Logger } from "@phoenix/logging";
@@ -1188,10 +1190,12 @@ export interface SyncApi {
   sync(): Promise<unknown>;
 }
 
-/** Authenticated, read-only view of a host-provisioned signed local catalogue. */
+/** Authenticated view of a host-provisioned signed local catalogue. Executable installation is refused. */
 export interface RegistryApi {
   browse(): Promise<unknown>;
   preview(id: string, version: string): Promise<unknown>;
+  /** Data-only signed skin installation, always confirmation-gated by Core. */
+  installSkin(id: string, version: string): Promise<unknown>;
   install(): never;
 }
 
@@ -1263,6 +1267,7 @@ export interface CoreServices {
   permissions: PermissionGateway;
   capabilities?: CapabilityService;
   notifications?: NotificationsService;
+  focus?: FocusApi;
   proactive?: ProactiveApi;
   meetings?: MeetingStore;
   privacy?: {
@@ -1302,6 +1307,8 @@ export interface CoreServices {
   phone?: PhoneApi;
   demo?: DemoApi;
   digest?: DigestService;
+  /** User-triggered, independently opted-in daily digest Slack delivery. */
+  digestSlack?: DailyDigestSlackService;
   calendar?: CalendarApi;
   engineeringSignals?: EngineeringSignalsApi;
   /** Incoming webhooks (Phase 92); absent when no OS secret store is available. */

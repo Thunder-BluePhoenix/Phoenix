@@ -480,6 +480,14 @@ export const automation = {
     "Artifact SHA-256 declared by the signed index: {hash} ({bytes, plural, one {# byte} other {# bytes}}). Artifact verification: not verified; artifact bytes have not been fetched or checked. Browsing does not execute the artifact.",
   "automation.registry.sandbox":
     "Sandbox: unavailable. Installation is disabled; no install request will be sent.",
+  "automation.registry.skinPack": "data-only skin pack",
+  "automation.registry.skinDataOnly":
+    "Data-only Phoenix outfit pack. It cannot run code or request permissions.",
+  "automation.registry.installSkin": "Install skin {name} {version}",
+  "automation.registry.installPending":
+    "Waiting for Core confirmation before installing this signed skin.",
+  "automation.registry.installSucceeded": "Signed skin installed in Wardrobe.",
+  "automation.registry.installFailed": "Skin installation failed: {error}",
 
   // ---- encrypted sync (SyncSettings.tsx) ----
   "automation.sync.title": "Encrypted sync",

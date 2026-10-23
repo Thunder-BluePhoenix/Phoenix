@@ -107,6 +107,8 @@ export const agents: Record<keyof typeof enagents, string> = {
   "agents.approvals.risk": "जोखिम",
   "agents.approvals.noRisk": "कोई जोखिम स्तर नहीं दिया गया।",
   "agents.approvals.permissions": "उपयोग की गई अनुमतियाँ",
+  "agents.approvals.digestPreview": "डाइजेस्ट पूर्वावलोकन",
+  "agents.approvals.citedSources": "उद्धृत स्रोत",
   "agents.approvals.noPermissions": "कोई सूचीबद्ध नहीं।",
   "agents.approvals.workflowStep": "वर्कफ़्लो चरण",
   "agents.approvals.workflowApproval": "वर्कफ़्लो मंज़ूरी",

@@ -501,6 +501,14 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   "automation.registry.sandbox":
     "Sandbox: no disponible. La instalación está desactivada; no se enviará ninguna solicitud de instalación.",
 
+  "automation.registry.skinPack": "paquete de aspecto solo de datos",
+  "automation.registry.skinDataOnly":
+    "Paquete de atuendo Phoenix solo de datos. No puede ejecutar código ni solicitar permisos.",
+  "automation.registry.installSkin": "Instalar aspecto {name} {version}",
+  "automation.registry.installPending":
+    "Esperando la confirmación de Core antes de instalar este aspecto firmado.",
+  "automation.registry.installSucceeded": "Aspecto firmado instalado en el vestuario.",
+  "automation.registry.installFailed": "La instalación del aspecto falló: {error}",
   // ---- encrypted sync (SyncSettings.tsx) ----
   "automation.sync.title": "Sincronización cifrada",
   "automation.sync.intro":

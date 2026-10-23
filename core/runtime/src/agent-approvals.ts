@@ -569,17 +569,21 @@ export class AgentApprovals implements AgentApprovalsApi {
     });
     this.entries.set(id, entry);
     this.pendingCount++;
-    this.emit("agent.approval.requested", {
-      id,
-      agent: req.agent,
-      project: req.project,
-      tool: req.tool,
-      kind: req.kind,
-      expires_at: new Date(entry.expiresAt).toISOString(),
-      ...(summary.command === undefined
-        ? {}
-        : { command: truncate(summary.command, EVENT_COMMAND_CHARS) }),
-    });
+    this.emit(
+      "agent.approval.requested",
+      {
+        id,
+        agent: req.agent,
+        project: req.project,
+        tool: req.tool,
+        kind: req.kind,
+        expires_at: new Date(entry.expiresAt).toISOString(),
+        ...(summary.command === undefined
+          ? {}
+          : { command: truncate(summary.command, EVENT_COMMAND_CHARS) }),
+      },
+      true,
+    );
     return {
       id,
       nonce: nonce.toString("hex"),
@@ -940,9 +944,15 @@ export class AgentApprovals implements AgentApprovalsApi {
     }
   }
 
-  private emit(eventType: string, payload: Record<string, unknown>): void {
+  private emit(eventType: string, payload: Record<string, unknown>, requiresAction = false): void {
     const result = this.d.bus.publish(
-      createEvent({ event_type: eventType, source: "core", severity: "info", payload }),
+      createEvent({
+        event_type: eventType,
+        source: "core",
+        severity: "info",
+        payload,
+        ...(requiresAction ? { requires_action: true } : {}),
+      }),
     );
     if (!result.ok)
       this.d.logger.warn("agent approval event rejected", { code: result.error.code });

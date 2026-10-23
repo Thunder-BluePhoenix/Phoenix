@@ -114,6 +114,8 @@ export const agents: Record<keyof typeof enagents, string> = {
   "agents.approvals.risk": "Riesgo",
   "agents.approvals.noRisk": "No se indicó un nivel de riesgo.",
   "agents.approvals.permissions": "Permisos usados",
+  "agents.approvals.digestPreview": "Vista previa del resumen",
+  "agents.approvals.citedSources": "Fuentes citadas",
   "agents.approvals.noPermissions": "Ninguno indicado.",
   "agents.approvals.workflowStep": "Paso del flujo de trabajo",
   "agents.approvals.workflowApproval": "Aprobación de flujo de trabajo",

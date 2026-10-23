@@ -12,6 +12,9 @@ export const focus = {
   "focus.osDnd": "System Do Not Disturb is active",
   "focus.osUnknown": "System Do Not Disturb status is unavailable",
   "focus.refresh": "Refresh system focus status",
+  "focus.pomodoro": "Start Pomodoro",
+  "focus.systemUnavailable":
+    "System Do Not Disturb is unavailable; Focus mode only controls Phoenix notifications.",
   "focus.screenshot.title": "Screenshot to issue",
   "focus.screenshot.capture": "Choose screen region…",
   "focus.screenshot.permission": "Screen recording permission is required.",

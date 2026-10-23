@@ -465,6 +465,12 @@ export const automation: Record<keyof typeof enAutomation, string> = {
     "已签名索引声明的制品 SHA-256：{hash}（{bytes, plural, other {# 字节}}）。制品验证：未验证；尚未获取或检查制品字节。浏览不会执行该制品。",
   "automation.registry.sandbox": "沙箱：不可用。安装已禁用；不会发送任何安装请求。",
 
+  "automation.registry.skinPack": "仅数据外观包",
+  "automation.registry.skinDataOnly": "仅数据 Phoenix 服装包。它不能运行代码或请求权限。",
+  "automation.registry.installSkin": "安装外观 {name} {version}",
+  "automation.registry.installPending": "正在等待 Core 确认后安装此已签名外观。",
+  "automation.registry.installSucceeded": "已签名外观已安装到衣柜。",
+  "automation.registry.installFailed": "外观安装失败：{error}",
   // ---- encrypted sync (SyncSettings.tsx) ----
   "automation.sync.title": "加密同步",
   "automation.sync.intro":

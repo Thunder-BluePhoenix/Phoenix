@@ -5,7 +5,7 @@
 | Stage | Stage 14 — Phoenix originals |
 | Release target | Post-v2.0 track |
 | Priority | Medium |
-| Status | 🟨 Built; every check is simulated (temporary git repositories, in-memory database, fakes). Sending to Slack or Teams is not built (Phase 86), and no real day of work was checked, so the "a standup generated from a real day's activity links each line to its source" criterion is not met |
+| Status | 🟨 Built; every check is simulated (temporary git repositories, in-memory database, fakes). User-triggered, separately opted-in Slack delivery is confirmation-gated and tested only with fakes; no real Slack message or workspace test ran. No Teams/Discord delivery or automatic schedule exists, and no real day of work was checked, so the "a standup generated from a real day's activity links each line to its source" criterion is not met |
 | Depends on | [Phase 69 — Weekly Recap & Statistics](phase-69-weekly-recap.md) |
 | Unblocks | — |
 
@@ -17,7 +17,7 @@ Your standup and day summary, written from what actually happened.
 
 - [ ] Yesterday / today / blockers from commits, agent sessions, meetings, CI and tasks. Sources: commits (read-only git, author equal to the repository's `user.email`, no merges, author date; none configured → "unattributed"), completed sessions (project name omitted), meetings (permission-gated) and stored events. Event-derived lines are labelled "Unverified event ·". Failed or partial sources are reported as unavailable, partial or unattributed notices. Stale blockers are cleared by a later pass or resume of the same subject. Tested with fixtures. Unticked because other sources can still be posted to `POST /api/events` (`github`, `issues` and `calendar` are reserved, and `terminal` only if the user turns that on), so forged events can appear as unverified lines, and no real day was used.
 - [ ] End-of-day digest. Routes `GET /api/digest?day=`, `/api/digest/commit/:sha`, `/api/digest/event/:id` (authenticated, read-only); pages `#/digest`, `#/digest/event/:id`, `#/digest/commit/:sha` ([daily-digest.md](../daily-digest.md)). Simulated. Unticked: not checked against a real day.
-- [ ] Copy, or send to Slack/Teams with approval (Phase 86). Copy is built and performs no external write. **Send to Slack or Teams is not built** (Phase 86 does not exist).
+- [ ] Copy, or send to Slack/Teams with approval (Phase 86). Copy is built and performs no external write. User-triggered Slack daily-digest delivery is separately opted in, Core-generated, confirmation-gated, audited and fake-tested; it has no automatic schedule or retry. It reuses the configured Chat Approvals Slack channel/token but is not the Phase 86 counts-only `post_digest`. No Teams/Discord daily-digest delivery and no real Slack message are built or tested.
 - [ ] Local model by default; sources linked for every line. The digest is deterministic and local and calls no model. Every line links to a local evidence page (event pages ignore `payload.url`); titles are sanitised (control and bidi characters stripped, 200 characters). Unticked: no real day was checked, and the "model" part is not used at all.
 
 ## Deliverables
@@ -32,7 +32,7 @@ Your standup and day summary, written from what actually happened.
 
 ### What was built
 
-- **Routes and pages**: the three authenticated GET routes and the `#/digest`, `#/digest/event/:id`, `#/digest/commit/:sha` pages. Deterministic and local, no model.
+- **Routes and pages**: the authenticated digest evidence routes/pages plus `GET`/`PUT /api/digest/slack` and empty-body `POST /api/digest[/YYYY-MM-DD]/slack`. The separate opt-in is off by default; Core generates the digest, displays a bounded preview and cited-source count for a mandatory external-action confirmation, then uses the guarded Slack transport. No arbitrary text, channel, token or URL enters the send route.
 - **Sources**: commits (read-only git; author is the repository's `user.email`; no merges; author date), sessions (project name omitted), meetings (permission-gated) and events labelled "Unverified event ·" with a local evidence page; `payload.url` is ignored.
 - **Honesty**: unavailable, partial and unattributed notices; stale blockers cleared by a later pass or resume of the same subject; titles sanitised (control and bidi characters stripped, 200 characters).
 - **Reserved sources**: the `github` and `issues` sources and `github.` / `issues.` types are now reserved on `POST /api/events` (failing-before test in `core/runtime/test/api.test.ts`).
@@ -40,7 +40,8 @@ Your standup and day summary, written from what actually happened.
 
 ### Deviations
 
-- Send to Slack or Teams is not built; only Copy.
+- Slack delivery is fake-tested only; no real Slack workspace/message testing is claimed.
+- Daily-digest delivery has no Teams or Discord route and no automatic schedule or retry.
 - No model is used, so there is no model summary.
 
 ### Security review
@@ -49,7 +50,7 @@ A static read-only review by tools (not a human audit) was followed by fixes, ea
 
 ### What was not built
 
-Send to Slack or Teams (Phase 86).
+Teams and Discord daily-digest delivery, automatic daily-digest scheduling, and any real Slack workspace/message run.
 
 ### What was not run
 

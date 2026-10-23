@@ -15,6 +15,9 @@ export const focus: Record<keyof typeof enFocus, string> = {
   "focus.osDnd": "Jangan Ganggu sistem aktif",
   "focus.osUnknown": "Status Jangan Ganggu tidak tersedia",
   "focus.refresh": "Perbarui status fokus sistem",
+  "focus.pomodoro": "Mulai Pomodoro",
+  "focus.systemUnavailable":
+    "Jangan Ganggu sistem tidak tersedia; mode fokus hanya mengontrol notifikasi Phoenix.",
   "focus.screenshot.title": "Tangkapan layar ke isu",
   "focus.screenshot.capture": "Pilih area layar…",
   "focus.screenshot.permission": "Izin perekaman layar diperlukan.",

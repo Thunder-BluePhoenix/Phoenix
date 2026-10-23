@@ -15,6 +15,9 @@ export const focus: Record<keyof typeof enFocus, string> = {
   "focus.osDnd": "सिस्टम डू नॉट डिस्टर्ब चालू है",
   "focus.osUnknown": "सिस्टम डू नॉट डिस्टर्ब स्थिति उपलब्ध नहीं",
   "focus.refresh": "सिस्टम फ़ोकस स्थिति रीफ़्रेश करें",
+  "focus.pomodoro": "पोमोडोरो शुरू करें",
+  "focus.systemUnavailable":
+    "सिस्टम डू नॉट डिस्टर्ब उपलब्ध नहीं है; फ़ोकस मोड केवल Phoenix सूचनाओं को नियंत्रित करता है।",
   "focus.screenshot.title": "स्क्रीनशॉट से इश्यू",
   "focus.screenshot.capture": "स्क्रीन क्षेत्र चुनें…",
   "focus.screenshot.permission": "स्क्रीन रिकॉर्डिंग अनुमति आवश्यक है।",
