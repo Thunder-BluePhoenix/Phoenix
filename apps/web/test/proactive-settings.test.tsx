@@ -74,7 +74,7 @@ describe("manual proactive suggestions settings", () => {
     expect((s.getByRole("button", { name: "Evaluate now" }) as HTMLButtonElement).disabled).toBe(
       true,
     );
-    expect(s.getByText(/No deployment prediction/)).toBeTruthy();
+    expect(s.getByText(/advisory provider is unavailable/)).toBeTruthy();
     fireEvent.click(s.getByRole("checkbox", { name: "Enable proactive suggestions" }));
     await waitFor(() => expect(api.posts("/api/proactive/preferences")).toHaveLength(1));
     expect(api.posts("/api/proactive/preferences")[0]?.body).toEqual({ enabled: true });
@@ -211,6 +211,69 @@ describe("manual proactive suggestions settings", () => {
     });
     expect((await (await section()).findByRole("alert")).textContent).toBe("Unavailable");
   });
+  it("opts in to engineering signals without erasing or enabling the Kage source", async () => {
+    const { api } = open({
+      preferences: { ...initial.preferences, enabled: true, capabilities: ["kage"] },
+    });
+    const s = await section();
+    const signals = await s.findByRole("checkbox", {
+      name: "Engineering signals from watched repositories",
+    });
+    expect((signals as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(signals);
+    await waitFor(() => expect(api.posts("/api/proactive/preferences")).toHaveLength(1));
+    expect(api.posts("/api/proactive/preferences")[0]?.body).toEqual({
+      capabilities: ["kage", "engineering-signals"],
+    });
+    await s.findByText("Engineering signals are on.");
+    await waitFor(() => expect((signals as HTMLInputElement).checked).toBe(true));
+    fireEvent.click(s.getByRole("checkbox", { name: /Kage accepted/ }));
+    await waitFor(() => expect(api.posts("/api/proactive/preferences")).toHaveLength(2));
+    expect(api.posts("/api/proactive/preferences")[1]?.body).toEqual({
+      capabilities: ["engineering-signals"],
+    });
+    expect(api.posts("/api/proactive/evaluate")).toHaveLength(0);
+  });
+
+  it("keeps a saved engineering-signals opt-in when Kage is turned on, and needs global enable to run", async () => {
+    const { api } = open({
+      preferences: { ...initial.preferences, capabilities: ["engineering-signals"] },
+    });
+    const s = await section();
+    await s.findByText("Engineering signals are off.");
+    expect(
+      (s.getByRole("combobox", { name: "Automatic evaluation cadence" }) as HTMLSelectElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.click(s.getByRole("checkbox", { name: /Kage accepted/ }));
+    await waitFor(() => expect(api.posts("/api/proactive/preferences")).toHaveLength(1));
+    expect(api.posts("/api/proactive/preferences")[0]?.body).toEqual({
+      capabilities: ["engineering-signals", "kage"],
+    });
+  });
+
+  it("offers a cadence for engineering signals even when Kage is unavailable, but never previews Kage", async () => {
+    const { api } = open({
+      preferences: { ...initial.preferences, enabled: true, capabilities: ["engineering-signals"] },
+      source: { capability_id: "kage", available: false, mode: "manual" },
+    });
+    const s = await section();
+    await s.findByText("Engineering signals are on.");
+    const cadence = s.getByRole("combobox", {
+      name: "Automatic evaluation cadence",
+    }) as HTMLSelectElement;
+    await waitFor(() => expect(cadence.disabled).toBe(false));
+    fireEvent.change(cadence, { target: { value: "60" } });
+    await waitFor(() => expect(api.posts("/api/proactive/preferences")).toHaveLength(1));
+    expect(api.posts("/api/proactive/preferences")[0]?.body).toEqual({ cadenceMinutes: 60 });
+    expect(
+      (s.getByRole("button", { name: "Preview suggestions" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect((s.getByRole("button", { name: "Evaluate now" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+  });
+
   it("offers scheduling only after explicit opt-in and allows returning to manual mode", async () => {
     const { api } = open();
     const s = await section();

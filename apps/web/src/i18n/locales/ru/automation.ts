@@ -412,7 +412,7 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   // ---- proactive suggestions (ProactiveSettings.tsx) ----
   "automation.proactive.title": "Проактивные предложения",
   "automation.proactive.intro":
-    "По умолчанию выключено. Единственный поддерживаемый источник — принятые неназначенные пункты действий из встреч Kage. Kage должен быть доступен. Провайдеры прогноза развёртывания, инцидентов и зависимостей недоступны. Оценка выполняется вручную, пока вы после согласия явно не выберете периодичность. Плановая оценка выполняется локально и учитывает тихие часы, ограничения частоты и аварийную остановку.",
+    "По умолчанию выключено. Когда Kage доступен, он может предлагать принятые неназначенные пункты встреч. Инженерные сигналы могут сканировать только явно добавленные вами корни отслеживаемых репозиториев; провайдер рекомендаций недоступен, поэтому рекомендации никогда не сообщаются. Оценка выполняется вручную, пока вы после согласия явно не выберете периодичность. Плановая работа выполняется локально и учитывает тихие часы, ограничения частоты и аварийную остановку.",
   "automation.proactive.status": "Источник Kage: {source}. Предложения: {state} ({cadence}).",
   "automation.proactive.sourceAvailable": "доступен",
   "automation.proactive.sourceUnavailable": "недоступен",
@@ -424,6 +424,8 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   "automation.proactive.optIn": "Согласие",
   "automation.proactive.enable": "Включить проактивные предложения",
   "automation.proactive.kageItems": "Принятые неназначенные пункты действий Kage",
+  "automation.proactive.engineeringSignals": "Инженерные сигналы из отслеживаемых репозиториев",
+  "automation.proactive.engineeringSignalsStatus": "Инженерные сигналы: {state}.",
   "automation.proactive.cadence": "Периодичность автоматической оценки",
   "automation.proactive.cadenceOff": "Только вручную (выключено)",
   "automation.proactive.cadence15": "Каждые 15 минут",

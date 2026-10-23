@@ -388,7 +388,7 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   // ---- proactive suggestions (ProactiveSettings.tsx) ----
   "automation.proactive.title": "主动建议",
   "automation.proactive.intro":
-    "默认关闭。唯一支持的来源是 Kage 会议中已接受且未分配的行动项。Kage 必须可用。目前没有部署预测、事故或依赖项提供方。除非你在选择加入后明确选择频率，否则评估为手动进行。定时评估在本地运行，并遵守静默时段、速率限制和紧急停止。",
+    "默认关闭。Kage 可用时可以建议已接受且未分配的会议行动项。工程信号只能扫描你明确添加的监视仓库根目录；其公告提供方不可用，因此从不报告公告。除非你在选择加入后明确选择频率，否则评估为手动进行。计划工作在本地运行，并遵守静默时段、速率限制和紧急停止。",
   "automation.proactive.status": "Kage 来源：{source}。建议{state}（{cadence}）。",
   "automation.proactive.sourceAvailable": "可用",
   "automation.proactive.sourceUnavailable": "不可用",
@@ -399,6 +399,8 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   "automation.proactive.optIn": "选择加入",
   "automation.proactive.enable": "启用主动建议",
   "automation.proactive.kageItems": "Kage 已接受且未分配的行动项",
+  "automation.proactive.engineeringSignals": "来自监视仓库的工程信号",
+  "automation.proactive.engineeringSignalsStatus": "工程信号处于{state}状态。",
   "automation.proactive.cadence": "自动评估频率",
   "automation.proactive.cadenceOff": "仅手动（关闭）",
   "automation.proactive.cadence15": "每 15 分钟",

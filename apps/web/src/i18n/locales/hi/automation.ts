@@ -402,7 +402,7 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   // ---- proactive suggestions (ProactiveSettings.tsx) ----
   "automation.proactive.title": "सक्रिय सुझाव",
   "automation.proactive.intro":
-    "डिफ़ॉल्ट रूप से बंद। एकमात्र समर्थित स्रोत Kage मीटिंग के स्वीकृत, असाइन न किए गए एक्शन आइटम हैं। Kage उपलब्ध होना चाहिए। कोई डिप्लॉयमेंट पूर्वानुमान, इंसिडेंट या डिपेंडेंसी प्रदाता उपलब्ध नहीं है। मूल्यांकन मैन्युअल रहता है, जब तक आप ऑप्ट-इन के बाद स्पष्ट रूप से कोई अंतराल नहीं चुनते। निर्धारित मूल्यांकन लोकल चलता है और शांत घंटों, दर सीमाओं और आपातकालीन स्टॉप का पालन करता है।",
+    "डिफ़ॉल्ट रूप से बंद। उपलब्ध होने पर Kage स्वीकृत, बिना असाइन किए मीटिंग आइटम सुझा सकता है। इंजीनियरिंग संकेत केवल उन देखे गए रिपॉजिटरी रूट को स्कैन कर सकते हैं जिन्हें आप स्पष्ट रूप से जोड़ते हैं; उनका सलाह प्रदाता अनुपलब्ध है, इसलिए वह कभी सलाह की सूचना नहीं देता। मूल्यांकन मैन्युअल रहता है, जब तक आप ऑप्ट-इन के बाद स्पष्ट रूप से कोई अंतराल नहीं चुनते। नियोजित काम स्थानीय रूप से चलता है और शांत समय, दर सीमा और आपातकालीन रोक का सम्मान करता है।",
   "automation.proactive.status": "Kage स्रोत: {source}। सुझाव {state} हैं ({cadence})।",
   "automation.proactive.sourceAvailable": "उपलब्ध",
   "automation.proactive.sourceUnavailable": "अनुपलब्ध",
@@ -413,6 +413,8 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   "automation.proactive.optIn": "ऑप्ट-इन",
   "automation.proactive.enable": "सक्रिय सुझाव सक्षम करें",
   "automation.proactive.kageItems": "Kage के स्वीकृत, असाइन न किए गए एक्शन आइटम",
+  "automation.proactive.engineeringSignals": "देखे गए रिपॉजिटरी से इंजीनियरिंग संकेत",
+  "automation.proactive.engineeringSignalsStatus": "इंजीनियरिंग संकेत {state} हैं।",
   "automation.proactive.cadence": "स्वचालित मूल्यांकन अंतराल",
   "automation.proactive.cadenceOff": "केवल मैन्युअल (बंद)",
   "automation.proactive.cadence15": "हर 15 मिनट",

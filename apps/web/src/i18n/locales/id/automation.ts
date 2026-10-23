@@ -407,7 +407,7 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   // ---- proactive suggestions (ProactiveSettings.tsx) ----
   "automation.proactive.title": "Saran proaktif",
   "automation.proactive.intro":
-    "Nonaktif secara default. Satu-satunya sumber yang didukung adalah butir tindakan rapat Kage yang diterima dan belum ditugaskan. Kage harus tersedia. Tidak ada penyedia prediksi deployment, insiden, atau dependensi. Evaluasi bersifat manual kecuali Anda memilih kadensi secara eksplisit setelah ikut serta. Evaluasi terjadwal berjalan secara lokal dan menghormati jam tenang, batas laju, dan penghentian darurat.",
+    "Nonaktif secara default. Kage dapat menyarankan butir rapat yang diterima dan belum ditugaskan saat tersedia. Sinyal rekayasa hanya dapat memindai akar repositori yang dipantau dan Anda tambahkan secara eksplisit; penyedia advisori tidak tersedia sehingga tidak pernah melaporkan advisori. Evaluasi bersifat manual kecuali Anda memilih kadensi secara eksplisit setelah ikut serta. Pekerjaan terjadwal berjalan secara lokal dan menghormati jam tenang, batas laju, dan penghentian darurat.",
   "automation.proactive.status": "Sumber Kage: {source}. Saran {state} ({cadence}).",
   "automation.proactive.sourceAvailable": "tersedia",
   "automation.proactive.sourceUnavailable": "tidak tersedia",
@@ -418,6 +418,8 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   "automation.proactive.optIn": "Ikut serta",
   "automation.proactive.enable": "Aktifkan saran proaktif",
   "automation.proactive.kageItems": "Butir tindakan Kage yang diterima dan belum ditugaskan",
+  "automation.proactive.engineeringSignals": "Sinyal rekayasa dari repositori yang dipantau",
+  "automation.proactive.engineeringSignalsStatus": "Sinyal rekayasa {state}.",
   "automation.proactive.cadence": "Kadensi evaluasi otomatis",
   "automation.proactive.cadenceOff": "Hanya manual (nonaktif)",
   "automation.proactive.cadence15": "Setiap 15 menit",

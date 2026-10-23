@@ -404,7 +404,7 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   // ---- proactive suggestions (ProactiveSettings.tsx) ----
   "automation.proactive.title": "সক্রিয় পরামর্শ",
   "automation.proactive.intro":
-    "ডিফল্টে বন্ধ। একমাত্র সমর্থিত উৎস হলো Kage মিটিংয়ের গৃহীত, কাউকে বরাদ্দ না করা অ্যাকশন আইটেম। Kage উপলব্ধ থাকতে হবে। ডিপ্লয়মেন্ট পূর্বাভাস, ইনসিডেন্ট বা ডিপেন্ডেন্সি প্রোভাইডার উপলব্ধ নেই। অপ্ট-ইনের পর আপনি স্পষ্টভাবে কোনো ব্যবধান না বাছলে মূল্যায়ন ম্যানুয়াল থাকে। নির্ধারিত মূল্যায়ন লোকালে চলে এবং নীরব সময়, হারের সীমা ও জরুরি স্টপ মেনে চলে।",
+    "ডিফল্টে বন্ধ। Kage উপলব্ধ থাকলে গৃহীত, বরাদ্দহীন মিটিং আইটেম সাজেস্ট করতে পারে। ইঞ্জিনিয়ারিং সংকেত কেবল আপনার স্পষ্টভাবে যোগ করা নজরদারিকৃত রিপোজিটরি রুট স্ক্যান করতে পারে; পরামর্শ প্রদানকারী অনুপলব্ধ, তাই এটি কখনও পরামর্শ জানায় না। অপ্ট-ইনের পর আপনি স্পষ্টভাবে কোনো ব্যবধান না বাছলে মূল্যায়ন ম্যানুয়াল থাকে। নির্ধারিত কাজ স্থানীয়ভাবে চলে এবং নীরব সময়, রেট সীমা ও জরুরি বন্ধ মেনে চলে।",
   "automation.proactive.status": "Kage উৎস: {source}। পরামর্শ {state} ({cadence})।",
   "automation.proactive.sourceAvailable": "উপলব্ধ",
   "automation.proactive.sourceUnavailable": "অনুপলব্ধ",
@@ -415,6 +415,8 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   "automation.proactive.optIn": "অপ্ট-ইন",
   "automation.proactive.enable": "সক্রিয় পরামর্শ চালু করুন",
   "automation.proactive.kageItems": "Kage-এর গৃহীত, বরাদ্দহীন অ্যাকশন আইটেম",
+  "automation.proactive.engineeringSignals": "নজরদারিকৃত রিপোজিটরি থেকে ইঞ্জিনিয়ারিং সংকেত",
+  "automation.proactive.engineeringSignalsStatus": "ইঞ্জিনিয়ারিং সংকেত {state}।",
   "automation.proactive.cadence": "স্বয়ংক্রিয় মূল্যায়নের ব্যবধান",
   "automation.proactive.cadenceOff": "শুধু ম্যানুয়াল (বন্ধ)",
   "automation.proactive.cadence15": "প্রতি ১৫ মিনিটে",

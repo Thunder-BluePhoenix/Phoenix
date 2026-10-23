@@ -85,8 +85,14 @@ export function ProactiveSettingsSection() {
       }
       setMessage(t("automation.proactive.saved"));
     });
-  const optedIn = !!status?.preferences.enabled && status.preferences.capabilities.includes("kage");
+  const kageOptedIn =
+    !!status?.preferences.enabled && status.preferences.capabilities.includes("kage");
+  const engineeringSignalsOptedIn =
+    !!status?.preferences.enabled &&
+    status.preferences.capabilities.includes("engineering-signals");
+  const optedIn = kageOptedIn || engineeringSignalsOptedIn;
   const available = status?.source.capability_id === "kage" && status.source.available;
+  const schedulingAvailable = engineeringSignalsOptedIn || (kageOptedIn && available);
   const quiet = status?.preferences.quietHours;
   return (
     <section className="card" aria-labelledby="proactive-h">
@@ -111,6 +117,13 @@ export function ProactiveSettingsSection() {
                 : t("automation.proactive.cadenceManual"),
             })}
           </p>
+          <p className="muted small">
+            {t("automation.proactive.engineeringSignalsStatus", {
+              state: engineeringSignalsOptedIn
+                ? t("automation.proactive.stateOn")
+                : t("automation.proactive.stateOff"),
+            })}
+          </p>
           <fieldset disabled={busy}>
             <legend>{t("automation.proactive.optIn")}</legend>
             <label className="choice">
@@ -127,16 +140,40 @@ export function ProactiveSettingsSection() {
                 checked={status.preferences.capabilities.includes("kage")}
                 disabled={!available && !status.preferences.capabilities.includes("kage")}
                 onChange={(event) =>
-                  void save({ capabilities: event.target.checked ? ["kage"] : [] })
+                  void save({
+                    capabilities: event.target.checked
+                      ? status.preferences.capabilities.includes("kage")
+                        ? status.preferences.capabilities
+                        : [...status.preferences.capabilities, "kage"]
+                      : status.preferences.capabilities.filter((source) => source !== "kage"),
+                  })
                 }
               />
               {t("automation.proactive.kageItems")}
+            </label>
+            <label className="choice">
+              <input
+                type="checkbox"
+                checked={status.preferences.capabilities.includes("engineering-signals")}
+                onChange={(event) =>
+                  void save({
+                    capabilities: event.target.checked
+                      ? status.preferences.capabilities.includes("engineering-signals")
+                        ? status.preferences.capabilities
+                        : [...status.preferences.capabilities, "engineering-signals"]
+                      : status.preferences.capabilities.filter(
+                          (source) => source !== "engineering-signals",
+                        ),
+                  })
+                }
+              />
+              {t("automation.proactive.engineeringSignals")}
             </label>
           </fieldset>
           <label className="field">
             {t("automation.proactive.cadence")}
             <select
-              disabled={busy || !optedIn || !available}
+              disabled={busy || !optedIn || !schedulingAvailable}
               value={status.preferences.cadenceMinutes ?? ""}
               onChange={(event) =>
                 void save({

@@ -400,7 +400,7 @@ export const automation = {
   // ---- proactive suggestions (ProactiveSettings.tsx) ----
   "automation.proactive.title": "Proactive suggestions",
   "automation.proactive.intro":
-    "Off by default. The only supported source is accepted, unassigned action items from Kage meetings. Kage must be available. No deployment prediction, incident or dependency provider is available. Evaluation is manual unless you explicitly select a cadence after opting in. Scheduled evaluation runs locally and respects quiet hours, rate limits and emergency stop.",
+    "Off by default. Kage can suggest accepted, unassigned meeting items when it is available. Engineering signals can scan only watched repository roots you explicitly add; their advisory provider is unavailable, so it never reports advisories. Evaluation is manual unless you explicitly select a cadence after opting in. Scheduled work runs locally and respects quiet hours, rate limits and emergency stop.",
   "automation.proactive.status": "Kage source: {source}. Suggestions are {state} ({cadence}).",
   "automation.proactive.sourceAvailable": "available",
   "automation.proactive.sourceUnavailable": "unavailable",
@@ -411,6 +411,8 @@ export const automation = {
   "automation.proactive.optIn": "Opt in",
   "automation.proactive.enable": "Enable proactive suggestions",
   "automation.proactive.kageItems": "Kage accepted, unassigned action items",
+  "automation.proactive.engineeringSignals": "Engineering signals from watched repositories",
+  "automation.proactive.engineeringSignalsStatus": "Engineering signals are {state}.",
   "automation.proactive.cadence": "Automatic evaluation cadence",
   "automation.proactive.cadenceOff": "Manual only (off)",
   "automation.proactive.cadence15": "Every 15 minutes",

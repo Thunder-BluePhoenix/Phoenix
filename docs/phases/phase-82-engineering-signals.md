@@ -5,7 +5,7 @@
 | Stage | Stage 14 — Phoenix originals |
 | Release target | Post-v2.0 track |
 | Priority | Medium |
-| Status | 🟨 Built; every check is simulated (temporary repositories, injected fakes). The advisory provider is always unavailable in production, the history provider can only yield job-level duration trends, and no screen can opt in to engineering signals, so the "each signal raised from a real repo's history" criterion is not met |
+| Status | 🟨 Built; every check is simulated (temporary repositories, injected fakes). The advisory provider is always unavailable in production, the history provider can only yield job-level duration trends, and the new opt-in checkbox has only been tested against fake routes, so the "each signal raised from a real repo's history" criterion is not met |
 | Depends on | [Phase 52 — Predictive & Proactive Intelligence](phase-52-proactive-intelligence.md) |
 | Unblocks | — |
 
@@ -19,7 +19,7 @@ Proactive engineering signals from data Phoenix already collects.
 - [ ] Flaky-test detection from terminal and CI history. Implemented over an injected history source and tested with fixtures. Unticked because the production history provider reads only the last 1000 terminal events and yields job-level duration trends only, so flaky-test and CI signals cannot fire from it.
 - [ ] Build and test duration trends. Median comparison over recent runs, tested with fixtures; job-level trends are the only kind the production history provider can produce. Unticked: no real repository history was used.
 - [ ] Config drift: keys in `.env.example` missing from `.env` (names only, never values). Names only, never values; files opened with `O_NOFOLLOW` and an inode check, top-level only. Tested on temporary directories. Unticked: no real repository was scanned.
-- [ ] Signals respect Phase 52's quiet hours and noise budget. Delivery goes through the Phase 52 `considerInsight` (quiet hours, dedupe, hourly budget); simulated. Unticked: it also needs a user opt-in, and **no UI can write the `engineering-signals` opt-in** (the web `ProactiveSettings` writes only `["kage"]` or `[]`).
+- [ ] Signals respect Phase 52's quiet hours and noise budget. Delivery goes through the Phase 52 `considerInsight` (quiet hours, dedupe, hourly budget); simulated. Unticked: delivery needs the user's opt-in, which the Settings "Proactive suggestions" section can now write (an `engineering-signals` checkbox that keeps the Kage choice, tested against fake routes only), but no scheduled signal was ever delivered from a real repository.
 
 ## Deliverables
 
@@ -49,7 +49,7 @@ A static read-only review by tools (not a human audit) was followed by fixes, ea
 
 ### What was not built
 
-A real advisory source; an end-to-end opt-in UI for engineering signals.
+A real advisory source; a browser run of the opt-in against a running Core.
 
 ### What was not run
 

@@ -399,7 +399,7 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   // ---- proactive suggestions (ProactiveSettings.tsx) ----
   "automation.proactive.title": "الاقتراحات الاستباقية",
   "automation.proactive.intro":
-    "متوقفة افتراضيًا. المصدر الوحيد المدعوم هو بنود الإجراءات المقبولة وغير المسندة من اجتماعات Kage. يجب أن يكون Kage متاحًا. لا يتوفر أي موفّر لتوقع النشر أو الحوادث أو التبعيات. التقييم يدوي ما لم تختر وتيرة صراحةً بعد الاشتراك. يعمل التقييم المجدول محليًا ويراعي ساعات الهدوء وحدود المعدل والإيقاف الطارئ.",
+    "متوقفة افتراضيًا. يمكن لـ Kage اقتراح بنود الاجتماعات المقبولة وغير المسندة عند توفره. تستطيع إشارات الهندسة فحص جذور المستودعات المراقبة التي تضيفها صراحةً فقط؛ موفر الاستشارات غير متاح، لذلك لا يبلغ أبدًا عن استشارات. التقييم يدوي ما لم تختر وتيرة صراحةً بعد الاشتراك. يعمل العمل المجدول محليًا ويراعي ساعات الهدوء وحدود المعدل والإيقاف الطارئ.",
   "automation.proactive.status": "مصدر Kage: {source}. الاقتراحات {state} ({cadence}).",
   "automation.proactive.sourceAvailable": "متاح",
   "automation.proactive.sourceUnavailable": "غير متاح",
@@ -411,6 +411,8 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   "automation.proactive.optIn": "الاشتراك",
   "automation.proactive.enable": "تفعيل الاقتراحات الاستباقية",
   "automation.proactive.kageItems": "بنود الإجراءات المقبولة وغير المسندة في Kage",
+  "automation.proactive.engineeringSignals": "إشارات هندسية من المستودعات المراقبة",
+  "automation.proactive.engineeringSignalsStatus": "إشارات الهندسة {state}.",
   "automation.proactive.cadence": "وتيرة التقييم التلقائي",
   "automation.proactive.cadenceOff": "يدوي فقط (متوقف)",
   "automation.proactive.cadence15": "كل 15 دقيقة",

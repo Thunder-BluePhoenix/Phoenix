@@ -407,7 +407,7 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   // ---- proactive suggestions (ProactiveSettings.tsx) ----
   "automation.proactive.title": "Sugestões proativas",
   "automation.proactive.intro":
-    "Desativado por padrão. A única fonte compatível são itens de ação aceitos e sem responsável das reuniões do Kage. O Kage precisa estar disponível. Nenhum provedor de previsão de implantação, incidentes ou dependências está disponível. A avaliação é manual, a menos que você escolha explicitamente uma periodicidade após aderir. A avaliação agendada roda localmente e respeita horário de silêncio, limites de taxa e parada de emergência.",
+    "Desativado por padrão. Quando disponível, o Kage pode sugerir itens de reunião aceitos e sem responsável. Os sinais de engenharia só podem examinar raízes de repositórios monitorados que você adicionar explicitamente; o provedor de avisos não está disponível, por isso nunca informa avisos. A avaliação é manual, a menos que você escolha explicitamente uma periodicidade após aderir. O trabalho agendado roda localmente e respeita horário de silêncio, limites de taxa e parada de emergência.",
   "automation.proactive.status": "Fonte Kage: {source}. As sugestões estão {state} ({cadence}).",
   "automation.proactive.sourceAvailable": "disponível",
   "automation.proactive.sourceUnavailable": "indisponível",
@@ -418,6 +418,8 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   "automation.proactive.optIn": "Aderir",
   "automation.proactive.enable": "Ativar sugestões proativas",
   "automation.proactive.kageItems": "Itens de ação do Kage aceitos e sem responsável",
+  "automation.proactive.engineeringSignals": "Sinais de engenharia de repositórios monitorados",
+  "automation.proactive.engineeringSignalsStatus": "Os sinais de engenharia estão {state}.",
   "automation.proactive.cadence": "Periodicidade da avaliação automática",
   "automation.proactive.cadenceOff": "Somente manual (desativada)",
   "automation.proactive.cadence15": "A cada 15 minutos",

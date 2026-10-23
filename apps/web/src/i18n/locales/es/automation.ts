@@ -416,7 +416,7 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   // ---- proactive suggestions (ProactiveSettings.tsx) ----
   "automation.proactive.title": "Sugerencias proactivas",
   "automation.proactive.intro":
-    "Desactivadas por defecto. La única fuente compatible son los elementos de acción aceptados y sin asignar de las reuniones de Kage. Kage debe estar disponible. No hay ningún proveedor de predicción de despliegues, incidentes ni dependencias. La evaluación es manual, salvo que elijas explícitamente una cadencia tras activar la opción. La evaluación programada se ejecuta localmente y respeta las horas de silencio, los límites de frecuencia y la parada de emergencia.",
+    "Desactivadas por defecto. Kage puede sugerir elementos de reuniones aceptados y sin asignar cuando está disponible. Las señales de ingeniería solo pueden analizar las raíces de repositorios vigilados que añadas explícitamente; su proveedor de avisos no está disponible, por lo que nunca informa avisos. La evaluación es manual salvo que elijas explícitamente una cadencia tras activar la opción. El trabajo programado se ejecuta localmente y respeta las horas de silencio, los límites de frecuencia y la parada de emergencia.",
   "automation.proactive.status":
     "Fuente de Kage: {source}. Las sugerencias están {state} ({cadence}).",
   "automation.proactive.sourceAvailable": "disponible",
@@ -429,6 +429,8 @@ export const automation: Record<keyof typeof enAutomation, string> = {
   "automation.proactive.optIn": "Participar",
   "automation.proactive.enable": "Activar las sugerencias proactivas",
   "automation.proactive.kageItems": "Elementos de acción de Kage aceptados y sin asignar",
+  "automation.proactive.engineeringSignals": "Señales de ingeniería de repositorios vigilados",
+  "automation.proactive.engineeringSignalsStatus": "Las señales de ingeniería están {state}.",
   "automation.proactive.cadence": "Cadencia de evaluación automática",
   "automation.proactive.cadenceOff": "Solo manual (desactivada)",
   "automation.proactive.cadence15": "Cada 15 minutos",
