@@ -8,7 +8,10 @@ import {
   macosCalendar,
   microsoftCalendar,
   prepareMeeting,
+  MAX_REMINDER_RECORDS,
   ReminderBook,
+  reminderKey,
+  type ReminderStore,
   safeEvent,
   type CalendarClient,
   type CalendarEvent,
@@ -187,6 +190,97 @@ describe("calendar event boundaries", () => {
     expect(book.due([event], now + 60_000)).toEqual([]);
     expect(new ReminderBook().due([event], Date.parse(start) + 1)).toEqual([]);
     expect(new ReminderBook().due([event], now - 1)).toEqual([]);
+  });
+
+  describe("persisted reminder keys", () => {
+    const now = Date.parse(start) - 3 * 60_000;
+    const memoryStore = (initial: unknown = null) => {
+      const box = { value: initial, writes: 0 };
+      const store: ReminderStore = {
+        read: () => box.value,
+        write: (value) => {
+          box.value = JSON.parse(JSON.stringify(value));
+          box.writes++;
+        },
+      };
+      return { box, store };
+    };
+
+    it("does not remind again from a new book on the same store, but does for a new occurrence", () => {
+      const { store } = memoryStore();
+      expect(new ReminderBook(store).due([event], now)).toEqual([event]);
+      const other = { ...event, id: "meeting:2" };
+      expect(new ReminderBook(store).due([event, other], now + 1_000)).toEqual([other]);
+      // A rescheduled occurrence (same id, new start) is a different reminder.
+      const moved = { ...event, start: new Date(Date.parse(start) + 60_000).toISOString() };
+      expect(new ReminderBook(store).due([moved], now + 1_000)).toEqual([moved]);
+    });
+
+    it("stores only a digest and the start time", () => {
+      const { box, store } = memoryStore();
+      new ReminderBook(store).due([event], now);
+      expect(box.value).toEqual({
+        version: 1,
+        sent: [{ key: reminderKey(event), start: Date.parse(start) }],
+      });
+      const raw = JSON.stringify(box.value);
+      for (const text of [event.title, event.id, "alex@example.com", "example.com/meet"])
+        expect(raw).not.toContain(text);
+    });
+
+    it("drops records once the start has passed", () => {
+      const { box, store } = memoryStore();
+      const book = new ReminderBook(store);
+      book.due([event], now);
+      book.due([], Date.parse(start) + 1);
+      expect(box.value).toEqual({ version: 1, sent: [] });
+    });
+
+    it("ignores corrupt or hostile stored values and bad entries", () => {
+      const good = { key: reminderKey(event), start: Date.parse(start) };
+      for (const bad of [
+        undefined,
+        null,
+        "text",
+        7,
+        [],
+        { version: 2, sent: [good] },
+        { version: 1, sent: "x" },
+        { version: 1, sent: [null, 3, "x", { key: "../../etc", start: 1 }, { key: good.key }] },
+        { version: 1, sent: [{ key: good.key, start: Number.NaN }] },
+        // A record dated far in the future must not suppress a real reminder forever.
+        { version: 1, sent: [{ key: good.key, start: Date.parse(start) + 365 * 86_400_000 }] },
+      ])
+        expect(new ReminderBook(memoryStore(bad).store).due([event], now)).toEqual([event]);
+      // A good entry next to bad ones still counts.
+      expect(
+        new ReminderBook(memoryStore({ version: 1, sent: [null, good] }).store).due([event], now),
+      ).toEqual([]);
+    });
+
+    it("still reminds once when the store cannot be read or written, and never throws", () => {
+      const store: ReminderStore = {
+        read: () => {
+          throw new Error("disk says Project review");
+        },
+        write: () => {
+          throw new Error("disk full");
+        },
+      };
+      const book = new ReminderBook(store);
+      expect(book.due([event], now)).toEqual([event]);
+      expect(book.due([event], now + 1_000)).toEqual([]);
+    });
+
+    it("keeps at most MAX_REMINDER_RECORDS records", () => {
+      const { box, store } = memoryStore();
+      const many = Array.from({ length: MAX_REMINDER_RECORDS + 40 }, (_, i) => ({
+        ...event,
+        id: `meeting:${i}`,
+      }));
+      expect(new ReminderBook(store).due(many, now)).toHaveLength(many.length);
+      expect((box.value as { sent: unknown[] }).sent).toHaveLength(MAX_REMINDER_RECORDS);
+    });
   });
 
   it("returns only reviewed accepted decisions and open actions from matching prior meetings", async () => {

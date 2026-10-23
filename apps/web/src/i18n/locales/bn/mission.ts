@@ -112,6 +112,9 @@ export const mission: Record<keyof typeof enmission, string> = {
     "রিপোর্ট ছাড়া এত মিনিট পার হলে সক্রিয় সেশনকে আটকে থাকা হিসেবে চিহ্নিত করুন",
   "mission.stall.save": "সংরক্ষণ করুন",
 
+  "mission.keep.label": "এত দিনের চেয়ে পুরোনো ব্যবহারের রেকর্ড মুছে ফেলুন (৭ থেকে ৩৬৫০)",
+  "mission.keep.save": "সংরক্ষণ করুন",
+
   "mission.saved": "সংরক্ষিত হয়েছে",
   "mission.delete.button": "এজেন্টের সব ব্যবহার মুছুন",
   "mission.delete.warning":

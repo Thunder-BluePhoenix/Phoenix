@@ -111,6 +111,9 @@ export const mission: Record<keyof typeof enmission, string> = {
   "mission.stall.label": "Marcar como atascada una sesión activa tras tantos minutos sin informe",
   "mission.stall.save": "Guardar",
 
+  "mission.keep.label": "Borrar los registros de uso con más de tantos días (de 7 a 3650)",
+  "mission.keep.save": "Guardar",
+
   "mission.saved": "Guardado",
   "mission.delete.button": "Borrar todo el uso de agentes",
   "mission.delete.warning":

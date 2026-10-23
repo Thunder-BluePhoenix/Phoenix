@@ -110,6 +110,9 @@ export const mission: Record<keyof typeof enmission, string> = {
   "mission.stall.label": "活跃会话在这么多分钟内没有上报时，将其标记为卡住",
   "mission.stall.save": "保存",
 
+  "mission.keep.label": "删除超过这么多天的用量记录（7 到 3650）",
+  "mission.keep.save": "保存",
+
   "mission.saved": "已保存",
   "mission.delete.button": "删除所有智能体用量",
   "mission.delete.warning":

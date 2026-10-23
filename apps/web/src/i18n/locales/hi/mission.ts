@@ -111,6 +111,9 @@ export const mission: Record<keyof typeof enmission, string> = {
   "mission.stall.label": "रिपोर्ट के बिना इतने मिनट बीतने पर सक्रिय सत्र को अटका हुआ चिह्नित करें",
   "mission.stall.save": "सहेजें",
 
+  "mission.keep.label": "इतने दिनों से पुराने उपयोग रिकॉर्ड हटाएँ (7 से 3650)",
+  "mission.keep.save": "सहेजें",
+
   "mission.saved": "सहेजा गया",
   "mission.delete.button": "एजेंट का सारा उपयोग हटाएँ",
   "mission.delete.warning":

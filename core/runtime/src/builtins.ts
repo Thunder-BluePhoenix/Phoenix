@@ -10,7 +10,7 @@ import { createAppleMusicCapability } from "@phoenix/capability-apple-music";
 import { createDockerCapability } from "@phoenix/capability-docker";
 import { createFrappeCapability } from "@phoenix/capability-frappe";
 import { createCalcomCapability } from "@phoenix/capability-calcom";
-import { createCalendarCapability } from "@phoenix/capability-calendar";
+import { createCalendarCapability, type ReminderStore } from "@phoenix/capability-calendar";
 import { createGitCapability } from "@phoenix/capability-git";
 import { createGithubCapability } from "@phoenix/capability-github";
 import { createIssuesCapability } from "@phoenix/capability-issues";
@@ -42,6 +42,8 @@ export interface BuiltinHost {
   onAwakeSession?: (session: SessionController | undefined) => void;
   /** Phase 74: whether Docker has running containers, for the lid-close "freeze Docker" action. */
   dockerIdle?: DockerIdle;
+  /** Phase 83: where the calendar keeps its reminder de-dup keys, so a restart does not remind again. */
+  calendarReminders?: ReminderStore;
 }
 
 /**
@@ -70,7 +72,9 @@ export function builtinCapabilities(
     createResendCapability(),
     createNotionCapability(),
     createCalcomCapability(),
-    createCalendarCapability(),
+    createCalendarCapability(
+      host.calendarReminders ? { reminderStore: host.calendarReminders } : {},
+    ),
     createSpotifyCapability(),
     createAppleMusicCapability(),
     createPortfolioCapability(),

@@ -110,6 +110,9 @@ export const mission = {
   "mission.stall.label": "Mark an active session stuck after this many minutes without a report",
   "mission.stall.save": "Save",
 
+  "mission.keep.label": "Delete usage records older than this many days (7 to 3650)",
+  "mission.keep.save": "Save",
+
   "mission.saved": "Saved",
   "mission.delete.button": "Delete all agent usage",
   "mission.delete.warning":

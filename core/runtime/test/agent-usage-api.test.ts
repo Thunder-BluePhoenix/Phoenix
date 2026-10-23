@@ -98,6 +98,18 @@ describe("configuration, privacy and delete", () => {
     expect((await core.api("POST", "/api/mission/config", { budgets: "x" })).status).toBe(400);
   });
 
+  it("keep_days: saved by POST /api/mission/config, 400 for a bad value and nothing stored", async () => {
+    core = await startCore();
+    expect((await core.api("GET", "/api/mission/config")).json.keep_days).toBe(400);
+    for (const bad of [6, 3_651, 30.5, "30", null])
+      expect((await core.api("POST", "/api/mission/config", { keep_days: bad })).status).toBe(400);
+    expect((await core.api("GET", "/api/mission/config")).json.keep_days).toBe(400);
+    const saved = await core.api("POST", "/api/mission/config", { keep_days: 90 });
+    expect(saved.status).toBe(200);
+    expect(saved.json.keep_days).toBe(90);
+    expect((await core.api("GET", "/api/mission/config")).json.keep_days).toBe(90);
+  });
+
   it("lists agent_usage in the privacy inventory and deletes it only with confirmation", async () => {
     core = await startCore();
     await core.api("POST", "/api/agent/live/usage", report());

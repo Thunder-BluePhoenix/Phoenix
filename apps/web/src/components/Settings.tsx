@@ -47,6 +47,7 @@ import { MusicSitesSection } from "./MusicSitesSettings";
 import { ScheduledAwakeSection } from "./ScheduledAwakeSettings";
 import { StatusLightsSection } from "./StatusLightsSettings";
 import { TeamSettingsSection } from "./TeamSettings";
+import { TeamWebhooksSection } from "./TeamWebhooks";
 import { FawkesAppearanceSection } from "./Wardrobe";
 import { FocusMode } from "./FocusMode";
 
@@ -87,6 +88,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <ScheduledAwakeSection />
       <StatusLightsSection />
       <TeamSettingsSection />
+      <TeamWebhooksSection />
       <BrowserProfilesSection />
       <MusicSitesSection />
       <FawkesRebirthSettingsSection />

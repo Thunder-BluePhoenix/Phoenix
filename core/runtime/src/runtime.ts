@@ -110,6 +110,7 @@ import { MusicConnectorsService } from "./music-connectors/service";
 import { ScheduledAwakeService, type ScheduledAwakeDependencies } from "./scheduled-awake/service";
 import { EventSourcePolicy } from "./event-source-policy";
 import {
+  FOCUS_SESSION_KEY,
   FocusController,
   type FocusClock,
   type FocusDndReader,
@@ -446,6 +447,17 @@ export class PhoenixRuntime implements CoreServices {
         );
         if (!result.ok)
           this.logger.warn("failed to deliver focus notification", { code: result.error.code });
+      },
+      {
+        read: () => this.settings.get<unknown>(FOCUS_SESSION_KEY, null),
+        write: (session) => {
+          try {
+            if (session === null) this.settings.delete(FOCUS_SESSION_KEY);
+            else this.settings.set(FOCUS_SESSION_KEY, session);
+          } catch {
+            this.logger.warn("failed to persist focus session");
+          }
+        },
       },
     );
     this.stopFocusDelivery = this.bus.subscribe(
@@ -1106,6 +1118,8 @@ export class PhoenixRuntime implements CoreServices {
   }
 
   async start(): Promise<{ host: string; port: number }> {
+    // Resume an unexpired focus session from its stored end instant before the API can be read.
+    this.focus.restore();
     this.api = new ApiServer({
       services: this,
       token: this.token,

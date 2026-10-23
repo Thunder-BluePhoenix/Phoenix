@@ -48,12 +48,15 @@ import {
   BASELINES_KEY,
   BUDGET_FIRED_KEY,
   BUDGETS_KEY,
+  KEEP_DAYS_KEY,
   PRICES_KEY,
   STUCK_KEY,
   parseBudgets,
   parsePrices,
+  parseKeepDays,
   parseStuckAfter,
   readBudgets,
+  readKeepDays,
   readStuckAfter,
 } from "./config";
 import { readMarks, UsageIngest } from "./ingest";
@@ -62,8 +65,6 @@ import { readPrices } from "./pricing";
 export const STALL_EVENT = "agent.safety.stall";
 export const DEFAULT_DAYS = 14;
 export const MAX_DAYS = 90;
-/** Days of usage rows kept (about 13 months); older rows are dropped when a new day starts. */
-export const USAGE_KEEP_DAYS = 400;
 const MAX_STALLS = 500;
 const MAX_FIRED = 2_000;
 const MAX_COUNTED_AGENTS = 50;
@@ -138,7 +139,7 @@ export class AgentUsageRuntime implements MissionApi {
   private readonly timeZone: string;
   private readonly stalls = new Map<string, number>();
   private readonly unsubscribe: () => void;
-  private prunedDay = "";
+  private prunedKey = "";
   private ingestDay = "";
   private readonly ingestCounts = new Map<string, { clamped: number; refused: number }>();
 
@@ -149,6 +150,8 @@ export class AgentUsageRuntime implements MissionApi {
     );
     this.now = d.now ?? Date.now;
     this.timeZone = assertTimeZone(d.timeZone ?? systemTimeZone());
+    // On load too: a retention lowered before a restart takes effect without waiting for a report.
+    this.prune(dayKeyOf(this.now(), this.timeZone));
     this.unsubscribe = d.bus.subscribe("mission-stalls", [STALL_EVENT], (event) =>
       this.onStall(event),
     );
@@ -227,11 +230,17 @@ export class AgentUsageRuntime implements MissionApi {
     };
   }
 
+  /**
+   * Drops rows older than the configured retention, once per local day and per retention value (so
+   * a lowered setting prunes on the next report). Rows from `today - keep_days` on are kept.
+   */
   private prune(day: string): void {
-    if (this.prunedDay === day) return;
-    this.prunedDay = day;
+    const keep = readKeepDays(this.d.settings.get<unknown>(KEEP_DAYS_KEY, null));
+    const key = `${day}|${keep}`;
+    if (this.prunedKey === key) return;
+    this.prunedKey = key;
     try {
-      this.store.deleteBefore(addDays(day, -USAGE_KEEP_DAYS));
+      this.store.deleteBefore(addDays(day, -keep));
     } catch (err) {
       this.d.logger.warn("agent usage: could not prune old rows", {
         error: (err as Error).message,
@@ -490,6 +499,7 @@ export class AgentUsageRuntime implements MissionApi {
       prices: { ...readPrices(this.d.settings.get<unknown>(PRICES_KEY, {})) },
       ai_price_models: [...aiModels].sort(),
       stuck_after_min: readStuckAfter(this.d.settings.get<unknown>(STUCK_KEY, null)),
+      keep_days: readKeepDays(this.d.settings.get<unknown>(KEEP_DAYS_KEY, null)),
       thresholds: this.thresholds(),
     };
   }
@@ -499,16 +509,18 @@ export class AgentUsageRuntime implements MissionApi {
       throw invalid("The settings must be an object");
     const input: Record<string, unknown> = { ...body };
     for (const key of Object.keys(input))
-      if (!["budgets", "prices", "stuck_after_min"].includes(key))
+      if (!["budgets", "prices", "stuck_after_min", "keep_days"].includes(key))
         throw invalid(`Unknown setting "${key.slice(0, 40)}"`);
     // Everything is checked before anything is written.
     const budgets = input.budgets === undefined ? undefined : parseBudgets(input.budgets);
     const prices = input.prices === undefined ? undefined : parsePrices(input.prices);
     const stuck =
       input.stuck_after_min === undefined ? undefined : parseStuckAfter(input.stuck_after_min);
+    const keepDays = input.keep_days === undefined ? undefined : parseKeepDays(input.keep_days);
     if (budgets) this.d.settings.set(BUDGETS_KEY, budgets);
     if (prices) this.d.settings.set(PRICES_KEY, prices);
     if (stuck !== undefined) this.d.settings.set(STUCK_KEY, stuck);
+    if (keepDays !== undefined) this.d.settings.set(KEEP_DAYS_KEY, keepDays);
     this.d.audit.record({
       actor: "user",
       action: "agent_usage.config.changed",
@@ -517,6 +529,7 @@ export class AgentUsageRuntime implements MissionApi {
         budgets: budgets?.length,
         prices: prices ? Object.keys(prices).length : undefined,
         stuck_after_min: stuck,
+        keep_days: keepDays,
       },
     });
     return this.config();

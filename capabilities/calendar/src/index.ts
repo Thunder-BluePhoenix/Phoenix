@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 import { defineCapability, type CapabilityContext } from "@phoenix/sdk";
 import { realSleep, startPolling, type Sleep } from "@phoenix/service-kit";
-import { ReminderBook, safeEvent, type CalendarEvent } from "./events";
+import { ReminderBook, safeEvent, type CalendarEvent, type ReminderStore } from "./events";
 import { CalendarFeedError, type CalendarAdapter } from "./adapters";
 import { prepareMeeting, type MeetingPrepQuery } from "./prep";
 
@@ -14,6 +14,8 @@ export interface CalendarOptions {
   now?: () => number;
   sleep?: Sleep;
   prep?: MeetingPrepQuery;
+  /** Where reminder de-dup keys are kept so a Core restart does not remind again. Memory only without it. */
+  reminderStore?: ReminderStore;
 }
 const WINDOW_MS = 7 * 86_400_000;
 const POLL_MS = 60_000;
@@ -25,7 +27,7 @@ const MAX_FEED_EVENTS = 500;
 export function createCalendarCapability(options: CalendarOptions = {}) {
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? realSleep;
-  const reminders = new ReminderBook();
+  const reminders = new ReminderBook(options.reminderStore);
   let events: CalendarEvent[] = [];
   let error: string | undefined;
   let lastPoll: number | undefined;

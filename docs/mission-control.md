@@ -90,7 +90,7 @@ shows "$X or more". A price you set to `0` is a real zero; a missing price is no
 Migration 32 `agent_usage`: one row per day, session, agent and model with the **increment**
 recorded that day (`input_tokens`, `output_tokens`, `cost_micro` = millionths of a dollar or NULL)
 and the project **folder name**. No prompts, outputs, commands, file names or paths. Rows older than
-400 days are dropped. Privacy inventory row `agent_usage`; delete all with
+the retention (setting `agents.usage.keep_days`, 7–3650 whole days, default 400) are dropped. Privacy inventory row `agent_usage`; delete all with
 `POST /api/privacy/delete {"data":"agent_usage","confirm":true}` or
 `DELETE /api/mission/usage?confirm=true` (audited, `secure_delete`). Delete-all also writes each live
 session's running-total baseline to the setting `agents.usage.reported` (a hash of agent and session id, never a name), so a session that repeats its total after a Core restart or after its in-memory baseline was dropped adds only the difference: the delete is not undone. It also deletes the budget `agent.usage.warning` events from the event history (plan-usage warnings are not touched).
@@ -136,12 +136,12 @@ fires on an unknown cost; usage without a known cost is not in its figure, so wh
 
 ## API
 
-| Route                                                 |                                                                          |
-| ----------------------------------------------------- | ------------------------------------------------------------------------ |
-| `GET /api/mission?days=14`                            | board, totals by day / agent / project / session, budgets (days 1–90)    |
-| `GET /api/mission/config`, `POST /api/mission/config` | budgets, prices, `stuck_after_min`; a bad part rejects the whole request |
-| `DELETE /api/mission/usage?confirm=true`              | delete all stored usage                                                  |
-| `POST /api/agent/live/usage`                          | token/cost report (above)                                                |
+| Route                                                 |                                                                                       |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `GET /api/mission?days=14`                            | board, totals by day / agent / project / session, budgets (days 1–90)                 |
+| `GET /api/mission/config`, `POST /api/mission/config` | budgets, prices, `stuck_after_min`, `keep_days`; a bad part rejects the whole request |
+| `DELETE /api/mission/usage?confirm=true`              | delete all stored usage                                                               |
+| `POST /api/agent/live/usage`                          | token/cost report (above)                                                             |
 
 The emergency stop (kill switch) refuses new reports (HTTP 403) and keeps what is stored readable.
 
@@ -155,7 +155,7 @@ The emergency stop (kill switch) refuses new reports (HTTP 403) and keeps what i
 - No real agent, provider or invoice was used; both exit criteria are unmet.
 - Claude Code's cumulative token counts are not in its status JSON; only a cost is read.
 - Codex and other agents deliver no token counts to Phoenix; they can use the generic report.
-- Retention is fixed at 400 days; there is no per-class retention setting for this data.
+- Retention is one setting for all usage rows: `keep_days` (whole days, 7 to 3650, default 400) in `POST /api/mission/config`, also a field on the mission page. Rows from `today - keep_days` on are kept; older rows are deleted on the next report after the day or the value changed, and when Core starts (so a lowered value takes effect after a restart even with no report). Lowering it deletes the older rows for good; raising it brings nothing back. A stored value that is damaged or out of range reads as the default 400, never as a smaller number. There is no per-class retention. The new interface text is machine-translated in the eight non-English locales and unreviewed.
 - A budget warning's `resets_at` is the instant the next local day starts, in the time zone the service was built with (the system zone, or `recapTimeZone`). It is found from the zone's own day boundary, so it is right on 23- and 25-hour days and where a zone skips midnight. The zone is fixed when Core starts: if the computer's zone changes, restart Core to follow it.
 - Whoever can post to the usage route can pre-consume Core's per-day limits (sessions, agents, models) or move a session's baseline with a forged report; Core cannot tell a real report from a forged one. The limits only bound the damage.
 - The time zone that decides what "today" is, is fixed when Core starts. A change of the system zone is picked up after a restart.

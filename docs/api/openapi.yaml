@@ -752,14 +752,15 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
   /api/mission/config:
     get:
-      summary: Budgets, the user's own agent prices (USD per million tokens; none are built in), the stall limit and the alert thresholds
+      summary: Budgets, the user's own agent prices (USD per million tokens; none are built in), the stall limit, the usage retention (`keep_days`) and the alert thresholds
       responses:
         "200": { description: Config }
     post:
       summary: >-
         Replace any of `budgets` (daily or session, tokens or cost, at most 20), `prices` (keyed by
-        the model id an agent reports) and `stuck_after_min` (5-1440). The whole request is checked
-        first; a bad part saves nothing.
+        the model id an agent reports), `stuck_after_min` (5-1440) and `keep_days` (whole days of
+        usage kept, 7-3650, default 400; older rows are dropped on the next report or at Core start).
+        The whole request is checked first; a bad part saves nothing.
       responses:
         "200": { description: Config }
         "400": { $ref: "#/components/responses/Error" }

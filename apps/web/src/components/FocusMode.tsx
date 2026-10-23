@@ -48,9 +48,16 @@ export function FocusMode() {
 
   useEffect(() => {
     void reload().catch(() => undefined);
+    // A reconnect (also after a Core restart) re-reads the status; the session is kept by Core.
+    const offStatus = client.statusChanged.on(
+      (s) => s === "online" && void reload().catch(() => undefined),
+    );
     const update = window.setInterval(() => void reload().catch(() => undefined), 30_000);
-    return () => window.clearInterval(update);
-  }, [reload]);
+    return () => {
+      offStatus();
+      window.clearInterval(update);
+    };
+  }, [client, reload]);
 
   const start = async (pomodoro: boolean) => {
     const value = pomodoro ? Number(minutes) : undefined;

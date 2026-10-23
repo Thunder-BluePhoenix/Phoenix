@@ -608,6 +608,37 @@ function StallLimit({
   );
 }
 
+function KeepDays({
+  config,
+  save,
+  busy,
+}: {
+  config: MissionConfig;
+  save: (body: MissionConfigUpdate) => Promise<boolean>;
+  busy: boolean;
+}) {
+  const t = useT();
+  const id = useId();
+  const [days, setDays] = useState(String(config.keep_days));
+  useEffect(() => setDays(String(config.keep_days)), [config.keep_days]);
+  return (
+    <form
+      className="button-row wrap"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const n = Number(days);
+        if (Number.isInteger(n)) void save({ keep_days: n });
+      }}
+    >
+      <label htmlFor={id}>{t("mission.keep.label")}</label>
+      <input id={id} inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} />
+      <button type="submit" className="btn" disabled={busy}>
+        {t("mission.keep.save")}
+      </button>
+    </form>
+  );
+}
+
 /** Mission control: every agent session by state, what the agents report they cost, budgets. */
 export function MissionPage() {
   const client = useClient();
@@ -778,6 +809,7 @@ export function MissionPage() {
           <Budgets mission={mission} config={config} save={save} busy={busy} />
           <Prices config={config} save={save} busy={busy} />
           <StallLimit config={config} save={save} busy={busy} />
+          <KeepDays config={config} save={save} busy={busy} />
           <div className="button-row wrap">
             {confirmDelete ? (
               <>

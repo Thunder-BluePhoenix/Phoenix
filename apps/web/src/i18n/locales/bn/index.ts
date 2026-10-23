@@ -26,6 +26,7 @@ import { signals } from "./signals";
 import { browserProfiles } from "./browser-profiles";
 import { awakeSchedule } from "./awake-schedule";
 import { teamStatus } from "./team-status";
+import { teamWebhooks } from "./team-webhooks";
 
 const messages: Messages = {
   ...common,
@@ -51,6 +52,7 @@ const messages: Messages = {
   ...browserProfiles,
   ...awakeSchedule,
   ...teamStatus,
+  ...teamWebhooks,
   ...machine,
   ...fawkesRebirth,
 };

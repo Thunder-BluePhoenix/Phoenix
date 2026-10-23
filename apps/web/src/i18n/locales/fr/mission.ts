@@ -113,6 +113,10 @@ export const mission: Record<keyof typeof enmission, string> = {
     "Marquer une session active comme bloquée après ce nombre de minutes sans rapport",
   "mission.stall.save": "Enregistrer",
 
+  "mission.keep.label":
+    "Supprimer les enregistrements d’usage plus anciens que ce nombre de jours (de 7 à 3650)",
+  "mission.keep.save": "Enregistrer",
+
   "mission.saved": "Enregistré",
   "mission.delete.button": "Supprimer tout l’usage des agents",
   "mission.delete.warning":

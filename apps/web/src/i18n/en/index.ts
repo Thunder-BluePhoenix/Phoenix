@@ -25,6 +25,7 @@ import { signals } from "./signals";
 import { browserProfiles } from "./browser-profiles";
 import { awakeSchedule } from "./awake-schedule";
 import { teamStatus } from "./team-status";
+import { teamWebhooks } from "./team-webhooks";
 
 /** Every English message: the source text, bundled with the app and the fallback for every key. */
 export const en = {
@@ -51,6 +52,7 @@ export const en = {
   ...browserProfiles,
   ...awakeSchedule,
   ...teamStatus,
+  ...teamWebhooks,
   ...machine,
   ...fawkesRebirth,
 } as const;

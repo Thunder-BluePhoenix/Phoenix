@@ -3,7 +3,13 @@
 
 # Focus mode and screenshot-to-issue
 
-Focus mode is an in-memory delivery gate for Phoenix notifications. Manual focus starts and stops from Settings; a Pomodoro session uses the selected duration. Notification storage and history remain unaffected. Approvals (`requiresAction`) and errors always pass. Ordinary notifications are held in order and released when focus stops or the Pomodoro expires. Held notifications disappear on process restart.
+Focus mode is a delivery gate for Phoenix notifications. Manual focus starts and stops from Settings; a Pomodoro session uses the selected duration. Notification storage and history remain unaffected. Approvals (`requiresAction`) and errors always pass. Ordinary notifications are held in order and released when focus stops or the Pomodoro expires.
+
+**Restart and reconnect.** An active manual or Pomodoro session is kept in the settings store under `focus.session` as `{ v: 1, mode: "manual" | "pomodoro", endsAt }`, where `endsAt` is an absolute instant in milliseconds (`null` for an untimed manual session). On start, Core reads it once (`FocusController.restore()`), validates it strictly (exactly those three fields, version 1, a Pomodoro end that is still in the future and no more than 24 hours away, an untimed manual session with no end) and resumes the timer for the time that is left, not a fresh full duration. A session that has already ended, or a value that is corrupt, hostile or not JSON, is ignored and removed. Stop and expiry remove the stored value, so a stopped session does not come back after another restart. Held (queued) ordinary notifications are **not** restored: they are in memory only, but each one is already in durable notification history, which focus never hides. The kill switch and the gating rules are unchanged, and `requires_action` and error notifications still pass while a restored session is active. A failed write of the stored value is logged without its contents and does not stop focus from working in this process.
+
+A client that connects, reloads or reconnects gets the current status from `GET /api/focus`; the Settings control reads it when it mounts and again each time the Core connection comes back online (and every 30 seconds), so a restored session shows as active with its remaining minutes. Focus is not part of the history reload: history is never withheld, and only the live display/push delivery is gated.
+
+Evidence is simulated: `core/runtime/test/focus-persistence.test.ts` restarts a real `PhoenixRuntime` on the same SQLite file with an injected clock, and `apps/web/test/focus-mode.test.tsx` uses a fake WebSocket and fake API. No real Core process, app, device or user day was observed.
 
 Focus mode never changes operating-system focus or Do Not Disturb. Phoenix has no OS DND adapter, and the Settings UI states that system DND is unavailable.
 

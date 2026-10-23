@@ -10,16 +10,20 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DROP_LIMITS,
+  PASTE_TEXT_MIN_CHARS,
+  PASTE_TEXT_NAME,
   MAIL_LIMITS,
   buildMailto,
   collectDropped,
   dragHasFiles,
   isTextFile,
   openMailto,
+  collectPasted,
   readDropped,
   type AttachmentAnswer,
   type AttachmentDetail,
   type AttachmentSummary,
+  type ClipboardLike,
   type DataTransferLike,
   type EntryLike,
   type FileLike,
@@ -438,6 +442,167 @@ describe("dropping on the chat box", () => {
   });
 });
 
+describe("pasting on the chat box", () => {
+  const clipboard = (parts: Parameters<typeof transfer>[0], text = ""): ClipboardLike => ({
+    ...transfer(parts),
+    getData: (format: string) => (format === "text/plain" ? text : ""),
+  });
+  const textOnly = (text: string): ClipboardLike => ({
+    types: ["text/plain"],
+    files: [],
+    items: [],
+    getData: () => text,
+  });
+
+  it("an image pasted into the message box is read like a dropped one and posted with origin paste, and the paste is taken", async () => {
+    const c = liveCore();
+    const { api } = openChat(c);
+    const png = new File([PNG], "image.png", { type: "image/png" });
+    const taken = !fireEvent.paste(box(), {
+      clipboardData: {
+        types: ["Files"],
+        files: [png as unknown as FileLike],
+        items: [{ kind: "file", getAsFile: () => png as unknown as FileLike }],
+      },
+    });
+    expect(taken).toBe(true); // preventDefault was called: the browser inserts nothing into the box
+    await screen.findByText("image.png");
+    expect(api.posts("/api/attachments")).toHaveLength(1);
+    const body = api.posts("/api/attachments")[0]!.body as Record<string, string>;
+    expect(body).toMatchObject({
+      name: "image.png",
+      kind: "image",
+      mime: "image/png",
+      origin: "paste",
+    });
+    expect(body.content).toBe(B64_PNG);
+    expect((await screen.findByRole("status")).textContent).toMatch(/Attached 1 item/);
+  });
+
+  it("a pasted text file is posted with origin paste and the exact content", async () => {
+    const c = liveCore();
+    const { api } = openChat(c);
+    fireEvent.paste(box(), {
+      clipboardData: clipboard({ files: [fakeFile("notes.md", "# Plan", "text/markdown")] }),
+    });
+    await screen.findByText("notes.md");
+    expect(api.posts("/api/attachments")).toEqual([
+      {
+        method: "POST",
+        path: "/api/attachments",
+        body: {
+          name: "notes.md",
+          kind: "text",
+          mime: "text/markdown",
+          origin: "paste",
+          content: "# Plan",
+        },
+      },
+    ]);
+  });
+
+  it("a pasted file over the cap, of an unsupported type or with a hostile name is refused with the drop's messages and never posted", async () => {
+    const c = liveCore();
+    const { api } = openChat(c);
+    const big = {
+      name: "big.png",
+      type: "image/png",
+      size: DROP_LIMITS.imageBytes + 1,
+      text: () => Promise.resolve(""),
+    } satisfies FileLike;
+    fireEvent.paste(box(), {
+      clipboardData: clipboard({
+        files: [
+          fakeFile("big.txt", "y".repeat(DROP_LIMITS.textChars + 1)),
+          fakeFile("movie.mov", "binary", "video/quicktime"),
+          fakeFile("a\u202Eb.txt", "hello"),
+          big,
+        ],
+      }),
+    });
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/big\.txt: too large/);
+    expect(alert.textContent).toMatch(/movie\.mov: not a supported type/);
+    expect(alert.textContent).toMatch(/hidden characters/);
+    expect(alert.textContent).toMatch(/big\.png: an image can be at most 5 MiB/);
+    expect(alert.textContent).toMatch(/Nothing was attached/);
+    expect(api.posts("/api/attachments")).toEqual([]);
+  });
+
+  it("a refusal from Core of a pasted file is shown with its message", async () => {
+    const c = liveCore();
+    const refuse = new Response(
+      JSON.stringify({ code: "INVALID_REQUEST", message: "At most 5 pastes at once." }),
+      { status: 400 },
+    );
+    openChat(c, { "POST /api/attachments": () => refuse });
+    fireEvent.paste(box(), { clipboardData: clipboard({ files: [fakeFile("one.txt", "1")] }) });
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/one\.txt: At most 5 pastes/);
+  });
+
+  it("ordinary text pasted into the message box is not intercepted and posts nothing", async () => {
+    const c = liveCore();
+    const { api } = openChat(c);
+    const notTaken = fireEvent.paste(box(), { clipboardData: textOnly("just a sentence") });
+    expect(notTaken).toBe(true); // not default-prevented: the browser pastes it normally
+    await Promise.resolve();
+    expect(api.posts("/api/attachments")).toEqual([]);
+  });
+
+  it("even a very long text pasted into the message box stays an ordinary paste", async () => {
+    const c = liveCore();
+    const { api } = openChat(c);
+    const notTaken = fireEvent.paste(box(), {
+      clipboardData: textOnly("z".repeat(PASTE_TEXT_MIN_CHARS + 1)),
+    });
+    expect(notTaken).toBe(true);
+    await Promise.resolve();
+    expect(api.posts("/api/attachments")).toEqual([]);
+  });
+
+  it("long text pasted onto the zone outside a field becomes a text attachment with origin paste; short text does not", async () => {
+    const c = liveCore();
+    const { api } = openChat(c);
+    const short = fireEvent.paste(zone(), { clipboardData: textOnly("short") });
+    expect(short).toBe(true);
+    const text = "line of pasted text\n".repeat(PASTE_TEXT_MIN_CHARS / 20);
+    const taken = !fireEvent.paste(zone(), { clipboardData: textOnly(text) });
+    expect(taken).toBe(true);
+    await screen.findByText(PASTE_TEXT_NAME);
+    expect(api.posts("/api/attachments")).toEqual([
+      {
+        method: "POST",
+        path: "/api/attachments",
+        body: {
+          name: PASTE_TEXT_NAME,
+          kind: "text",
+          mime: "text/plain",
+          origin: "paste",
+          content: text,
+        },
+      },
+    ]);
+  });
+
+  it("pasted text over the text cap is refused with the same message as a dropped file of that size", async () => {
+    const c = liveCore();
+    const { api } = openChat(c);
+    fireEvent.paste(zone(), { clipboardData: textOnly("q".repeat(DROP_LIMITS.textChars + 1)) });
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/pasted-text\.txt: too large/);
+    expect(api.posts("/api/attachments")).toEqual([]);
+  });
+
+  it("a paste with no clipboard data does nothing", async () => {
+    const c = liveCore();
+    const { api } = openChat(c);
+    expect(fireEvent.paste(box())).toBe(true);
+    await Promise.resolve();
+    expect(api.posts("/api/attachments")).toEqual([]);
+  });
+});
+
 describe("removal before anything is asked", () => {
   it("Remove deletes one in Core and from the tray; Clear all deletes the rest; nothing was asked", async () => {
     const c = liveCore([
@@ -574,6 +739,22 @@ describe("the Pet Panel drop target", () => {
     expect(overview.textContent).toMatch(/ask about it in the Chat tab/);
     openTab("Chat");
     expect(await screen.findByText("idea.txt")).toBeTruthy();
+  });
+
+  it("a pasted file on the Pet Panel Overview is attached with origin paste", async () => {
+    const c = liveCore();
+    const { api } = mount(c.routes);
+    openPanel();
+    const overview = await screen.findByRole("group", { name: "Drop files on Fawkes" });
+    fireEvent.paste(overview, {
+      clipboardData: transfer({ files: [fakeFile("idea.txt", "an idea")] }),
+    });
+    await waitFor(() => expect(api.posts("/api/attachments")).toHaveLength(1));
+    expect(api.posts("/api/attachments")[0]!.body).toMatchObject({
+      name: "idea.txt",
+      origin: "paste",
+    });
+    await screen.findByText(/1 attached\./);
   });
 });
 
@@ -762,6 +943,28 @@ describe("drop helpers", () => {
     const read = await readDropped({ files: [broken], folders: [] });
     expect(read.payloads).toEqual([]);
     expect(read.notes).toEqual(["a.txt: the file could not be read"]);
+  });
+
+  it("collectPasted takes files, takes long text only outside a field, and otherwise returns null", () => {
+    const file = fakeFile("f.txt", "x");
+    expect(collectPasted(transfer({ files: [file] }), true)).toEqual({
+      files: [file],
+      folders: [],
+    });
+    expect(collectPasted({ files: [file] }, false)).toEqual({ files: [file], folders: [] });
+    const long = "a".repeat(PASTE_TEXT_MIN_CHARS);
+    expect(collectPasted({ types: ["text/plain"], getData: () => long }, true)).toBeNull();
+    expect(
+      collectPasted({ types: ["text/plain"], getData: () => long }, false)?.files,
+    ).toHaveLength(1);
+    expect(
+      collectPasted(
+        { types: ["text/plain"], getData: () => "a".repeat(PASTE_TEXT_MIN_CHARS - 1) },
+        false,
+      ),
+    ).toBeNull();
+    expect(collectPasted(null, false)).toBeNull();
+    expect(collectPasted({}, false)).toBeNull();
   });
 
   it("a Core that goes away mid-drop gives a notice, not a crash", async () => {

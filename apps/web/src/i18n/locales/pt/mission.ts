@@ -112,6 +112,10 @@ export const mission: Record<keyof typeof enmission, string> = {
     "Marcar uma sessão ativa como travada após esta quantidade de minutos sem relatório",
   "mission.stall.save": "Salvar",
 
+  "mission.keep.label":
+    "Excluir registros de uso mais antigos que esta quantidade de dias (de 7 a 3650)",
+  "mission.keep.save": "Salvar",
+
   "mission.saved": "Salvo",
   "mission.delete.button": "Excluir todo o uso dos agentes",
   "mission.delete.warning":

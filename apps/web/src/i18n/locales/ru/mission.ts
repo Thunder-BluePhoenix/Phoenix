@@ -115,6 +115,9 @@ export const mission: Record<keyof typeof enmission, string> = {
   "mission.stall.label": "Помечать активный сеанс зависшим, если за столько минут не было отчёта",
   "mission.stall.save": "Сохранить",
 
+  "mission.keep.label": "Удалять записи об использовании старше этого числа дней (от 7 до 3650)",
+  "mission.keep.save": "Сохранить",
+
   "mission.saved": "Сохранено",
   "mission.delete.button": "Удалить все данные об использовании агентов",
   "mission.delete.warning":

@@ -93,6 +93,7 @@ export interface MissionConfigUpdate {
   budgets?: MissionBudgetInput[];
   prices?: Record<string, MissionPrice>;
   stuck_after_min?: number;
+  keep_days?: number;
 }
 
 export interface MissionConfig {
@@ -100,6 +101,7 @@ export interface MissionConfig {
   prices: Record<string, MissionPrice>;
   ai_price_models: string[];
   stuck_after_min: number;
+  keep_days: number;
   thresholds: number[];
 }
 

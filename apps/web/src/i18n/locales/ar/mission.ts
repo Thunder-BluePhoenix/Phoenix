@@ -114,6 +114,9 @@ export const mission: Record<keyof typeof enmission, string> = {
   "mission.stall.label": "وسم الجلسة النشطة بأنها عالقة بعد هذا العدد من الدقائق دون تقرير",
   "mission.stall.save": "حفظ",
 
+  "mission.keep.label": "حذف سجلات الاستخدام الأقدم من هذا العدد من الأيام (من 7 إلى 3650)",
+  "mission.keep.save": "حفظ",
+
   "mission.saved": "تم الحفظ",
   "mission.delete.button": "حذف كل استخدام الوكلاء",
   "mission.delete.warning":

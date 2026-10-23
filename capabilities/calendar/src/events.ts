@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import { createHash } from "node:crypto";
 
 export interface CalendarEvent {
   /** Provider-qualified stable occurrence id (recurrence exceptions have their own id). */
@@ -123,17 +124,118 @@ export function freezeAt(events: readonly CalendarEvent[], at: number): Calendar
   );
 }
 
+/** Reminders go out from this long before a meeting starts until it starts. */
+export const REMINDER_WINDOW_MS = 5 * 60_000;
+/** At most this many de-dup records are kept (the feed itself never holds more events). */
+export const MAX_REMINDER_RECORDS = 500;
+const REMINDER_KEY = /^[0-9a-f]{32}$/;
+
+/**
+ * Where a host keeps de-dup records so a restart inside the reminder window does not remind again.
+ * `read` returns whatever was stored last (anything, including corrupt data: it is validated here)
+ * and may throw; `write` replaces the stored value and may throw. Capabilities have no database of
+ * their own, so Core lends this seam (`createCalendarCapability({ reminderStore })`).
+ */
+export interface ReminderStore {
+  read(): unknown;
+  write(value: unknown): void;
+}
+
+/** One stored record: an opaque key and the event's start time (epoch ms), nothing else. */
+interface ReminderRecord {
+  key: string;
+  start: number;
+}
+
+/** A one-way digest of the occurrence id and start time; a stored value reveals no title or id. */
+export function reminderKey(event: Pick<CalendarEvent, "id" | "start">): string {
+  return createHash("sha256").update(`${event.id}\u0000${event.start}`).digest("hex").slice(0, 32);
+}
+
+/** Keeps only well-formed records from stored data; anything else, even a whole bad value, is ignored. */
+function readRecords(stored: unknown): ReminderRecord[] {
+  if (typeof stored !== "object" || stored === null) return [];
+  const { version, sent } = stored as { version?: unknown; sent?: unknown };
+  if (version !== 1 || !Array.isArray(sent)) return [];
+  const records: ReminderRecord[] = [];
+  for (const item of sent.slice(0, MAX_REMINDER_RECORDS)) {
+    if (typeof item !== "object" || item === null) continue;
+    const { key, start } = item as { key?: unknown; start?: unknown };
+    if (typeof key !== "string" || !REMINDER_KEY.test(key)) continue;
+    if (typeof start !== "number" || !Number.isFinite(start)) continue;
+    records.push({ key, start });
+  }
+  return records;
+}
+
+/**
+ * Issues each due reminder once per occurrence and start time. With a `ReminderStore` the keys
+ * survive a Core restart; a reminder whose key is stored is not issued again until it is rescheduled.
+ *
+ * Storage failures never suppress a reminder: if the store cannot be read the book starts empty, and
+ * if it cannot be written the in-memory record still prevents repeats in this process. A missed
+ * meeting reminder is worse than a repeated one, so the book errs towards reminding. Failures are
+ * swallowed without logging, because nothing here may carry event content. Records expire once the
+ * start time has passed (the window is over) and at most MAX_REMINDER_RECORDS are kept.
+ */
 export class ReminderBook {
-  private readonly sent = new Set<string>();
+  private readonly sent = new Map<string, number>();
+  private loaded = false;
+  constructor(private readonly store?: ReminderStore) {}
+
   due(events: readonly CalendarEvent[], now: number): CalendarEvent[] {
+    this.load();
+    let changed = this.prune(now);
     const due: CalendarEvent[] = [];
     for (const event of events) {
-      if (event.cancelled || event.private || this.sent.has(event.id)) continue;
-      const until = Date.parse(event.start) - now;
-      if (until < 0 || until > 5 * 60_000) continue;
-      this.sent.add(event.id);
+      if (event.cancelled || event.private) continue;
+      const start = Date.parse(event.start);
+      const until = start - now;
+      if (!Number.isFinite(until) || until < 0 || until > REMINDER_WINDOW_MS) continue;
+      const key = reminderKey(event);
+      if (this.sent.has(key)) continue;
+      this.sent.set(key, start);
       due.push(event);
     }
+    if (this.prune(now)) changed = true;
+    if (due.length || changed) this.save();
     return due;
+  }
+
+  private load(): void {
+    if (this.loaded) return;
+    this.loaded = true;
+    if (!this.store) return;
+    try {
+      for (const { key, start } of readRecords(this.store.read())) this.sent.set(key, start);
+    } catch {
+      // Unreadable storage: start empty and remind.
+    }
+  }
+
+  /**
+   * Drops records whose window is over, records dated beyond any window that could have issued them
+   * (hostile or corrupt data), then the earliest starts beyond the bound. True when anything went.
+   */
+  private prune(now: number): boolean {
+    const before = this.sent.size;
+    for (const [key, start] of this.sent)
+      if (start < now || start > now + REMINDER_WINDOW_MS) this.sent.delete(key);
+    if (this.sent.size > MAX_REMINDER_RECORDS) {
+      const keep = [...this.sent].sort((a, b) => b[1] - a[1]).slice(0, MAX_REMINDER_RECORDS);
+      this.sent.clear();
+      for (const [key, start] of keep) this.sent.set(key, start);
+    }
+    return this.sent.size !== before;
+  }
+
+  private save(): void {
+    if (!this.store) return;
+    const sent: ReminderRecord[] = [...this.sent].map(([key, start]) => ({ key, start }));
+    try {
+      this.store.write({ version: 1, sent });
+    } catch {
+      // Unwritable storage: the in-memory record still holds for this process.
+    }
   }
 }

@@ -4,6 +4,7 @@ import { loadConfig, type PhoenixConfig } from "@phoenix/config";
 import { createLogger } from "@phoenix/logging";
 import { KeychainSecretStore, type SecretStore } from "@phoenix/persistence";
 import { builtinCapabilities } from "./builtins";
+import { settingsReminderStore } from "./calendar";
 import { dockerIdleFrom } from "./docker-idle";
 import { PhoenixRuntime } from "./runtime";
 import { explainStartupError } from "./startup-errors";
@@ -76,6 +77,7 @@ try {
         dockerIdle: dockerIdleFrom({
           invokeAndWait: (...args) => runtime.capabilities.invokeAndWait(...args),
         }),
+        calendarReminders: settingsReminderStore(() => runtime.settings),
       },
     ),
   });

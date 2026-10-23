@@ -113,6 +113,9 @@ export const mission: Record<keyof typeof enmission, string> = {
   "mission.stall.label": "Tandai sesi aktif sebagai macet setelah sekian menit tanpa laporan",
   "mission.stall.save": "Simpan",
 
+  "mission.keep.label": "Hapus catatan penggunaan yang lebih lama dari sekian hari (7 sampai 3650)",
+  "mission.keep.save": "Simpan",
+
   "mission.saved": "Tersimpan",
   "mission.delete.button": "Hapus semua penggunaan agen",
   "mission.delete.warning":

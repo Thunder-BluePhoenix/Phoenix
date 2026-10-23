@@ -78,6 +78,7 @@ const config = (over: Partial<MissionConfig> = {}): MissionConfig => ({
   prices: {},
   ai_price_models: [],
   stuck_after_min: 30,
+  keep_days: 400,
   thresholds: [80, 95],
   ...over,
 });
@@ -370,6 +371,20 @@ describe("budgets, prices and delete", () => {
     expect(api.posts("/api/mission/config")[0]!.body).toEqual({
       prices: { "m-1": { input_per_mtok: 3, output_per_mtok: 0 } },
     });
+  });
+
+  it("saves how many days of usage are kept", async () => {
+    const { api } = open(mission(), config(), {
+      "POST /api/mission/config": () => config({ keep_days: 90 }),
+    });
+    const input = (await screen.findByLabelText(
+      "Delete usage records older than this many days (7 to 3650)",
+    )) as HTMLInputElement;
+    expect(input.value).toBe("400");
+    fireEvent.change(input, { target: { value: "90" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Save" })[1]!);
+    await waitFor(() => expect(api.posts("/api/mission/config")).toHaveLength(1));
+    expect(api.posts("/api/mission/config")[0]!.body).toEqual({ keep_days: 90 });
   });
 
   it("deletes all usage only after a second, explicit click", async () => {

@@ -27,6 +27,56 @@ export interface FocusSnapshot {
   held: number;
 }
 
+/** Settings key under which Core keeps the active session; absent when focus is off. */
+export const FOCUS_SESSION_KEY = "focus.session";
+
+/** The longest a timed session can last (the Pomodoro bound in `start`). */
+const MAX_SESSION_MS = 24 * 60 * 60_000;
+
+/** What survives a restart: the mode and the absolute end instant (null: until stopped). */
+export interface PersistedFocus {
+  v: 1;
+  mode: "manual" | "pomodoro";
+  endsAt: number | null;
+}
+
+/** Durable home of the active session. `read` returns whatever is stored (unvalidated). */
+export interface FocusStore {
+  read(): unknown;
+  /** null clears the stored session. */
+  write(session: PersistedFocus | null): void;
+}
+
+/**
+ * Strict check of a stored session: exactly the known fields, an untimed session with no end, a
+ * Pomodoro whose end is still in the future and within the 24 hour session bound. Otherwise null.
+ */
+export function parsePersistedFocus(value: unknown, now: number): PersistedFocus | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const keys = Object.keys(value);
+  if (
+    keys.length !== 3 ||
+    !keys.includes("v") ||
+    !keys.includes("mode") ||
+    !keys.includes("endsAt")
+  ) {
+    return null;
+  }
+  const { v, mode, endsAt } = value as Record<string, unknown>;
+  if (v !== 1) return null;
+  if (mode === "manual") return endsAt === null ? { v: 1, mode, endsAt: null } : null;
+  if (
+    mode === "pomodoro" &&
+    typeof endsAt === "number" &&
+    Number.isFinite(endsAt) &&
+    endsAt > now &&
+    endsAt <= now + MAX_SESSION_MS
+  ) {
+    return { v: 1, mode, endsAt };
+  }
+  return null;
+}
+
 /** A focus session can be timed, or last until explicitly stopped. No timer or OS calls at import. */
 export class FocusController<T extends FocusNotification> {
   private manual = false;
@@ -44,6 +94,7 @@ export class FocusController<T extends FocusNotification> {
     private readonly clock: FocusClock,
     private readonly dnd: FocusDndReader,
     private readonly deliver: (notification: T) => void,
+    private readonly store?: FocusStore,
   ) {}
 
   subscribe(listener: () => void): () => void {
@@ -85,6 +136,7 @@ export class FocusController<T extends FocusNotification> {
     this.cancelTimer();
     this.manual = true;
     this.until = minutes === undefined ? null : this.clock.now() + minutes * 60_000;
+    this.persist();
     if (this.until !== null) this.schedule();
     this.notify();
   }
@@ -93,7 +145,35 @@ export class FocusController<T extends FocusNotification> {
     this.cancelTimer();
     this.manual = false;
     this.until = null;
+    this.store?.write(null);
     this.flushIfInactive();
+    this.notify();
+  }
+
+  /**
+   * Resumes the session a previous process left in the store, from its absolute end instant (never
+   * a fresh full duration). Anything that is missing its shape, expired, or ends further away than
+   * a session can last is ignored and cleared. Held notifications are not restored; they are already
+   * in durable history. Call once when Core starts.
+   */
+  restore(): void {
+    if (!this.store || this.disposed || this.manual) return;
+    let raw: unknown = null;
+    let unreadable = false;
+    try {
+      raw = this.store.read();
+    } catch {
+      unreadable = true;
+    }
+    if (!unreadable && raw === null) return;
+    const session = unreadable ? null : parsePersistedFocus(raw, this.clock.now());
+    if (session === null) {
+      this.store.write(null);
+      return;
+    }
+    this.manual = true;
+    this.until = session.endsAt;
+    this.schedule();
     this.notify();
   }
 
@@ -130,6 +210,14 @@ export class FocusController<T extends FocusNotification> {
     this.heldIds.clear();
   }
 
+  private persist(): void {
+    this.store?.write({
+      v: 1,
+      mode: this.until === null ? "manual" : "pomodoro",
+      endsAt: this.until,
+    });
+  }
+
   private cancelTimer(): void {
     if (this.timeout !== null) this.clock.clearTimeout(this.timeout);
     this.timeout = null;
@@ -152,6 +240,7 @@ export class FocusController<T extends FocusNotification> {
     this.cancelTimer();
     this.until = null;
     this.manual = false;
+    this.store?.write(null);
     this.flushIfInactive();
   }
 

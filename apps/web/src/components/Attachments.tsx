@@ -16,6 +16,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ClipboardEvent,
   type DragEvent as ReactDragEvent,
   type FormEvent,
   type ReactNode,
@@ -31,6 +32,7 @@ import {
   MAIL_LIMITS,
   buildMailto,
   collectDropped,
+  collectPasted,
   dragHasFiles,
   openMailto,
   useAttachmentUpload,
@@ -120,6 +122,18 @@ export function DropZone({
     // Read now: the browser clears the DataTransfer when this handler returns.
     void upload(collectDropped(e.dataTransfer));
   };
+  const onPaste = (e: ClipboardEvent<HTMLElement>) => {
+    // Only a paste the user made inside this zone reaches here; the clipboard is read nowhere else.
+    // Files are always taken; text only when it is long and the paste is not into a field.
+    const target = e.target;
+    const intoField =
+      target instanceof HTMLElement &&
+      (target.isContentEditable || target.closest("input, textarea, select") !== null);
+    const source = collectPasted(e.clipboardData, intoField);
+    if (!source) return; // an ordinary paste: leave it to the browser
+    e.preventDefault();
+    void upload(source, "paste");
+  };
   const onPick = (e: ChangeEvent<HTMLInputElement>) => {
     const files: FileLike[] = Array.from(e.target.files ?? []);
     e.target.value = "";
@@ -133,7 +147,9 @@ export function DropZone({
       aria-label={t("capture.attachments.dropZone.label", { label })}
       aria-describedby={hint}
       aria-busy={busy}
+      tabIndex={-1} // focusable by click, so a paste lands here even where there is no text box
       onDragEnter={onDragEnter}
+      onPaste={onPaste}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}

@@ -16,7 +16,7 @@ Fawkes knows what is coming up and prepares you for it.
 ## Tasks
 
 - [ ] Read-only calendar capability (CalDAV, Google, Microsoft, macOS Calendar). Adapters for all four are implemented with injected fake clients (`capabilities/calendar`, [README](../../capabilities/calendar/README.md)); capability id `calendar`, read-only, disabled until enabled, secrets `<provider>_credential`. Unticked because `createCalendarCapability()` in `core/runtime/src/builtins.ts` is called with **no adapters**, so the production feed is "unconfigured", and timezone, pagination and marker handling are unverified against real Google, Graph or CalDAV.
-- [ ] "Meeting in 5 minutes" with a one-click offer to start the notetaker (Phase 65). `GET /api/calendar/upcoming` and the `#/calendar` page show upcoming events; reminder de-duplication is in memory. The reminder now becomes a notification (tested against a fake calendar). Unticked because no real calendar was read and the notetaker button only navigates to `#/meetings`; it never starts a recording.
+- [ ] "Meeting in 5 minutes" with a one-click offer to start the notetaker (Phase 65). `GET /api/calendar/upcoming` and the `#/calendar` page show upcoming events; reminder de-duplication is persisted (opaque keys in settings, so a Core restart inside the window does not remind again; fake-calendar tests only). The reminder now becomes a notification (tested against a fake calendar). Unticked because no real calendar was read and the notetaker button only navigates to `#/meetings`; it never starts a recording.
 - [ ] Prep note: earlier decisions and open action items with the same people or project. `StoreMeetingPrepQuery` reads accepted reviewed items of prior meetings with matching participants and is gated on `allow_sensitive_meetings`. Simulated. Unticked because project-only matching returns nothing (meetings have no project field) and no real meetings were used.
 - [ ] Deploy-freeze windows from the calendar feed workflow safety (Phase 40). With the calendar config `freeze` on (default false), the `CapabilityManager` `preflight` hook (after approval, before dispatch) refuses side effect `production` commands and `vercel/redeploy` unless the fresh feed shows no freeze window, and fails closed (`SECURITY_POLICY_BLOCKED`) when the feed is missing, stale, unreadable or incomplete or a credential is missing. Simulated. Unticked because **agent permission-request approvals (AgentApprovals) and other external side effects (n8n, terminal) are not covered**, and with freeze on and no adapters wired every such command is blocked.
 
@@ -40,7 +40,7 @@ Fawkes knows what is coming up and prepares you for it.
 
 ### Deviations
 
-- Reminders are de-duplicated in memory only. A reminder is turned into a notification (`core/notifications` `ALWAYS_NOTIFY`).
+- Reminder de-duplication keys persist across a Core restart (settings key `calendar.reminders.sent`: opaque digest and start time only, bounded, expiring, corrupt data ignored; a storage failure still reminds once). A reminder is turned into a notification (`core/notifications` `ALWAYS_NOTIFY`).
 - The notetaker button navigates to `#/meetings` instead of starting a recording.
 
 ### Security review

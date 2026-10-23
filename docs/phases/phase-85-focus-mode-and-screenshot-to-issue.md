@@ -37,10 +37,12 @@ Quiet Fawkes on demand, and turn what is on screen into an issue.
 - **FocusController and Core wiring**: manual or Pomodoro focus with an injected clock and read-only DND seam. Core supplies an unavailable DND reader (`null`) until a platform adapter exists, subscribes to `notification.created`, preserves the source event's `requires_action` only in the ephemeral delivery payload, and publishes permitted entries as `focus.notification.deliver` on the notification WebSocket channel. The stored notification/history is never withheld. Approvals and errors always pass; ordinary held notifications are released in order after manual stop or timer expiry.
 - **ScreenshotDraft**: permission check before capture, redaction fills pixels, issue creation only after `client.approve()`.
 - **Web and docs**: `FocusMode.tsx` is mounted in Settings and reads the Core snapshot; it explicitly says system DND is unavailable and controls Phoenix notifications only. `ScreenshotIssue.tsx` remains injectable and unmounted. `focus.*` interface strings are English plus nine machine-translated, unreviewed locales; [focus-and-screenshot.md](../focus-and-screenshot.md). No new dependency or migration.
+- **Persistence**: `FocusController` takes an optional `FocusStore` (`focus.session` key in `SettingsStore`, wired by `PhoenixRuntime`); `restore()` runs at `start()`. No new dependency or migration.
 
 ### Deviations
 
-- Focus is intentionally an in-memory display/push delivery gate: it does not hide durable history, persist across restart, read or change OS DND, or delay a reconnect's history reload. The default DND value is unavailable. Screenshot capture and issue creation remain unwired.
+- Focus is a display/push delivery gate. It does not hide durable history, read or change OS DND, or delay a reconnect's history reload. The default DND value is unavailable. Screenshot capture and issue creation remain unwired.
+- An active manual or Pomodoro session persists across a Core restart in the settings store (`focus.session`: version, mode, absolute end instant), is strictly validated on load and resumed with the remaining time; expired, corrupt or hostile values are ignored and cleared, and stop or expiry clears it. Held (queued) ordinary notifications are in memory only and are not restored; they remain in durable history. On connect, reload or reconnect the Settings control re-reads `GET /api/focus`. Simulated evidence only: `core/runtime/test/focus-persistence.test.ts` (real `PhoenixRuntime` restarts on one SQLite file, injected clock) and `apps/web/test/focus-mode.test.tsx` (fake WebSocket).
 
 ### Security review
 

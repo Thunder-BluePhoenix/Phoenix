@@ -34,7 +34,7 @@ See every agent session and what it costs in one place.
 
 ### What was built
 
-- **Ingest and store** (`core/runtime/src/agent-usage/**`, `core/persistence/src/agent-usage-store.ts`, migration 32): strict validation, clamps, per-day increments, per-agent daily caps; clamped amounts do not advance baselines; a delete-all watermark; retention 400 days (fixed).
+- **Ingest and store** (`core/runtime/src/agent-usage/**`, `core/persistence/src/agent-usage-store.ts`, migration 32): strict validation, clamps, per-day increments, per-agent daily caps; clamped amounts do not advance baselines; a delete-all watermark; retention is the setting `agents.usage.keep_days` (whole days, 7 to 3650, default 400; set with `keep_days` on `POST /api/mission/config`, audited, shown in the config view and in a field on the mission page). Older rows are pruned on the next report after a day change or a changed value, and when Core starts.
 - **Pricing**: cost is NULL unless reported or priced by the user; an unpriced row is surfaced in cost budgets.
 - **Budgets**: daily and per-session, tokens or cost, `agent.usage.warning` at 80 and 95 % by default, once per budget per threshold per day, persisted.
 - **Board and routes** (`mission-routes.ts`): sessions by working / waiting on you / finished / stuck; tokens and cost per session, project, agent and day; filters and search; jump to terminal or detail scoped by agent.
@@ -53,7 +53,7 @@ An independent static review (read-only, not a human audit) was followed by fixe
 
 ### What was not built
 
-Token counts for Claude sessions; usage reports from Codex and other agents (no installed hook sends the generic report); a per-provider price table; a configurable retention.
+Token counts for Claude sessions; usage reports from Codex and other agents (no installed hook sends the generic report); a per-provider price table; a per-class retention setting (the one retention setting covers all usage rows).
 
 ### What was not run
 

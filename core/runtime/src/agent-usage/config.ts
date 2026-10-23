@@ -13,6 +13,7 @@ import { MAX_AGENT_PRICE, MAX_AGENT_PRICES, MODEL_ID, type AgentPrices } from ".
 export const PRICES_KEY = "agents.usage.prices";
 export const BUDGETS_KEY = "agents.usage.budgets";
 export const STUCK_KEY = "agents.usage.stuck_after_min";
+export const KEEP_DAYS_KEY = "agents.usage.keep_days";
 /** Last totals each agent reported, keyed by a hash (no session names); see AgentUsageRuntime. */
 export const BASELINES_KEY = "agents.usage.reported";
 /** Budget alerts already sent: `<day>|<budget>[|<session>]` -> thresholds. */
@@ -24,6 +25,11 @@ export const MAX_COST_BUDGET_USD = 1_000_000;
 const BUDGET_ID = /^[a-z0-9-]{1,24}$/;
 
 const invalid = (message: string) => new PhoenixError(ErrorCode.INVALID_REQUEST, message);
+
+/** Days of usage rows kept: default (about 13 months), and the bounds a setting may take. */
+export const DEFAULT_KEEP_DAYS = 400;
+export const MIN_KEEP_DAYS = 7;
+export const MAX_KEEP_DAYS = 3_650;
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -123,6 +129,29 @@ export function parseStuckAfter(raw: unknown): number {
   )
     throw invalid(
       `"stuck_after_min" must be a whole number of minutes from ${MIN_STUCK_AFTER_MIN} to ${MAX_STUCK_AFTER_MIN}`,
+    );
+  return raw;
+}
+
+/** The retention from settings; a damaged or out-of-range value reads as the default, never as a made-up number. */
+export function readKeepDays(raw: unknown): number {
+  return typeof raw === "number" &&
+    Number.isInteger(raw) &&
+    raw >= MIN_KEEP_DAYS &&
+    raw <= MAX_KEEP_DAYS
+    ? raw
+    : DEFAULT_KEEP_DAYS;
+}
+
+export function parseKeepDays(raw: unknown): number {
+  if (
+    typeof raw !== "number" ||
+    !Number.isInteger(raw) ||
+    raw < MIN_KEEP_DAYS ||
+    raw > MAX_KEEP_DAYS
+  )
+    throw invalid(
+      `"keep_days" must be a whole number of days from ${MIN_KEEP_DAYS} to ${MAX_KEEP_DAYS}`,
     );
   return raw;
 }

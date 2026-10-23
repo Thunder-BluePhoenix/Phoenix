@@ -114,6 +114,8 @@ export interface MissionConfigView {
   /** Model ids that also have a price in the AI settings (`<provider>:<model>` keys), used when no own price is set. */
   ai_price_models: string[];
   stuck_after_min: number;
+  /** Days of usage rows kept (7-3650, default 400); older rows are dropped on the next report or at start. */
+  keep_days: number;
   thresholds: number[];
 }
 
@@ -122,7 +124,7 @@ export interface MissionApi {
   /** `days` (1-90, default 14): the usage window ending today (local days). */
   mission(days: number | undefined): Promise<MissionView>;
   config(): MissionConfigView;
-  /** Replaces whichever of `budgets`, `prices`, `stuck_after_min` the body holds. */
+  /** Replaces whichever of `budgets`, `prices`, `stuck_after_min`, `keep_days` the body holds. */
   setConfig(body: unknown): MissionConfigView;
   deleteAll(): { deleted: number };
 }

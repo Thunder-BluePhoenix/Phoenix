@@ -73,12 +73,15 @@ export interface AttachmentAnswer {
   sources: { id: string; name: string }[];
 }
 
+/** The origins a page sends: a drop, or a paste. Core also accepts `window`, which no page sends. */
+export type UploadOrigin = Extract<AttachmentOrigin, "drop" | "paste">;
+
 /** What POST /api/attachments takes. */
 export interface UploadPayload {
   name: string;
   kind: AttachmentKind;
   mime: string;
-  origin: "drop";
+  origin: UploadOrigin;
   content: string;
 }
 
@@ -145,6 +148,53 @@ export function collectDropped(dt: DataTransferLike): DroppedSource {
   return out;
 }
 
+/**
+ * Pasted plain text becomes an attachment only from this length: shorter text is an ordinary paste
+ * into the box and is never intercepted. Longer than DROP_LIMITS.textChars is still taken, so the
+ * refusal is the one a dropped file of that size gets.
+ */
+export const PASTE_TEXT_MIN_CHARS = 20_000;
+/** The name Core shows for a pasted block of text. */
+export const PASTE_TEXT_NAME = "pasted-text.txt";
+
+/** The slice of a paste event's `clipboardData` this file reads. */
+export interface ClipboardLike extends DataTransferLike {
+  getData?(format: string): string;
+}
+
+/**
+ * What a paste carries that is ours to take: its files (a screenshot or image, a copied file), or,
+ * when the paste is NOT into an editable field and the text is long enough to be clearly an
+ * attachment, that text as one text "file". Anything else returns null and the browser pastes as
+ * usual. MUST be called synchronously from the paste handler, the only place the clipboard is read.
+ */
+export function collectPasted(
+  cb: ClipboardLike | null | undefined,
+  intoField: boolean,
+): DroppedSource | null {
+  if (!cb) return null;
+  const files: FileLike[] = [];
+  const items = Array.from(cb.items ?? []).filter((i) => i.kind === "file");
+  if (items.length > 0) {
+    for (const item of items) {
+      const file = item.getAsFile?.() ?? null;
+      if (file) files.push(file);
+    }
+  } else files.push(...Array.from(cb.files ?? []));
+  if (files.length > 0) return { files, folders: [] };
+  if (intoField) return null;
+  const text = cb.getData?.("text/plain") ?? "";
+  if (text.length < PASTE_TEXT_MIN_CHARS) return null;
+  // `size` is a lower bound of the UTF-8 length; readFile checks the real length of the text.
+  const file: FileLike = {
+    name: PASTE_TEXT_NAME,
+    type: "text/plain",
+    size: text.length,
+    text: () => Promise.resolve(text),
+  };
+  return { files: [file], folders: [] };
+}
+
 // ── Classification ──────────────────────────────────────────────────────────────────────────────
 
 const TEXT_EXTENSIONS: Record<string, true> = Object.fromEntries(
@@ -207,8 +257,11 @@ export async function readBase64(file: Blob): Promise<string> {
   return done.promise;
 }
 
-/** One dropped plain file: a payload, or the reason it was skipped. */
-export async function readFile(file: FileLike): Promise<UploadPayload | string> {
+/** One dropped or pasted plain file: a payload, or the reason it was skipped. */
+export async function readFile(
+  file: FileLike,
+  origin: UploadOrigin = "drop",
+): Promise<UploadPayload | string> {
   const name = shown(file.name);
   if (file.name.length === 0 || file.name.length > DROP_LIMITS.nameChars || HIDDEN.test(file.name))
     return translate("capture.attachments.file.badName", { name });
@@ -221,7 +274,7 @@ export async function readFile(file: FileLike): Promise<UploadPayload | string> 
         name: file.name,
         kind: "image",
         mime: image,
-        origin: "drop",
+        origin,
         content: await readBase64(file as unknown as Blob),
       };
     } catch {
@@ -252,7 +305,7 @@ export async function readFile(file: FileLike): Promise<UploadPayload | string> 
     name: file.name,
     kind: "text",
     mime: file.type || "text/plain",
-    origin: "drop",
+    origin,
     content,
   };
 }
@@ -443,11 +496,14 @@ export interface DropReading {
   notes: string[];
 }
 
-/** Reads everything that was dropped. Never throws: a failure is a note. */
-export async function readDropped(source: DroppedSource): Promise<DropReading> {
+/** Reads everything that was dropped or pasted. Never throws: a failure is a note. */
+export async function readDropped(
+  source: DroppedSource,
+  origin: UploadOrigin = "drop",
+): Promise<DropReading> {
   const out: DropReading = { payloads: [], notes: [] };
   for (const file of source.files) {
-    const read = await readFile(file);
+    const read = await readFile(file, origin);
     if (typeof read === "string") out.notes.push(read);
     else out.payloads.push(read);
   }
@@ -475,7 +531,7 @@ export interface UploadNotice {
   problem: boolean;
 }
 
-/** Reads a drop and posts each item to Core. One notice describes the whole drop. */
+/** Reads a drop or paste and posts each item to Core. One notice describes the whole drop. */
 export function useAttachmentUpload(onDone?: () => void) {
   const client = useClient();
   const [busy, setBusy] = useState(false);
@@ -483,13 +539,13 @@ export function useAttachmentUpload(onDone?: () => void) {
   const running = useRef(false);
 
   const upload = useCallback(
-    async (source: DroppedSource) => {
+    async (source: DroppedSource, origin: UploadOrigin = "drop") => {
       if (running.current) return;
       running.current = true;
       setBusy(true);
       setNotice(null);
       try {
-        const read = await readDropped(source);
+        const read = await readDropped(source, origin);
         const problems = [...read.notes];
         let added = 0;
         for (const payload of read.payloads) {
