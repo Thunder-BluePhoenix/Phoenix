@@ -72,7 +72,7 @@ phoenix-agent report --agent my-agent --state working --id session-1 --workspace
 
 - `--agent <name>` (or a `phoenix_agent` field in a JSON payload) must match `^[a-z0-9-]{1,24}$`.
 - `--state` is one of `started | working | waiting | completed | failed | ended` (`--reason permission|input|idle` with `waiting`).
-- The generic hook `capabilities/agents/src/agent-hook.ts --agent <name> [--event <name>]` reads a JSON payload on stdin and understands these fields: `session_id` (or `sessionId`, `conversation_id`), `cwd` (or `workspace_roots[0]`), and either `hook_event_name` or a direct `phoenix_state`. It prints `{}` and always exits 0. Example payload: `{"phoenix_agent":"my-agent","phoenix_state":"waiting","session_id":"s1","cwd":"/work/app","message":"needs your permission"}`.
+- The generic hook `capabilities/agents/src/agent-hook.ts --agent <name> [--event <name>]` reads a JSON payload on stdin and understands these fields: `session_id` (or `sessionId`, `conversation_id`), `cwd` (or `workspace_roots[0]`), and either `hook_event_name` or a direct `phoenix_state`. It prints `{}` and always exits 0. An optional `phoenix_usage` object (`model`, `input_tokens`, `output_tokens`, `cost_usd`; running totals) is sent to `POST /api/agent/live/usage` when valid; see [mission-control.md](mission-control.md). Example payload: `{"phoenix_agent":"my-agent","phoenix_state":"waiting","session_id":"s1","cwd":"/work/app","message":"needs your permission"}`.
 - Approvals (`approval-hook.ts --agent <name>`) use the same slug rule.
 
 Prompts, tool inputs and transcripts are never read or sent.

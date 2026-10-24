@@ -9,12 +9,12 @@ agents **say** they used. Everything is stored and computed on this computer.
 
 ## What was and was not verified
 
-| Claim                                                                        | Status                                                                                                                                                    |
-| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Board shows real sessions from three agents (exit criterion)                 | **Unmet.** Tested with fake sessions only ("simulated").                                                                                                  |
-| Cost totals match the providers' own figures for a test day (exit criterion) | **Unmet.** No provider figure was ever compared.                                                                                                          |
-| Claude Code's status JSON fields                                             | Taken from the public documentation (https://code.claude.com/docs/en/statusline). Real payloads were **not captured**; fixtures follow the documentation. |
-| Codex, Gemini and others                                                     | They send nothing about tokens to Phoenix today (see "What an agent can report").                                                                         |
+| Claim                                                                        | Status                                                                                                                                                                   |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Board shows real sessions from three agents (exit criterion)                 | **Unmet.** Tested with fake sessions only ("simulated").                                                                                                                 |
+| Cost totals match the providers' own figures for a test day (exit criterion) | **Unmet.** No provider figure was ever compared.                                                                                                                         |
+| Claude Code's status JSON fields                                             | Taken from the public documentation (https://code.claude.com/docs/en/statusline). Real payloads were **not captured**; fixtures follow the documentation.                |
+| Codex, Gemini and others                                                     | They send nothing about tokens by themselves: no native payload with token counts or cost was observed. Only an explicit `phoenix_usage` object works (see "Any agent"). |
 
 ## Where the numbers come from
 
@@ -55,6 +55,27 @@ token report. It is told apart from a plan-window sample by having a `session_id
   "cost_usd": 0.02
 }
 ```
+
+The installed generic hook (`agent-hook.ts`, used for Codex, Cursor, Gemini CLI, Copilot CLI, Muse
+Code and the OpenCode/Amp plugins) sends this same report when, and only when, the JSON it is given
+carries an explicit **`phoenix_usage`** object, for example a wrapper script's:
+
+```json
+{
+  "session_id": "abc",
+  "cwd": "/path/to/alpha",
+  "phoenix_usage": { "model": "m-1", "input_tokens": 1200, "output_tokens": 300, "cost_usd": 0.02 }
+}
+```
+
+`phoenix_usage` may hold only `model`, `input_tokens`, `output_tokens` and `cost_usd`; any other
+field, any value that fails the validation below, or a missing session id sends **nothing**. The
+agent slug comes from `--agent`, the project is the folder name of `cwd`, the request carries the
+session token to a loopback Core only, and no prompt or other payload text is copied. **Not
+observed:** Codex's own hook payload shape for tokens or cost is not established anywhere in the
+repository, so none of it is read; Codex reports usage only if a wrapper puts `phoenix_usage` into
+the hook input. Tested with a fake Core (`capabilities/agents/test/usage-hook.test.ts`); no real
+Codex was run.
 
 All numbers are **running totals for the session**, not increments. Core stores the difference since
 the previous report, on Core's own clock's local day. A total that goes down is a reset (Claude Code
@@ -154,7 +175,7 @@ The emergency stop (kill switch) refuses new reports (HTTP 403) and keeps what i
 
 - No real agent, provider or invoice was used; both exit criteria are unmet.
 - Claude Code's cumulative token counts are not in its status JSON; only a cost is read.
-- Codex and other agents deliver no token counts to Phoenix; they can use the generic report.
+- Codex's and the other agents' native hook payloads were never observed to carry token counts or cost, so Phoenix reads none. The installed generic hook sends the generic report only for an explicit `phoenix_usage` object; nothing in Phoenix produces that object for Codex yet.
 - Retention is one setting for all usage rows: `keep_days` (whole days, 7 to 3650, default 400) in `POST /api/mission/config`, also a field on the mission page. Rows from `today - keep_days` on are kept; older rows are deleted on the next report after the day or the value changed, and when Core starts (so a lowered value takes effect after a restart even with no report). Lowering it deletes the older rows for good; raising it brings nothing back. A stored value that is damaged or out of range reads as the default 400, never as a smaller number. There is no per-class retention. The new interface text is machine-translated in the eight non-English locales and unreviewed.
 - A budget warning's `resets_at` is the instant the next local day starts, in the time zone the service was built with (the system zone, or `recapTimeZone`). It is found from the zone's own day boundary, so it is right on 23- and 25-hour days and where a zone skips midnight. The zone is fixed when Core starts: if the computer's zone changes, restart Core to follow it.
 - Whoever can post to the usage route can pre-consume Core's per-day limits (sessions, agents, models) or move a session's baseline with a forged report; Core cannot tell a real report from a forged one. The limits only bound the damage.

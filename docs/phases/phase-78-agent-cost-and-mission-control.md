@@ -5,7 +5,7 @@
 | Stage | Stage 14 — Phoenix originals |
 | Release target | Post-v2.0 track |
 | Priority | Medium |
-| Status | 🟨 Built, exit criteria not met: ingest of what agents report, per-session/project/agent/day tokens and cost, budgets with early alerts, a board of sessions and a Mission Control page exist; tested with simulated sessions only; Claude Code's real status payload was never captured; Codex and other agents send nothing; no cost figure was ever compared with a provider's own; both exit criteria are unmet |
+| Status | 🟨 Built, exit criteria not met: ingest of what agents report, per-session/project/agent/day tokens and cost, budgets with early alerts, a board of sessions and a Mission Control page exist; tested with simulated sessions only; Claude Code's real status payload was never captured; Codex sends nothing by itself (only an explicit `phoenix_usage` from a Phoenix wrapper reaches the generic report; no Codex payload with tokens was observed); no cost figure was ever compared with a provider's own; both exit criteria are unmet |
 | Depends on | [Phase 58 — Live Agent Sessions, Diffs & Plan Usage](phase-58-live-sessions-diffs-plan-usage.md) |
 | Unblocks | — |
 
@@ -16,7 +16,7 @@ See every agent session and what it costs in one place.
 ## Tasks
 
 - [ ] Board of all agent sessions across repos by state: working, waiting on you, finished, stuck. Built: a board with an explicit, documented mapping (stuck = silent for more than N minutes, or a Phase 77 `agent.safety.stall` event from source `core`) in `core/runtime/src/agent-usage/board.ts`; page `MissionControl.tsx` at `#/mission`. Tested with fake sessions (`core/runtime/test/agent-usage-board.test.ts`, `apps/web/test/mission-control.test.tsx`). Unticked because **no real session from any agent was shown**; the board only saw simulated sessions. A throwaway cross-check showed that Phase 77's real stall event marks a session stuck on the real board.
-- [ ] Tokens and cost per session, project, agent and day, from agent reports and plan usage. Built from what agents themselves report: the generic `POST /api/agent/live/usage` (`session_id` plus tokens) and the Claude statusline fields `cost.total_cost_usd` and `model.id`, with strict validation, clamps and per-day increments (`ingest.ts`, `agent-usage-ingest.test.ts`, `agent-usage-api.test.ts`). Cost is NULL unless the agent reported it or the user supplied a price (`agents.usage.prices` or `AiSettings.prices`); unknown is never shown as zero and partial sums read "or more". Unticked because Claude's status JSON has **no documented cumulative token fields** (Claude sessions show cost only), **Codex and other agents send nothing** (no installed hook sends the generic report), and no real payload was captured.
+- [ ] Tokens and cost per session, project, agent and day, from agent reports and plan usage. Built from what agents themselves report: the generic `POST /api/agent/live/usage` (`session_id` plus tokens) and the Claude statusline fields `cost.total_cost_usd` and `model.id`, with strict validation, clamps and per-day increments (`ingest.ts`, `agent-usage-ingest.test.ts`, `agent-usage-api.test.ts`). Cost is NULL unless the agent reported it or the user supplied a price (`agents.usage.prices` or `AiSettings.prices`); unknown is never shown as zero and partial sums read "or more". Unticked because Claude's status JSON has **no documented cumulative token fields** (Claude sessions show cost only), **Codex sends nothing by itself** (the installed generic hook sends the generic report only for an explicit `phoenix_usage` object from a Phoenix wrapper; no Codex payload with tokens or cost was ever observed), and no real payload was captured.
 - [x] Budgets with alerts before they are reached. Daily and per-session budgets in tokens or cost; `agent.usage.warning` fires at 80 % and 95 % by default, once per budget per threshold per day, persisted (`core/runtime/src/agent-usage/runtime.ts`, `core/runtime/test/agent-usage-budgets.test.ts`). Simulated usage only.
 - [x] Filters and search; jump to a session's terminal or detail. Built in `MissionControl.tsx` (jump-to-terminal is scoped by agent; `apps/web/test/mission-control.test.tsx`). No real terminal window was opened.
 
@@ -53,11 +53,11 @@ An independent static review (read-only, not a human audit) was followed by fixe
 
 ### What was not built
 
-Token counts for Claude sessions; usage reports from Codex and other agents (no installed hook sends the generic report); a per-provider price table; a per-class retention setting (the one retention setting covers all usage rows).
+Token counts for Claude sessions; usage reports that Codex sends by itself (the installed generic hook `agent-hook.ts` sends the generic report only for an explicit `phoenix_usage` object produced by a Phoenix wrapper, because no Codex hook payload with token counts or cost was ever observed or found in the repo; test `capabilities/agents/test/usage-hook.test.ts`); a per-provider price table; a per-class retention setting (the one retention setting covers all usage rows).
 
 ### What was not run
 
-Any real agent, provider, invoice or status payload. Claude Code's real status JSON was not captured. Open items are in the [gap register](../gaps.md).
+Any real agent, provider, invoice or status payload. Claude Code's real status JSON was not captured; no real Codex hook payload was captured either, and nothing wraps Codex to produce `phoenix_usage`. Open items are in the [gap register](../gaps.md).
 
 
 ## Notes & risks

@@ -349,8 +349,11 @@ export class UsageTracker {
 // documentation says they count what is currently in the context window (the output tokens are
 // those of the most recent response only), so they are not session totals. Claude's cumulative
 // token fields are therefore not available to Phoenix; agents that report totals themselves use
-// this same body on `POST /api/agent/live/usage` or the relay's `usage` op. Codex delivers
-// nothing to Phoenix today.
+// this same body on `POST /api/agent/live/usage` or the relay's `usage` op. The installed generic
+// hook (agent-hook.ts, used for Codex and others) sends that body when, and only when, its payload
+// carries an explicit `phoenix_usage` object (relay/generic-map.ts `mapGenericUsage`). Codex's
+// native hook payload was never observed to carry token counts or cost, so Codex sends nothing
+// by itself.
 
 /** Largest running token total one report may claim; beyond it the report is refused. */
 export const MAX_REPORTED_TOKENS = 1_000_000_000_000;

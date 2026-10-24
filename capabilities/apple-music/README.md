@@ -55,4 +55,4 @@ no existing Fawkes state means listening to music (see the Spotify README).
   `player state`, `raw data of artwork 1`) follow Apple's Music dictionary and are unconfirmed; in
   particular the `«data tdta<hex>»` output of `raw data` is as documented for AppleScript data, not
   observed. Music artwork is often a TIFF or other type for local files: such a cover is refused
-  (no cover), not converted. Streamed Apple Music tracks may expose no artwork to scripts at all. Linux and Windows are unsupported (health `degraded`).
+  (no cover), not converted. Streamed Apple Music tracks may expose no artwork to scripts at all. Linux and Windows are unsupported (health `degraded`); the `mpris` capability covers Linux players, nothing covers Windows.

@@ -8,13 +8,16 @@
 //
 //   agent-hook.ts --agent <name> [--event <name>]
 //
-// It tells Phoenix what the agent is doing and nothing else. It NEVER fails the agent: it always
+// It tells Phoenix what the agent is doing and, only when the payload carries an explicit
+// `phoenix_usage` object (Phoenix's own wrapper; see mapGenericUsage), the session's token/cost
+// totals. It NEVER fails the agent: it always
 // exits 0 within about 2 seconds, even when Core is down. Stdout is the single line `{}`: valid,
 // empty JSON for every agent whose docs say hook stdout is parsed as JSON (it means "no decision").
 import { parseArgs } from "node:util";
 import { APPROVAL_AGENT_PATTERN } from "./approval-map";
 import { isRecord } from "./guards";
-import { mapGenericHook } from "./relay/generic-map";
+import { mapGenericHook, mapGenericUsage } from "./relay/generic-map";
+import { sendLive } from "./live-send";
 import { sendReport } from "./send";
 
 export const HOOK_DEADLINE_MS = 2_000;
@@ -55,14 +58,25 @@ export async function runAgentHook(
     if (typeof named !== "string" || !APPROVAL_AGENT_PATTERN.test(named)) {
       return { note: "agent name must match ^[a-z0-9-]{1,24}$ (--agent or a phoenix_agent field)" };
     }
-    const report = mapGenericHook(payload, {
+    const hookOptions = {
       agent: named,
       ...(values.event ? { event: values.event } : {}),
       env,
-    });
-    if (!report) return { note: "" };
-    const sent = await sendReport(report, { timeoutMs: HOOK_DEADLINE_MS - 500 });
-    return { note: sent.ok ? "" : `agent state not reported (${sent.message})` };
+    };
+    const report = mapGenericHook(payload, hookOptions);
+    // Phase 78: only an explicit `phoenix_usage` object produces a usage report (never read from
+    // the agent's native payload); it goes to the generic usage route, in parallel with the state.
+    const usage = mapGenericUsage(payload, hookOptions);
+    const budget = { timeoutMs: HOOK_DEADLINE_MS - 500 };
+    const [sent, usageSent] = await Promise.all([
+      report ? sendReport(report, budget) : undefined,
+      usage ? sendLive("usage", usage, budget) : undefined,
+    ]);
+    const failed = [
+      sent && !sent.ok ? `agent state not reported (${sent.message})` : "",
+      usageSent && !usageSent.ok ? `agent usage not reported (${usageSent.message})` : "",
+    ].filter((n) => n !== "");
+    return { note: failed.join("; ") };
   } catch (err) {
     return { note: (err as Error).message.slice(0, 300) };
   }

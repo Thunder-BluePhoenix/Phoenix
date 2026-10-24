@@ -471,7 +471,7 @@ describe("source glyphs and colours", () => {
     }
   });
 
-  it("gives each of the nine service capabilities a fixed, AA-readable colour and its own glyph", () => {
+  it("gives each of the ten service capabilities a fixed, AA-readable colour and its own glyph", () => {
     const ids = [
       "vercel",
       "stripe",
@@ -481,6 +481,7 @@ describe("source glyphs and colours", () => {
       "calcom",
       "spotify",
       "apple-music",
+      "mpris",
       "portfolio",
     ].map((id) => `capability:${id}`);
     expect(Object.keys(SERVICE_SOURCE_STYLES).sort()).toEqual([...ids].sort());

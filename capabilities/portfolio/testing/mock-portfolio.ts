@@ -39,6 +39,8 @@ export interface MockState {
   }[];
   /** Network id → address → raw response (status + body). */
   accounts: Record<string, Record<string, { status?: number; body: unknown }>>;
+  /** Network id → address → answer of the separate token-balances route (Blockscout). */
+  tokenAccounts: Record<string, Record<string, { status?: number; body: unknown }>>;
   /** Exchange id → balance rows in that exchange's own shape. */
   exchangeBodies: Record<string, unknown>;
   /** Status to answer every exchange call with (default 200 after a valid signature). */
@@ -89,6 +91,7 @@ export function defaultState(): MockState {
       { id: "tether", current_price: 1, price_change_percentage_24h: 0, points: ramp(168, 1, 1) },
     ],
     accounts: {},
+    tokenAccounts: {},
     exchangeBodies: {},
     exchangeStatus: 200,
     coinbaseNonces: new Set(),
@@ -122,7 +125,8 @@ export async function startMockPortfolio(
     if (parts[0] !== "x") return undefined;
     const exchange = exchangeReply(id, rest, req.headers, state);
     if (exchange) return exchange;
-    const accounts = state.accounts[id];
+    const tokenRoute = url.pathname.endsWith("/token-balances");
+    const accounts = (tokenRoute ? state.tokenAccounts : state.accounts)[id];
     if (!accounts) return undefined;
     // The address is a path segment (or the `address` query value); the other segments are fixed.
     const candidates = [

@@ -258,7 +258,7 @@ export function createAppleMusicCapability(options: AppleMusicCapabilityOptions 
         return {
           status: "degraded",
           message:
-            "Unsupported: Apple Music control needs macOS (Linux and Windows are not implemented)",
+            "Unsupported: Apple Music control needs macOS (on Linux use the MPRIS capability; Windows is not implemented)",
         };
       }
       if (failure?.kind === "permission") return { status: "degraded", message: failure.message };

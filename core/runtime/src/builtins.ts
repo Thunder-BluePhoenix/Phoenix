@@ -30,6 +30,7 @@ import {
 } from "@phoenix/capability-status-lights";
 import { createStripeCapability } from "@phoenix/capability-stripe";
 import { createSpotifyCapability } from "@phoenix/capability-spotify";
+import { createMprisCapability } from "@phoenix/capability-mpris";
 import { terminalCapability } from "@phoenix/capability-terminal";
 import { createVercelCapability } from "@phoenix/capability-vercel";
 import type { CapabilityModule } from "@phoenix/capability-manager";
@@ -80,6 +81,7 @@ export function builtinCapabilities(
     ),
     createSpotifyCapability(),
     createAppleMusicCapability(),
+    createMprisCapability(),
     createPortfolioCapability(),
     terminalCapability,
     createDockerCapability(),

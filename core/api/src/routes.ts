@@ -66,7 +66,7 @@ const isCoreOnlyEvent = (type: unknown): boolean =>
  * emit through `ctx.emit`, so `POST /api/events` refuses anything that claims to be one of them.
  */
 const IN_PROCESS_ONLY =
-  /^(vercel|stripe|n8n|resend|notion|calcom|calendar|spotify|apple_music|portfolio|webhook-[a-z0-9_-]+)(\.|$)/;
+  /^(vercel|stripe|n8n|resend|notion|calcom|calendar|spotify|apple_music|mpris|portfolio|webhook-[a-z0-9_-]+)(\.|$)/;
 const isInProcessOnly = (value: unknown): boolean =>
   typeof value === "string" && IN_PROCESS_ONLY.test(value);
 

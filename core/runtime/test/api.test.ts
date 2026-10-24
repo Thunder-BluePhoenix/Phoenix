@@ -129,6 +129,7 @@ describe("events", () => {
       "calcom",
       "spotify",
       "apple_music",
+      "mpris",
       "portfolio",
     ];
     for (const family of families) {

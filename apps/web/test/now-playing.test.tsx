@@ -134,6 +134,21 @@ describe("Now playing glance", () => {
     expect(sec.querySelector("img")).toBeNull();
   });
 
+  it("shows the MPRIS section for an enabled mpris capability and sends no player", async () => {
+    const { api } = open({
+      ...caps("mpris"),
+      ...nowPlaying("mpris", () => track({ repeat: "one" })),
+      ...control("mpris", "play_pause"),
+    });
+    const sec = await section("Now playing · MPRIS");
+    expect(await within(sec).findByText("Blue Hour")).toBeTruthy();
+    expect(sec.querySelector("img")).toBeNull();
+    fireEvent.click(within(sec).getByRole("button", { name: "Pause" }));
+    await waitFor(() =>
+      expect(bodies(api, "/api/capabilities/mpris/commands/play_pause")).toEqual([{ input: {} }]),
+    );
+  });
+
   it("keeps a hostile title, artist and album inert text", async () => {
     const { container } = open({
       ...caps("spotify"),
@@ -430,5 +445,11 @@ describe("nextRepeat", () => {
     expect(nextRepeat("off", "apple-music")).toBe("all");
     expect(nextRepeat("all", "apple-music")).toBe("one");
     expect(nextRepeat("one", "apple-music")).toBe("off");
+  });
+
+  it("cycles off, all, one for MPRIS (playerctl loop None, Playlist, Track)", () => {
+    expect(nextRepeat("off", "mpris")).toBe("all");
+    expect(nextRepeat("all", "mpris")).toBe("one");
+    expect(nextRepeat("one", "mpris")).toBe("off");
   });
 });

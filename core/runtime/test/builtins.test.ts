@@ -45,6 +45,7 @@ describe("built-in capabilities", () => {
         "kage",
         "machine",
         "mock",
+        "mpris",
         "n8n",
         "notion",
         "portfolio",

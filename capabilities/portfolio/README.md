@@ -13,7 +13,7 @@ A **read-only** view of crypto balances. **Display only. Phoenix never places or
   deposit, trade, swap or broadcast. `test/read-only-scan.test.ts` checks the scanner itself.
 - A source that fails is listed with a fixed message; remote text is never shown or logged.
 
-## Networks (16): public GET endpoints, native coin only, no key
+## Networks (16): public GET endpoints, native coin (tokens on 11, from your watch list), no key
 
 | id                                                  | Network            | Endpoint (default)                                             |
 | --------------------------------------------------- | ------------------ | -------------------------------------------------------------- |
@@ -27,12 +27,44 @@ A **read-only** view of crypto balances. **Display only. Phoenix never places or
 | trx                                                 | TRON               | api.trongrid.io `/v1/accounts/{a}`                             |
 | atom                                                | Cosmos Hub         | cosmos-rest.publicnode.com `/cosmos/bank/v1beta1/balances/{a}` |
 
-Not included: **Solana** (its public interface is JSON-RPC over POST; the rule is GET only), and
-tokens (ERC-20 etc.): only each network's native coin. A network's default host can be replaced under
+Not included: **Solana** (its public interface is JSON-RPC over POST; the rule is GET only). Tokens are
+read only on the networks listed under "Tokens" below. A network's default host can be replaced under
 `endpoints` (a self-hosted indexer); these requests carry no key or other credential (they are plain
 unauthenticated GETs of a public address), so the override moves nothing secret. `endpoints` has no entry
 for exchanges. Addresses are validated per network against a strict pattern before
 they reach a URL.
+
+## Tokens (ERC-20, TRC-20, Stellar and Algorand assets, Cosmos denominations)
+
+Read-only, from the **owner's watch list only** (config `tokens`, by network id, at most 10 per network,
+only for addresses already listed under `networks`). Each entry is `{contract, symbol, decimals}`; all three
+are the owner's. No response, chat text or token list can add a token, change its symbol or its decimals.
+No new host: the same indexer, with the wallet address only, as for the native coin; the watch list is
+applied locally.
+
+| Networks                                            | Request (GET)                                                 | Contract / asset identifier           |
+| --------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------- |
+| eth, optimism, base, arbitrum, polygon, gnosis, etc | `{chain}.blockscout.com/api/v2/addresses/{a}/token-balances`  | `0x` + 40 hex, lower-cased (ERC-20)   |
+| trx                                                 | `api.trongrid.io/v1/accounts/{a}` (`data[0].trc20`)           | Base58Check, checksum verified (0x41) |
+| xlm                                                 | `horizon.stellar.org/accounts/{a}` (`balances`)               | `CODE:ISSUER`, always 7 decimals      |
+| algo                                                | `mainnet-api.algonode.cloud/v2/accounts/{a}` (`assets`)       | numeric asset id                      |
+| atom                                                | `cosmos-rest.publicnode.com/cosmos/bank/v1beta1/balances/{a}` | bank denom, e.g. `ibc/HASH`           |
+
+- Own source `<id>:tokens` in `sources`: a token problem never marks the native coin unreadable.
+- Strict parsing: amounts are integer strings (a JSON number only for Algorand, refused unless a safe
+  integer), at most 78 digits and below 2^256, parsed with `BigInt`; negative, fractional, exponent, hex,
+  object, HTML and over-2 MB answers fail the source with a fixed, secret-free message. Where the service
+  reports decimals (Blockscout) they must equal yours or the source fails. A watched contract listed
+  twice, an NFT row, or a Cosmos answer with a next page also fail rather than guess.
+- Amounts: `amount` is the number rounded half-up to 8 decimals (integer arithmetic), `amount_exact` the
+  exact decimal text (no float digit loss). Same no-redirect, 15 s, GET-only client as everything else.
+- **Tokens are never priced.** A symbol is not an identity, so no token gets a price, value or 24 h
+  figure, even when its symbol equals a priced coin; it counts in `unpriced` and not in the total.
+- Contract check is format (plus Base58Check for TRON). The mixed-case EIP-55 checksum needs Keccak-256,
+  which `node:crypto` does not provide, and no dependency was added, so it is not verified.
+- **Not supported (and why):** btc, ltc, doge (no token layer); xrp (issued currencies need `account_lines`,
+  a JSON-RPC POST; a keyless GET shape was not established); ton (jetton balances: the documented
+  keyless route could not be confirmed to be GET-only and unthrottled). They are skipped, not guessed.
 
 ## Exchanges (6): documented balance endpoint is a GET with a read-only key
 

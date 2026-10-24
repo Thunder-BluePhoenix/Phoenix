@@ -16,6 +16,7 @@ import {
   type AgentReport,
   type AgentState,
 } from "../report";
+import { validateTokenUsage, type TokenUsageReport } from "../usage";
 
 /** Hook event name (any agent's spelling) → what the agent is doing. Everything else is ignored. */
 export const EVENT_STATES: Readonly<Record<string, AgentState>> = {
@@ -115,4 +116,43 @@ export function mapGenericHook(payload: unknown, options: GenericOptions): Agent
     workspace: dir,
     ...(reason ? { reason } : {}),
   };
+}
+
+/** The keys a `phoenix_usage` object may carry. Anything else makes the whole report refused. */
+const PHOENIX_USAGE_KEYS: Readonly<Record<string, true>> = {
+  model: true,
+  input_tokens: true,
+  output_tokens: true,
+  cost_usd: true,
+};
+
+/**
+ * The opt-in usage report of Phoenix's own wrapper: a `phoenix_usage` object in the hook payload,
+ * `{"input_tokens"?: n, "output_tokens"?: n, "cost_usd"?: n, "model"?: "id"}`, as running totals for
+ * the session. Nothing in an agent's native payload is read for usage: Codex's own hook payload was
+ * never observed to carry token counts, so only an explicit `phoenix_usage` produces a report.
+ * The session id comes from the usual fields, the project is the folder NAME of the workspace, and
+ * the agent slug is the one the hook was installed with. Null when there is no `phoenix_usage`, when
+ * it carries a field not listed above, or when anything fails the strict `validateTokenUsage` rules
+ * (whole non-negative token counts up to 1e12, cost up to 100000, at least one number). The
+ * returned body is the validated, rebuilt one: no other text from the payload is ever copied.
+ */
+export function mapGenericUsage(
+  payload: unknown,
+  options: GenericOptions,
+): TokenUsageReport | null {
+  if (!isRecord(payload) || !isRecord(payload.phoenix_usage)) return null;
+  const usage = payload.phoenix_usage;
+  for (const key of Object.keys(usage)) if (!Object.hasOwn(PHOENIX_USAGE_KEYS, key)) return null;
+  const env = options.env ?? {};
+  const id = sessionId(payload, env);
+  if (!id) return null;
+  const dir = workspace(payload, env, options.cwd ?? process.cwd());
+  const checked = validateTokenUsage({
+    agent: options.agent,
+    session_id: id,
+    ...(dir.length <= MAX_WORKSPACE && isAbsolute(dir) ? { project: dir } : {}),
+    ...usage,
+  });
+  return checked.ok ? checked.report : null;
 }

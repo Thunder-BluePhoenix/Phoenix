@@ -252,7 +252,7 @@ export function createSpotifyCapability(options: SpotifyCapabilityOptions = {}) 
         return {
           status: "degraded",
           message:
-            "Unsupported: Spotify control needs macOS (Linux and Windows are not implemented)",
+            "Unsupported: Spotify control needs macOS (Windows is not implemented; on Linux the MPRIS capability controls Spotify)",
         };
       }
       if (failure?.kind === "permission") return { status: "degraded", message: failure.message };

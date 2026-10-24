@@ -54,5 +54,6 @@ plays" therefore needs a new, music-specific state and animation, which this pha
 Run only against a fake runner: no real Spotify was started or controlled. The AppleScript was compiled
 (`osacompile`) for syntax and the `is running` check was run on a Mac where Spotify is not installed,
 so the dictionary terms (`player state`, `artwork url`, `repeating`, ...) are from Spotify's published
-scripting dictionary and unconfirmed. Linux (MPRIS) and Windows are not implemented: the capability
-reports `unsupported` and health `degraded`.
+scripting dictionary and unconfirmed. Off macOS the capability reports `unsupported` and health `degraded`; Linux players
+(including Spotify) are handled by the separate `mpris` capability (`capabilities/mpris`), and Windows is not
+implemented.

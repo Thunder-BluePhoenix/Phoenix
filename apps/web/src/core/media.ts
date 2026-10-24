@@ -6,6 +6,7 @@ import { formatNumber } from "./format";
 export const MEDIA_SERVICES = [
   { id: "spotify", name: "Spotify" },
   { id: "apple-music", name: "Apple Music" },
+  { id: "mpris", name: "MPRIS" },
 ] as const;
 
 export type MediaServiceId = (typeof MEDIA_SERVICES)[number]["id"];

@@ -37,6 +37,7 @@
     "@phoenix/capability-machine": "workspace:*",
     "@phoenix/capability-manager": "workspace:*",
     "@phoenix/capability-mock": "workspace:*",
+    "@phoenix/capability-mpris": "workspace:*",
     "@phoenix/capability-n8n": "workspace:*",
     "@phoenix/capability-notion": "workspace:*",
     "@phoenix/capability-planning": "workspace:*",

@@ -104,7 +104,11 @@ export function matchIntent(text: string, tools: readonly VoiceTool[]): VoiceInt
     return { kind: "unavailable", message: "Web search is not available in Phoenix." };
   }
   if (MUSIC.test(request)) {
-    const tool = findReadTool(tools, ["spotify.now_playing", "apple-music.now_playing"]);
+    const tool = findReadTool(tools, [
+      "spotify.now_playing",
+      "apple-music.now_playing",
+      "mpris.now_playing",
+    ]);
     return tool
       ? { kind: "tool", tool: tool.name }
       : { kind: "unavailable", message: "No music service is enabled." };

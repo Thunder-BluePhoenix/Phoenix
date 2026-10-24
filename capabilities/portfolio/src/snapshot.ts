@@ -11,6 +11,10 @@ export interface Holding {
   label: string;
   asset: string;
   amount: number;
+  /** Token holdings only: the exact amount as decimal text (a number cannot hold every digit). */
+  amount_exact?: string;
+  /** Set for a token from the owner's watch list. Tokens are never priced: a symbol is not an identity. */
+  token?: true;
   price_usd?: number;
   value_usd?: number;
   change_24h_pct?: number;
@@ -43,6 +47,8 @@ export interface RawHolding {
   label: string;
   asset: string;
   amount: number;
+  amount_exact?: string;
+  token?: true;
 }
 
 /** The CoinGecko id of an asset, or undefined when Phoenix has no price mapping for it. */
@@ -56,7 +62,7 @@ export function priceHoldings(
 ): { holdings: Holding[]; unpriced: number } {
   let unpriced = 0;
   const holdings = raw.map((h): Holding => {
-    const id = coinId(h.asset);
+    const id = h.token ? undefined : coinId(h.asset);
     const quote = id ? quotes.get(id) : undefined;
     if (!quote) {
       unpriced++;

@@ -97,6 +97,11 @@ describe("intent matching", () => {
       kind: "tool",
       tool: "apple-music.now_playing",
     });
+    const mpris = [tool("mpris.now_playing", "read")];
+    expect(matchIntent("what song is playing", mpris)).toEqual({
+      kind: "tool",
+      tool: "mpris.now_playing",
+    });
     expect(matchIntent("what song is playing", [])).toMatchObject({ kind: "unavailable" });
   });
 

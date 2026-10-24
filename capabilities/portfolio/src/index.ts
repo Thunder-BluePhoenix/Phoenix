@@ -13,6 +13,12 @@ import { EXCHANGES, exchangeSecretNames, type Credentials, type ExchangeSpec } f
 import { NETWORKS, networkById, type NetworkSpec } from "./networks";
 import { DEFAULT_PRICE_URL, PRICE_SOURCE_NAME, fetchQuotes, type Quote } from "./prices";
 import { coinId, priceHoldings, totals, type Snapshot } from "./snapshot";
+import {
+  MAX_TOKENS_PER_NETWORK,
+  MAX_TOKEN_DECIMALS,
+  readWatchList,
+  type TokenWatch,
+} from "./tokens";
 
 export * from "./amount";
 export * from "./coinbase-jwt";
@@ -21,6 +27,7 @@ export * from "./exchanges";
 export * from "./networks";
 export * from "./prices";
 export * from "./snapshot";
+export * from "./tokens";
 
 export const DEFAULT_POLL_MS = 300_000;
 export const MIN_POLL_MS = 60_000;
@@ -44,6 +51,7 @@ export interface PortfolioCapabilityOptions {
 }
 
 interface Settings {
+  tokens: Map<NetworkSpec, { watch: TokenWatch[]; ignored: number }>;
   networks: Map<NetworkSpec, string[]>;
   exchanges: ExchangeSpec[];
   endpoints: Record<string, string>;
@@ -52,7 +60,7 @@ interface Settings {
 }
 
 function settings(ctx: CapabilityContext): Settings {
-  const { networks, exchanges, endpoints, price_url, poll_ms } = ctx.config;
+  const { networks, tokens, exchanges, endpoints, price_url, poll_ms } = ctx.config;
   const chosen = new Map<NetworkSpec, string[]>();
   if (typeof networks === "object" && networks !== null) {
     for (const [id, list] of Object.entries(networks)) {
@@ -62,6 +70,16 @@ function settings(ctx: CapabilityContext): Settings {
       if (valid.length) chosen.set(spec, [...new Set(valid)].slice(0, MAX_ADDRESSES_PER_NETWORK));
     }
   }
+  const watched = new Map<NetworkSpec, { watch: TokenWatch[]; ignored: number }>();
+  if (typeof tokens === "object" && tokens !== null) {
+    for (const [id, list] of Object.entries(tokens)) {
+      const spec = networkById(id);
+      // Only networks with a token reader, and only for addresses the owner already listed.
+      if (!spec?.tokens || !chosen.has(spec)) continue;
+      const read = readWatchList(spec.tokens, list);
+      if (read.watch.length || read.ignored) watched.set(spec, read);
+    }
+  }
   const wanted = new Set(Array.isArray(exchanges) ? exchanges : []);
   const urls: Record<string, string> = {};
   if (typeof endpoints === "object" && endpoints !== null) {
@@ -69,6 +87,7 @@ function settings(ctx: CapabilityContext): Settings {
   }
   return {
     networks: chosen,
+    tokens: watched,
     exchanges: EXCHANGES.filter((e) => wanted.has(e.id)),
     endpoints: urls,
     priceUrl: typeof price_url === "string" ? price_url : DEFAULT_PRICE_URL,
@@ -122,6 +141,7 @@ export function createPortfolioCapability(options: PortfolioCapabilityOptions = 
     const cfg = settings(ctx);
     const gathered = await collect({
       networks: cfg.networks,
+      tokens: cfg.tokens,
       exchanges: cfg.exchanges,
       endpoints: cfg.endpoints,
       exchangeUrls,
@@ -206,6 +226,7 @@ export function createPortfolioCapability(options: PortfolioCapabilityOptions = 
       data_categories: [
         "public wallet addresses",
         "balances and holdings",
+        "token balances of the public addresses you list, for the token contracts you list",
         "exchange account balances (read-only keys)",
       ],
       healthcheck: { interval_ms: 60_000 },
@@ -253,6 +274,45 @@ export function createPortfolioCapability(options: PortfolioCapabilityOptions = 
                   description: `${n.name} (${n.asset}) addresses`,
                 },
               ]),
+            ),
+          },
+          tokens: {
+            type: "object",
+            additionalProperties: false,
+            description:
+              "Token watch list by network id: the ONLY tokens that are read, for the addresses already listed under `networks`. The contract (or asset) identifier, the symbol shown and the decimals are yours; nothing a service answers can add a token or change its scale. Tokens are shown with their amount only: Phoenix does not price tokens.",
+            properties: Object.fromEntries(
+              NETWORKS.flatMap((n) =>
+                n.tokens
+                  ? [
+                      [
+                        n.id,
+                        {
+                          type: "array",
+                          maxItems: MAX_TOKENS_PER_NETWORK,
+                          items: {
+                            type: "object",
+                            additionalProperties: false,
+                            required:
+                              n.tokens.fixedDecimals === undefined
+                                ? ["contract", "symbol", "decimals"]
+                                : ["contract", "symbol"],
+                            properties: {
+                              contract: { type: "string", pattern: n.tokens.contract.source },
+                              symbol: { type: "string", pattern: "^[A-Za-z0-9]{1,12}$" },
+                              decimals: {
+                                type: "integer",
+                                minimum: 0,
+                                maximum: MAX_TOKEN_DECIMALS,
+                              },
+                            },
+                          },
+                          description: `${n.name} tokens to watch`,
+                        },
+                      ],
+                    ]
+                  : [],
+              ),
             ),
           },
           exchanges: {

@@ -7,6 +7,14 @@
 // were NOT checked against the live services (see README).
 import { expectObject, int, isObject, seg, str } from "@phoenix/service-kit";
 import { decimalString, scaledUnits } from "./amount";
+import {
+  algorandAssets,
+  cosmosDenoms,
+  evmTokens,
+  stellarTokens,
+  trc20,
+  type TokenSupport,
+} from "./tokens";
 
 export interface NetworkSpec {
   id: string;
@@ -22,6 +30,11 @@ export interface NetworkSpec {
   parse(body: unknown): number;
   /** The service answers 404 for an account that was never funded: that is a zero balance. */
   missingIsZero?: boolean;
+  /**
+   * How owner-listed tokens are read on this network. Absent: not supported (see the README for why
+   * each of those networks is missing).
+   */
+  tokens?: TokenSupport;
 }
 
 function unusable(): never {
@@ -39,6 +52,7 @@ function evm(id: string, name: string, asset: string, host: string): NetworkSpec
     asset,
     baseUrl: `https://${host}`,
     missingIsZero: true,
+    tokens: evmTokens,
     address: /^0x[0-9a-fA-F]{40}$/,
     path: (a) => `/api/v2/addresses/${seg(a)}`,
     parse(body) {
@@ -130,6 +144,7 @@ export const NETWORKS: readonly NetworkSpec[] = [
       return amount(isObject(native) ? decimalString(native.balance) : undefined);
     },
     missingIsZero: true,
+    tokens: stellarTokens,
   },
   {
     id: "algo",
@@ -139,6 +154,7 @@ export const NETWORKS: readonly NetworkSpec[] = [
     address: /^[A-Z2-7]{58}$/,
     path: (a) => `/v2/accounts/${seg(a)}`,
     parse: (body) => amount(scaledUnits(expectObject(body).amount, 6)),
+    tokens: algorandAssets,
   },
   {
     id: "ton",
@@ -167,6 +183,7 @@ export const NETWORKS: readonly NetworkSpec[] = [
       const first: unknown = data[0];
       return first === undefined ? 0 : amount(scaledUnits(expectObject(first).balance ?? 0, 6));
     },
+    tokens: trc20,
   },
   {
     id: "atom",
@@ -181,6 +198,7 @@ export const NETWORKS: readonly NetworkSpec[] = [
       const uatom = balances.find((b) => isObject(b) && str(b.denom) === "uatom");
       return isObject(uatom) ? amount(scaledUnits(uatom.amount, 6)) : 0;
     },
+    tokens: cosmosDenoms,
   },
 ];
 

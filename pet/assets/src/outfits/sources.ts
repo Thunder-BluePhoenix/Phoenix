@@ -94,6 +94,7 @@ export const SERVICE_SOURCE_STYLES: Readonly<Record<string, { colour: string; gl
     "capability:calcom": { colour: "#1971c2", glyph: "ring" },
     "capability:spotify": { colour: "#1a7f37", glyph: "wave" },
     "capability:apple-music": { colour: "#be123c", glyph: "diamond" },
+    "capability:mpris": { colour: "#0e7490", glyph: "cross" },
     "capability:portfolio": { colour: "#8a4b08", glyph: "hexagon" },
   };
 

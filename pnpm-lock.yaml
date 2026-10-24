@@ -662,6 +662,22 @@ importers:
         specifier: workspace:*
         version: link:../../sdk/testing
 
+  capabilities/mpris:
+    dependencies:
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+      '@phoenix/service-kit':
+        specifier: workspace:*
+        version: link:../../sdk/service-kit
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
   capabilities/n8n:
     dependencies:
       '@phoenix/logging':
@@ -1043,6 +1059,9 @@ importers:
       '@phoenix/capability-mock':
         specifier: workspace:*
         version: link:../../capabilities/mock
+      '@phoenix/capability-mpris':
+        specifier: workspace:*
+        version: link:../../capabilities/mpris
       '@phoenix/capability-n8n':
         specifier: workspace:*
         version: link:../../capabilities/n8n
