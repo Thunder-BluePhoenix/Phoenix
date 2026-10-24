@@ -43,7 +43,6 @@ export const teamStatus: Record<keyof typeof enTeamStatus, string> = {
   "teamStatus.members.removeLabel": "移除 {label}",
   "teamStatus.members.id": "队友的团队 ID",
   "teamStatus.members.label": "显示名称",
-  "teamStatus.members.publicKey": "队友的公钥",
   "teamStatus.members.add": "添加队友",
   "teamStatus.presence.title": "谁在线",
   "teamStatus.presence.none": "没有可显示的队友。",

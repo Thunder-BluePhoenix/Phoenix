@@ -20,7 +20,7 @@ export const calendar: Record<keyof typeof enCalendar, string> = {
   "calendar.busy": "निजी कार्यक्रम",
   "calendar.source": "{meeting} से",
   "calendar.unconfigured":
-    "कोई कैलेंडर प्रदाता कनेक्ट नहीं है। मीटिंग देखने के लिए Google, Microsoft, CalDAV या macOS कैलेंडर कनेक्ट करें।",
+    "कोई कैलेंडर प्रदाता कनेक्ट नहीं है। मीटिंग देखने के लिए Google, Microsoft या CalDAV कनेक्ट करें।",
   "calendar.unavailable":
     "कैलेंडर फ़ीड उपलब्ध नहीं है। आगामी मीटिंग और डिप्लॉय फ़्रीज़ नहीं दिखाए जा सकते।",
   "calendar.stale":

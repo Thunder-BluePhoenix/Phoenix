@@ -16,6 +16,7 @@ import {
 } from "../core/team";
 import { useT, type MessageKey } from "../i18n";
 import { Feedback } from "./Feedback";
+import { TeamInviteAdd, TeamInviteShare } from "./TeamInvite";
 
 const KIND_NAME: Record<TeamKind, MessageKey> = {
   deploying: "teamStatus.kind.deploying",
@@ -50,7 +51,10 @@ export function TeamSettingsSection() {
         <>
           <LinkPanel link={load.link} onChanged={reload} />
           {load.status && <SharingPanel status={load.status} onStatus={applyStatus} />}
-          {load.status && <MembersPanel status={load.status} onStatus={applyStatus} />}
+          {load.status && load.link.self && <TeamInviteShare self={load.link.self} />}
+          {load.status && (
+            <MembersPanel status={load.status} self={load.link.self} onStatus={applyStatus} />
+          )}
           {load.status && <PresencePanel status={load.status} />}
         </>
       )}
@@ -252,32 +256,15 @@ function SharingPanel({
 
 function MembersPanel({
   status,
+  self,
   onStatus,
 }: {
   status: TeamStatus;
+  self: TeamLink["self"];
   onStatus: (status: TeamStatus) => void;
 }) {
   const t = useT();
-  const ids = useId();
   const { run, busy, error } = useAction();
-  const [id, setId] = useState("");
-  const [label, setLabel] = useState("");
-  const [publicKey, setPublicKey] = useState("");
-
-  const add = async (event: FormEvent) => {
-    event.preventDefault();
-    const next = await run<TeamStatus>("POST", TEAM_MEMBERS_PATH, {
-      id: id.trim(),
-      label: label.trim(),
-      public_key: publicKey.trim(),
-    });
-    if (next) {
-      onStatus(next);
-      setId("");
-      setLabel("");
-      setPublicKey("");
-    }
-  };
 
   const remove = async (memberId: string) => {
     const next = await run<TeamStatus>(
@@ -310,43 +297,7 @@ function MembersPanel({
           ))}
         </ul>
       )}
-      <form className="settings-form" onSubmit={(event) => void add(event)}>
-        <label className="field" htmlFor={`${ids}-id`}>
-          {t("teamStatus.members.id")}
-          <input
-            id={`${ids}-id`}
-            type="text"
-            value={id}
-            onChange={(event) => setId(event.target.value)}
-          />
-        </label>
-        <label className="field" htmlFor={`${ids}-label`}>
-          {t("teamStatus.members.label")}
-          <input
-            id={`${ids}-label`}
-            type="text"
-            maxLength={40}
-            value={label}
-            onChange={(event) => setLabel(event.target.value)}
-          />
-        </label>
-        <label className="field" htmlFor={`${ids}-key`}>
-          {t("teamStatus.members.publicKey")}
-          <input
-            id={`${ids}-key`}
-            type="text"
-            value={publicKey}
-            onChange={(event) => setPublicKey(event.target.value)}
-          />
-        </label>
-        <button
-          type="submit"
-          className="btn"
-          disabled={busy || id.trim() === "" || label.trim() === "" || publicKey.trim() === ""}
-        >
-          {t("teamStatus.members.add")}
-        </button>
-      </form>
+      <TeamInviteAdd self={self} members={status.members} onStatus={onStatus} />
       <Feedback error={error} />
     </div>
   );

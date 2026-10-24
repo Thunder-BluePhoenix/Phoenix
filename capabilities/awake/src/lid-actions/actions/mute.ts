@@ -18,7 +18,14 @@
 // the same output is the default again). A name that could not be read is marked
 // `output_identity_unknown`, and the undo then works by id alone, as before.
 // Not while a meeting, recording or dictation is in progress, nor when that is unknown.
+// A default-only adapter mutes "whatever is the default now", so `apply` reads the default's name
+// again at the last moment and, when it is not the name the plan recorded (the user switched
+// outputs between the plan and the apply), mutes nothing and throws `NotAppliedError`: the entry is
+// closed (nothing was changed), never left behind as a mute the entry cannot explain.
+// Per-device mute (`by_id`) is only reachable through an adapter that can address a device without
+// changing the default; no stock macOS tool does (see README-lid.md), so `real.ts` has none.
 // The recorded data is all that undo uses; nothing is kept in memory.
+import { NotAppliedError } from "../../power/journal";
 import type { Fields } from "../../power/format";
 import {
   OUTPUT_CHANGED,
@@ -104,6 +111,21 @@ export function createMute(seams: LidSeams): LidAction {
     async apply(planned) {
       // A meeting may have started since the plan.
       assertIdle(seams);
+      // An adapter that can only address "the default" would mute whatever is the default NOW. If
+      // the user switched outputs since the plan, that is not the output that was recorded: mute
+      // nothing (the entry is closed, so no output is left muted for a reason the entry cannot
+      // explain). Only a recorded name can be checked; without one the plan said so
+      // (`output_identity_unknown`).
+      const plannedName =
+        typeof planned.undo.default_name === "string" && NAME_RE.test(planned.undo.default_name)
+          ? planned.undo.default_name
+          : null;
+      if (seams.audio.addressing === "default_only" && plannedName !== null) {
+        const now = await outputs(seams);
+        const currentName = now?.devices.find((d) => d.id === now.defaultId)?.name;
+        if (currentName !== plannedName)
+          throw new NotAppliedError("the default sound output changed since the plan");
+      }
       const ids = Array.isArray(planned.apply.devices) ? planned.apply.devices : [];
       let failed = 0;
       for (const id of ids) {

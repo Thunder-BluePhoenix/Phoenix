@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import type { JournalFs } from "./journal";
 
 export const SAFETY_VERSION = 1;
+export const SAFETY_FILE = "safety.json";
 
 /**
  * The canonical wording the acknowledgement is bound to (the UI shows a translation of it). The

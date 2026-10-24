@@ -50,7 +50,6 @@ export const teamStatus = {
   "teamStatus.members.removeLabel": "Remove {label}",
   "teamStatus.members.id": "Teammate's team id",
   "teamStatus.members.label": "Name to show",
-  "teamStatus.members.publicKey": "Teammate's public key",
   "teamStatus.members.add": "Add teammate",
 
   "teamStatus.presence.title": "Who is around",

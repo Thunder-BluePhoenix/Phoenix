@@ -14,6 +14,7 @@ import { join } from "node:path";
 import type { CapabilityContext, CommandSpec } from "@phoenix/sdk";
 import { isRecord } from "../guards";
 import { AwakeError, type AwakeDeps, type AwakeModule } from "../system";
+import { coreDataDir } from "../data-dir";
 import { defaultDataDir } from "../power";
 import { nodeJournalFs, type JournalFs } from "../power/journal";
 import {
@@ -63,8 +64,13 @@ export interface ContinuityOptions {
   probe?: NetworkProbe;
   /** Replaces the file-backed previous-network store (tests). */
   previousNetwork?: PreviousNetworkStore;
-  /** The Core data directory; the previous network goes in `<dir>/awake/`. Default: `defaultDataDir()`. */
+  /**
+   * Forces the file into `<dir>/awake/` (tests). Default: the directory Core owns for this capability
+   * (`ctx.dataDir`), else, with no Core, `<defaultDataDir()>/awake/`.
+   */
   dir?: string;
+  /** Where an older Phoenix kept the file: `<legacyDir>/awake/`. Default `defaultDataDir()`. */
+  legacyDir?: string;
   /** File access for the previous network. Default: the real file system (0700 dir, 0600 file). */
   fs?: JournalFs;
   /** Delivers text to Phoenix-tracked agent sessions. Absent: those targets report "unavailable". */
@@ -187,6 +193,31 @@ export function createContinuityModule(options: ContinuityOptions = {}): AwakeMo
     if (!running) throw new AwakeError("unavailable", "The awake capability is not running");
     return running;
   };
+
+  /**
+   * Where the previous network is kept: `options.dir`/awake (tests), else the directory Core owns for
+   * this capability, else the old place. A record an older Phoenix left in the old place is moved
+   * across (copied, read back, then removed); it is a convenience that expires in a day, so a move
+   * that fails just leaves the old file alone and the record starts empty.
+   */
+  function previousNetworkPath(ctx: CapabilityContext, fs: JournalFs): string {
+    const legacy = join(options.legacyDir ?? defaultDataDir(), "awake", PREVIOUS_NETWORK_FILE);
+    if (options.dir !== undefined) return join(options.dir, "awake", PREVIOUS_NETWORK_FILE);
+    const core = coreDataDir(ctx);
+    if (core === undefined) return legacy;
+    const path = join(core, PREVIOUS_NETWORK_FILE);
+    try {
+      const old = path === legacy ? undefined : fs.read(legacy);
+      if (old !== undefined && fs.read(path) === undefined) {
+        fs.mkdirPrivate(core);
+        fs.replace(path, old);
+        if (fs.read(path) === old) fs.remove(legacy);
+      }
+    } catch {
+      // Nothing is lost by leaving the old file where it is.
+    }
+    return path;
+  }
 
   function stop(): void {
     const r = running;
@@ -365,7 +396,7 @@ export function createContinuityModule(options: ContinuityOptions = {}): AwakeMo
       const previous =
         options.previousNetwork ??
         createFilePreviousNetwork({
-          path: join(options.dir ?? defaultDataDir(), "awake", PREVIOUS_NETWORK_FILE),
+          path: previousNetworkPath(ctx, options.fs ?? nodeJournalFs),
           fs: options.fs ?? nodeJournalFs,
           now: () => deps.env.clock.now(),
           onError: (reason) => ctx.logger.warn("previous network not persisted", { reason }),

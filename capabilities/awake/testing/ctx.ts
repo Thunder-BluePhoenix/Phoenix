@@ -32,6 +32,8 @@ export class FakeContext {
   readonly controller = new AbortController();
   readonly events: EmittedEvent[] = [];
   config: Record<string, unknown> = {};
+  /** The capability directory Core would hand over; undefined plays a harness with no Core. */
+  dataDir: string | undefined;
   failEmit: "result" | "throw" | undefined;
 
   get ctx(): CapabilityContext {
@@ -39,6 +41,7 @@ export class FakeContext {
       id: "awake",
       config: this.config,
       logger: quiet,
+      ...(this.dataDir === undefined ? {} : { dataDir: this.dataDir }),
       signal: this.controller.signal,
       secret: () => Promise.resolve(undefined),
       emit: (event) => {

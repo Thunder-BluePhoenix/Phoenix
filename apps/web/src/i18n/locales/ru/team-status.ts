@@ -45,7 +45,6 @@ export const teamStatus: Record<keyof typeof enTeamStatus, string> = {
   "teamStatus.members.removeLabel": "Удалить {label}",
   "teamStatus.members.id": "Идентификатор команды коллеги",
   "teamStatus.members.label": "Отображаемое имя",
-  "teamStatus.members.publicKey": "Открытый ключ коллеги",
   "teamStatus.members.add": "Добавить коллегу",
   "teamStatus.presence.title": "Кто на связи",
   "teamStatus.presence.none": "Нет коллег для показа.",

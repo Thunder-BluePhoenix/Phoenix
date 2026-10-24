@@ -100,9 +100,12 @@ the way back); it is replaced only by a different real network (you moved). The 
 offers "Rejoin my previous network" (no password, ever). It asks you every time (execute command),
 and does nothing, except forget the record, if the Mac is already on that network.
 
-**It survives a Core restart.** The record is the file `<data dir>/awake/previous-network.json`
-(`src/continuity/previous-network.ts`; data dir = `PHOENIX_DATA_DIR`, else `~/.phoenix/<env>`, the
-same rule as the recovery journal), written through the same file seam as the Phase 73 journal:
+**It survives a Core restart.** The record is the file `<capability dir>/previous-network.json`
+(`src/continuity/previous-network.ts`; the capability dir is `ctx.dataDir`, `<Core data dir>/capabilities/awake`,
+the same folder as the recovery journal; only without a Core does it fall back to
+`<PHOENIX_DATA_DIR or ~/.phoenix/<env>>/awake/`). A record an older Phoenix left in that old place is copied
+across, read back, and then removed; if a record is already in the new place the old file is left alone.
+The file is written through the same file seam as the Phase 73 journal:
 directory 0700, file 0600, replaced atomically. The journal itself is not used: it is built for
 changes that must be undone (strict checksum, owner, 1 MB budget, quit veto), and a Wi-Fi name is
 not one.

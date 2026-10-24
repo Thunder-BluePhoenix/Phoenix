@@ -4,19 +4,39 @@ import { defineCapability, type CapabilityContext } from "@phoenix/sdk";
 import { realSleep, startPolling, type Sleep } from "@phoenix/service-kit";
 import { ReminderBook, safeEvent, type CalendarEvent, type ReminderStore } from "./events";
 import { CalendarFeedError, type CalendarAdapter } from "./adapters";
+import { caldavTarget } from "./caldav";
 import { prepareMeeting, type MeetingPrepQuery } from "./prep";
+import {
+  buildAdapter,
+  PROVIDERS,
+  resolveEndpoints,
+  type ProviderEndpoints,
+  type ProviderName,
+} from "./providers";
 
 export * from "./adapters";
+export * from "./caldav";
 export * from "./events";
+export * from "./ics";
 export * from "./prep";
+export * from "./providers";
 export interface CalendarOptions {
-  adapters?: Partial<Record<"caldav" | "google" | "microsoft" | "macos", CalendarAdapter>>;
+  /**
+   * Adapters a host supplies itself (tests, or a real macOS reader). They win over the built-in
+   * ones. Without an entry Core builds the adapter from the capability's own config and secret:
+   * Google and Microsoft Graph with an access token, CalDAV with a username and app password.
+   */
+  adapters?: Partial<Record<ProviderName, CalendarAdapter>>;
+  /** Where the Google and Graph tokens are sent. Code only, never a config setting (tests pass loopback mocks). */
+  endpoints?: ProviderEndpoints;
   now?: () => number;
   sleep?: Sleep;
   prep?: MeetingPrepQuery;
   /** Where reminder de-dup keys are kept so a Core restart does not remind again. Memory only without it. */
   reminderStore?: ReminderStore;
 }
+const CALDAV_URL_PATTERN =
+  "^(https://[^\\s@?#]+|http://(127\\.0\\.0\\.1|localhost)(:[0-9]+)?(/[^\\s@?#]*)?)$";
 const WINDOW_MS = 7 * 86_400_000;
 const POLL_MS = 60_000;
 /** A forced refresh is skipped when the cached feed is at most this old. */
@@ -27,16 +47,19 @@ const MAX_FEED_EVENTS = 500;
 export function createCalendarCapability(options: CalendarOptions = {}) {
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? realSleep;
+  const endpoints = resolveEndpoints(options.endpoints);
   const reminders = new ReminderBook(options.reminderStore);
   let events: CalendarEvent[] = [];
   let error: string | undefined;
   let lastPoll: number | undefined;
   let inflight: Promise<void> | undefined;
 
+  function enabledProviders(ctx: CapabilityContext): ProviderName[] {
+    return PROVIDERS.filter((name) => ctx.config[name] === true);
+  }
+
   async function refresh(ctx: CapabilityContext): Promise<void> {
-    const configured = Object.entries(options.adapters ?? {}).filter(
-      ([name]) => ctx.config[name] === true,
-    );
+    const configured = enabledProviders(ctx);
     if (!configured.length) {
       events = [];
       error = undefined;
@@ -48,12 +71,15 @@ export function createCalendarCapability(options: CalendarOptions = {}) {
     const to = new Date(at + WINDOW_MS).toISOString();
     try {
       const found = await Promise.all(
-        configured.map(async ([name, adapter]) => {
-          if (!adapter) throw new CalendarFeedError(`${name} adapter missing`);
-          // Secret access belongs to Core. A configured provider without its credential makes the
-          // whole feed unavailable: a partial feed must never look complete (deploy freeze).
-          if (name !== "macos" && !(await ctx.secret(`${name}_credential`)))
+        configured.map(async (name) => {
+          // A configured provider without its credential makes the whole feed unavailable: a
+          // partial feed must never look complete (deploy freeze). macOS has no secret.
+          const credential = name === "macos" ? "" : await ctx.secret(`${name}_credential`);
+          if (name !== "macos" && !credential)
             throw new CalendarFeedError(`${name} credential missing`);
+          const adapter =
+            options.adapters?.[name] ??
+            buildAdapter(name, ctx.config, credential ?? "", endpoints, ctx.signal);
           const batch = await adapter.list(from, to, ctx.signal);
           const safe: CalendarEvent[] = [];
           for (const event of batch) {
@@ -97,6 +123,15 @@ export function createCalendarCapability(options: CalendarOptions = {}) {
         cause instanceof CalendarFeedError ? cause.message : "Calendar feed could not be read";
     }
   }
+  /** The host the CalDAV credential goes to, so the owner can see it; absent when CalDAV is off. */
+  function caldavHost(ctx: CapabilityContext): { sends_caldav_credential_to?: string } {
+    if (ctx.config.caldav !== true) return {};
+    try {
+      return { sends_caldav_credential_to: caldavTarget(ctx.config.caldav_url).url.host };
+    } catch {
+      return {};
+    }
+  }
   function poll(ctx: CapabilityContext): Promise<void> {
     return (inflight ??= refresh(ctx).finally(() => {
       inflight = undefined;
@@ -114,13 +149,27 @@ export function createCalendarCapability(options: CalendarOptions = {}) {
       permissions: ["network", "external_api"],
       data_categories: [
         "calendar event times, titles, attendees and prep from authorized meetings",
+        "calendar account credentials held in OS secret storage and sent only to the provider's own host",
       ],
       events: ["calendar.meeting.starting_soon"],
       healthcheck: { interval_ms: 60_000 },
-      secrets: ["google", "microsoft", "caldav"].map((provider) => ({
-        name: `${provider}_credential`,
-        description: `Read-only ${provider} calendar credential`,
-      })),
+      secrets: [
+        {
+          name: "google_credential",
+          description:
+            "A Google OAuth access token with the calendar.readonly scope. Sent only to www.googleapis.com. Phoenix cannot refresh it: when it expires (about an hour) the feed becomes unavailable until you store a new one.",
+        },
+        {
+          name: "microsoft_credential",
+          description:
+            "A Microsoft Graph access token with Calendars.Read. Sent only to graph.microsoft.com. Phoenix cannot refresh it: when it expires the feed becomes unavailable until you store a new one.",
+        },
+        {
+          name: "caldav_credential",
+          description:
+            "username:password (an app password) for the CalDAV server named in caldav_url. Sent with HTTP Basic only to that host, never over plain http except to localhost.",
+        },
+      ],
       commands: [
         {
           name: "upcoming",
@@ -146,7 +195,25 @@ export function createCalendarCapability(options: CalendarOptions = {}) {
           google: { type: "boolean", default: false },
           microsoft: { type: "boolean", default: false },
           caldav: { type: "boolean", default: false },
-          macos: { type: "boolean", default: false },
+          macos: {
+            type: "boolean",
+            default: false,
+            description:
+              "macOS Calendar. Phoenix has no built-in reader (needs a host-supplied one); turning this on without one makes the feed unavailable, never silently empty.",
+          },
+          caldav_url: {
+            type: "string",
+            maxLength: 2048,
+            pattern: CALDAV_URL_PATTERN,
+            description:
+              "Full address of ONE CalDAV calendar collection, for example https://dav.example.com/calendars/me/work/ (https; plain http only for localhost). WARNING: the stored caldav_credential is sent to whatever host this names; Phoenix cannot stop someone who can change this setting from pointing it elsewhere. The host is shown in the upcoming command result.",
+          },
+          caldav_timezone: {
+            type: "string",
+            maxLength: 64,
+            description:
+              "IANA time zone (for example Europe/Berlin) used to read all-day and floating CalDAV times. Default UTC.",
+          },
           freeze: {
             type: "boolean",
             default: false,
@@ -174,7 +241,8 @@ export function createCalendarCapability(options: CalendarOptions = {}) {
         const stale = lastPoll === undefined || now() - lastPoll > FRESH_MS || now() < lastPoll;
         if (lastPoll === undefined || (forced && (stale || error !== undefined))) await poll(ctx);
         return {
-          configured: Object.keys(options.adapters ?? {}).some((name) => ctx.config[name] === true),
+          configured: enabledProviders(ctx).length > 0,
+          ...caldavHost(ctx),
           events,
           checkedAt: lastPoll ?? null,
           error: error ?? null,

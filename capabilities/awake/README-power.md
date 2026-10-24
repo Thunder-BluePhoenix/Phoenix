@@ -12,7 +12,7 @@ Code: `src/power/` (module `recoveryModule`), `helper/`, `scripts/awake/`. User 
 | `recovery.status`    | read                  | journal, `journal_path`, `recovery_lock`, lid, floors, helper, safety, unjournaled-sleep check                                              |
 | `recovery.undo_now`  | execute               | undoes everything the journal still lists                                                                                                   |
 | `recovery.discard`   | write                 | `{id}`: drops ONE pending entry whose kind has no reverter (unknown/forged); audited                                                        |
-| `safety.acknowledge` | write                 | `{acknowledge: true, version: 1, text_sha256}` (hash of the warning text, from `recovery.status`), stored in `<data dir>/awake/safety.json` |
+| `safety.acknowledge` | write                 | `{acknowledge: true, version: 1, text_sha256}` (hash of the warning text, from `recovery.status`), stored in `<capability dir>/safety.json` |
 
 ## Events
 
@@ -39,10 +39,27 @@ after `SHUTDOWN_WAIT_MS` (10 s).
 
 ## Known limits
 
-- The data dir is `PHOENIX_DATA_DIR`, else `~/.phoenix/<env>` (Core does not pass it to capabilities;
-  config `dataDir` is ignored, and `<env>` is `dev` when `PHOENIX_ENV` is unset). The launchd backstop
-  watches the journal given to `install-helper.sh --data-dir` (default `~/.phoenix/prod`): compare it with
-  `journal_path` in `recovery.status`.
+- **Where the files are.** Core hands the capability its own directory, `ctx.dataDir` =
+  `<Core data dir>/capabilities/awake` (mode 0700, made on first use; the Core data dir is the `dataDir`
+  Core really runs with, so a `dataDir` in `config/<env>.json` counts). The journal, the recovery lock and
+  `safety.json` are in it; `journal_path` in `recovery.status` is the full path. Only without a Core
+  (`ctx.dataDir` absent: a harness) does the module fall back to the old rule, `PHOENIX_DATA_DIR`, else
+  `~/.phoenix/<env>` (`dev` when `PHOENIX_ENV` is unset), plus `/awake/`.
+- **Journals an older Phoenix wrote.** Before this, the journal was `<old data dir>/awake/recovery-journal.jsonl`.
+  When the module starts with a Core directory and that old file holds pending entries, they are copied
+  into the new journal in one atomic replace (the new journal's own entries stay first, so the undo, which
+  goes newest first, takes the old ones first), read back and compared, and only then is the old file renamed
+  to `recovery-journal.jsonl.adopted-<ms>` (kept; never read again). Entries already in the new journal (same
+  change id, from a crash between the two steps) are not added twice. If any step fails (unreadable file,
+  full budget, no rename), nothing is dropped: the module keeps using the OLD directory for that run, logs a
+  warning, and tries again at the next start. An old journal with nothing pending is left alone. The
+  acknowledgement in the old `safety.json` is not moved: you are asked once more (fail closed).
+- The launchd backstop watches one path, given to it at install time. `install-helper.sh` computes it with
+  Core's own rule (`--data-dir`, else an absolute `PHOENIX_DATA_DIR`, else `~/.phoenix/<PHOENIX_ENV>`, `dev` when
+  unset) and watches `<data dir>/capabilities/awake/recovery-journal.jsonl`; `--print-plan` shows the path, where
+  the data dir came from and whether a journal exists there. It cannot see a `dataDir` set in
+  `config/<env>.json`, and `sudo` usually clears `PHOENIX_DATA_DIR` / `PHOENIX_ENV`: pass `--data-dir` and
+  compare the `WATCH` line with `journal_path`.
 - `safety.acknowledge` is an ordinary approvable command: command handlers receive no actor, so Core's
   approval cannot tell a person from an agent. The command text and the `text_sha256` binding are the
   only distinction.

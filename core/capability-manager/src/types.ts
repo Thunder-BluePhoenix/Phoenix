@@ -25,6 +25,14 @@ export interface CapabilityContext {
   readonly id: string;
   readonly config: Readonly<Record<string, unknown>>;
   readonly logger: Logger;
+  /**
+   * A private directory this capability owns: `<Core data dir>/capabilities/<id>`, absolute, mode
+   * 0700, created on first read. Only built-in capabilities have one, and only their own: never the
+   * Core data directory, the database or a sibling's folder. Absent when the host gives none
+   * (a bare test harness), so read it as optional and keep a fallback. Reading it throws when the
+   * directory cannot be made safe (a symlink or a foreign owner on the path).
+   */
+  readonly dataDir?: string;
   /** Aborted when the capability is disabled, or when this command is cancelled. */
   readonly signal: AbortSignal;
   /** Reads one of this capability's own credentials from OS secret storage. */

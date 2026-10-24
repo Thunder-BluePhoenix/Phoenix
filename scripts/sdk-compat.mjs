@@ -288,7 +288,7 @@ async function check() {
     execFileSync("node", [client], { cwd: consumer, stdio: "pipe" });
     await writeFile(
       join(consumer, "client.ts"),
-      'import { defineCapability, events, type CapabilityManifest, type CapabilityModule, type ExternalCapabilityOptions } from "@phoenix/sdk";\nconst manifest: CapabilityManifest = { id: "fixture", name: "Fixture", version: "0.1.0", description: "Compatibility", license: "GPL-3.0-or-later", events: [], commands: [], permissions: [] };\nconst module: CapabilityModule = { manifest };\nconst options: ExternalCapabilityOptions = { manifest };\ndefineCapability(module);\nevents.build.started("fixture");\nvoid options;\n',
+      'import { defineCapability, events, type CapabilityContext, type CapabilityManifest, type CapabilityModule, type ExternalCapabilityOptions } from "@phoenix/sdk";\nconst manifest: CapabilityManifest = { id: "fixture", name: "Fixture", version: "0.1.0", description: "Compatibility", license: "GPL-3.0-or-later", events: [], commands: [], permissions: [] };\nconst module: CapabilityModule = { manifest, init(ctx: CapabilityContext) { const dir: string | undefined = ctx.dataDir; void dir; } };\nconst options: ExternalCapabilityOptions = { manifest };\ndefineCapability(module);\nevents.build.started("fixture");\nvoid options;\n',
     );
     await writeFile(
       join(consumer, "tsconfig.json"),

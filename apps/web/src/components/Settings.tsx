@@ -38,6 +38,7 @@ import { ContinuitySettings } from "./Continuity";
 import { LidActionsSettings } from "./LidActions";
 import { McpClients } from "./McpClients";
 import { PhoneLink } from "./PhoneLink";
+import { RemoteRelaySection } from "./RemoteRelay";
 import { PortRadar } from "./PortRadar";
 import { MachineHealth } from "./MachineHealth";
 import { EngineeringSignals } from "./EngineeringSignals";
@@ -84,6 +85,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <RegistrySettingsSection />
       <SyncSettingsSection />
       <PhoneLink />
+      <RemoteRelaySection />
       <McpClients />
       <AwakeSettingsSection />
       <LidActionsSettings />

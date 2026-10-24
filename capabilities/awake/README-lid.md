@@ -113,8 +113,25 @@ never put in a script. On undo, if the adapter can only address the default and 
 default's name differs, the user switched outputs while the lid was closed: the new default is
 **not** unmuted, the entry stays pending and the user sees `output_changed` in plain text (it is
 completed once the old output is the default again). If the name cannot be read, the undo goes by id
-alone as before and the status says `output_identity_unknown`. **GAP:** real per-device mute needs
-CoreAudio APIs.
+alone as before and the status says `output_identity_unknown`.
+
+At apply time a default-only adapter also checks the default's name once more, at the last moment
+(the plan is read before the journal write). If the user switched outputs in between, nothing is
+muted (the new default is not what was recorded), the entry is closed as `not_applied` and no mute
+is left behind. A mute that stays pending (`output_changed`) is never silent and never lost: the
+entry keeps everything undo needs (`devices`, `default_id`, `default_prior`, `default_name`), the
+user sees the plain-text warning, and the next Phoenix launch retries it from the journal alone.
+
+**Per-device mute is not reachable with stock macOS tools, and nothing was built for it:**
+AppleScript's `set volume output muted` addresses only the default output; `osascript -l JavaScript`
+cannot pass the `AudioObjectPropertyAddress` struct that CoreAudio's `AudioObjectSetPropertyData`
+needs (checked: the bridge exposes no such struct); switching the default output temporarily would
+be invasive and is not done; and the free `SwitchAudioSource -m mute` (checked against its source)
+mutes only the currently selected device, so it cannot mute by id without changing the default
+either. The `by_id` addressing mode of the `AudioControl` seam therefore has no real adapter: it
+is exercised only by the fake machine. Real per-device mute needs a native CoreAudio helper
+(a Rust/Swift component), which is a separate piece of work. **Keyboard backlight** is separate: it
+needs private APIs or another third-party tool and is not implemented.
 
 ## Display
 

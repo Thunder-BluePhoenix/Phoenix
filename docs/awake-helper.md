@@ -46,18 +46,33 @@ macOS behaviour was not reproduced, so the defence is deliberately belt and brac
 
 ### Which journal the backstop watches (`--data-dir`)
 
-The launchd job watches **one** journal: `<data-dir>/awake/recovery-journal.jsonl`, where `--data-dir`
-(absolute; default `~/.phoenix/prod`) is given at install time. Phoenix itself uses `PHOENIX_DATA_DIR`,
-else `~/.phoenix/<PHOENIX_ENV>`, and **`dev` when `PHOENIX_ENV` is unset** (Core does not hand
-capabilities its data folder yet, and a `dataDir` in the config is ignored). If the two differ the
-backstop watches a journal Phoenix never writes and protects nothing. Check before you rely on it:
+Core gives the keep-awake capability its own folder, `<Core data dir>/capabilities/awake`, and Phoenix writes
+the journal there (`journal_path` in the Keep awake recovery status is the full path). The launchd job
+watches **one** journal, and the installer computes it with the same rule Core uses for its data dir, so the
+two agree unless the installer cannot see how Core was started:
+
+1. `--data-dir DIR` (absolute), if given;
+2. else `$PHOENIX_DATA_DIR`, if set (it must be absolute);
+3. else `~/.phoenix/$PHOENIX_ENV` (`dev`, `staging` or `prod`; **`dev` when `PHOENIX_ENV` is unset**).
+
+The watched file is `<data dir>/capabilities/awake/recovery-journal.jsonl`. `--print-plan` shows it on the
+`WATCH` line, says which of the three rules chose the data dir, and, read-only, says whether a journal exists
+there and whether an older Phoenix left one at the old place (`<data dir>/capabilities/awake/recovery-journal.jsonl`, which
+is not watched; Phoenix moves its pending entries to the new path the next time it starts with the capability
+enabled). The real install prints the same path when it finishes.
+
+What the installer cannot know: `sudo` normally clears `PHOENIX_DATA_DIR` and `PHOENIX_ENV`, and a `dataDir` in
+`config/<env>.json` (the repository's dev config uses `.phoenix/dev`, relative to where Core runs) is not
+visible to a shell script. In those cases pass `--data-dir` yourself. Check before you rely on it:
 
 ```
-./scripts/awake/install-helper.sh --print-plan --data-dir "$HOME/.phoenix/dev"   # see the WATCH line
+./scripts/awake/install-helper.sh --print-plan --data-dir "$HOME/.phoenix/prod"   # see the WATCH line
 ```
 
-then compare it with `journal_path` in the Keep awake recovery status (shown in the UI under the
-journal). Re-run the installer with the right `--data-dir` if they differ.
+then compare it with `journal_path` in the Keep awake recovery status (shown in the UI under the journal).
+Re-run the installer with the right `--data-dir` if they differ. The path is compared in tests with the
+path Core's manager hands out, but a real `launchd` install was **not** run: the plist, the job loading and the
+backstop reading that path on a real Mac are unverified.
 
 Without the rule, `lid_closed.start` fails with "helper not installed", the session continues, and
 Low Power Mode from the floors is reported unavailable.

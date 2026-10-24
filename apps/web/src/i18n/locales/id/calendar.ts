@@ -21,7 +21,7 @@ export const calendar: Record<keyof typeof enCalendar, string> = {
   "calendar.busy": "Acara pribadi",
   "calendar.source": "Dari {meeting}",
   "calendar.unconfigured":
-    "Tidak ada penyedia kalender yang terhubung. Hubungkan Google, Microsoft, CalDAV, atau Kalender macOS untuk melihat rapat.",
+    "Tidak ada penyedia kalender yang terhubung. Hubungkan Google, Microsoft, atau CalDAV untuk melihat rapat.",
   "calendar.unavailable":
     "Umpan kalender tidak tersedia. Rapat mendatang dan pembekuan deployment tidak dapat ditampilkan.",
   "calendar.stale":

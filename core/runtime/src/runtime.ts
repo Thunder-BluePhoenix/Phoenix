@@ -405,6 +405,8 @@ export class PhoenixRuntime implements CoreServices {
       state: this.state,
       logger: this.logger,
       ...(options.secrets ? { secrets: options.secrets } : {}),
+      // Built-in capabilities get a private `<dataDir>/capabilities/<id>` through their context.
+      dataDir: this.config.dataDir,
       // A calendar deploy freeze (owner opt-in) holds production commands and Vercel redeploys.
       preflight: async ({ capabilityId, command, sideEffect }) => {
         if (sideEffect !== "production" && !(capabilityId === "vercel" && command === "redeploy"))

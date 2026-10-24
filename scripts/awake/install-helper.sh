@@ -30,10 +30,14 @@
 #   ./install-helper.sh --print-plist [--home DIR] [--data-dir DIR] [--node PATH]
 #   ./install-helper.sh --dry-run [...]         runs the real checks and prints every step as
 #                                               "RUN root:" / "RUN <user>:"; executes none of them
-# --data-dir DIR (absolute) is the Phoenix data folder whose awake/recovery-journal.jsonl the backstop
-#   watches. Default: ~/.phoenix/prod. It MUST be the folder the running Phoenix uses (PHOENIX_DATA_DIR,
-#   or ~/.phoenix/<PHOENIX_ENV>, where Phoenix defaults to dev when PHOENIX_ENV is unset): compare the
-#   WATCH line of --print-plan with `journal_path` in the Keep awake recovery status.
+# --data-dir DIR (absolute) is the Phoenix (Core) data folder. Phoenix gives the keep-awake capability its
+#   own folder inside it, and the backstop watches the journal there:
+#   DIR/capabilities/awake/recovery-journal.jsonl. Without --data-dir the folder is chosen by the same
+#   rule Core uses: $PHOENIX_DATA_DIR (absolute), else ~/.phoenix/$PHOENIX_ENV (dev, staging or prod;
+#   dev when unset). `sudo` usually clears those variables: pass --data-dir when they matter. A
+#   dataDir set in config/<env>.json (the repository's dev config uses .phoenix/dev) is NOT visible to
+#   this script: pass it with --data-dir. Compare the WATCH line of --print-plan with `journal_path`
+#   in the Keep awake recovery status; the plan also says where the value came from.
 # --yes means "I have read this script and the sudoers text it prints, and I accept that the rule is
 #   account-wide". It is required.
 # Run ./uninstall-helper.sh to remove everything this created.
@@ -53,6 +57,7 @@ user=""
 home=""
 data_dir=""
 data_dir_given=0
+data_dir_source=""
 node_bin=""
 
 die() { printf 'install-helper: %s\n' "$*" >&2; exit 1; }
@@ -68,7 +73,7 @@ while [ $# -gt 0 ]; do
     --print-plist) mode="plist" ;;
     --user) shift; [ $# -gt 0 ] || die "--user needs a value"; user="$1" ;;
     --home) shift; [ $# -gt 0 ] || die "--home needs a value"; home="$1" ;;
-    --data-dir) shift; [ $# -gt 0 ] || die "--data-dir needs a value"; data_dir="$1"; data_dir_given=1 ;;
+    --data-dir) shift; [ $# -gt 0 ] || die "--data-dir needs a value"; data_dir="$1"; data_dir_given=1; data_dir_source="--data-dir" ;;
     --node) shift; [ $# -gt 0 ] || die "--node needs a value"; node_bin="$1" ;;
     -h|--help) sed -n '2,/^# UNVERIFIED/p' "$0"; exit 0 ;;
     *) die "unknown option: $1" ;;
@@ -107,7 +112,22 @@ if [ -z "$home" ]; then
     [ -n "$home" ] || die "cannot find the home directory of $user (pass --home)"
   fi
 fi
-[ -n "$data_dir" ] || data_dir="$home/.phoenix/prod"
+# The folder Core uses (core/config): an absolute PHOENIX_DATA_DIR, else ~/.phoenix/<PHOENIX_ENV>, dev when unset.
+if [ -z "$data_dir" ]; then
+  case "${PHOENIX_DATA_DIR:-}" in
+    /*) data_dir="$PHOENIX_DATA_DIR"; data_dir_source="PHOENIX_DATA_DIR" ;;
+    "") ;;
+    *) die "PHOENIX_DATA_DIR must be an absolute path: $PHOENIX_DATA_DIR" ;;
+  esac
+fi
+if [ -z "$data_dir" ]; then
+  case "${PHOENIX_ENV:-dev}" in
+    dev|staging|prod) phoenix_env="${PHOENIX_ENV:-dev}" ;;
+    *) die "PHOENIX_ENV must be dev, staging or prod: ${PHOENIX_ENV}" ;;
+  esac
+  data_dir="$home/.phoenix/$phoenix_env"
+  data_dir_source="~/.phoenix/$phoenix_env (PHOENIX_ENV=${PHOENIX_ENV:-unset, so dev})"
+fi
 if [ -z "$node_bin" ]; then node_bin="$(command -v node || true)"; fi
 [ -n "$node_bin" ] || node_bin="/usr/local/bin/node"
 
@@ -135,8 +155,11 @@ plist_dst="$agents_dir/$LABEL.plist"
 log_dir="$home/Library/Logs"
 log_dst="$log_dir/phoenix-awake-backstop.log"
 sudoers_dst="$SUDOERS_DIR/$SUDOERS_NAME"
-journal="$data_dir/awake/recovery-journal.jsonl"
-check_path "$script_dst"; check_path "$plist_dst"; check_path "$log_dst"; check_path "$journal"
+# Keep in step with capabilities/awake/src/power (JOURNAL_FILE) and core/capability-manager/src/data-dir.ts
+# (`<Core data dir>/capabilities/<capability id>`): a test compares this path with what Core hands out.
+journal="$data_dir/capabilities/awake/recovery-journal.jsonl"
+legacy_journal="$data_dir/awake/recovery-journal.jsonl"
+check_path "$script_dst"; check_path "$plist_dst"; check_path "$log_dst"; check_path "$journal"; check_path "$legacy_journal"
 
 here="$(cd "$(dirname "$0")" && pwd)"
 script_src="$here/$SCRIPT_SRC_REL"
@@ -177,6 +200,18 @@ render_plist() {
 PLIST
 }
 
+# Read-only: what is at the watched path now, and whether an older Phoenix left a journal at the old place.
+print_journal_state() {
+  if [ -e "$journal" ]; then
+    echo "# the journal exists at the WATCH path"
+  else
+    echo "# no journal at the WATCH path yet: Phoenix creates it the first time the keep-awake capability makes a change"
+  fi
+  if [ -s "$legacy_journal" ]; then
+    echo "# WARNING: an older Phoenix journal exists at $legacy_journal. It is NOT watched. Phoenix moves its pending entries to the WATCH path the next time it starts with the keep-awake capability enabled."
+  fi
+}
+
 # One line per file this script creates. uninstall-helper.sh --print-plan prints the same paths.
 print_plan() {
   echo "CREATE $sudoers_dst"
@@ -187,12 +222,12 @@ print_plan() {
   render_sudoers | sed -n '4p' | sed 's/^[^:]*: //' | tr ',' '\n' | sed 's/^ */#   /'
   echo "# $ACCOUNT_WIDE_NOTICE"
   echo "# files under $home are created as $user (sudo -u $user), never as root; only $sudoers_dst is written by root"
-  if [ "$data_dir_given" -eq 1 ]; then
-    echo "WATCH $journal"
-  else
-    echo "WATCH $journal"
-    echo "# no --data-dir given: the default is $home/.phoenix/prod. Phoenix itself defaults to ~/.phoenix/dev unless PHOENIX_DATA_DIR or PHOENIX_ENV is set; pass --data-dir to match it"
+  echo "WATCH $journal"
+  echo "# Phoenix data folder: $data_dir (from $data_dir_source)"
+  if [ "$data_dir_given" -eq 0 ]; then
+    echo "# no --data-dir given: chosen by Core's rule from the environment of this command (sudo usually clears PHOENIX_DATA_DIR and PHOENIX_ENV); pass --data-dir to be sure"
   fi
+  print_journal_state
   echo "# compare the WATCH path with journal_path in the Keep awake recovery status"
   echo "# touches nothing else; the journal $journal is never created, changed or removed by this script"
 }
@@ -291,5 +326,6 @@ run_root_quiet /bin/launchctl bootout "gui/$uid/$LABEL" || true
 run_root /bin/launchctl bootstrap "gui/$uid" "$plist_dst" || echo "install-helper: could not load the launchd job now; it loads at your next login" >&2
 
 echo "Installed: $sudoers_dst, $script_dst, $plist_dst"
-echo "The backstop watches: $journal (must be the journal of the Phoenix you run; see journal_path in the Keep awake recovery status)"
+echo "The backstop watches: $journal (Phoenix data folder $data_dir, from $data_dir_source; must equal journal_path in the Keep awake recovery status)"
+print_journal_state
 echo "Remove everything with: sudo $here/uninstall-helper.sh --yes"

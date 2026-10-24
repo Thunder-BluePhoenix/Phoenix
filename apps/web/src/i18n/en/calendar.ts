@@ -19,7 +19,7 @@ export const calendar = {
   "calendar.busy": "Private event",
   "calendar.source": "From {meeting}",
   "calendar.unconfigured":
-    "No calendar provider is connected. Connect Google, Microsoft, CalDAV or macOS Calendar to see meetings.",
+    "No calendar provider is connected. Connect Google, Microsoft, or CalDAV to see meetings.",
   "calendar.unavailable":
     "The calendar feed is unavailable. Upcoming meetings and deployment freezes cannot be shown.",
   "calendar.stale":

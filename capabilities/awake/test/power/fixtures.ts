@@ -17,6 +17,7 @@ export class MemFs implements JournalFs {
   failAppend = false;
   failReplace = false;
   failRemove = false;
+  failRename = false;
 
   mkdirPrivate(dir: string): void {
     this.dirs.push(dir);
@@ -42,6 +43,13 @@ export class MemFs implements JournalFs {
   }
   size(path: string): number {
     return this.files.get(path)?.length ?? 0;
+  }
+  rename(from: string, to: string): void {
+    if (this.failRename) throw new Error("EXDEV");
+    const text = this.files.get(from);
+    if (text === undefined) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    this.files.set(to, text);
+    this.files.delete(from);
   }
 }
 

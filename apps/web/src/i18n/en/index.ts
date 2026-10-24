@@ -15,6 +15,7 @@ import { memory } from "./memory";
 import { mission } from "./mission";
 import { pet } from "./pet";
 import { phone } from "./phone";
+import { remoteRelay } from "./remote-relay";
 import { ports } from "./ports";
 import { power } from "./power";
 import { safety } from "./safety";
@@ -28,6 +29,7 @@ import { awakeSchedule } from "./awake-schedule";
 import { awakeSettings } from "./awake-settings";
 import { teamStatus } from "./team-status";
 import { teamWebhooks } from "./team-webhooks";
+import { teamInvite } from "./team-invite";
 import { serviceGlances } from "./service-glances";
 import { serviceGlancesB } from "./service-glances-b";
 
@@ -41,6 +43,7 @@ export const en = {
   ...memory,
   ...pet,
   ...phone,
+  ...remoteRelay,
   ...power,
   ...services,
   ...settings,
@@ -58,6 +61,7 @@ export const en = {
   ...awakeSettings,
   ...teamStatus,
   ...teamWebhooks,
+  ...teamInvite,
   ...machine,
   ...fawkesRebirth,
   ...sounds,

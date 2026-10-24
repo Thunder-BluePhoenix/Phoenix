@@ -45,7 +45,6 @@ export const teamStatus: Record<keyof typeof enTeamStatus, string> = {
   "teamStatus.members.removeLabel": "Hapus {label}",
   "teamStatus.members.id": "ID tim rekan tim",
   "teamStatus.members.label": "Nama yang ditampilkan",
-  "teamStatus.members.publicKey": "Kunci publik rekan tim",
   "teamStatus.members.add": "Tambah rekan tim",
   "teamStatus.presence.title": "Siapa yang ada",
   "teamStatus.presence.none": "Tidak ada rekan tim untuk ditampilkan.",

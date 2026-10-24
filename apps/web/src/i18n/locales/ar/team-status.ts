@@ -45,7 +45,6 @@ export const teamStatus: Record<keyof typeof enTeamStatus, string> = {
   "teamStatus.members.removeLabel": "إزالة {label}",
   "teamStatus.members.id": "معرّف فريق الزميل",
   "teamStatus.members.label": "الاسم المعروض",
-  "teamStatus.members.publicKey": "المفتاح العام للزميل",
   "teamStatus.members.add": "إضافة زميل",
   "teamStatus.presence.title": "من حولك",
   "teamStatus.presence.none": "لا يوجد زملاء للعرض.",

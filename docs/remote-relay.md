@@ -101,7 +101,27 @@ TLS to the relay protects metadata only; the payload protection does not depend 
 
 `relay/` has no dependencies and no state, so any Node ≥ 22 host works: `tsx relay/src/...` under a
 TLS terminator, or a container whose command starts `createRelayServer()`. **No Dockerfile or hosted
-instance is shipped in this build.**
+instance is shipped in this build.** The exact blocker is under [Why there is no Dockerfile](#why-there-is-no-dockerfile).
+
+### Why there is no Dockerfile
+
+A Dockerfile was deliberately **not** added, because a correct one cannot be written from what is in
+the repository, and the Docker daemon is not available here to check a guess:
+
+- `relay/` has **no entry point**. `relay/src/server.ts` only exports `createRelayServer()`; nothing
+  reads a port or host and calls `listen()`. A container needs a command, so one would have to be
+  written first (and then decided: environment variable names, bind address, graceful shutdown).
+- The package is TypeScript source with **no build step** (`exports` points at `./src/server.ts`; no
+  `dist/`). A plain Node image can run it only through `tsx` (a root `devDependency`, not a dependency
+  of `@phoenix/relay`) or Node's type stripping. `.nvmrc` pins only the major (`22`), and `engines` is
+  `>=22.13`; whether type stripping runs without a flag depends on the minor version, so the image
+  would have to pin one that was never tried (type stripping is on by default only in later 22.x
+  releases).
+- The server has **no health route** (every other path is `404`), so a `HEALTHCHECK` could only probe
+  the stream route, which is not a health check.
+
+Until a start script and a build or runtime choice are made and tested with a real daemon, the
+supported way to host it is the `tsx` one-liner above under your own TLS terminator.
 
 ## What the relay can still do
 
@@ -138,15 +158,51 @@ and `relayUrl` validation). It is also the transport for [team presence](team-st
 - **Secret store required.** The service is absent in the demo runtime.
 - **Privacy.** The stored route and URL are privacy row `remote_relay`.
 
+## Pairing and management UI (Settings → Remote relay)
+
+`apps/web/src/components/RemoteRelay.tsx` (state in `apps/web/src/core/remote-relay.ts`) is built only
+on the session-token routes above and `GET /api/phone/devices`; Core gained no new route.
+
+- **Status:** off, on and connected, or on and not connected; the relay address; Core's `last_error`
+  as plain text (control and bidirectional characters removed, capped at 200 characters). While the
+  relay is on, the status is re-read every 5 s. If Core answers `404` (no OS secret store, so the
+  service is absent) the section says so and offers nothing.
+- **Turn on:** needs an explicit relay address. The UI checks it like Core's `relayUrl` (at most 300
+  characters; `https:`, or `http:` only for `localhost`, `127.0.0.1`, `[::1]`; no credentials, query or
+  fragment) and sends exactly `{"url": "<address>"}`. Core remains the authority and its refusal (for
+  example the emergency stop) is shown as text.
+- **Turn off:** asks first, and says that it discards the route and this computer's relay private
+  key; only then `DELETE /api/remote-relay`.
+- **Details for a device:** Core has **no pairing code or link for the relay**. The only pairing
+  material it exposes is the relay address, the route id and Core's relay _public_ key (from
+  `GET /api/remote-relay`). The UI shows these only while a "Show the relay details" panel is open and
+  hides them again when it is closed, when the relay is turned off or when the route changes; they are
+  kept in no storage and never logged. The route id is an address, not a password, and the private key
+  is never in any response. Nothing here is a QR code or a pairing URI, and none is invented.
+- **Paired devices:** the phone-link device list (names cleaned, grouped key fingerprints,
+  revoked state) with a "send approvals" button per live device, which calls
+  `POST /api/remote-relay/devices/:id/approvals`. Revoking is still done in the phone link section.
+- **Text on screen:** the "can and cannot see" wording is taken from [Trust model](#trust-model) and
+  [What the relay can still do](#what-the-relay-can-still-do): end-to-end encrypted payloads; the relay
+  sees route id, peer address, frame size and timing, and can drop, delay or repeat frames.
+- **i18n:** keys `relay.*` in all ten locale folders (`en` plus nine). The non-English strings are
+  machine-translated and unreviewed.
+- **Tests:** `apps/web/test/remote-relay.test.tsx` (24, against a fake Core): status states, exact
+  enable body, address validation, disable confirmation and request, details shown then cleared,
+  devices, errors as text, hostile text inert, route absent (404). **Simulated only:** no relay,
+  network, TLS, phone or hosted instance was used.
+
 ## What is not built
 
 - **Exit criterion "a phone on mobile data approves a request through the relay" is UNMET.** No
   phone app, no mobile network, no hosted relay. Only a Node fake device over loopback.
-- No phone app, no pairing UI/URI, no TLS exercised, no hosting, no Dockerfile.
+- No phone app, no pairing URI or QR for the relay, no TLS exercised, no hosting, no Dockerfile (see
+  [why](#why-there-is-no-dockerfile)).
 - Pairing a device _for the relay_ reuses the Phase 71 pairing; the device learns Core's relay public
-  key out of band in these tests. No pairing UI/URI carries it yet.
+  key out of band. The Settings section shows the address, route and public key to hand over (see above)
+  but Core has no relay pairing code, so nothing carries them to a device for you.
 - Device list/revoke is the phone-link list/revoke (`/api/phone/devices`); there is no relay-specific
-  device list.
+  device list. The relay section only lists them and sends approvals.
 - Resilience: no TLS to the relay is exercised, no rate limiting per client address, no
   presence/offline queueing by design (a device must be online to receive). The reconnect loop is
   tested against a loopback relay only.

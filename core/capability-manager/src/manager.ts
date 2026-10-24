@@ -21,6 +21,7 @@ import {
 } from "@phoenix/protocol";
 import type { MappingRule, StateEngine } from "@phoenix/state-engine";
 import { assertLoopbackEndpoint, ExternalClient } from "./external";
+import { assertCoreDataDir, ensureCapabilityDataDir } from "./data-dir";
 import { guarded, toPhoenixError } from "./guard";
 import type {
   CapabilityContext,
@@ -47,6 +48,12 @@ export interface CapabilityManagerOptions {
   defaultHealthTimeoutMs?: number;
   /** OS secret storage for capability credentials (ctx.secret). */
   secrets?: SecretStore;
+  /**
+   * The Core data directory (absolute). With it, every built-in capability's context carries a
+   * private `dataDir` (`<dataDir>/capabilities/<id>`, 0700, created on first read). Without it no
+   * context has one. External capabilities never get one either way.
+   */
+  dataDir?: string;
   /**
    * Runs after the user's approval and immediately before a command is dispatched. Throwing refuses
    * the command with that error; used for host-owned holds such as a calendar deploy freeze.
@@ -76,6 +83,8 @@ interface Entry {
   available?: boolean;
   /** The user had this enabled when Phoenix last ran (restore() resumes it). */
   resume?: boolean;
+  /** The built-in's private data directory once it was made (see `dataDirOf`). */
+  dataDir?: string;
 }
 
 const MAX_OPERATIONS = 500;
@@ -98,6 +107,8 @@ export class CapabilityManager {
   private closed = false;
 
   constructor(private readonly o: CapabilityManagerOptions) {
+    // A relative Core dir would make every capability's directory depend on the working directory.
+    if (o.dataDir !== undefined) assertCoreDataDir(o.dataDir);
     this.logger = (o.logger ?? silentLogger).child("capabilities");
     this.callTimeoutMs = o.callTimeoutMs ?? 10_000;
     this.healthIntervalMs = o.defaultHealthIntervalMs ?? 30_000;
@@ -585,17 +596,20 @@ export class CapabilityManager {
             () => {
               dispatched = true;
               const ctx = entry.ctx!;
-              return entry.module!.commands![command]!(input, {
-                ...ctx,
-                signal: controller.signal,
-                emit: (event, options) =>
-                  controller.signal.aborted
-                    ? {
-                        ok: false,
-                        error: new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Command cancelled"),
-                      }
-                    : ctx.emit(event, options),
-              });
+              return entry.module!.commands![command]!(
+                input,
+                this.withDataDir(entry, {
+                  ...ctx,
+                  signal: controller.signal,
+                  emit: (event, options) =>
+                    controller.signal.aborted
+                      ? {
+                          ok: false,
+                          error: new PhoenixError(ErrorCode.OPERATION_TIMEOUT, "Command cancelled"),
+                        }
+                      : ctx.emit(event, options),
+                }),
+              );
             },
             timeout,
             controller.signal,
@@ -745,8 +759,47 @@ export class CapabilityManager {
     return this.o.bus.publish(v.event, { expectedSource: entry.manifest.id, ephemeral });
   }
 
+  /**
+   * `<Core data dir>/capabilities/<id>`, made (0700, no symlink, ours) on the first read and cached
+   * after. A failure throws and is not cached, so the capability sees the error and nothing falls
+   * back to a path of its own choosing. The path comes from Core's configuration and the
+   * registered manifest id, never from a capability's or a user's input.
+   */
+  private dataDirOf(entry: Entry): string {
+    if (entry.dataDir !== undefined) return entry.dataDir;
+    const base = this.o.dataDir;
+    if (base === undefined) throw new Error("this capability has no data directory");
+    try {
+      entry.dataDir = ensureCapabilityDataDir(base, entry.manifest.id);
+    } catch (err) {
+      this.logger.warn("capability data directory unavailable", {
+        id: entry.manifest.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+    return entry.dataDir;
+  }
+
+  /**
+   * Gives a built-in's context its `dataDir`: a read-only getter that makes the directory when first
+   * read. It is deliberately not enumerable, so copying a context (`{ ...ctx }`, logging, JSON)
+   * never creates the directory; every context handed to a built-in goes through here.
+   */
+  private withDataDir(entry: Entry, ctx: CapabilityContext): CapabilityContext {
+    // Only built-ins, and only when Core gave the manager its data directory.
+    if (entry.kind === "builtin" && this.o.dataDir !== undefined) {
+      Object.defineProperty(ctx, "dataDir", {
+        get: () => this.dataDirOf(entry),
+        enumerable: false,
+        configurable: false,
+      });
+    }
+    return ctx;
+  }
+
   private context(entry: Entry, signal: AbortSignal): CapabilityContext {
-    return {
+    return this.withDataDir(entry, {
       id: entry.manifest.id,
       config: Object.freeze({ ...entry.config }),
       logger: this.logger.child(entry.manifest.id),
@@ -765,7 +818,7 @@ export class CapabilityManager {
               createEvent({ ...event, source: entry.manifest.id } as NewEvent),
               options?.ephemeral,
             ),
-    };
+    });
   }
 
   private startHealth(entry: Entry): void {

@@ -584,3 +584,59 @@ describe("hotspot.join_now", () => {
     r.shutdown();
   });
 });
+
+describe("previous network and ctx.dataDir (Core-owned directory)", () => {
+  const CORE_DIR = "/core/capabilities/awake";
+  const CORE_RECORD = `${CORE_DIR}/${PREVIOUS_NETWORK_FILE}`;
+
+  it("is written under the directory Core hands over, not the old place", async () => {
+    const r = await continuityRig({
+      config: config({}),
+      coreDir: CORE_DIR,
+      script: followingWifi("Home"),
+    });
+    await r.call("hotspot.join_now");
+    expect(JSON.parse(r.fs.files.get(CORE_RECORD) ?? "{}")).toMatchObject({ ssid: "Home" });
+    expect(r.fs.files.has(RECORD)).toBe(false);
+    expect(r.fs.modes.get(CORE_DIR)).toBe(0o700);
+    r.shutdown();
+  });
+
+  it("moves a record an older Phoenix left in the old place, then removes the old file", async () => {
+    const wifi = followingWifi("Home");
+    const first = await continuityRig({ config: config({}), script: wifi });
+    await first.call("hotspot.join_now");
+    first.shutdown();
+    const old = first.fs.files.get(RECORD);
+    expect(old).toBeDefined();
+
+    const second = await continuityRig({
+      config: config({}),
+      coreDir: CORE_DIR,
+      restartOf: first,
+      script: wifi,
+    });
+    expect((await statusOf(second)).hotspot.previous_network_saved).toBe(true);
+    expect(second.fs.files.get(CORE_RECORD)).toBe(old);
+    expect(second.fs.files.has(RECORD)).toBe(false);
+    second.shutdown();
+  });
+
+  it("keeps the old file when the new place already has a record", async () => {
+    const wifi = followingWifi("Home");
+    const first = await continuityRig({ config: config({}), script: wifi });
+    await first.call("hotspot.join_now");
+    first.shutdown();
+    const old = first.fs.files.get(RECORD) ?? "";
+    first.fs.files.set(CORE_RECORD, old.replace("Home", "Other"));
+    const second = await continuityRig({
+      config: config({}),
+      coreDir: CORE_DIR,
+      restartOf: first,
+      script: wifi,
+    });
+    expect(second.fs.files.get(RECORD)).toBe(old);
+    expect(second.fs.files.get(CORE_RECORD)).toContain("Other");
+    second.shutdown();
+  });
+});

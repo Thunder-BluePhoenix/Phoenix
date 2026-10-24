@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 //
-// The recovery journal's storage (Phase 73): an append-only JSON-lines file in the Core data dir.
+// The recovery journal's storage (Phase 73): an append-only JSON-lines file in the capability's own Core directory.
 // The directory is created 0700 and the file 0600. Every append is one write on an O_APPEND handle
 // followed by fsync, so a crash leaves at most one torn last line (which `parseJournal` tolerates).
 // The file is size-bounded: once it passes MAX_JOURNAL_BYTES it is rewritten, atomically, down to
@@ -23,6 +23,8 @@ import { dirname } from "node:path";
 import { encodeLine, parseJournal, type JournalRecord, type ParsedJournal } from "./format";
 
 export const MAX_JOURNAL_BYTES = 1 << 20;
+/** The journal's file name; the launchd backstop is told the full path to it. */
+export const JOURNAL_FILE = "recovery-journal.jsonl";
 const FILE_MODE = 0o600;
 const DIR_MODE = 0o700;
 
@@ -40,6 +42,8 @@ export interface JournalFs {
   createExclusive(path: string, data: string): void;
   remove(path: string): void;
   size(path: string): number;
+  /** Moves `from` to `to` atomically (replacing `to`); the content is untouched. */
+  rename(from: string, to: string): void;
 }
 
 export const nodeJournalFs: JournalFs = {
@@ -94,6 +98,9 @@ export const nodeJournalFs: JournalFs = {
     } catch {
       return 0;
     }
+  },
+  rename(from, to) {
+    renameSync(from, to);
   },
 };
 

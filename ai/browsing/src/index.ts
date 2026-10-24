@@ -3,6 +3,22 @@
 import type { GenerateRequest, GenerateResult } from "@phoenix/ai-models";
 import type { ToolCall, ToolCallResult, ToolContract } from "@phoenix/ai-tool-gateway";
 import type { Actor, Environment, PolicyAuditSink } from "@phoenix/policy";
+import { MAX_PAGE_CHARS } from "./page-snapshot";
+
+export {
+  MAX_PAGE_CHARS,
+  PageSnapshotError,
+  SnapshotPageReader,
+  readPageSnapshot,
+  sanitizeText,
+  styleHidesElement,
+  wrapUntrustedPageText,
+  type PageProvenance,
+  type PageSnapshot,
+  type PageSnapshotInput,
+  type PageSnapshotLimits,
+  type UntrustedEnvelope,
+} from "./page-snapshot";
 
 /** One form control on the page, described without its value. */
 export interface PublicField {
@@ -86,8 +102,6 @@ export class BrowsingSafetyError extends Error {
   override name = "BrowsingSafetyError";
 }
 
-/** Longest page text handed to the model; the rest is dropped and the model is told so. */
-export const MAX_PAGE_CHARS = 20_000;
 export const MAX_TYPED_CHARS = 4096;
 const MAX_SELECTOR_CHARS = 512;
 const SUMMARY_QUESTION = "Summarise this page in a few short sentences.";

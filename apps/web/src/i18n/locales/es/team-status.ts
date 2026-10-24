@@ -45,7 +45,6 @@ export const teamStatus: Record<keyof typeof enTeamStatus, string> = {
   "teamStatus.members.removeLabel": "Quitar a {label}",
   "teamStatus.members.id": "Id de equipo del compañero",
   "teamStatus.members.label": "Nombre que mostrar",
-  "teamStatus.members.publicKey": "Clave pública del compañero",
   "teamStatus.members.add": "Añadir compañero",
   "teamStatus.presence.title": "Quién está por aquí",
   "teamStatus.presence.none": "No hay compañeros que mostrar.",

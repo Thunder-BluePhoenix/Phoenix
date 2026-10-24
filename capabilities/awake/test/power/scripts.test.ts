@@ -20,6 +20,9 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { renderLaunchdPlist, renderSudoers } from "../../src/power/backstop";
 import { ALLOWED_HELPER_LINES } from "../../src/power/helper-client";
+import { JOURNAL_FILE } from "../../src/power/journal";
+// The rule Core uses to hand out the directory; the installer must compute the same path.
+import { capabilityDataPath } from "../../../../core/capability-manager/src/data-dir";
 
 const run = promisify(execFile);
 const INSTALL = join(__dirname, "../../../../scripts/awake/install-helper.sh");
@@ -122,7 +125,7 @@ describe("the launchd plist", () => {
       renderLaunchdPlist({
         node: "/opt/homebrew/bin/node",
         script: `${home}/Library/Application Support/Phoenix/phoenix-awake-backstop.mjs`,
-        journal: `${home}/data/awake/recovery-journal.jsonl`,
+        journal: `${home}/data/capabilities/awake/recovery-journal.jsonl`,
         log: `${home}/Library/Logs/phoenix-awake-backstop.log`,
       }),
     );
@@ -414,12 +417,14 @@ describe("--dry-run: every step is printed, none is run (finding 1)", () => {
 });
 
 describe("--data-dir and the journal the backstop watches (finding 8)", () => {
-  it("--print-plan shows the journal it will watch, and warns about the default", async () => {
+  /** The path Core hands the awake capability for its journal: the one the backstop must watch. */
+  const coreJournal = (dataDir: string) => join(capabilityDataPath(dataDir, "awake"), JOURNAL_FILE);
+
+  it("--print-plan watches the journal Core writes, for the data dir the same rule picks", async () => {
     const home = tempHome();
     const def = await bash(INSTALL, home, ["--print-plan", "--user", "alice"]);
-    expect(paths(def.stdout, "WATCH")).toEqual([
-      `${home}/.phoenix/prod/awake/recovery-journal.jsonl`,
-    ]);
+    // No variable set: Core's rule gives ~/.phoenix/dev (it is dev when PHOENIX_ENV is unset).
+    expect(paths(def.stdout, "WATCH")).toEqual([coreJournal(`${home}/.phoenix/dev`)]);
     expect(def.stdout).toContain("no --data-dir given");
     expect(def.stdout).toContain("journal_path");
     const given = await bash(INSTALL, home, [
@@ -429,8 +434,70 @@ describe("--data-dir and the journal the backstop watches (finding 8)", () => {
       "--data-dir",
       "/srv/phoenix/dev",
     ]);
-    expect(paths(given.stdout, "WATCH")).toEqual(["/srv/phoenix/dev/awake/recovery-journal.jsonl"]);
+    expect(paths(given.stdout, "WATCH")).toEqual([coreJournal("/srv/phoenix/dev")]);
+    expect(paths(given.stdout, "WATCH")).toEqual([
+      "/srv/phoenix/dev/capabilities/awake/recovery-journal.jsonl",
+    ]);
     expect(given.stdout).not.toContain("no --data-dir given");
+    expect(given.stdout).toContain("from --data-dir");
+  });
+
+  it("without --data-dir it follows PHOENIX_DATA_DIR, then PHOENIX_ENV, like Core", async () => {
+    const home = tempHome();
+    const byDir = await bash(INSTALL, home, ["--print-plan", "--user", "alice"], {
+      PHOENIX_DATA_DIR: "/srv/core",
+      PHOENIX_ENV: "prod",
+    });
+    expect(paths(byDir.stdout, "WATCH")).toEqual([coreJournal("/srv/core")]);
+    expect(byDir.stdout).toContain("from PHOENIX_DATA_DIR");
+    for (const env of ["dev", "staging", "prod"]) {
+      const out = await bash(INSTALL, home, ["--print-plan", "--user", "alice"], {
+        PHOENIX_ENV: env,
+      });
+      expect(paths(out.stdout, "WATCH"), env).toEqual([coreJournal(`${home}/.phoenix/${env}`)]);
+    }
+    // --data-dir beats the environment.
+    const flag = await bash(
+      INSTALL,
+      home,
+      ["--print-plan", "--user", "alice", "--data-dir", "/srv/flag"],
+      { PHOENIX_DATA_DIR: "/srv/core" },
+    );
+    expect(paths(flag.stdout, "WATCH")).toEqual([coreJournal("/srv/flag")]);
+  });
+
+  it("refuses an environment Core itself would refuse", async () => {
+    const home = tempHome();
+    for (const env of [{ PHOENIX_ENV: "qa" }, { PHOENIX_DATA_DIR: "relative/dir" }] as Record<
+      string,
+      string
+    >[]) {
+      const out = await bash(INSTALL, home, ["--print-plan", "--user", "alice"], env);
+      expect(out.code, JSON.stringify(env)).not.toBe(0);
+      expect(out.stderr).toMatch(/PHOENIX_(ENV|DATA_DIR) must be/);
+    }
+  });
+
+  it("warns, read-only, about a journal an older Phoenix left at the old place and says what exists", async () => {
+    const home = tempHome();
+    const data = join(home, "data");
+    mkdirSync(join(data, "awake"), { recursive: true });
+    writeFileSync(join(data, "awake", "recovery-journal.jsonl"), "x\n");
+    const out = await bash(INSTALL, home, ["--print-plan", "--user", "alice", "--data-dir", data]);
+    expect(out.stdout).toContain("older Phoenix journal exists");
+    expect(out.stdout).toContain("NOT watched");
+    expect(out.stdout).toContain("no journal at the WATCH path yet");
+    expect(readFileSync(join(data, "awake", "recovery-journal.jsonl"), "utf8")).toBe("x\n");
+    mkdirSync(join(data, "capabilities", "awake"), { recursive: true });
+    writeFileSync(join(data, "capabilities", "awake", "recovery-journal.jsonl"), "");
+    const there = await bash(INSTALL, home, [
+      "--print-plan",
+      "--user",
+      "alice",
+      "--data-dir",
+      data,
+    ]);
+    expect(there.stdout).toContain("the journal exists at the WATCH path");
   });
 
   it("--data-dir must be absolute", async () => {

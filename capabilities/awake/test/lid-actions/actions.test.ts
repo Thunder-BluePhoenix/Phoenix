@@ -318,6 +318,97 @@ describe("mute", () => {
     });
     expect(m.devices.map((d) => d.muted)).toEqual([false, false]);
   });
+
+  it("by-id adapter: the journal entry carries every device's prior state, the default's id, prior state and name", async () => {
+    const m = new Machine();
+    m.devices = [
+      { id: "builtin", muted: false },
+      { id: "speaker", muted: true },
+      { id: "headphones", muted: false },
+    ];
+    m.deviceNames = { builtin: "Speakers", speaker: "Desk", headphones: "Headphones" };
+    const i = await ready(m);
+    await simulateClose(i);
+    const entry = parseJournal(m.fs.read(JOURNAL) ?? "").pending.find((e) => e.kind === "lid.mute");
+    expect(entry?.undo).toEqual({
+      devices: [
+        { id: "builtin", prior: false },
+        { id: "headphones", prior: false },
+      ],
+      default_id: "builtin",
+      default_prior: false,
+      default_name: "Speakers",
+    });
+    expect(entry?.apply).toEqual({ devices: ["builtin", "headphones"] });
+    const journalled = m.log.findIndex((e) => e.what === "journal:lid.mute");
+    const firstAudio = m.log.findIndex((e) => e.what.startsWith("audio:"));
+    expect(journalled).toBeGreaterThanOrEqual(0);
+    expect(firstAudio).toBeGreaterThan(journalled);
+  });
+
+  it("default-only adapter: a default switched between the plan and the apply mutes NOTHING (not the new default) and leaves no entry behind", async () => {
+    const m = new Machine();
+    m.defaultOnly = true;
+    m.devices = [
+      { id: "builtin", muted: false },
+      { id: "headphones", muted: false },
+    ];
+    // The plan reads the outputs once; the user switches right after it, before the apply reads them.
+    let reads = 0;
+    const real = m.audio;
+    const audio = {
+      addressing: real.addressing,
+      defaultOutputId: () => real.defaultOutputId(),
+      setMuted: (id: string, muted: boolean) => real.setMuted(id, muted),
+      listOutputs: () => {
+        if (++reads === 2) m.defaultOutput = "headphones";
+        return real.listOutputs();
+      },
+    };
+    const i = await ready(m, { lid: { audio } });
+    const closed = await simulateClose(i);
+    expect(closed.results.find((r) => r.action === "mute")).toMatchObject({
+      outcome: "failed",
+      reason: "not_applied",
+    });
+    expect(m.log.filter((e) => e.what.startsWith("audio:"))).toEqual([]);
+    expect(m.devices.map((d) => d.muted)).toEqual([false, false]);
+    expect(pending(m)).not.toContain("lid.mute");
+  });
+
+  it("default-only adapter: a default switched while the lid is closed leaves the muted output muted with a PENDING entry that the next launch retries, and nothing else is touched", async () => {
+    const m = new Machine();
+    m.defaultOnly = true;
+    m.devices = [
+      { id: "builtin", muted: false },
+      { id: "headphones", muted: false },
+    ];
+    const first = await ready(m);
+    await simulateClose(first);
+    expect(m.devices.map((d) => d.muted)).toEqual([true, false]);
+    m.defaultOutput = "headphones";
+    const opened = await simulateOpen(first);
+    expect(opened.results.find((r) => r.action === "mute")).toMatchObject({
+      outcome: "undo_failed",
+      reason: "output_changed",
+    });
+    // The user is never muted silently: the entry is still there, with what undo needs.
+    const entry = parseJournal(m.fs.read(JOURNAL) ?? "").pending.find((e) => e.kind === "lid.mute");
+    expect(entry?.undo).toMatchObject({ default_name: "Speakers", default_prior: false });
+    expect(m.log.filter((e) => e.what === "audio:headphones:false")).toEqual([]);
+    expect(m.devices.map((d) => d.muted)).toEqual([true, false]);
+    // The next launch retries from the journal alone: still refused while the default is another output ...
+    m.procs.die(SELF_PID);
+    m.table = m.table.filter((p) => p.pid !== SELF_PID);
+    const second = await boot(m, { pid: 9000, lid: IDLE });
+    expect(pending(m)).toContain("lid.mute");
+    expect(m.devices.map((d) => d.muted)).toEqual([true, false]);
+    // ... and completed once the muted output is the default again.
+    m.defaultOutput = "builtin";
+    await second.services().recovery.undo();
+    expect(m.devices.map((d) => d.muted)).toEqual([false, false]);
+    expect(pending(m)).not.toContain("lid.mute");
+  });
 });
 
 describe("App Nap", () => {

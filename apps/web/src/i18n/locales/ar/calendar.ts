@@ -20,7 +20,7 @@ export const calendar: Record<keyof typeof enCalendar, string> = {
   "calendar.busy": "حدث خاص",
   "calendar.source": "من {meeting}",
   "calendar.unconfigured":
-    "لم يتم ربط أي مزود تقويم. اربط Google أو Microsoft أو CalDAV أو تقويم macOS لعرض الاجتماعات.",
+    "لم يتم ربط أي مزود تقويم. اربط Google أو Microsoft أو CalDAV لعرض الاجتماعات.",
   "calendar.unavailable": "موجز التقويم غير متاح. لا يمكن عرض الاجتماعات القادمة وتجميد النشر.",
   "calendar.stale":
     "موجز التقويم قديم. لا يمكن الوثوق بالاجتماعات القادمة وتجميد النشر حتى يتم التحديث.",

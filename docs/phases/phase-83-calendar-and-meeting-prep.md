@@ -5,7 +5,7 @@
 | Stage | Stage 14 — Phoenix originals |
 | Release target | Post-v2.0 track |
 | Priority | High |
-| Status | 🟨 Built; every check is simulated (injected fake calendar clients, stores and managers). The four adapters were never run against Google, Microsoft Graph, CalDAV or macOS Calendar, and in production no adapter is wired (the feed is "unconfigured"), so the "a real calendar event triggers a reminder and a prep note" criterion is not met |
+| Status | 🟨 Built; every check is simulated (injected fakes, loopback fake servers, stores and managers). Core now builds the CalDAV, Google and Graph adapters from config and secrets (macOS has no reader), but none was ever run against a real account or server, so the "a real calendar event triggers a reminder and a prep note" criterion is not met |
 | Depends on | [Phase 65 — Botless Notetaker](phase-65-botless-notetaker.md), [Phase 35 — Kage Decisions & Action-Item Extraction](phase-35-kage-decisions-and-action-items.md) |
 | Unblocks | — |
 
@@ -15,10 +15,10 @@ Fawkes knows what is coming up and prepares you for it.
 
 ## Tasks
 
-- [ ] Read-only calendar capability (CalDAV, Google, Microsoft, macOS Calendar). Adapters for all four are implemented with injected fake clients (`capabilities/calendar`, [README](../../capabilities/calendar/README.md)); capability id `calendar`, read-only, disabled until enabled, secrets `<provider>_credential`. Unticked because `createCalendarCapability()` in `core/runtime/src/builtins.ts` is called with **no adapters**, so the production feed is "unconfigured", and timezone, pagination and marker handling are unverified against real Google, Graph or CalDAV.
+- [ ] Read-only calendar capability (CalDAV, Google, Microsoft, macOS Calendar). Adapters for all four are implemented with injected fake clients (`capabilities/calendar`, [README](../../capabilities/calendar/README.md)); capability id `calendar`, read-only, disabled until enabled, secrets `<provider>_credential`. Core now builds the adapters at read time from config and secrets (real CalDAV `REPORT` transport and iCalendar reader; Google and Graph with an owner-supplied access token, no OAuth flow; no macOS reader). Unticked because nothing was run against a real account or server, tokens cannot be refreshed, there is no macOS reader, and timezone, pagination and marker handling are unverified against real Google, Graph or CalDAV.
 - [ ] "Meeting in 5 minutes" with a one-click offer to start the notetaker (Phase 65). `GET /api/calendar/upcoming` and the `#/calendar` page show upcoming events; reminder de-duplication is persisted (opaque keys in settings, so a Core restart inside the window does not remind again; fake-calendar tests only). The reminder now becomes a notification (tested against a fake calendar). Unticked because no real calendar was read and the notetaker button only navigates to `#/meetings`; it never starts a recording.
-- [ ] Prep note: earlier decisions and open action items with the same people or project. `StoreMeetingPrepQuery` reads accepted reviewed items of prior meetings with matching participants and is gated on `allow_sensitive_meetings`. Simulated. Unticked because project-only matching returns nothing (meetings have no project field) and no real meetings were used.
-- [ ] Deploy-freeze windows from the calendar feed workflow safety (Phase 40). With the calendar config `freeze` on (default false), the `CapabilityManager` `preflight` hook (after approval, before dispatch) refuses side effect `production` commands and `vercel/redeploy` unless the fresh feed shows no freeze window, and fails closed (`SECURITY_POLICY_BLOCKED`) when the feed is missing, stale, unreadable or incomplete or a credential is missing. Simulated. Unticked because **agent permission-request approvals (AgentApprovals) and other external side effects (n8n, terminal) are not covered**, and with freeze on and no adapters wired every such command is blocked.
+- [ ] Prep note: earlier decisions and open action items with the same people or project. `StoreMeetingPrepQuery` reads accepted reviewed items of prior meetings with matching participants and is gated on `allow_sensitive_meetings`. Simulated. Unticked because project-only matching deliberately returns nothing (meetings have no project field, so a project match would be invented) and no real meetings were used.
+- [ ] Deploy-freeze windows from the calendar feed workflow safety (Phase 40). With the calendar config `freeze` on (default false), the `CapabilityManager` `preflight` hook (after approval, before dispatch) refuses side effect `production` commands and `vercel/redeploy` unless the fresh feed shows no freeze window, and fails closed (`SECURITY_POLICY_BLOCKED`) when the feed is missing, stale, unreadable or incomplete or a credential is missing. Simulated. Unticked because **agent permission-request approvals (AgentApprovals) and other external side effects (n8n, terminal) are not covered**, and with freeze on and no provider configured (or one failing) every such command is blocked.
 
 ## Deliverables
 
@@ -27,7 +27,7 @@ Fawkes knows what is coming up and prepares you for it.
 
 ## Exit criteria
 
-- [ ] A real calendar event triggers a reminder and a prep note. **Unmet.** No real calendar was read and no adapter is wired in production; a reminder does become a notification when a (fake) calendar supplies one.
+- [ ] A real calendar event triggers a reminder and a prep note. **Unmet.** No real calendar was read; adapters are now built from config and secrets in production but only ever ran against loopback fakes; a reminder does become a notification when a (fake) calendar supplies one.
 
 ## Implementation notes
 
@@ -47,13 +47,17 @@ Fawkes knows what is coming up and prepares you for it.
 
 A static read-only review by tools (not a human audit) was followed by fixes, each with tests: a missing credential, dropped or oversized events, offset-less datetimes and pagination now make the feed unavailable instead of silently fresh; the `calendar` source and type are reserved on `POST /api/events`.
 
+### Production adapters
+
+Core builds adapters from the capability's config and secrets at read time (`capabilities/calendar/src/providers.ts`, `caldav.ts`, `ics.ts`): CalDAV (`caldav_url`, `caldav_timezone`, secret `caldav_credential` = `username:password`), Google and Graph (secret = access token, no OAuth, no refresh). All use https (http only to localhost), refuse redirects, bound the answer size and time, and fail closed with fixed secret-free messages. No new third-party dependency (Node `fetch` and `@phoenix/service-kit`). Manifest permissions stay `network` and `external_api`; `data_categories` and secret descriptions disclose the credential use. See [calendar-awareness.md](../calendar-awareness.md).
+
 ### What was not built
 
-Starting the notetaker from the calendar; project-based prep matching; freeze coverage for AgentApprovals and other external side effects.
+A macOS Calendar reader; an OAuth flow and token refresh for Google and Graph; project-based prep matching (decision: meetings have no project field); starting the notetaker from the calendar; freeze coverage for AgentApprovals and other external side effects.
 
 ### What was not run
 
-Any adapter against a real Google, Microsoft Graph, CalDAV or macOS calendar account, and any real reminder or prep note. Open items are in the [gap register](../gaps.md).
+Any adapter against a real Google, Microsoft Graph, CalDAV or macOS calendar account, and any real reminder or prep note. The new transport was only run against loopback fake servers. Open items are in the [gap register](../gaps.md).
 
 ## Notes & risks
 

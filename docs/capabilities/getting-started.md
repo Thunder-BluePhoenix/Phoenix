@@ -85,6 +85,15 @@ export const hello = defineCapability({
 
 Register it by passing it in `capabilities` to `new PhoenixRuntime(...)`.
 
+A builtin that keeps files gets a private directory from Core as `ctx.dataDir` (read-only, optional): `<Core data dir>/capabilities/<id>`, absolute, mode 0700, and created the first time it is read. It is only that capability's folder: never the Core data directory, the database or another capability's folder, and an external capability gets none. Reading it throws when Core cannot make it safe (a symbolic link, or a folder owned by someone else, on its path); do not fall back to a path of your own then. A context built without Core (a test harness, `defineCapability` unit tests) has no `dataDir`, so treat it as `string | undefined` and keep a fallback for that case.
+
+```ts
+init(ctx) {
+  const dir = ctx.dataDir; // e.g. ~/.phoenix/prod/capabilities/my-cap, or undefined without Core
+  if (dir) openStore(join(dir, "state.json"));
+},
+```
+
 A builtin may also define `stopping(ctx, reason)`. Disable (`reason` is why: `user`, `kill_switch`, `uninstall`, …) and Core exit (`shutdown`) call it synchronously **before** `ctx.signal` is aborted, so `ctx.emit` still publishes there (after the abort it does not). Use it to announce that live work was cut short; still release the real resource on abort and in `shutdown`. A throw is logged and ignored.
 
 ## 4. Test it

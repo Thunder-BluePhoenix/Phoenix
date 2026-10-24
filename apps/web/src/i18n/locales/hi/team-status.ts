@@ -45,7 +45,6 @@ export const teamStatus: Record<keyof typeof enTeamStatus, string> = {
   "teamStatus.members.removeLabel": "{label} को हटाएँ",
   "teamStatus.members.id": "साथी की टीम आईडी",
   "teamStatus.members.label": "दिखाने के लिए नाम",
-  "teamStatus.members.publicKey": "साथी की सार्वजनिक कुंजी",
   "teamStatus.members.add": "साथी जोड़ें",
   "teamStatus.presence.title": "कौन आसपास है",
   "teamStatus.presence.none": "दिखाने के लिए कोई साथी नहीं।",

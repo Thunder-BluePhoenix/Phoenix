@@ -19,6 +19,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { CapabilityContext } from "@phoenix/sdk";
+import { coreDataDir } from "../data-dir";
 import { isRecord } from "../guards";
 import {
   AwakeError,
@@ -44,12 +45,14 @@ import {
 } from "./helper-client";
 import {
   JournalWriteError,
+  JOURNAL_FILE,
   NotAppliedError,
   RecoveryJournal,
   nodeJournalFs,
   type JournalFs,
 } from "./journal";
 import { createLidObserver, type LidObserver } from "./lid";
+import { adoptLegacyJournal } from "./legacy";
 import { RecoveryLock, createProcessProbe, type ProcessProbe } from "./lock";
 import {
   RecoveryManager,
@@ -58,7 +61,7 @@ import {
   type Reverter,
   type UndoReport,
 } from "./reconcile";
-import { SAFETY_TEXT_SHA256, SAFETY_VERSION, readSafety, writeSafety } from "./safety";
+import { SAFETY_FILE, SAFETY_TEXT_SHA256, SAFETY_VERSION, readSafety, writeSafety } from "./safety";
 import { readThermal } from "./thermal";
 
 export * from "./backstop";
@@ -116,8 +119,16 @@ export function powerServices(deps: AwakeDeps): PowerServices | undefined {
 }
 
 export interface RecoveryModuleOptions {
-  /** The Core data directory; files go in `<dir>/awake/`. Default: see `defaultDataDir`. */
+  /**
+   * Forces the files into `<dir>/awake/` (tests, and any host that wants a fixed place). Default:
+   * the directory Core owns for this capability (`ctx.dataDir`), else, with no Core, `defaultDataDir()`.
+   */
   dir?: string;
+  /**
+   * Where an older Phoenix kept the journal: `<legacyDir>/awake/`. Default `defaultDataDir()`. When Core
+   * gives a directory, pending entries found there are adopted into it (see `legacy.ts`).
+   */
+  legacyDir?: string;
   fs?: JournalFs;
   probe?: ProcessProbe;
   newId?: () => string;
@@ -125,7 +136,10 @@ export interface RecoveryModuleOptions {
   pollMs?: number;
 }
 
-/** Same rule as core/config: PHOENIX_DATA_DIR, else ~/.phoenix/<env>. Core does not hand it to capabilities yet. */
+/**
+ * Where a build without `ctx.dataDir` kept its files: PHOENIX_DATA_DIR, else ~/.phoenix/<env>. Now only
+ * the fallback for a harness with no Core, and the place older journals are adopted from.
+ */
 export function defaultDataDir(env: NodeJS.ProcessEnv = process.env): string {
   const set = env.PHOENIX_DATA_DIR;
   if (set && set.startsWith("/")) return set;
@@ -633,11 +647,11 @@ export function createRecoveryModule(options: RecoveryModuleOptions = {}): Awake
         run.stopped = true;
         if (run.timer !== undefined) run.deps.env.clock.clearTimer(run.timer);
       }
-      const dir = join(options.dir ?? defaultDataDir(), "awake");
       const fs = options.fs ?? nodeJournalFs;
-      const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
       const clock = deps.env.clock;
-      const journal = new RecoveryJournal({ path: join(dir, "recovery-journal.jsonl"), fs });
+      const dir = chooseDir(ctx, fs, () => clock.now());
+      const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
+      const journal = new RecoveryJournal({ path: join(dir, JOURNAL_FILE), fs });
       const probe = options.probe ?? createProcessProbe(deps.env.run, process.pid);
       const reverters: Record<string, Reverter> = {};
       const helper = createHelperClient(deps.env.run);
@@ -688,7 +702,7 @@ export function createRecoveryModule(options: RecoveryModuleOptions = {}): Awake
           },
           emit: (type, severity, payload) => emit(r, type, severity, payload),
         }),
-        safetyPath: join(dir, "safety.json"),
+        safetyPath: join(dir, SAFETY_FILE),
         dir,
         fs,
         tracked: null,
@@ -758,6 +772,40 @@ export function createRecoveryModule(options: RecoveryModuleOptions = {}): Awake
       return run ? shutdownRun(run) : Promise.resolve();
     },
   };
+
+  /**
+   * Where the files go. An explicit `options.dir` wins. Otherwise the directory Core owns for this
+   * capability; before using it, a journal an older Phoenix left in the old place is adopted (pending
+   * entries are never dropped). If adoption cannot be done safely the OLD directory keeps being used,
+   * so every pending entry still has exactly one home and is still undone. No Core directory: the old rule.
+   */
+  function chooseDir(ctx: CapabilityContext, fs: JournalFs, now: () => number): string {
+    const legacy = join(options.legacyDir ?? defaultDataDir(), "awake");
+    if (options.dir !== undefined) return join(options.dir, "awake");
+    const core = coreDataDir(ctx);
+    if (core === undefined) return legacy;
+    const adopted = adoptLegacyJournal({
+      fs,
+      legacyPath: join(legacy, JOURNAL_FILE),
+      path: join(core, JOURNAL_FILE),
+      now,
+    });
+    if (adopted.status === "failed") {
+      ctx.logger.warn(
+        "recovery journal not moved to the Core data directory; using the old place",
+        {
+          reason: adopted.reason,
+        },
+      );
+      return legacy;
+    }
+    if (adopted.status === "adopted") {
+      ctx.logger.info("recovery journal adopted from the old data directory", {
+        entries: adopted.adopted,
+      });
+    }
+    return core;
+  }
 
   /** Stops timers and starts the undo. The synchronous part is the journal mark the backstop reads. */
   function shutdownRun(r: Run): Promise<void> {

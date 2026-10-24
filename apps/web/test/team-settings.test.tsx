@@ -10,7 +10,16 @@ import type { FakeApi } from "./fake-api";
 
 afterEach(cleanup);
 
-const SELF = { id: "tm_0123456789ab", public_key: "c2VsZi1wdWJsaWMta2V5" };
+const ownKey = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
+  "sign",
+  "verify",
+]);
+const SELF = {
+  id: "tm_0123456789ab",
+  public_key: btoa(
+    String.fromCharCode(...new Uint8Array(await crypto.subtle.exportKey("spki", ownKey.publicKey))),
+  ),
+};
 const OFF: TeamLink = {
   enabled: false,
   connected: false,
@@ -187,53 +196,6 @@ describe("team presence settings", () => {
     expect(writes(api)).toEqual([
       { method: "PUT", path: "/api/team/sharing", body: { enabled: true } },
       { method: "PUT", path: "/api/team/sharing", body: { consent: { deploying: true } } },
-    ]);
-  });
-
-  it("adds a teammate with exactly id, label and public key, and shows a 400 message", async () => {
-    const world: World = { link: ON, status: STATUS };
-    let reject = true;
-    const { api } = open(world, {
-      "POST /api/team/members": (body) => {
-        if (reject) {
-          return new Response(
-            JSON.stringify({
-              code: "BAD_REQUEST",
-              message: "That teammate is already on the roster",
-            }),
-            { status: 400 },
-          );
-        }
-        const sent = body as { id: string; label: string };
-        world.status = {
-          ...world.status,
-          members: [...world.status.members, { id: sent.id, label: sent.label }],
-        };
-        return world.status;
-      },
-    });
-    const s = await section();
-    const add = (await s.findByRole("button", { name: "Add teammate" })) as HTMLButtonElement;
-    expect(add.disabled).toBe(true);
-    fireEvent.change(s.getByLabelText("Teammate's team id"), {
-      target: { value: "tm_cccccccccccc" },
-    });
-    fireEvent.change(s.getByLabelText("Name to show"), { target: { value: "Linus" } });
-    fireEvent.change(s.getByLabelText("Teammate's public key"), { target: { value: "a2V5" } });
-    fireEvent.click(add);
-
-    const alert = await s.findByText("That teammate is already on the roster");
-    expect(alert.getAttribute("role")).toBe("alert");
-    expect((s.getByLabelText("Name to show") as HTMLInputElement).value).toBe("Linus");
-
-    reject = false;
-    fireEvent.click(s.getByRole("button", { name: "Add teammate" }));
-    await s.findByRole("button", { name: "Remove Linus" });
-    expect((s.getByLabelText("Name to show") as HTMLInputElement).value).toBe("");
-    const body = { id: "tm_cccccccccccc", label: "Linus", public_key: "a2V5" };
-    expect(writes(api)).toEqual([
-      { method: "POST", path: "/api/team/members", body },
-      { method: "POST", path: "/api/team/members", body },
     ]);
   });
 

@@ -71,6 +71,8 @@ export interface RigOptions {
   withSession?: boolean;
   noFeed?: boolean;
   options?: ContinuityOptions;
+  /** A Core-owned directory in the context (ctx.dataDir); the module then gets no forced `dir`. */
+  coreDir?: string;
   script?: (file: string, args: readonly string[]) => RunResult | undefined;
   /** Reuse a machine and file system: a Core restart on the same computer. */
   restartOf?: ContinuityRig;
@@ -123,6 +125,7 @@ export async function continuityRig(rigOptions: RigOptions = {}): Promise<Contin
     id: "awake",
     config: rigOptions.config ?? {},
     logger: { ...quiet, warn: log, info: log, error: log, debug: log },
+    ...(rigOptions.coreDir === undefined ? {} : { dataDir: rigOptions.coreDir }),
     signal: controller.signal,
     secret: (name) => Promise.resolve(name === "hotspot_password" ? rigOptions.secret : undefined),
     emit: (event) => {
@@ -133,7 +136,7 @@ export async function continuityRig(rigOptions: RigOptions = {}): Promise<Contin
     untilWatched: () => Promise.resolve(),
   };
   const module = createContinuityModule({
-    dir: DATA_DIR,
+    ...(rigOptions.coreDir === undefined ? { dir: DATA_DIR } : { legacyDir: DATA_DIR }),
     fs,
     probe: () => {
       net.probes += 1;

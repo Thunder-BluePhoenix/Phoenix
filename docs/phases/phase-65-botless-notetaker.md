@@ -43,6 +43,24 @@ After a security review, Core refuses **every** recording start that is authoris
 
 Nothing in `apps/desktop` provides that dialog. In the shipped app `GET /api/notetaker/status` therefore reports the consent channel unavailable and "Record a call" is disabled with an explanation. Phase 65 is built and tested with an injected fake dialog (`core/runtime/test/notetaker.test.ts`, `ai/multimodal/test/notetaker-sessions.test.ts`), and `notetaker.test.ts` "a session-token holder alone cannot start a recording" shows the refusal with every flag set. Stop, cancel and the audio stream still use only the token.
 
+### Why the desktop shell cannot supply the consent dialog today (decision, nothing built)
+
+The question was whether the shell can show a native dialog that Core trusts without letting a process that only holds the session token forge "consent granted". Checked against the code, it cannot:
+
+- **The shell does not own Core.** `apps/desktop/src-tauri` has no code that starts Core: no `Command::new` for it, no sidecar or `externalBin` in `tauri.conf.json`, no `tauri-plugin-shell` in `Cargo.toml` (the only process spawn in `src` is a `mkfifo` call in a `file_drop.rs` test). The desktop README says the shell needs "a running core (`pnpm dev:core` in another terminal)". Core is an independent Node process.
+- **The shell and an agent hold the same credential.** The shell finds Core on `127.0.0.1` and reads `<dataDir>/session.token` (`connection.rs`), exactly as any same-user process can. Core also injects that token into every HTML file it serves (`core/api/src/static.ts`). Any "consent granted" message from the shell would be authenticated with a value an agent already has.
+- **No second secret can be handed over.** A per-launch secret needs an inherited pipe, an inherited environment or a file only the shell can read. Core is not the shell's child, so there is no inherited channel; a secret in a file is readable by the same OS user; and the environment of an unrelated process is not a channel at all. The peer-credential route (`LOCAL_PEERPID` on macOS, `SO_PEERCRED` on Linux) is not available either: Core listens on TCP loopback only (`core/api/src/server.ts`), the shell has no unix-socket code, and a peer PID alone would still need a code-signature check before Core could call a PID "the shell".
+
+A token-authenticated consent-answer route would let any token holder grant its own recording consent, which is the person-versus-agent confusion this refusal exists to prevent. So **no behaviour was changed**: Core still answers 403 `CONSENT_CHANNEL_UNAVAILABLE`, the injected `notetakerConsent` path and its tests are unchanged. This was a code and configuration reading; no real desktop, Core pairing or process-environment probe was run.
+
+What would make it possible (an owner decision, the same one the Phase 63 and Phase 67 rows need):
+
+1. The shell starts Core as its own child and passes a per-launch random secret over an inherited pipe or stdin. That secret authenticates only a dedicated consent-answer route, with single-use nonces bound to the pending request id, the hash of the fixed dialog text and a short expiry.
+2. Core listens on a unix socket (or Windows named pipe) and identifies the shell by an OS peer credential plus a code-signature check of the peer executable.
+3. A keychain item whose access control list names the shell binary only.
+
+Whichever is chosen, the dialog text stays fixed (never Core-supplied apart from a cleaned participant count or meeting label), defaults to Cancel, collapses duplicate dialogs, fails closed on any error and is audited on every grant and denial.
+
 ### Other decisions
 
 - Local-only summary: the summary purpose is outside the sensitive-cloud allow-list, so even with a routed cloud provider, the grant and every opt-in no cloud request is made and no summary is stored (`notetaker-summary.test.ts`, `notetaker.test.ts` "the summary is local only and never faked"). A failed or unreadable model reply stores no summary; the transcript stays.
