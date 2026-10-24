@@ -397,6 +397,8 @@ mod tests {
         path
     }
 
+    // Only the unix-only tests call this; on Windows it would be dead code (-D warnings).
+    #[cfg(unix)]
     fn refused(admitted: &Admitted) -> Vec<Reason> {
         admitted.refused.iter().map(|r| r.reason).collect()
     }

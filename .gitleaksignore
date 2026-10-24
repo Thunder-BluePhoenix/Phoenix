@@ -21,3 +21,8 @@ f9287519f1fa540a3f62e5bb417920fb7046518c:core/runtime/test/phone-cert.test.ts:ge
 # generic-api-key rule matched the loop variable `key`. No secret is on the line; the loop variable
 # is renamed in the file now, this covers the commit already on origin/main.
 c047b46eee8c72209525e8863221e939ee3865ec:capabilities/portfolio/test/coinbase.test.ts:generic-api-key:402
+
+# A fake "rotated" webhook secret in a UI test (apps/web/test/team-webhooks.test.tsx), matched by
+# generic-api-key. It is a canary for the "shown once, then cleared" check, not a credential; the
+# file now builds it from parts. This covers the commit already on origin/main.
+6482dafaf313112c0fb58a3db30ab214ef1757b4:apps/web/test/team-webhooks.test.tsx:generic-api-key:454
