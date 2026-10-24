@@ -44,6 +44,7 @@
     "@phoenix/capability-portfolio": "workspace:*",
     "@phoenix/capability-ports": "workspace:*",
     "@phoenix/capability-resend": "workspace:*",
+    "@phoenix/capability-screen-region": "workspace:*",
     "@phoenix/capability-spotify": "workspace:*",
     "@phoenix/capability-status-lights": "workspace:*",
     "@phoenix/capability-stripe": "workspace:*",

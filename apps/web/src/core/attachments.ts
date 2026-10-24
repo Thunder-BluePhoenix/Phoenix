@@ -73,7 +73,7 @@ export interface AttachmentAnswer {
   sources: { id: string; name: string }[];
 }
 
-/** The origins a page sends: a drop, or a paste. Core also accepts `window`, which no page sends. */
+/** The origins a page sends: a drop, or a paste. Origin `window` is posted only by the "Attach a window" accept button (core/window-capture.ts), never by an upload. */
 export type UploadOrigin = Extract<AttachmentOrigin, "drop" | "paste">;
 
 /** What POST /api/attachments takes. */

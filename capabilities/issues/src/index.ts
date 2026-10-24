@@ -1,20 +1,35 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 //
-// Issue-tracker capability (Phase 26). Read-only awareness of the issues assigned to you in
-// GitHub Issues, Linear and Jira, through one provider interface and one event protocol:
+// Issue-tracker capability (Phase 26, create commands Phase 85). Awareness of the issues assigned
+// to you in GitHub Issues, Linear and Jira through one provider interface and one event protocol:
 // issues.assigned, issues.status_changed, issues.unassigned (plus the ephemeral
-// issues.completed that lets Fawkes celebrate). Phoenix never creates, edits, closes or
-// comments on an issue.
+// issues.completed that lets Fawkes celebrate). Polling is read-only. The ONLY writes are the two
+// confirmed commands `linear.issue.create` and `jira.issue.create` (text only, see create.ts);
+// Phoenix never edits, closes or comments on an issue and never attaches an image.
 import { defineCapability, type CapabilityContext, type HealthResult } from "@phoenix/sdk";
 import { CONFIG_SCHEMA, createProvider, parseTrackers, type TrackerKind } from "./config";
 import { baseline, reconcile, type IssueSnapshot } from "./diff";
 import { MAX_RETRY_AFTER_MS } from "./http";
+import {
+  createJiraIssue,
+  createLinearIssue,
+  createSiteFromConfig,
+  ISSUE_TYPE_PATTERN,
+  JIRA_PROJECT_PATTERN,
+  JIRA_WRITE_EMAIL_SECRET,
+  JIRA_WRITE_TOKEN_SECRET,
+  LINEAR_WRITE_KEY_SECRET,
+  MAX_CREATE_BODY,
+  MAX_CREATE_TITLE,
+  TEAM_ID_PATTERN,
+} from "./create";
 import type { ProviderOptions } from "./provider-base";
 import { TrackerError, type HttpLimits, type IssueProvider, type RawIssueChange } from "./types";
 import { isRecord, maxIso } from "./validate";
 
 export * from "./config";
+export * from "./create";
 export * from "./diff";
 export * from "./github";
 export * from "./jira";
@@ -177,16 +192,20 @@ export function createIssuesCapability(options: IssuesOptions = {}) {
     manifest: {
       id: "issues",
       name: "Issue trackers",
-      version: "0.1.0",
+      version: "0.2.0",
       description:
-        "Tells Fawkes when a GitHub, Linear or Jira issue is assigned to you or changes status. Read-only.",
+        "Tells Fawkes when a GitHub, Linear or Jira issue is assigned to you or changes status (polling is read-only). Two commands write, linear.issue.create and jira.issue.create: each creates one text-only issue (no image) only when you confirm it, using separate write credentials. Nothing is created or sent otherwise.",
       license: "GPL-3.0-or-later",
       homepage: "https://github.com/Thunder-BluePhoenix/Phoenix",
       events: ["issues.*"],
-      // Polling only reads from trackers; nothing is written to them, so `network` is the
-      // whole footprint. `external_api` (acting on your behalf) is deliberately not requested.
-      permissions: ["network"],
-      data_categories: ["issue keys and titles", "issue assignment and status"],
+      // Polling only reads from trackers, so `network` covers it. `external_api` (acting on your
+      // behalf) is requested for the two confirmed create commands only: `list` declares none.
+      permissions: ["network", "external_api"],
+      data_categories: [
+        "issue keys and titles",
+        "issue assignment and status",
+        "issue title and description you confirm (sent to Linear or Jira Cloud, secret-redacted)",
+      ],
       healthcheck: { interval_ms: 30_000 },
       secrets: [
         {
@@ -200,6 +219,21 @@ export function createIssuesCapability(options: IssuesOptions = {}) {
           name: "jira_api_token",
           description: "Atlassian API token (id.atlassian.com → Security → API tokens)",
         },
+        {
+          name: LINEAR_WRITE_KEY_SECRET,
+          description:
+            "Linear personal API key that may create issues. Used only by linear.issue.create after you confirm; the polling key is never used for writing. Leave empty and Phoenix cannot write to Linear.",
+        },
+        {
+          name: JIRA_WRITE_EMAIL_SECRET,
+          description:
+            "Email address of the Atlassian account that creates issues. Used only by jira.issue.create after you confirm.",
+        },
+        {
+          name: JIRA_WRITE_TOKEN_SECRET,
+          description:
+            "Atlassian API token that may create issues. Used only by jira.issue.create after you confirm; the polling token is never used for writing. Leave empty and Phoenix cannot write to Jira.",
+        },
       ],
       commands: [
         {
@@ -211,6 +245,54 @@ export function createIssuesCapability(options: IssuesOptions = {}) {
             type: "object",
             additionalProperties: false,
             properties: { tracker: { enum: ["github", "linear", "jira"] } },
+          },
+        },
+        {
+          name: "linear.issue.create",
+          description:
+            "Creates a Linear issue (text only; no image is attached). WRITES to Linear and always asks for your confirmation. Needs the linear_write_key secret; always talks to api.linear.app. Not idempotent: look in Linear before repeating after an unknown outcome.",
+          side_effect: "external",
+          permissions: ["network", "external_api"],
+          timeout_ms: 30_000,
+          input_schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["team_id", "title"],
+            properties: {
+              // Flagged so the confirmation card names the destination team and the title.
+              team_id: { type: "string", pattern: TEAM_ID_PATTERN, "x-phoenix-confirm": true },
+              title: {
+                type: "string",
+                minLength: 1,
+                maxLength: MAX_CREATE_TITLE,
+                "x-phoenix-confirm": true,
+              },
+              body: { type: "string", maxLength: MAX_CREATE_BODY, "x-phoenix-confirm": true },
+            },
+          },
+        },
+        {
+          name: "jira.issue.create",
+          description:
+            "Creates a Jira Cloud issue (text only; no image is attached). WRITES to Jira and always asks for your confirmation. Needs the jira_write_email and jira_write_token secrets and config.create.jira_site (https, *.atlassian.net). Not idempotent: look in Jira before repeating after an unknown outcome.",
+          side_effect: "external",
+          permissions: ["network", "external_api"],
+          timeout_ms: 30_000,
+          input_schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["project", "title"],
+            properties: {
+              project: { type: "string", pattern: JIRA_PROJECT_PATTERN, "x-phoenix-confirm": true },
+              title: {
+                type: "string",
+                minLength: 1,
+                maxLength: MAX_CREATE_TITLE,
+                "x-phoenix-confirm": true,
+              },
+              body: { type: "string", maxLength: MAX_CREATE_BODY, "x-phoenix-confirm": true },
+              issue_type: { type: "string", pattern: ISSUE_TYPE_PATTERN },
+            },
           },
         },
       ],
@@ -241,6 +323,31 @@ export function createIssuesCapability(options: IssuesOptions = {}) {
           isRecord(input) && typeof input.tracker === "string" ? input.tracker : undefined;
         const selected = trackers.filter((t) => wanted === undefined || t.kind === wanted);
         return await Promise.all(selected.map((t) => listOpen(ctx, t)));
+      },
+      async "linear.issue.create"(input, ctx) {
+        try {
+          return await createLinearIssue(input, {
+            secret: (name) => ctx.secret(name),
+            signal: ctx.signal,
+            ...(options.limits ? { limits: options.limits } : {}),
+          });
+        } catch (err) {
+          if (err instanceof TrackerError) throw err;
+          throw new TrackerError("unavailable", "Unexpected error while creating the Linear issue");
+        }
+      },
+      async "jira.issue.create"(input, ctx) {
+        try {
+          return await createJiraIssue(input, {
+            secret: (name) => ctx.secret(name),
+            signal: ctx.signal,
+            site: createSiteFromConfig(ctx.config),
+            ...(options.limits ? { limits: options.limits } : {}),
+          });
+        } catch (err) {
+          if (err instanceof TrackerError) throw err;
+          throw new TrackerError("unavailable", "Unexpected error while creating the Jira issue");
+        }
       },
     },
     health(): HealthResult {

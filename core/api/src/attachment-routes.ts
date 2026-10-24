@@ -32,6 +32,12 @@
 //   GET    /api/attachments       metadata and the first 300 characters of text; never full content
 //   GET    /api/attachments/:id   the full content ("visible before anything is sent")
 //   DELETE /api/attachments/:id   remove one      DELETE /api/attachments   remove all
+//   POST   /api/attachments/window/capture   (no body; macOS only)
+//        -> {status:"captured",app,title,text,truncated,secret_kinds} | {status:"accessibility_not_granted"
+//           |"phoenix_window"|"no_window"}. Core asks the user to confirm first (an `execute` action),
+//           waits a few seconds so the user can bring a window to the front, then reads it ONCE with
+//           a fixed osascript. Nothing is stored: the page shows the text and, only if the user
+//           accepts, posts it to POST /api/attachments with origin "window".
 //   POST   /api/attachments/ask   {question<=2000, attachment_ids:[1..5]}
 //        -> {answer, processed_by, model, provider, locality, usage, cost, vision_model, sources:[{id,name}]}
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
@@ -96,6 +102,25 @@ export interface AttachmentAnswerView {
   sources: { id: string; name: string }[];
 }
 
+/**
+ * What one window capture returns. Never stored by Core: the page shows it and the user decides.
+ * `accessibility_not_granted`: macOS refused (nothing was prompted by Phoenix); `phoenix_window`:
+ * the front window was Phoenix's own and nothing was read; `no_window`: nothing readable.
+ */
+export type WindowCaptureView =
+  | {
+      status: "captured";
+      app: string;
+      title: string;
+      text: string;
+      truncated: boolean;
+      /** Kinds of secret the detector found in the text (never the values); empty when none. */
+      secret_kinds: string[];
+    }
+  | { status: "accessibility_not_granted" }
+  | { status: "phoenix_window" }
+  | { status: "no_window" };
+
 /** Attachments as the API sees them. Errors are PhoenixErrors with messages that never hold content. */
 export interface AttachmentsApi {
   add(input: unknown): AttachmentSummaryView;
@@ -104,6 +129,7 @@ export interface AttachmentsApi {
   remove(id: string): void;
   clear(): { deleted: number };
   ask(input: unknown): Promise<AttachmentAnswerView>;
+  captureWindow(): Promise<WindowCaptureView>;
 }
 
 export function attachmentRoutes(s: CoreServices): Route[] {
@@ -124,6 +150,8 @@ export function attachmentRoutes(s: CoreServices): Route[] {
     route("POST", "/api/attachments/ask", async ({ body }) =>
       attachments().ask(expectObject(await body())),
     ),
+    // Takes no body and no parameter: whatever the caller sends is ignored.
+    route("POST", "/api/attachments/window/capture", () => attachments().captureWindow()),
     route("GET", "/api/attachments/:id", ({ params }) => attachments().get(params.id!)),
     route("DELETE", "/api/attachments/:id", ({ params }) => {
       attachments().remove(params.id!);

@@ -13,6 +13,7 @@ import { translate } from "../i18n/store";
 import { intlLocale } from "../i18n/supported";
 import { AnswerView } from "./AnswerView";
 import { AttachmentAnswerView, AttachmentsTray, DropZone } from "./Attachments";
+import { WindowCapture } from "./WindowCapture";
 import { DictateButton } from "./Dictation";
 import { ModelSwitcher } from "./ModelSwitcher";
 import { CurrentTask, TaskCard } from "./TaskView";
@@ -229,6 +230,7 @@ export function Chat() {
       )}
       <ModelSwitcher />
       <AttachmentsTray att={att} excluded={excluded} onToggle={toggle} />
+      <WindowCapture onAttached={() => void att.reload()} />
       <DropZone label={t("capture.chat.dropLabel")} onDone={() => void att.reload()}>
         <form
           className="memory-form"

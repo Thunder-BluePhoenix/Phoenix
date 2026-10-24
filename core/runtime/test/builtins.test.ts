@@ -52,6 +52,7 @@ describe("built-in capabilities", () => {
         "plans",
         "ports",
         "resend",
+        "screen-region",
         "spotify",
         "status-lights",
         "stripe",

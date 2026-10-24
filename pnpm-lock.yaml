@@ -764,6 +764,19 @@ importers:
         specifier: workspace:*
         version: link:../../sdk/testing
 
+  capabilities/screen-region:
+    dependencies:
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
   capabilities/spotify:
     dependencies:
       '@phoenix/logging':
@@ -1080,6 +1093,9 @@ importers:
       '@phoenix/capability-resend':
         specifier: workspace:*
         version: link:../../capabilities/resend
+      '@phoenix/capability-screen-region':
+        specifier: workspace:*
+        version: link:../../capabilities/screen-region
       '@phoenix/capability-spotify':
         specifier: workspace:*
         version: link:../../capabilities/spotify

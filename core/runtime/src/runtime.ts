@@ -78,6 +78,7 @@ import { DictationRuntime } from "./dictation";
 import { VoiceRuntime, type VoiceRuntimeDeps } from "./voice";
 import { NotetakerRuntime, type NotetakerConsentChannel } from "./notetaker";
 import { AttachmentRuntime } from "./attachments";
+import type { WindowExec } from "./window-capture";
 import { syncMeetings } from "./meetings";
 import { PrivacyService, type DerivedInventory } from "./privacy";
 import { AppearanceRuntime, type KnownSource } from "./appearance";
@@ -215,6 +216,12 @@ export interface RuntimeOptions {
   attachmentClock?: () => number;
   /** Delimiter nonce for attachment questions (tests inject a known one to prove a forged delimiter fails). */
   attachmentNonce?: () => string;
+  /** Runs `osascript` for "attach a window" (tests inject a fake; default: the real one). */
+  windowExec?: WindowExec;
+  /** Platform window capture checks (tests inject "darwin"; default process.platform). */
+  windowPlatform?: NodeJS.Platform;
+  /** Wait after the user approves a window capture, in ms (tests inject 0; default 4000). */
+  windowCaptureLeadMs?: number;
   /** Clock and IANA time zone of the weekly recap (tests inject them). */
   recapClock?: () => number;
   recapTimeZone?: string;
@@ -580,6 +587,11 @@ export class PhoenixRuntime implements CoreServices {
       logger: this.logger.child("attachments"),
       ...(options.attachmentClock ? { now: options.attachmentClock } : {}),
       ...(options.attachmentNonce ? { nonce: options.attachmentNonce } : {}),
+      ...(options.windowExec ? { windowExec: options.windowExec } : {}),
+      ...(options.windowPlatform ? { platform: options.windowPlatform } : {}),
+      ...(options.windowCaptureLeadMs !== undefined
+        ? { windowLeadMs: options.windowCaptureLeadMs }
+        : {}),
     });
     this.memory = new MemoryRuntime({
       db: this.db,

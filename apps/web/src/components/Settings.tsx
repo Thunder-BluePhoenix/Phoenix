@@ -54,6 +54,7 @@ import { TeamWebhooksSection } from "./TeamWebhooks";
 import { FawkesAppearanceSection } from "./Wardrobe";
 import { FocusMode } from "./FocusMode";
 import { ImageIssueSection } from "./ImageIssue";
+import { ScreenshotIssueSection } from "./ScreenshotIssueSection";
 
 /** Settings (PRD v2.0 §16, FR-014): Fawkes, notifications, capabilities, privacy, memory, AI. */
 export function SettingsPage({ state }: { state: PetState }) {
@@ -68,6 +69,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <NotificationSettings />
       <FocusMode />
       <ImageIssueSection />
+      <ScreenshotIssueSection />
       <CapabilitySettings recording={state.recording} />
       <PrivacySettings />
       <MemorySettingsSection />

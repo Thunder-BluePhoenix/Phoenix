@@ -5,6 +5,7 @@ import { JiraProvider } from "./jira";
 import { LinearProvider } from "./linear";
 import type { ProviderOptions } from "./provider-base";
 import type { IssueProvider } from "./types";
+import { JIRA_CLOUD_SITE_PATTERN } from "./create";
 import { isRecord } from "./validate";
 
 export const TRACKER_KINDS = ["github", "linear", "jira"] as const;
@@ -106,6 +107,14 @@ export const CONFIG_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
   properties: {
     poll_ms: { type: "integer", minimum: 250, maximum: 3_600_000 },
+    // Where `jira.issue.create` may write. Owner-set only: the command's input cannot name a host.
+    create: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        jira_site: { type: "string", pattern: JIRA_CLOUD_SITE_PATTERN },
+      },
+    },
     trackers: {
       type: "array",
       maxItems: 3,

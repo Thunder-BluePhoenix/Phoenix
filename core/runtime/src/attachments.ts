@@ -30,6 +30,7 @@ import {
   type AiService,
 } from "@phoenix/ai-models";
 import type { LocalOllamaVision } from "@phoenix/ai-multimodal";
+import { scanText } from "@phoenix/capability-agents";
 import type {
   AttachmentAnswerView,
   AttachmentDetailView,
@@ -39,9 +40,11 @@ import type {
   AttachmentOrigin,
   AttachmentSummaryView,
   AttachmentsApi,
+  WindowCaptureView,
 } from "@phoenix/api";
 import type { Logger } from "@phoenix/logging";
 import type { EventBus } from "@phoenix/event-bus";
+import { execWindow, readFrontWindow, type WindowExec } from "./window-capture";
 import type { PermissionGateway } from "@phoenix/permissions";
 import { ErrorCode, PhoenixError, createEvent } from "@phoenix/protocol";
 
@@ -315,12 +318,26 @@ export interface AttachmentRuntimeDeps {
   now?: () => number;
   /** A fresh unpredictable value per ask (tests inject a known one to prove a forged delimiter fails). */
   nonce?: () => string;
+  /** Runs `osascript` for window capture (tests inject a fake). Default: the real one. */
+  windowExec?: WindowExec;
+  /** The OS window capture checks (tests inject "darwin"). Default: process.platform. */
+  platform?: NodeJS.Platform;
+  /**
+   * How long Core waits after the user approved a window capture, so the user can bring the
+   * window they mean to the front (Phoenix itself is in front when they click). Default 4000 ms.
+   */
+  windowLeadMs?: number;
 }
+
+/** What the person is told when Core asks to read a window. Fixed text: nothing of the window is in it. */
+const WINDOW_CAPTURE_SUMMARY =
+  "Read the text of the window you bring to the front (macOS Accessibility) and show it to you in Phoenix? Nothing is attached until you accept the text there.";
 
 export class AttachmentRuntime implements AttachmentsApi {
   private readonly items = new Map<string, Stored>();
   private readonly now: () => number;
   private readonly offKill: () => void;
+  private capturing = false;
 
   constructor(private readonly d: AttachmentRuntimeDeps) {
     this.now = d.now ?? Date.now;
@@ -433,6 +450,16 @@ export class AttachmentRuntime implements AttachmentsApi {
     if (typeof input !== "object" || input === null || Array.isArray(input))
       throw invalid("Body must be a JSON object");
     const parsed = parseAttachment(input as Record<string, unknown>);
+    // Window text is read from whatever app was in front, so it passes the secret detector (the one
+    // the agent guard uses) before it is kept. Only the kinds are named, never a value.
+    if (parsed.origin === "window" && parsed.text !== null) {
+      const kinds = [...new Set(scanText(parsed.text, "window text").map((f) => f.kind))];
+      if (kinds.length > 0)
+        throw new PhoenixError(
+          ErrorCode.SECURITY_POLICY_BLOCKED,
+          `The window text looks like it holds a secret (${kinds.join(", ")}), so it was not attached`,
+        );
+    }
     const current = this.live();
     const refuse = (message: string): never => {
       parsed.image?.fill(0);
@@ -507,6 +534,57 @@ export class AttachmentRuntime implements AttachmentsApi {
     this.audit("attachment.clear", { count: deleted, reason: "user" });
     if (deleted > 0) this.changed();
     return { deleted };
+  }
+
+  // ── Window capture ──────────────────────────────────────────────────────────────────────
+
+  /**
+   * One user-started read of the frontmost non-Phoenix window. NOTHING is stored here: the text is
+   * handed back to the page, which shows it and posts it to `add` (origin "window") only when the
+   * user accepts. Core asks for a confirmation first (the same prompt every execute action uses);
+   * a token alone does not capture. There is no timer, no loop and no retry: one request, one read.
+   */
+  async captureWindow(): Promise<WindowCaptureView> {
+    this.requireRunning();
+    const platform = this.d.platform ?? process.platform;
+    if (platform !== "darwin")
+      throw new PhoenixError(
+        ErrorCode.CAPABILITY_UNAVAILABLE,
+        "Attaching a window is only available on macOS",
+      );
+    if (this.capturing)
+      throw new PhoenixError(ErrorCode.CAPABILITY_DISABLED, "A window capture is already running");
+    this.capturing = true;
+    try {
+      const action = await this.d.permissions.authorize({
+        capabilityId: "window-capture",
+        command: "attachment.window_capture",
+        permissions: [],
+        sideEffect: "execute",
+        summary: WINDOW_CAPTURE_SUMMARY,
+      });
+      try {
+        const lead = this.d.windowLeadMs ?? 4_000;
+        if (lead > 0) await new Promise((resolve) => setTimeout(resolve, lead));
+        this.requireRunning();
+        const read = await readFrontWindow(this.d.windowExec ?? execWindow, platform);
+        this.d.permissions.recordOutcome(action, "succeeded", {
+          status: read.status,
+          ...(read.status === "captured" ? { text_chars: read.text.length } : {}),
+        });
+        if (read.status !== "captured") return read;
+        const found = scanText(read.text, "window text");
+        const kinds = [...new Set(found.map((f) => f.kind))];
+        return { ...read, secret_kinds: kinds };
+      } catch (err) {
+        this.d.permissions.recordOutcome(action, "failed", {
+          code: err instanceof PhoenixError ? err.code : "INTERNAL_ERROR",
+        });
+        throw err;
+      }
+    } finally {
+      this.capturing = false;
+    }
   }
 
   // ── Ask ───────────────────────────────────────────────────────────────────────────────────

@@ -583,10 +583,17 @@ describe("list command", () => {
     ]);
   });
 
-  it("is a read: it asks for no confirmation and declares network only", async () => {
+  it("is a read: it asks for no confirmation and declares no permission of its own", async () => {
     const t = await start({ trackers: ["linear"] });
     const view = t.h.manager.get("issues");
-    expect(view.permissions.map((p) => p.permission)).toEqual(["network"]);
-    expect(view.commands.map((c) => [c.name, c.side_effect])).toEqual([["list", "read"]]);
+    // Capability-level `external_api` exists only for the two confirmed create commands.
+    expect(view.permissions.map((p) => p.permission)).toEqual(["network", "external_api"]);
+    expect(view.commands.map((c) => [c.name, c.side_effect])).toEqual([
+      ["list", "read"],
+      ["linear.issue.create", "external"],
+      ["jira.issue.create", "external"],
+    ]);
+    const list = createIssuesCapability().manifest.commands.find((c) => c.name === "list");
+    expect(list?.permissions).toBeUndefined();
   });
 });

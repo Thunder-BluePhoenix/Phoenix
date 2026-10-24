@@ -29,6 +29,7 @@ import {
   type StatusLightsOptions,
 } from "@phoenix/capability-status-lights";
 import { createStripeCapability } from "@phoenix/capability-stripe";
+import { createScreenRegionCapability } from "@phoenix/capability-screen-region";
 import { createSpotifyCapability } from "@phoenix/capability-spotify";
 import { createMprisCapability } from "@phoenix/capability-mpris";
 import { terminalCapability } from "@phoenix/capability-terminal";
@@ -97,6 +98,7 @@ export function builtinCapabilities(
     createIssuesCapability(),
     createPlanningCapability({ services: planningServices }),
     createPortsCapability(),
+    createScreenRegionCapability(),
     createStatusLightsCapability(host.statusLights),
     ...(env === "dev" ? [mockCapability] : []),
   ];

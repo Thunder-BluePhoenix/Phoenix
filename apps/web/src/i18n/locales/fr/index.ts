@@ -5,10 +5,12 @@ import { agents } from "./agents";
 import { automation } from "./automation";
 import { calendar } from "./calendar";
 import { capture } from "./capture";
+import { windowCapture } from "./window-capture";
 import { common } from "./common";
 import { digest } from "./digest";
 import { fawkesRebirth } from "./fawkes-rebirth";
 import { focus } from "./focus";
+import { screenRegion } from "./screen-region";
 import { follow } from "./follow";
 import { handoff } from "./handoff";
 import { machine } from "./machine";
@@ -41,6 +43,7 @@ const messages: Messages = {
   ...agents,
   ...automation,
   ...capture,
+  ...windowCapture,
   ...memory,
   ...pet,
   ...phone,
@@ -54,6 +57,7 @@ const messages: Messages = {
   ...ports,
   ...handoff,
   ...focus,
+  ...screenRegion,
   ...digest,
   ...calendar,
   ...signals,
