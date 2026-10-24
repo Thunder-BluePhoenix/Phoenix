@@ -22,17 +22,20 @@ Phoenix's origin policy). It needs the native webview below.
 
 ## What was built
 
-| File (`apps/web/src/core/browser/`) | Purpose                                                                                                                                                               |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `network.ts`                        | `classifyHost`: loopback, RFC 1918, link-local, CGNAT, multicast, reserved, IPv4 in IPv6 forms, obfuscated IPv4 (`2130706433`, `0x7f.1`), intranet names; `isBadPort` |
-| `site.ts`                           | `registrableDomain` (small built-in suffix list, **not** the Public Suffix List), `isThirdParty`, `hostMatchesSite`, `hostOf`                                         |
-| `navigation.ts`                     | `decideNavigation(url, policy, intent)`: scheme, credentials, `file:`, private network, bad ports, deny list, HTTPS upgrade; `resolveOmnibox`                         |
-| `blocklist.ts`                      | `RequestBlocker`: Adblock-syntax subset matcher, `STARTER_RULES` (hand-written hosts, not EasyList)                                                                   |
-| `permissions.ts`                    | `SitePermissions`: default-deny, session-only grants, gesture-gated, never-grantable kinds                                                                            |
-| `profile.ts`                        | `PRIVATE_PROFILE` and `webviewSettings()`: the data contract the Rust builder must honour                                                                             |
-| `guard.ts`                          | `BrowserGuard`: one object per window combining the above, per-tab blocked counts, per-site toggle, audit events                                                      |
+| File (`apps/web/src/core/browser/`) | Purpose                                                                                                                                                                         |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `network.ts`                        | `classifyHost`: loopback, RFC 1918, link-local, CGNAT, multicast, reserved, IPv4 in IPv6 forms, obfuscated IPv4 (`2130706433`, `0x7f.1`), intranet names; `isBadPort`           |
+| `site.ts`                           | `registrableDomain` (small built-in suffix list, **not** the Public Suffix List), `isThirdParty`, `hostMatchesSite`, `hostOf`                                                   |
+| `navigation.ts`                     | `decideNavigation(url, policy, intent)`: scheme, credentials, `file:`, private network, bad ports, deny list, HTTPS upgrade; `resolveOmnibox`                                   |
+| `blocklist.ts`                      | `RequestBlocker`: Adblock-syntax subset matcher, `STARTER_RULES` (hand-written hosts, not EasyList)                                                                             |
+| `permissions.ts`                    | `SitePermissions`: default-deny, session-only grants, gesture-gated, never-grantable kinds                                                                                      |
+| `profile.ts`                        | `PRIVATE_PROFILE` and `webviewSettings()`: the data contract the Rust builder must honour                                                                                       |
+| `guard.ts`                          | `BrowserGuard`: one object per window combining the above, per-tab blocked counts, per-site toggle, audit events                                                                |
+| `shields.ts`                        | `Shields`: global switch, per-site off-list, per-site blocked counts, connector-policy exemption, matcher built from enabled list text (see [filter-lists.md](filter-lists.md)) |
 
-Tests: `apps/web/test/browser-policy.test.ts` (80 tests).
+Tests: `apps/web/test/browser-policy.test.ts` (80 tests), `apps/web/test/shields.test.ts` (shields model, matcher, a ~2 MB synthetic list and hostile rules) and `apps/web/test/shields-settings.test.tsx` (the settings card against a fake Core). Core side: `core/runtime/src/filter-lists/` and `core/runtime/test/filter-lists.test.ts`.
+
+The filter-list updater, the per-site toggle and the blocked count now exist as **data and settings**, not as blocking: see [filter-lists.md](filter-lists.md). Nothing is blocked in any real page, because there is no browser window.
 
 ### Navigation rules (`decideNavigation`)
 
@@ -64,15 +67,26 @@ are **counted and skipped**, never half-applied, and the load report says how ma
 characters or with more than 8 wildcards are dropped. Host-anchored rules are indexed by host so a list of tens of
 thousands of rules does not scan linearly. Without a type option a rule never matches a top-level `document`.
 
-Limits: no EasyList or EasyPrivacy text is bundled and no filter-list updater exists (a listed deliverable that is **not
-built**; it needs network access through the tool gateway, plus licence entries in `docs/licenses/INVENTORY.md`).
-`STARTER_RULES` is a short hand-written host list so a profile is not empty before a list is downloaded. Performance on a
-full EasyList was not measured. `$third-party` uses the built-in suffix list in `site.ts`, so look-alike tenants under
-suffixes missing from it are treated as one site.
+The matcher does not use regular expressions: a rule is compiled to literal pieces matched left to right, each at its
+earliest place, so `a*a*a*b` against a URL of many `a`s cannot backtrack. It is also bounded on every side (pattern 512
+characters, 8 wildcards, 1,024 `domain=` entries, 16 KiB per rule line, 2,048 URL characters examined, 300,000 rules in
+all, 2,000 rules per host or word bucket, a per-request work budget after which the request is let through and counted in
+`budgetExhausted`). Rules are indexed by anchored host, then by a whole word of the pattern, so a request does not try
+every rule. See [filter-lists.md](filter-lists.md) for measurements.
+
+Limits: no EasyList or EasyPrivacy text is bundled. The filter-list updater exists in Core (`core/runtime/src/filter-lists/`,
+[filter-lists.md](filter-lists.md)): it downloads a list only when the user presses Update. Nothing applies a downloaded list
+to a page, since no browser window exists. `STARTER_RULES` is a short hand-written host list used only while no list is on.
+`$third-party` uses the built-in suffix list in `site.ts`, so look-alike tenants under suffixes missing from it are treated as
+one site. Cosmetic filtering (element hiding, scriptlets) is not implemented and its rules are counted and ignored, so this
+is request blocking only and not comparable to Brave Shields.
 
 YouTube (`youtube.com`, `youtube-nocookie.com`, `ytimg.com`, `googlevideo.com`) is exempt from blocking by default
 (`DEFAULT_BLOCKING_EXEMPT_SITES`) because blocking YouTube's ads breaks its embedded-player terms; the user can turn
-blocking on per site. The most specific site toggle wins.
+blocking on per site. The most specific site toggle wins. With `Shields` in use (`BrowserGuardOptions.shields`) the exemption
+is read from the music connector policy instead (`adBlocking: "exempt"` of `GET /api/music/connectors`, which is YouTube's
+exact hosts while its connector is on), not from this list; the old per-guard toggle and `blockingExemptSites` are then not
+consulted.
 
 ### Permissions (`SitePermissions`)
 

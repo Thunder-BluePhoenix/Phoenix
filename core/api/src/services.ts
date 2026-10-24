@@ -30,6 +30,7 @@ import type { ScheduledAwakeApi } from "./scheduled-awake-routes";
 import type { FawkesRebirthApi } from "./fawkes-rebirth-routes";
 import type { BrowserProfilesApi } from "./browser-profile-routes";
 import type { MusicConnectorsApi } from "./music-connector-routes";
+import type { FilterListsApi } from "./filter-list-routes";
 import type { ChatApprovalsApi } from "./chat-approval-routes";
 import type { RemoteRelayApi } from "./remote-relay-routes";
 import type { FocusApi } from "./focus-routes";
@@ -1333,6 +1334,8 @@ export interface CoreServices {
   browserProfiles?: BrowserProfilesApi;
   /** Music site opt-in (Phase 94): which sites are allowed. No playback: there is no browser surface yet. */
   musicConnectors?: MusicConnectorsApi;
+  /** Ad and tracker filter lists (Phase 93): user-triggered downloads, stored text and shields settings. */
+  filterLists?: FilterListsApi;
   /** Chat approvals (Phase 86): the provider callback door; the capability is off until enabled. */
   chatApprovals?: ChatApprovalsApi;
   /** Remote access relay (Phase 87): off by default; absent without an OS secret store. */

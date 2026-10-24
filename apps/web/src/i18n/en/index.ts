@@ -28,6 +28,7 @@ import { sounds } from "./sounds";
 import { shell } from "./shell";
 import { signals } from "./signals";
 import { browserProfiles } from "./browser-profiles";
+import { shields } from "./shields";
 import { awakeSchedule } from "./awake-schedule";
 import { awakeSettings } from "./awake-settings";
 import { teamStatus } from "./team-status";
@@ -62,6 +63,7 @@ export const en = {
   ...calendar,
   ...signals,
   ...browserProfiles,
+  ...shields,
   ...awakeSchedule,
   ...awakeSettings,
   ...teamStatus,

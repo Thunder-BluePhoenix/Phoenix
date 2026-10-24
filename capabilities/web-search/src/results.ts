@@ -26,6 +26,10 @@ export interface SearchOutput {
   provider: string;
   query: string;
   results: (SearchHit & { untrusted: true })[];
+  /** Ids (never error text) of the providers that failed before `provider` answered. At most 2. */
+  fallback_from?: string[];
+  /** A fixed sentence written in this code (never provider text), e.g. what DuckDuckGo's answers are. */
+  note?: string;
 }
 
 const TAGS = /<[^>]{0,500}>/gu;
@@ -124,6 +128,7 @@ export function searchOutput(
   provider: string,
   query: string,
   hits: readonly SearchHit[],
+  extra: { fallbackFrom?: readonly string[]; note?: string } = {},
 ): SearchOutput {
   return {
     untrusted: true,
@@ -131,5 +136,9 @@ export function searchOutput(
     provider,
     query,
     results: hits.map((hit) => ({ ...hit, untrusted: true as const })),
+    ...(extra.fallbackFrom && extra.fallbackFrom.length > 0
+      ? { fallback_from: [...extra.fallbackFrom] }
+      : {}),
+    ...(extra.note ? { note: extra.note } : {}),
   };
 }

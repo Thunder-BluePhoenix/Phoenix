@@ -17,7 +17,7 @@ A small, private browser that belongs to Fawkes.
 
 - [ ] Window in apps/desktop on the system webview (WKWebView / WebView2 / WebKitGTK): tabs, address bar, back/forward, reload, find, zoom. **Not built.** No webview, tabs, address bar or `MiniBrowser.tsx`.
 - [ ] Separate profile, never the user's main browser cookies; private windows. Only an in-memory profile model exists in the policy engine. No browser uses it.
-- [ ] Ad and tracker blocking from EasyList/EasyPrivacy (WebKit content rules on macOS, request filtering elsewhere), per-site toggle, blocked count. An adblock-syntax subset matcher with a **small starter list (not EasyList)** is built. The blocked count is always 0 until native blocking exists.
+- [ ] Ad and tracker blocking from EasyList/EasyPrivacy (WebKit content rules on macOS, request filtering elsewhere), per-site toggle, blocked count. An adblock-syntax subset matcher with a **small starter list (not EasyList)** is built, and so are the user-triggered filter-list updater in Core (EasyList and EasyPrivacy, off until downloaded and switched on), a per-site off-list, a global switch, a per-site blocked counter and a Settings card ([filter-lists.md](../filter-lists.md)). None of it blocks anything in a real page: there is no browser window, so the blocked count is always 0 outside tests, and cosmetic rules are ignored.
 - [ ] HTTPS upgrade, third-party cookies off, no telemetry. The http → https upgrade is in the navigation policy; permissions are default-deny. Nothing enforces this in a real browser.
 - [ ] Downloads ask first and go to a chosen folder. Not built.
 - [ ] Fawkes in the corner of every tab (state, approvals). Not built.
@@ -26,7 +26,8 @@ A small, private browser that belongs to Fawkes.
 ## Deliverables
 
 - `apps/web/src/core/browser`: navigation policy, adblock matcher with a starter list, default-deny permissions, in-memory profile. Built as TypeScript only; simulated evidence. See [mini-browser.md](../mini-browser.md), which lists the Rust, Cargo and capability changes still to be made.
-- Not built: the browser window, the filter-list updater.
+- `core/runtime/src/filter-lists/`, `apps/web/src/core/browser/shields.ts`, `apps/web/src/components/ShieldsSettings.tsx`: the filter-list updater (one GET per press of Update, pinned hosts), stored lists, shields settings and counts. Tests never contact easylist.to. See [filter-lists.md](../filter-lists.md).
+- Not built: the browser window, applying a list to any real page, cosmetic filtering, scheduled list refresh.
 
 ## Exit criteria
 
@@ -38,17 +39,18 @@ A small, private browser that belongs to Fawkes.
 ### What was built
 
 - **Navigation policy:** `file:` and internal schemes refused; credentials in a URL refused; private-network targets refused, including obfuscated IPv4 and IPv4-in-IPv6, except a typed URL to an explicitly listed site; bad ports refused; http upgraded to https.
-- **Adblock matcher:** a subset of adblock syntax with a small starter list (not EasyList).
+- **Adblock matcher:** a subset of adblock syntax with a small starter list (not EasyList), now regex-free and capped so a hostile list cannot make it slow.
+- **Filter-list updater, shields, blocked count:** built as Core routes, settings and pure TypeScript; honest simulation with a loopback fake list server in tests. Nothing is downloaded automatically and nothing is blocked in a real page.
 - **Permissions:** default-deny. **Profile:** in memory only.
 - 80 tests. Documentation: [mini-browser.md](../mini-browser.md).
 
 ### Deviations
 
-- The phase asked for a browser window; only the policy engine exists, and EasyList/EasyPrivacy are not included (a small starter list is).
+- The phase asked for a browser window; only the policy engine exists. EasyList/EasyPrivacy are not bundled: they can be downloaded by the user through the updater, and no browser window applies them. Cosmetic filtering is not implemented.
 
 ### What was not built
 
-The webview, tabs, address bar, `MiniBrowser.tsx`, any Rust or Tauri change, downloads, native blocking. **DNS rebinding cannot be handled in TypeScript** and needs Rust enforcement. The blocked count is always 0.
+The webview, tabs, address bar, `MiniBrowser.tsx`, any Rust or Tauri change, downloads, native blocking. **DNS rebinding cannot be handled in TypeScript** and needs Rust enforcement. The blocked count is always 0 outside tests; the filter-list updater downloads lists but nothing applies them to a page.
 
 ### What was not run
 

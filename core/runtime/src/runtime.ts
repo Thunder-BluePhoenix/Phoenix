@@ -112,6 +112,7 @@ import { StatusLightProvisioning } from "./status-lights/provision";
 import { FawkesRebirthService } from "./fawkes-rebirth/service";
 import { BrowserProfilesService } from "./browser-profiles/service";
 import { MusicConnectorsService } from "./music-connectors/service";
+import { FilterListsService, type FilterListsTuning } from "./filter-lists/service";
 import { QuitCheckService } from "./quit-check";
 import { AwakeStatusService } from "./awake-status";
 import { ScheduledAwakeService, type ScheduledAwakeDependencies } from "./scheduled-awake/service";
@@ -242,6 +243,8 @@ export interface RuntimeOptions {
   startAgentRelay?: boolean;
   /** Builds the sync relay transport (tests and the demo inject one; default: HTTPS with global fetch). */
   syncTransport?: SyncTransportFactory;
+  /** Filter list downloader tuning; code only (tests inject a loopback origin and a fetcher). No setting or request sets it. */
+  filterLists?: FilterListsTuning;
 }
 
 /**
@@ -359,6 +362,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly browserProfiles: BrowserProfilesService;
   /** Music site opt-in (Phase 94): a list of allowed sites in settings; nothing is fetched or played. */
   readonly musicConnectors: MusicConnectorsService;
+  /** Ad and tracker filter lists (Phase 93): downloaded only when the user asks; no browser window applies them yet. */
+  readonly filterLists: FilterListsService;
   /** The sharing choices and teammate view of {@link teamLink}, as the routes see them. */
   readonly teamStatus: TeamLinkService | undefined;
   /** Phoenix MCP server (Phase 76): off by default; a separate loopback listener with per-client tokens. */
@@ -859,6 +864,13 @@ export class PhoenixRuntime implements CoreServices {
     this.musicConnectors = new MusicConnectorsService({
       settings: this.settings,
       audit: this.permissions.audit,
+    });
+    this.filterLists = new FilterListsService({
+      settings: this.settings,
+      audit: this.permissions.audit,
+      dataDir: this.config.dataDir,
+      killSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
+      ...(options.filterLists ?? {}),
     });
     this.bus.subscribe("scheduled-awake", "security.kill_switch.engaged", () => {
       void this.scheduledAwake.stopForKillSwitch();
@@ -1415,6 +1427,14 @@ export class PhoenixRuntime implements CoreServices {
           "Music sites (Phase 94): which of YouTube, SoundCloud, Bandcamp and Spotify Web you allowed, in settings. Nothing is fetched, opened or played from Core, and no listening history is kept.",
         count: this.musicConnectors.enabledCount(),
         deleted_with: "turn each site off (PUT /api/music/connectors/:site)",
+      },
+      {
+        id: "browser_filter_lists",
+        description:
+          "Ad and tracker filter lists (Phase 93): the EasyList and EasyPrivacy text you chose to download (the public lists as published, kept as one owner-only file each under the Core data directory), which are switched on, and your blocking settings (the master switch and the sites where you turned blocking off), in settings. Nothing is downloaded until you press Update. No page is filtered yet: there is no browser window.",
+        count: this.filterLists.storedCount() + this.filterLists.shields().offSites.length,
+        deleted_with:
+          "remove a list (DELETE /api/browser/filter-lists/:id) and turn each site's blocking back on (PUT /api/browser/shields/sites/:site)",
       },
       {
         id: "browser_profiles",

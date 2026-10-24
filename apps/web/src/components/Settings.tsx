@@ -46,6 +46,7 @@ import { EventSourcePolicySection } from "./EventSourcePolicy";
 import { FawkesRebirthSettingsSection } from "./FawkesRebirthSettings";
 import { BrowserProfilesSection } from "./BrowserProfilesSettings";
 import { MusicSitesSection } from "./MusicSitesSettings";
+import { ShieldsSection } from "./ShieldsSettings";
 import { AwakeSettingsSection } from "./AwakeSettings";
 import { ScheduledAwakeSection } from "./ScheduledAwakeSettings";
 import { StatusLightsSection } from "./StatusLightsSettings";
@@ -101,6 +102,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <TeamWebhooksSection />
       <BrowserProfilesSection />
       <MusicSitesSection />
+      <ShieldsSection />
       <FawkesRebirthSettingsSection />
       <EventSourcePolicySection />
       <SupportSettings />
