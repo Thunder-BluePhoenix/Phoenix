@@ -691,6 +691,8 @@ export function useHashRoute(): string {
 
 export interface PetSettings {
   reduced_motion: "auto" | "on" | "off";
+  /** The floating Fawkes follows the pointer and flies home on an alert (desktop only; off by default). */
+  follow_cursor?: boolean;
 }
 
 const petSettingsChanged = new EventTarget();
@@ -701,7 +703,7 @@ export function usePetSettings() {
     "/api/pet/settings",
     (j) => j,
     { reduced_motion: "auto" },
-    () => false,
+    (type) => type === "pet.settings.changed",
   );
   const { reload } = res;
   useEffect(() => {

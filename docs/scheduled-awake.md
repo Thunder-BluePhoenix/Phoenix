@@ -33,7 +33,9 @@ At most 16 schedules.
 
 ### DST-safe local time
 
-Times are resolved per calendar date in the schedule's own zone (`time.ts`, `Intl` only, no date library, never the system zone). A 23:00 to 07:00 window therefore stays at 23:00 and 07:00 local across a clock change, and its **real length changes** (7 or 9 hours on the night of a change in New York). A wall time that does not exist (02:30 on spring-forward night) resolves to the same reading after the gap (03:30); a wall time that happens twice (01:30 on fall-back night) resolves to the first, earlier instant. Half-hour zones work. Zones with unusual transitions (Lord Howe's 30-minute shift, or a zone abolishing DST) are handled by the same offset probing but are **only covered by New York, Kolkata and Auckland cases in tests**.
+Times are resolved per calendar date in the schedule's own zone (`time.ts`, `Intl` only, no date library, never the system zone). A 23:00 to 07:00 window therefore stays at 23:00 and 07:00 local across a clock change, and its **real length changes** (7 or 9 hours on the night of a change in New York). A wall time that does not exist (02:30 on spring-forward night) resolves to the same reading after the gap (03:30); a wall time that happens twice (01:30 on fall-back night) resolves to the first, earlier instant. Half-hour zones work.
+
+Zones covered by tests (all with the runtime's own ICU, Node 25.2.1 here; expected instants were derived from the zone rules, and a different ICU release that disagrees about a rule would fail the tests): New York, Kolkata and Auckland (original), plus Europe/London (gap and overlap), Australia/Lord_Howe (30-minute DST shift: nights of 7.5 h and 8.5 h, gap 02:15, overlap 01:45, and the wake registered from the real half-hour start), Asia/Kathmandu (+05:45, a hold at 17:15Z released exactly eight hours later), America/Santiago (southern-hemisphere DST that changes at midnight, so a night is 7 h or 9 h), America/St_Johns (negative half-hour offset with DST), America/Sao_Paulo (negative, DST in 2018/2019 and none since), Pacific/Pago_Pago (-11) and Pacific/Kiritimati (+14) with a weekday filter that follows each zone, and Pacific/Apia (the calendar day 2011-12-30 never existed: no window is invented for it and the surrounding nights stay 8 h). **Not covered:** zones with a transition at a time that is not a whole minute, historical zones before 1970, zones that changed rules after this ICU was built, and any other runtime's ICU. The "skip" key can mismatch if a rule change moves the date of an already-skipped occurrence (see Known limits).
 
 ### Overlap and merge
 
@@ -63,7 +65,18 @@ Every reconcile reads the clock and the power source, computes which windows app
 
 ### OS wake registration
 
-For `wake: true` schedules the scheduler asks an injected `WakeScheduler` to wake the machine 2 minutes before each upcoming occurrence (at most 8 pending). Wakes are cancelled when the window is skipped, the schedule changes or is removed, the scheduler is turned off, or it stops. A failed registration emits `wake.failed`, never blocks holding, and is retried after 10 minutes; a failed cancel is remembered and retried on the next reconcile. **No `WakeScheduler` implementation ships**: `pmset schedule wake` needs root, RTC wake on Linux and Task Scheduler on Windows are separate designs, and none were run. Without one, `wake: true` is stored and reported (`wakeAvailable: false`) and nothing is registered.
+For `wake: true` schedules the scheduler asks an injected `WakeScheduler` to wake the machine 2 minutes before each upcoming occurrence (at most 8 pending). Wakes are cancelled when the window is skipped, the schedule changes or is removed, the scheduler is turned off, or it stops. A failed registration emits `wake.failed`, never blocks holding, and is retried after 10 minutes; a failed cancel is remembered and retried on the next reconcile. **No `WakeScheduler` implementation ships**; without one, `wake: true` is stored and reported (`wakeAvailable: false`) and nothing is registered. The scheduler-side behaviour above is tested with a fake `WakeScheduler`; no real OS wake exists. See "Why no WakeScheduler ships" below.
+
+#### Why no WakeScheduler ships
+
+A real wake on macOS is `pmset schedule wake "<date>"`, which needs root. The Phase 73 privilege path **cannot express it**: the sudoers rule is four literal lines (`/usr/bin/pmset -a disablesleep 1|0`, `-a lowpowermode 1|0`), `validateHelperCommand` (`capabilities/awake/src/power/helper-client.ts`) accepts only those four argv, and the recovery journal and backstop know only two undoable kinds, each with a fixed literal OFF line. A wake has an argument that varies (a date), so it cannot be a fourth/fifth literal line, and it has a different undo (`pmset schedule cancel ...` with the same date). Adding it means a **new root-run command** and a wider account-wide sudoers rule, which is a privilege escalation, so it was **not built** and nothing in the installer, the sudoers text or the allow-list changed. `capabilities/awake/test/power/helper-client.test.ts` now pins that `pmset schedule wake|shutdown|cancel|cancelall` and `pmset repeat wake` are all refused by the allow-list.
+
+What the owner would be approving (not implemented; `decision` row in the gap register). Everything below about `pmset schedule` syntax is [INFERENCE] from the man page and was not run:
+
+1. A new sudoers line for the account, either `/usr/bin/pmset schedule wake *` plus `/usr/bin/pmset schedule cancel wake *` (sudoers `*` matches any text, spaces included, so the argument is **not** constrained by sudoers: any process running as the account could wake the Mac at any time, any number of times, with no password and without Phoenix knowing), or a root-owned helper script at a fixed path that takes one epoch value, validates it (future, within 7 days, at most 8 pending) and runs fixed argv itself (smaller blast radius, but it is **new root-run code** that needs its own review, install and uninstall path).
+2. A new journal kind `wake` (applied entry = the exact date string; undo = `pmset schedule cancel wake <same date>`), a new reverter in `power/`, a backstop change, and installer/uninstaller changes so a left-over wake is cancelled with the schedule and uninstall leaves none behind.
+3. A wake date is local time in the **system** zone (`MM/dd/yy HH:mm:ss`), not the schedule's zone, so the conversion from the schedule's instant must use the system zone at that instant (the DST tests above cover the schedule side only).
+4. Linux (RTC wake) and Windows (Task Scheduler) are separate designs that were not attempted.
 
 ### Power-aware queue
 
@@ -92,7 +105,7 @@ Routes (`core/api/src/scheduled-awake-routes.ts`, session token only): `GET/PUT 
 
 **Still not done:**
 
-- A `WakeScheduler`: no OS wake is registered; `wake: true` is stored and the status says `wakeAvailable: false`.
+- A `WakeScheduler`: no OS wake is registered; `wake: true` is stored and the status says `wakeAvailable: false`. Blocked on an owner decision about a new root rule (see "Why no WakeScheduler ships").
 - Any real `caffeinate` or `pmset` run.
 - "Keep awake from the phone" (Phase 71). It would call the same gateway-guarded commands.
 

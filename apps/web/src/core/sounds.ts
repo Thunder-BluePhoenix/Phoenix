@@ -212,6 +212,20 @@ export class SoundHost {
     return inQuietHours(this.now(), q.hours);
   }
 
+  /**
+   * Whether quiet mode, quiet hours, the emergency stop or the demo is on right now, after
+   * refreshing Core's answers when they are older than `maxAgeMs`. Missing answers are quiet. Other
+   * features that must stay still when Phoenix is quiet (the desktop follow-the-pointer) ask this.
+   */
+  async quietNow(): Promise<boolean> {
+    try {
+      await this.refreshQuiet();
+    } catch {
+      return true;
+    }
+    return this.isQuiet();
+  }
+
   /** The desktop's mute flag (unknown counts as muted: see `MuteState`). */
   setMuted(muted: boolean): void {
     this.muted = muted;

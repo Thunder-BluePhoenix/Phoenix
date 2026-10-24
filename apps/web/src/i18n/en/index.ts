@@ -8,6 +8,7 @@ import { common } from "./common";
 import { digest } from "./digest";
 import { fawkesRebirth } from "./fawkes-rebirth";
 import { focus } from "./focus";
+import { follow } from "./follow";
 import { handoff } from "./handoff";
 import { machine } from "./machine";
 import { mcp } from "./mcp";
@@ -65,6 +66,7 @@ export const en = {
   ...machine,
   ...fawkesRebirth,
   ...sounds,
+  ...follow,
   ...serviceGlances,
   ...serviceGlancesB,
 } as const;

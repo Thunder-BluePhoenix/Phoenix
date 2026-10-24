@@ -118,6 +118,9 @@ function FawkesSettings() {
   const set = async (reduced_motion: PetSettings["reduced_motion"]) => {
     if (await run("POST", "/api/pet/settings", { reduced_motion })) announcePetSettings();
   };
+  const setFollow = async (follow_cursor: boolean) => {
+    if (await run("POST", "/api/pet/settings", { follow_cursor })) announcePetSettings();
+  };
   const options: [PetSettings["reduced_motion"], string][] = [
     ["auto", t("settings.fawkes.motionAuto")],
     ["on", t("settings.fawkes.motionOn")],
@@ -143,6 +146,15 @@ function FawkesSettings() {
         ))}
       </fieldset>
       <p className="muted small">{t("settings.fawkes.note")}</p>
+      <label className="choice">
+        <input
+          type="checkbox"
+          checked={data.follow_cursor === true}
+          onChange={(event) => void setFollow(event.target.checked)}
+        />
+        {t("follow.label")}
+      </label>
+      <p className="muted small">{t("follow.hint")}</p>
       <Feedback error={error} />
     </section>
   );

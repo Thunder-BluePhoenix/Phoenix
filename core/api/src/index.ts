@@ -16,6 +16,7 @@ export * from "./safety-routes";
 export * from "./mission-routes";
 export * from "./phone-routes";
 export * from "./quit-check-routes";
+export * from "./awake-status-routes";
 export * from "./phone-listener";
 export * from "./notetaker-routes";
 export * from "./voice-routes";

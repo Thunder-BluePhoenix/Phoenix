@@ -109,14 +109,53 @@ describe("privacy API", () => {
 describe("pet settings", () => {
   it("defaults to following the OS and validates input", async () => {
     const { api } = await setup();
-    expect((await api("GET", "/api/pet/settings")).json).toEqual({ reduced_motion: "auto" });
+    expect((await api("GET", "/api/pet/settings")).json).toEqual({
+      reduced_motion: "auto",
+      follow_cursor: false,
+    });
     expect((await api("POST", "/api/pet/settings", { reduced_motion: "sometimes" })).status).toBe(
       400,
     );
     expect((await api("POST", "/api/pet/settings", { reduced_motion: "on" })).json).toEqual({
       reduced_motion: "on",
+      follow_cursor: false,
     });
     expect((await api("GET", "/api/pet/settings")).json.reduced_motion).toBe("on");
+  });
+
+  it("keeps following the mouse pointer off until the user turns it on (Phase 59)", async () => {
+    const { api } = await setup();
+    expect((await api("GET", "/api/pet/settings")).json.follow_cursor).toBe(false);
+    // Only a real boolean is accepted, and an empty change is refused.
+    for (const bad of [{ follow_cursor: "yes" }, { follow_cursor: 1 }, {}]) {
+      expect((await api("POST", "/api/pet/settings", bad)).status).toBe(400);
+    }
+    expect((await api("GET", "/api/pet/settings")).json.follow_cursor).toBe(false);
+    // One field at a time: turning following on leaves the motion choice alone, and the reverse.
+    await api("POST", "/api/pet/settings", { reduced_motion: "on" });
+    expect((await api("POST", "/api/pet/settings", { follow_cursor: true })).json).toEqual({
+      reduced_motion: "on",
+      follow_cursor: true,
+    });
+    expect((await api("POST", "/api/pet/settings", { reduced_motion: "off" })).json).toEqual({
+      reduced_motion: "off",
+      follow_cursor: true,
+    });
+    expect((await api("POST", "/api/pet/settings", { follow_cursor: false })).json).toEqual({
+      reduced_motion: "off",
+      follow_cursor: false,
+    });
+  });
+
+  it("tells open Fawkes windows after a change and not after a refused one", async () => {
+    const core = await startCore();
+    const seen: unknown[] = [];
+    core.runtime.bus.subscribe("test-pet", "pet.*", (e) => void seen.push(e.payload));
+    await core.api("POST", "/api/pet/settings", { follow_cursor: "yes" });
+    expect(seen).toEqual([]);
+    await core.api("POST", "/api/pet/settings", { follow_cursor: true });
+    expect(seen).toEqual([{ reduced_motion: "auto", follow_cursor: true }]);
+    await core.runtime.stop();
   });
 });
 

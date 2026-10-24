@@ -96,7 +96,10 @@ try {
       }),
       {
         statusLights: statusLightsHost(() => runtime),
-        onAwakeSession: (session) => runtime.scheduledAwake.bindSession(session),
+        onAwakeSession: (session) => {
+          runtime.scheduledAwake.bindSession(session);
+          runtime.awakeStatus.bind(session);
+        },
         onAwakeQuitCheck: (check) => runtime.quitCheck.bind(check),
         dockerIdle: dockerIdleFrom({
           invokeAndWait: (...args) => runtime.capabilities.invokeAndWait(...args),

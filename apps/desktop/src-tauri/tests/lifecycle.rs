@@ -9,8 +9,9 @@
 //! stacking, pixels and Quit; those were checked by hand on macOS.
 
 use phoenix_desktop::{
-    builder, file_drop, handle_menu, menu_snapshot, quit_requested, run_shortcut, shortcuts,
-    ShellOptions, ISLAND_LABEL, SETTINGS_FILE, TRAY_ID, WINDOW_LABEL,
+    builder, file_drop, handle_menu, menu_snapshot, quit_requested, refresh_awake_tray,
+    run_shortcut, shortcuts, ShellOptions, AWAKE_ITEM_ID, ISLAND_LABEL, SETTINGS_FILE, TRAY_ID,
+    WINDOW_LABEL,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -323,7 +324,18 @@ fn start_with_fake_core(
 /// Serves `body` to every request on a free loopback port until the test process ends; returns
 /// the port and the request lines seen so far (the line and the `Authorization` header).
 fn fake_core(body: &'static str) -> (u16, Arc<Mutex<Vec<String>>>) {
+    let (port, seen, _) = fake_core_switchable(body);
+    (port, seen)
+}
+
+type Seen = Arc<Mutex<Vec<String>>>;
+type Body = Arc<Mutex<&'static str>>;
+
+/// Like [`fake_core`], and the body it serves can be changed while it runs.
+fn fake_core_switchable(body: &'static str) -> (u16, Seen, Body) {
     use std::io::{Read, Write};
+    let body = Arc::new(Mutex::new(body));
+    let serving = body.clone();
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let seen = Arc::new(Mutex::new(Vec::new()));
@@ -346,6 +358,7 @@ fn fake_core(body: &'static str) -> (u16, Arc<Mutex<Vec<String>>>) {
                 text.lines().next().unwrap_or(""),
                 auth.unwrap_or("")
             ));
+            let body = *serving.lock().unwrap();
             let reply = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                 body.len()
@@ -353,7 +366,7 @@ fn fake_core(body: &'static str) -> (u16, Arc<Mutex<Vec<String>>>) {
             let _ = stream.write_all(reply.as_bytes());
         }
     });
-    (port, seen)
+    (port, seen, body)
 }
 
 fn jump_to_terminal_asks_core_with_the_token_then_opens_the_agents_page_when_there_is_no_session() {
@@ -449,6 +462,86 @@ fn a_dialog_that_cannot_be_shown_keeps_phoenix_running() {
     assert!(quit_requested(app.handle()));
     wait_until(|| asked.lock().unwrap().len() == 1);
     assert!(!seen.lock().unwrap().is_empty());
+}
+
+fn the_tray_shows_the_keep_awake_countdown_only_while_core_says_a_session_runs() {
+    const RUNNING: &str =
+        r#"{"available":true,"active":true,"mode":"timed","remaining_seconds":3900}"#;
+    const ENDED: &str = r#"{"available":true,"active":false}"#;
+    let dir = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    std::fs::write(data.path().join("session.token"), "life-token_4").unwrap();
+    let (port, seen, serving) = fake_core_switchable(ENDED);
+    let app = start_with_fake_core(
+        dir.path(),
+        port,
+        data.path(),
+        Arc::default(),
+        None,
+        Arc::default(),
+    );
+    let awake_item = |app: &App<MockRuntime>| {
+        menu_snapshot(app.handle())
+            .into_iter()
+            .find(|(id, _, _)| id == AWAKE_ITEM_ID)
+            .map(|(_, text, _)| text)
+    };
+    let first_id = |app: &App<MockRuntime>| menu_snapshot(app.handle())[0].0.clone();
+
+    // Nothing runs: no entry, the tooltip is plain, and the menu is the ordinary one.
+    refresh_awake_tray(app.handle());
+    assert_eq!(awake_item(&app), None);
+    assert_eq!(first_id(&app), "toggle");
+
+    // A session runs: a disabled entry on top says how long is left, in the tray tooltip too.
+    *serving.lock().unwrap() = RUNNING;
+    let next = refresh_awake_tray(app.handle());
+    assert_eq!(
+        awake_item(&app).as_deref(),
+        Some("Keep awake: 1 h 05 min left")
+    );
+    assert_eq!(first_id(&app), AWAKE_ITEM_ID);
+    assert_eq!(
+        next,
+        std::time::Duration::from_secs(20),
+        "bounded refresh while it runs"
+    );
+    // Asking again does not add a second entry.
+    refresh_awake_tray(app.handle());
+    let entries = menu_snapshot(app.handle())
+        .iter()
+        .filter(|(id, _, _)| id == AWAKE_ITEM_ID)
+        .count();
+    assert_eq!(entries, 1);
+
+    // The menu entry does nothing when chosen.
+    handle_menu(app.handle(), AWAKE_ITEM_ID);
+    assert!(!dir.path().join(SETTINGS_FILE).exists());
+
+    // The session ends: the entry goes away and the slow idle probe takes over.
+    *serving.lock().unwrap() = ENDED;
+    let next = refresh_awake_tray(app.handle());
+    assert_eq!(awake_item(&app), None);
+    assert_eq!(first_id(&app), "toggle");
+    assert_eq!(next, std::time::Duration::from_secs(60));
+
+    // Every request was one authenticated GET of the status route.
+    let seen = seen.lock().unwrap().clone();
+    assert_eq!(seen.len(), 4, "one request per refresh");
+    for line in seen {
+        assert_eq!(
+            line,
+            "GET /api/awake/status HTTP/1.1 | Authorization: Bearer life-token_4"
+        );
+    }
+
+    // A garbled answer hides the entry rather than showing something made up.
+    *serving.lock().unwrap() = RUNNING;
+    refresh_awake_tray(app.handle());
+    assert!(awake_item(&app).is_some());
+    *serving.lock().unwrap() = "{ not json";
+    refresh_awake_tray(app.handle());
+    assert_eq!(awake_item(&app), None);
 }
 
 /// Calls a Tauri command on `webview` the way a page would (with the app's own invoke key).
@@ -654,7 +747,7 @@ fn main() {
     #[cfg(target_os = "linux")]
     gtk::init().expect("GTK failed to initialise: is a display available (xvfb-run)?");
 
-    let tests: [(&str, fn()); 19] = [
+    let tests: [(&str, fn()); 20] = [
         (
             "starts with window, tray and full menu",
             starts_with_window_tray_and_full_menu,
@@ -711,6 +804,10 @@ fn main() {
         (
             "a dialog that cannot be shown keeps Phoenix running",
             a_dialog_that_cannot_be_shown_keeps_phoenix_running,
+        ),
+        (
+            "the tray shows the Keep-awake countdown only while a session runs",
+            the_tray_shows_the_keep_awake_countdown_only_while_core_says_a_session_runs,
         ),
         (
             "a dropped file is announced without its path and read once by its window only",

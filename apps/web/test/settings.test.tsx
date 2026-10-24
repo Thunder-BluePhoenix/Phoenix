@@ -95,6 +95,20 @@ describe("Settings (FR-014)", () => {
     await waitFor(() => expect(fawkes().getAttribute("data-reduced-motion")).toBe("true"));
   });
 
+  it("following the pointer is off until ticked, and only that field is sent (Phase 59)", async () => {
+    const api = setup();
+    const box = (await screen.findByLabelText(/follow my mouse pointer/)) as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    expect(screen.getByText(/Off by default\. Only the floating Fawkes/)).toBeTruthy();
+    expect(api.posts("/api/pet/settings")).toHaveLength(0);
+    api.set("GET /api/pet/settings", () => ({ reduced_motion: "auto", follow_cursor: true }));
+    fireEvent.click(box);
+    await waitFor(() =>
+      expect(api.posts("/api/pet/settings")[0]?.body).toEqual({ follow_cursor: true }),
+    );
+    await waitFor(() => expect(box.checked).toBe(true));
+  });
+
   it("quiet mode and muting a capability update notification preferences", async () => {
     const api = setup();
     fireEvent.click(await screen.findByLabelText(/Quiet mode/));

@@ -76,6 +76,20 @@ describe("validateHelperCommand", () => {
     expect(validateHelperCommand(line).ok).toBe(false);
   });
 
+  // Phase 90: a scheduled wake would need `pmset schedule`, which the reviewed rule does not
+  // cover. These pin that boundary: the helper path cannot be used for a wake, and widening it
+  // is a decision for the owner (see docs/scheduled-awake.md, "Why no WakeScheduler ships").
+  it.each([
+    ["schedule wake", [P, "schedule", "wake", "10/21/26 06:58:00"]],
+    ["schedule shutdown", [P, "schedule", "shutdown", "10/21/26 06:58:00"]],
+    ["schedule cancel", [P, "schedule", "cancel", "wake", "10/21/26 06:58:00"]],
+    ["schedule cancelall", [P, "schedule", "cancelall"]],
+    ["repeat wake", [P, "repeat", "wake", "MTWRFSU", "06:58:00"]],
+  ])("does not allow `pmset %s`, so no wake can be scheduled through the helper", (_name, argv) => {
+    expect(validateHelperCommand(argv).ok).toBe(false);
+    expect(validateHelperCommand(argv.join(" ")).ok).toBe(false);
+  });
+
   it("rejects anything that is not an argv array or a string", () => {
     for (const bad of [undefined, null, 1, {}, { argv: [] }, true]) {
       expect(validateHelperCommand(bad).ok).toBe(false);

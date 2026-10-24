@@ -13,6 +13,7 @@ import {
 } from "@phoenix/capability-awake";
 import {
   ACTIVE_RECHECK_MS,
+  offsetAt,
   MAX_QUEUED_JOBS,
   MAX_SCHEDULES,
   MAX_WAKES,
@@ -330,6 +331,193 @@ describe("DST-safe local time", () => {
     const keys = occurrencesOf(s, now, now + 1).map((w) => w.key);
     expect(keys).toHaveLength(1);
     expect(keys[0]).toMatch(/^night@2026-10-2[01]$/);
+  });
+});
+
+// Phase 90 gap: only New York, Kolkata and Auckland were covered. These add a quarter-hour
+// zone, a 30 minute DST shift, southern-hemisphere DST, negative offsets (including a
+// half-hour one and a zone that abolished DST), a zone that skipped a whole calendar day, and
+// the extreme east and west offsets. Expected instants were worked out from the zone rules and
+// are checked against this runtime's ICU: a release that disagrees about a rule fails here
+// instead of silently shifting a hold.
+describe("DST and offset coverage in further zones", () => {
+  const iso = (epoch: number) => new Date(epoch).toISOString();
+  const at = (tz: string, year: number, month: number, day: number, h: number, mi: number) =>
+    iso(zonedToEpoch(tz, { year, month, day }, h, mi));
+  const windows = (tz: string, from: string, to: string, overrides = {}) =>
+    occurrencesOf(spec({ timeZone: tz, ...overrides }), Date.parse(from), Date.parse(to)).map(
+      (w) => ({
+        key: w.key,
+        startsAt: iso(w.startsAt),
+        endsAt: iso(w.endsAt),
+        hours: (w.endsAt - w.startsAt) / HOUR,
+      }),
+    );
+
+  it("Europe/London: a gap resolves after the gap and an overlap to the first instant", () => {
+    const tz = "Europe/London";
+    // 2026-03-29 01:30 does not exist (01:00 GMT jumps to 02:00 BST): resolves to 02:30 BST.
+    expect(at(tz, 2026, 3, 29, 1, 30)).toBe("2026-03-29T01:30:00.000Z");
+    // 2026-10-25 01:30 happens twice; the BST (earlier) one is used.
+    expect(at(tz, 2026, 10, 25, 1, 30)).toBe("2026-10-25T00:30:00.000Z");
+    // 02:00 on the spring day exists (BST) and is untouched.
+    expect(at(tz, 2026, 3, 29, 2, 0)).toBe("2026-03-29T01:00:00.000Z");
+  });
+
+  it("Australia/Lord_Howe: the 30 minute DST shift changes a night by half an hour", () => {
+    const tz = "Australia/Lord_Howe";
+    // Spring forward 2026-10-04 02:00 -> 02:30 (+10:30 to +11:00): 02:15 is in the gap.
+    expect(at(tz, 2026, 10, 4, 2, 15)).toBe("2026-10-03T15:45:00.000Z");
+    // Fall back 2026-04-05 02:00 -> 01:30 (+11:00 to +10:30): 01:45 happens twice, first used.
+    expect(at(tz, 2026, 4, 5, 1, 45)).toBe("2026-04-04T14:45:00.000Z");
+    // The 23:00-07:00 night is 7.5 h going into DST and 8.5 h coming out of it.
+    expect(windows(tz, "2026-10-03T00:00:00Z", "2026-10-05T00:00:00Z")).toEqual([
+      {
+        key: "night@2026-10-03",
+        startsAt: "2026-10-03T12:30:00.000Z",
+        endsAt: "2026-10-03T20:00:00.000Z",
+        hours: 7.5,
+      },
+      {
+        key: "night@2026-10-04",
+        startsAt: "2026-10-04T12:00:00.000Z",
+        endsAt: "2026-10-04T20:00:00.000Z",
+        hours: 8,
+      },
+    ]);
+    expect(
+      windows(tz, "2026-04-03T00:00:00Z", "2026-04-06T00:00:00Z").map((w) => [w.key, w.hours]),
+    ).toEqual([
+      ["night@2026-04-03", 8],
+      ["night@2026-04-04", 8.5],
+      ["night@2026-04-05", 8],
+    ]);
+  });
+
+  it("Asia/Kathmandu: a +05:45 zone resolves a quarter-hour offset exactly", () => {
+    const tz = "Asia/Kathmandu";
+    expect(offsetAt(tz, Date.parse("2026-06-01T00:00:00Z"))).toBe(345 * MIN);
+    expect(at(tz, 2026, 6, 1, 23, 0)).toBe("2026-06-01T17:15:00.000Z");
+    const found = windows(tz, "2026-06-01T12:00:00Z", "2026-06-02T00:00:00Z", {
+      start: "22:50",
+      end: "06:05",
+    });
+    expect(found).toMatchObject([
+      { startsAt: "2026-06-01T17:05:00.000Z", endsAt: "2026-06-02T00:20:00.000Z" },
+    ]);
+  });
+
+  it("America/Santiago: southern-hemisphere DST changes at midnight and the nights follow", () => {
+    const tz = "America/Santiago";
+    // 2026-09-06 00:00 -> 01:00 (UTC-4 to UTC-3): 00:30 is in the gap and lands on 01:30.
+    expect(at(tz, 2026, 9, 6, 0, 30)).toBe("2026-09-06T04:30:00.000Z");
+    // 2026-04-05 00:00 -> 2026-04-04 23:00 (UTC-3 to UTC-4): 23:30 on the 4th happens twice.
+    expect(at(tz, 2026, 4, 4, 23, 30)).toBe("2026-04-05T02:30:00.000Z");
+    expect(windows(tz, "2026-09-05T12:00:00Z", "2026-09-06T12:00:00Z")).toMatchObject([
+      { key: "night@2026-09-05", hours: 7 },
+    ]);
+    expect(windows(tz, "2026-04-04T12:00:00Z", "2026-04-05T12:00:00Z")).toMatchObject([
+      { key: "night@2026-04-04", hours: 9 },
+    ]);
+  });
+
+  it("America/St_Johns: a negative half-hour offset with DST keeps the half hour", () => {
+    const tz = "America/St_Johns";
+    expect(at(tz, 2026, 1, 1, 23, 0)).toBe("2026-01-02T02:30:00.000Z"); // -03:30
+    expect(at(tz, 2026, 7, 1, 23, 0)).toBe("2026-07-02T01:30:00.000Z"); // -02:30
+    expect(at(tz, 2026, 3, 8, 2, 30)).toBe("2026-03-08T06:00:00.000Z"); // gap -> 03:30 NDT
+    expect(at(tz, 2026, 11, 1, 1, 30)).toBe("2026-11-01T04:00:00.000Z"); // overlap, first
+    expect(windows(tz, "2026-03-07T12:00:00Z", "2026-03-08T12:00:00Z")).toMatchObject([
+      { key: "night@2026-03-07", hours: 7 },
+    ]);
+  });
+
+  it("America/Sao_Paulo: a negative zone that abolished DST resolves both eras", () => {
+    const tz = "America/Sao_Paulo";
+    // 2018-11-04 00:00 -> 01:00 was a gap in the last DST era: 00:30 resolves to 01:30 (-02:00).
+    expect(at(tz, 2018, 11, 4, 0, 30)).toBe("2018-11-04T03:30:00.000Z");
+    // 2019-02-17 00:00 -> 2019-02-16 23:00: 23:30 happens twice, the -02:00 one is first.
+    expect(at(tz, 2019, 2, 16, 23, 30)).toBe("2019-02-17T01:30:00.000Z");
+    expect(windows(tz, "2019-02-16T12:00:00Z", "2019-02-17T12:00:00Z")).toMatchObject([
+      { key: "night@2019-02-16", hours: 9 },
+    ]);
+    // No DST since 2019: summer and winter 2026 are both UTC-3, and every night is 8 h.
+    expect(at(tz, 2026, 1, 15, 23, 0)).toBe("2026-01-16T02:00:00.000Z");
+    expect(at(tz, 2026, 7, 15, 23, 0)).toBe("2026-07-16T02:00:00.000Z");
+    const nights = windows(tz, "2026-10-01T00:00:00Z", "2026-11-15T00:00:00Z");
+    expect(nights.length).toBeGreaterThan(40);
+    expect(nights.every((w) => w.hours === 8)).toBe(true);
+  });
+
+  it("Pacific/Pago_Pago and Pacific/Kiritimati: the offsets furthest west and east", () => {
+    expect(at("Pacific/Pago_Pago", 2026, 6, 1, 23, 0)).toBe("2026-06-02T10:00:00.000Z"); // -11
+    expect(at("Pacific/Kiritimati", 2026, 6, 1, 23, 0)).toBe("2026-06-01T09:00:00.000Z"); // +14
+    // 2026-06-01 is a Monday. The weekday filter follows each schedule's own zone, so the same
+    // Monday-only schedule starts almost a day apart (in UTC) in the two zones.
+    const monday = { days: [1] };
+    const east = windows(
+      "Pacific/Kiritimati",
+      "2026-06-01T00:00:00Z",
+      "2026-06-03T00:00:00Z",
+      monday,
+    );
+    const west = windows(
+      "Pacific/Pago_Pago",
+      "2026-06-01T00:00:00Z",
+      "2026-06-03T12:00:00Z",
+      monday,
+    );
+    expect(east).toMatchObject([{ key: "night@2026-06-01", startsAt: "2026-06-01T09:00:00.000Z" }]);
+    expect(west).toMatchObject([{ key: "night@2026-06-01", startsAt: "2026-06-02T10:00:00.000Z" }]);
+  });
+
+  it("Pacific/Apia: a calendar day that never happened yields no window and no bad one", () => {
+    // Samoa skipped 2011-12-30 entirely (UTC-10 to UTC+14 at midnight after the 29th).
+    const all = windows("Pacific/Apia", "2011-12-28T00:00:00Z", "2012-01-02T00:00:00Z");
+    expect(all.map((w) => w.key)).toEqual([
+      "night@2011-12-27",
+      "night@2011-12-28",
+      "night@2011-12-29",
+      "night@2011-12-31",
+      "night@2012-01-01",
+    ]);
+    expect(all.every((w) => w.hours > 0 && w.hours <= 12)).toBe(true);
+    // 23:00 on the 29th (-10) to 07:00 on the 31st (+14): the end date is the missing 30th, so
+    // the end resolves forward; the real length is still 8 h.
+    expect(all[2]).toMatchObject({
+      startsAt: "2011-12-30T09:00:00.000Z",
+      endsAt: "2011-12-30T17:00:00.000Z",
+      hours: 8,
+    });
+  });
+
+  it("registers the wake from the real window start in a half-hour DST zone", async () => {
+    const { scheduler, wake } = rig("2026-10-03T00:00:00Z");
+    await scheduler.start();
+    await scheduler.upsertSchedule(night({ timeZone: "Australia/Lord_Howe", wake: true }));
+    await scheduler.setEnabled(true);
+    expect(wake.active.get("awake:night@2026-10-03")).toBe(
+      Date.parse("2026-10-03T12:30:00Z") - WAKE_LEAD_MS,
+    );
+    expect(wake.active.get("awake:night@2026-10-04")).toBe(
+      Date.parse("2026-10-04T12:00:00Z") - WAKE_LEAD_MS,
+    );
+  });
+
+  it("holds a Kathmandu night exactly and releases it at the quarter-hour end", async () => {
+    const { scheduler, controller, clock } = rig("2026-06-01T12:00:00Z");
+    await scheduler.start();
+    await scheduler.upsertSchedule(night({ timeZone: "Asia/Kathmandu" }));
+    await scheduler.setEnabled(true);
+    await clock.advance(5 * HOUR + 15 * MIN); // 17:15Z = 23:00 local
+    expect(controller.holds).toHaveLength(1);
+    expect(controller.holds[0]).toMatchObject({
+      minutes: 480,
+      startedAt: Date.parse("2026-06-01T17:15:00Z"),
+    });
+    await clock.advance(8 * HOUR);
+    expect(controller.running).toHaveLength(0);
+    expect(controller.holds[0]?.endsAt).toBe(Date.parse("2026-06-02T01:15:00Z"));
   });
 });
 

@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 import type { DragEvent, SoundPlayer } from "@phoenix/pet-runtime";
 import { visualFor } from "@phoenix/pet-states";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { tauriFileDrop, type FileDropShell } from "../commands/file-drop-shell";
 import { tauriShortcuts, type ShortcutsShell } from "../commands/shortcuts-shell";
 import { AgentApprovals } from "../components/AgentApprovals";
@@ -16,10 +16,13 @@ import { useMute } from "../core/mute";
 import { useNativeFileDrop } from "../core/native-drop";
 import { useSoundHost } from "../core/sounds";
 import { usePillSwitcher, useSwitchPillsShortcut } from "../core/pill-switch";
-import { usePetSettings } from "../core/hooks";
+import { useKillSwitch, usePetSettings } from "../core/hooks";
 import type { PetState } from "../core/types";
 import { useT } from "../i18n";
+import { tauriFollowShell, type FollowShell } from "./follow-shell";
+import type { FollowTimers } from "./follow-driver";
 import type { DesktopShell } from "./shell";
+import { useFollowCursor, useReducedMotion } from "./use-follow-cursor";
 
 /** Non-urgent messages fade after this long; urgent ones stay until the state changes. */
 export const BUBBLE_MS = 8_000;
@@ -61,6 +64,8 @@ export function FloatingApp({
   shortcuts,
   fileDrop,
   sounds,
+  follow,
+  followTimers,
 }: {
   shell: DesktopShell | null;
   /** The desktop's mute flag and shortcuts (null in a browser, where nothing is muted). */
@@ -69,6 +74,13 @@ export function FloatingApp({
   fileDrop?: FileDropShell | null;
   /** The pet's sound player, when the host has one; silenced while the desktop is muted. */
   sounds?: SoundPlayer;
+  /**
+   * What the desktop lets this page read for follow-the-pointer (null in a browser, where nothing
+   * follows). Left out: looked up from the Tauri bridge.
+   */
+  follow?: FollowShell | null;
+  /** Timers behind follow-the-pointer; tests pass fakes. */
+  followTimers?: FollowTimers;
 }) {
   const t = useT();
   // Looked up once: a new shell object on every render would resubscribe to the mute event.
@@ -87,12 +99,33 @@ export function FloatingApp({
   const bubble = useBubble(state);
   const outfit = useWornOutfit();
 
+  // Phase 59: follow the pointer and fly home on an alert. Opt-in (off by default), desktop only.
+  const [ownFollow] = useState(() => tauriFollowShell());
+  const followShell = follow === undefined ? ownFollow : follow;
+  const killSwitch = useKillSwitch().data;
+  const reduced = useReducedMotion(settings.reduced_motion);
+  const moveBy = useMemo(() => (shell ? shell.moveBy.bind(shell) : null), [shell]);
+  const driving = useFollowCursor({
+    follow: followShell,
+    moveBy,
+    enabled: settings.follow_cursor === true,
+    reducedMotion: reduced,
+    alert: state.state !== "OFFLINE" && visualFor(state.state).urgent,
+    killSwitch,
+    host: soundHost,
+    ...(followTimers ? { timers: followTimers } : {}),
+  });
+
   const onDrag = useCallback(
     (e: DragEvent) => {
-      if (e.phase === "move") shell?.moveBy(e.dx, e.dy);
-      else if (e.phase === "end") shell?.dragEnded();
+      if (e.phase === "start") driving.dragStarted();
+      else if (e.phase === "move") shell?.moveBy(e.dx, e.dy);
+      else if (e.phase === "end") {
+        shell?.dragEnded();
+        driving.dragEnded();
+      }
     },
-    [shell],
+    [shell, driving],
   );
 
   return (

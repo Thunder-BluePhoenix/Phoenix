@@ -108,6 +108,7 @@ import { FawkesRebirthService } from "./fawkes-rebirth/service";
 import { BrowserProfilesService } from "./browser-profiles/service";
 import { MusicConnectorsService } from "./music-connectors/service";
 import { QuitCheckService } from "./quit-check";
+import { AwakeStatusService } from "./awake-status";
 import { ScheduledAwakeService, type ScheduledAwakeDependencies } from "./scheduled-awake/service";
 import { EventSourcePolicy } from "./event-source-policy";
 import {
@@ -122,7 +123,15 @@ import { WorkflowsRuntime } from "./workflows";
 export interface PetSettings {
   /** "auto" follows the OS reduced-motion setting. */
   reduced_motion: "auto" | "on" | "off";
+  /**
+   * Phase 59: the floating Fawkes on the desktop follows the mouse pointer and flies home on an
+   * alert. Opt-in: off until the user turns it on. Only the desktop shell's floating window acts on it.
+   */
+  follow_cursor: boolean;
 }
+
+/** Published after a change so every open Fawkes window re-reads the pet settings. */
+export const PET_SETTINGS_CHANGED = "pet.settings.changed";
 
 export const PHOENIX_VERSION = "0.1.0-dev";
 export const SESSION_TOKEN_FILE = "session.token";
@@ -331,6 +340,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly scheduledAwake: ScheduledAwakeService;
   /** The Phase 73 quit veto for the desktop shell's Quit: read-only; the keep-awake capability binds it. */
   readonly quitCheck = new QuitCheckService();
+  /** The Phase 72 Keep-awake countdown for the desktop tray: read-only; the keep-awake capability binds it. */
+  readonly awakeStatus = new AwakeStatusService();
   /** Fawkes rebirth (Phase 91): turns a fixed build into a cosmetic celebration. Stores two switches. */
   readonly fawkesRebirth: FawkesRebirthService;
   /** Browser profiles (Phase 96): data and policy only; there is no browser engine yet. */
@@ -1438,22 +1449,50 @@ export class PhoenixRuntime implements CoreServices {
 
   /** Fawkes appearance, shared by every Fawkes view (web, desktop). */
   petSettings(): PetSettings {
+    const stored = this.settings.get<Partial<PetSettings>>("pet.settings", {});
     return {
       reduced_motion: "auto",
-      ...this.settings.get<Partial<PetSettings>>("pet.settings", {}),
+      ...stored,
+      // Anything but a stored `true` is off: following the pointer is opt-in.
+      follow_cursor: stored.follow_cursor === true,
     };
   }
 
   setPetSettings(input: unknown): PetSettings {
-    const motion = (input as { reduced_motion?: unknown } | null)?.reduced_motion;
-    if (motion !== "auto" && motion !== "on" && motion !== "off") {
+    const change = (input ?? {}) as { reduced_motion?: unknown; follow_cursor?: unknown };
+    const { reduced_motion: motion, follow_cursor: follow } = change;
+    if (motion === undefined && follow === undefined) {
       throw new PhoenixError(
         ErrorCode.INVALID_REQUEST,
         '"reduced_motion" must be "auto", "on" or "off"',
       );
     }
-    const next: PetSettings = { ...this.petSettings(), reduced_motion: motion };
+    if (motion !== undefined && motion !== "auto" && motion !== "on" && motion !== "off") {
+      throw new PhoenixError(
+        ErrorCode.INVALID_REQUEST,
+        '"reduced_motion" must be "auto", "on" or "off"',
+      );
+    }
+    if (follow !== undefined && typeof follow !== "boolean") {
+      throw new PhoenixError(ErrorCode.INVALID_REQUEST, '"follow_cursor" must be true or false');
+    }
+    const current = this.petSettings();
+    const next: PetSettings = {
+      ...current,
+      ...(motion !== undefined ? { reduced_motion: motion } : {}),
+      ...(follow !== undefined ? { follow_cursor: follow } : {}),
+    };
     this.settings.set("pet.settings", next);
+    // Every open Fawkes window (the web page, the floating pet) follows the change.
+    const result = this.bus.publish(
+      createEvent({
+        event_type: PET_SETTINGS_CHANGED,
+        source: "core",
+        severity: "info",
+        payload: { ...next },
+      }),
+    );
+    if (!result.ok) throw result.error;
     return next;
   }
 

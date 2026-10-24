@@ -16,7 +16,7 @@ Plan when the machine stays awake and when heavy work runs.
 ## Tasks
 
 - [ ] Scheduled awake windows (e.g. 23:00–07:00) for overnight agent runs. Opt-in schedules (5 min–12 h windows, at most 16 schedules, overlap merge capped at 24 h), DST-safe local time via `Intl`, skip and cancel. Wired into Core with routes and persistence. Simulated. Unticked: no real machine was held awake.
-- [ ] Wake on a schedule to start a job (`pmset schedule` on macOS, RTC wake on Linux, Task Scheduler on Windows). **Not built:** no `WakeScheduler`; `wake: true` is stored and the status says `wakeAvailable: false`.
+- [ ] Wake on a schedule to start a job (`pmset schedule` on macOS, RTC wake on Linux, Task Scheduler on Windows). **Not built, and blocked on an owner decision:** no `WakeScheduler`; `wake: true` is stored and the status says `wakeAvailable: false`. The Phase 73 root path (four literal `pmset -a` lines, journal and backstop with two undoable kinds) cannot express `pmset schedule wake`; building it needs a new root-run command or a wider sudoers rule, which was not done silently. See [scheduled-awake.md](../scheduled-awake.md#why-no-wakescheduler-ships).
 - [ ] Power-aware queue: heavy agent or batch jobs wait for the charger. A `PowerQueue` and a battery / Low Power Mode policy (fail closed on an unreadable battery) are built. Core's `SystemPowerSource` reads the Phase 72 battery reader and, on macOS only, `lowpowermode` from `pmset -g` (parsing unit-tested; the real command was not run). Simulated. Unticked.
 - [ ] Keep awake from the phone (Phase 71). Not built.
 
@@ -37,10 +37,10 @@ Plan when the machine stays awake and when heavy work runs.
 ### What was built
 
 - Opt-in schedules with 5 min–12 h windows, at most 16 schedules, and overlap merging capped at 24 h; skip and cancel.
-- DST-safe local time through `Intl`; tested zones are **New York, Kolkata and Auckland only**.
+- DST-safe local time through `Intl`; tested zones: New York, Kolkata, Auckland, plus London, Lord Howe (30-minute DST), Kathmandu (+05:45), Santiago, St. John's, São Paulo, Pago Pago, Kiritimati and Apia (a skipped calendar day), including gaps and overlaps. Checked only against this runtime's ICU.
 - An injected power source drives a battery / Low Power Mode policy and **fails closed** if the battery cannot be read.
 - An injected controller over the Phase 72 `SessionController`; a `PowerQueue` for heavy jobs.
-- 84 tests. Documentation: [scheduled-awake.md](../scheduled-awake.md).
+- 94 scheduler tests (10 added for the further zones) plus allow-list tests pinning that `pmset schedule`/`repeat` are refused by the Phase 73 helper. Documentation: [scheduled-awake.md](../scheduled-awake.md).
 
 ### Deviations
 
@@ -55,7 +55,7 @@ Plan when the machine stays awake and when heavy work runs.
 
 ### What was not built
 
-A `WakeScheduler`, any real `caffeinate`/`pmset` run, and phone-initiated keep awake.
+A `WakeScheduler` (blocked on an owner decision about a new root rule), any real `caffeinate`/`pmset` run, and phone-initiated keep awake.
 
 ### What was not run
 

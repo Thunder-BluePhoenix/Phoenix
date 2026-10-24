@@ -7,6 +7,7 @@
 //! All OS-specific behaviour (window, tray, autostart) lives in this crate; the
 //! page only talks to it through the commands below (ADR-0013).
 
+mod awake_tray;
 mod connection;
 mod core_status;
 mod dictation_hotkey;
@@ -42,6 +43,7 @@ use position::{place, Point, Rect};
 use serde::Serialize;
 use settings::{Mode, Settings};
 use std::path::PathBuf;
+use std::time::Duration;
 use tauri::menu::{
     CheckMenuItem, ContextMenu, IsMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem,
 };
@@ -58,6 +60,8 @@ pub const WINDOW_LABEL: &str = "fawkes";
 /// Logical size of the transparent window: Fawkes plus room for a speech bubble.
 const WINDOW_SIZE: (f64, f64) = (200.0, 220.0);
 pub const TRAY_ID: &str = "phoenix-tray";
+/// Menu id of the disabled Keep-awake countdown entry (Phase 72).
+pub const AWAKE_ITEM_ID: &str = "awake_status";
 /// Settings file name inside the settings directory.
 pub const SETTINGS_FILE: &str = "desktop.json";
 
@@ -121,6 +125,11 @@ struct MenuItems<R: Runtime> {
     dictation_pill: CheckMenuItem<R>,
     shortcuts_enabled: CheckMenuItem<R>,
     mute: CheckMenuItem<R>,
+    /// Phase 72: the disabled Keep-awake countdown entry. It sits at the top of `menu` only while
+    /// `awake_shown` (Core says a session is running).
+    awake: MenuItem<R>,
+    awake_separator: PredefinedMenuItem<R>,
+    awake_shown: bool,
 }
 
 impl<R: Runtime> Shell<R> {
@@ -1077,6 +1086,9 @@ fn build_menu<R: Runtime>(
         &quit,
     ]);
     let menu = Menu::with_items(app, &entries)?;
+    // Not in the menu until Core says a session runs (see `apply_awake`).
+    let awake = MenuItem::with_id(app, AWAKE_ITEM_ID, "Keep awake", false, None::<&str>)?;
+    let awake_separator = PredefinedMenuItem::separator(app)?;
     Ok(MenuItems {
         menu,
         toggle,
@@ -1089,6 +1101,9 @@ fn build_menu<R: Runtime>(
         dictation_pill,
         shortcuts_enabled,
         mute,
+        awake,
+        awake_separator,
+        awake_shown: false,
     })
 }
 
@@ -1167,6 +1182,68 @@ fn build_tray<R: Runtime>(app: &AppHandle<R>, menu: &Menu<R>) -> tauri::Result<(
         })
         .build(app)?;
     Ok(())
+}
+
+/// Phase 72: shows (or hides) the Keep-awake countdown as a disabled entry at the top of the tray
+/// menu and in the tray tooltip. Main thread only (menus belong to it).
+fn apply_awake<R: Runtime>(app: &AppHandle<R>, awake: &awake_tray::Awake) {
+    let shell = app.state::<Shell<R>>();
+    if let Some(items) = shell.menu.lock().as_mut() {
+        match awake_tray::menu_text(awake) {
+            Some(text) => {
+                let _ = items.awake.set_text(text);
+                if !items.awake_shown {
+                    items.awake_shown = items
+                        .menu
+                        .insert_items(
+                            &[&items.awake as &dyn IsMenuItem<R>, &items.awake_separator],
+                            0,
+                        )
+                        .is_ok();
+                }
+            }
+            None => {
+                if items.awake_shown {
+                    let _ = items.menu.remove(&items.awake);
+                    let _ = items.menu.remove(&items.awake_separator);
+                    items.awake_shown = false;
+                }
+            }
+        }
+    }
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        let _ = tray.set_tooltip(Some(awake_tray::tooltip(awake)));
+    }
+}
+
+/// Phase 72: asks Core once how long the Keep-awake session has left (blocking, loopback, so never
+/// call it on the main thread), updates the tray on the main thread, and returns how long to wait
+/// before asking again. Public for the lifecycle tests.
+#[doc(hidden)]
+pub fn refresh_awake_tray<R: Runtime>(app: &AppHandle<R>) -> Duration {
+    let Some(shell) = app.try_state::<Shell<R>>() else {
+        return awake_tray::IDLE_PROBE;
+    };
+    let connected = connection(&shell.locator);
+    let awake = awake_tray::fetch(&connected.base_url, connected.token.as_deref());
+    let delay = awake_tray::next_delay(&awake);
+    let main = app.clone();
+    let _ = app.run_on_main_thread(move || apply_awake(&main, &awake));
+    delay
+}
+
+/// Phase 72: keeps the tray countdown fresh. One loopback request every `ACTIVE_REFRESH` while a
+/// session runs (sooner as it is about to end) and one every `IDLE_PROBE` while none does, so a
+/// session started elsewhere appears within a minute. It ends when the app is gone. Started by
+/// `run`, never by the lifecycle tests.
+fn spawn_awake_loop<R: Runtime>(app: AppHandle<R>) {
+    std::thread::spawn(move || loop {
+        if app.try_state::<Shell<R>>().is_none() {
+            break;
+        }
+        let delay = refresh_awake_tray(&app);
+        std::thread::sleep(delay);
+    });
 }
 
 /// Menu items as (id, text, checked), in order. Public for the lifecycle tests.
@@ -1300,6 +1377,9 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
             // first use, so a user who never picks the island never gets one.
             apply_mode(handle);
             island::spawn_loop(handle.clone());
+            if !skip_native_window_styling {
+                spawn_awake_loop(handle.clone());
+            }
             if settings.pill && !skip_native_window_styling {
                 let _ = pill::show(handle);
             }

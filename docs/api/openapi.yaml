@@ -187,9 +187,14 @@ paths:
     get:
       summary: Fawkes appearance settings, shared by every Fawkes view
       responses:
-        "200": { description: '{ reduced_motion: "auto" | "on" | "off" }' }
+        "200":
+          description: >-
+            { reduced_motion: "auto" | "on" | "off", follow_cursor: boolean }. follow_cursor
+            (Phase 59) is off by default; only the desktop app's floating Fawkes acts on it.
     post:
-      summary: Update Fawkes appearance settings
+      summary: >-
+        Update Fawkes appearance settings (reduced_motion and/or follow_cursor; at least one);
+        publishes pet.settings.changed
       requestBody:
         content:
           {
@@ -198,8 +203,12 @@ paths:
                 schema:
                   {
                     type: object,
-                    required: [reduced_motion],
-                    properties: { reduced_motion: { enum: [auto, "on", "off"] } },
+                    minProperties: 1,
+                    properties:
+                      {
+                        reduced_motion: { enum: [auto, "on", "off"] },
+                        follow_cursor: { type: boolean },
+                      },
                   },
               },
           }

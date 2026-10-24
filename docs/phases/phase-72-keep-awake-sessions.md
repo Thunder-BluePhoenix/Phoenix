@@ -5,7 +5,7 @@
 | Stage | Stage 13 — Insomnia parity and beyond (keep awake) |
 | Release target | Post-v2.0 track |
 | Priority | High |
-| Status | 🟨 Built and tested with recording fakes; the only real run was one guarded macOS `caffeinate` smoke test; Linux and Windows holds, killing Core mid-session, and quitting the app were never run on real systems; no tray countdown (the tray menu is Rust and is still unbuilt), no `state_rules`; a Settings → Keep awake section exists but was only tested in happy-dom against a fake Core; the exit criterion is not met |
+| Status | 🟨 Built and tested with recording fakes; the only real run was one guarded macOS `caffeinate` smoke test; Linux and Windows holds, killing Core mid-session, and quitting the app were never run on real systems; the tray countdown is built in Rust and tested with a fake Core on Tauri's mock runtime only (never seen in a real tray), no `state_rules`; a Settings → Keep awake section exists but was only tested in happy-dom against a fake Core; the exit criterion is not met |
 | Depends on | [Phase 13 — Capability SDK, Mock Capability & Event Simulator](phase-13-capability-sdk-mock-simulator.md) |
 | Unblocks | [Phase 73 — Lid-Closed Mode, Recovery & Power Floors](phase-73-lid-closed-mode-and-recovery.md), [Phase 75 — Agent Continuity: Network Failover, tmux Nudge, Browser Throttling](phase-75-agent-continuity-extras.md) |
 
@@ -16,7 +16,7 @@ Keep the computer awake for a bounded time while agents, builds or meetings run,
 ## Tasks — parity with Insomnia
 
 - [x] A timed session (days, hours, minutes) is the only way to stay awake; add time; hold-to-end. `start`, `extend`, `end` and `status` in `capabilities/awake` (1 to 10080 minutes, no indefinite mode); the web "hold to end" gesture takes 1.5 s. Tests: `capabilities/awake/test/session.test.ts`, `apps/web/test/awake.test.tsx`. Fakes only (see the exit criterion).
-- [ ] Countdown shown where Fawkes is. Built as `AwakeCountdown` in the island and the floating Fawkes and as `AwakeGlance` on the Overview (`apps/web/src/components/Awake.tsx`; tested in happy-dom by `apps/web/test/awake.test.tsx`). Unticked because the **tray countdown is not built** (the tray menu is Rust and was not touched) and nothing was looked at in a real desktop window.
+- [ ] Countdown shown where Fawkes is. Built as `AwakeCountdown` in the island and the floating Fawkes and as `AwakeGlance` on the Overview (`apps/web/src/components/Awake.tsx`; tested in happy-dom by `apps/web/test/awake.test.tsx`). The tray countdown is now built too (see "Tray countdown" below). Unticked because nothing was looked at in a real desktop window or a real tray (macOS menu bar, Windows notification area, Linux indicator).
 - [x] Battery rule ends the session below a floor (default 10 %). `battery_floor_percent` (1 to 90, default 10); a session ends on battery below the floor and `start` is refused in that state; three consecutive unknown reads end the session (`capabilities/awake/test/battery.test.ts`, fake runner). The battery reads (`pmset -g batt`, `/sys/class/power_supply`, PowerShell) were never run against a real battery.
 
 ## Tasks — Phoenix improvements
@@ -28,7 +28,7 @@ Keep the computer awake for a bounded time while agents, builds or meetings run,
 ## Deliverables
 
 - capabilities/awake: built (`@phoenix/capability-awake`, id `awake`, registered in `builtins.ts` as installed, not enabled; [README](../../capabilities/awake/README.md)).
-- Countdown UI in web, tray and island: web (Overview glance) and island built; floating Fawkes shows it too; **tray not built**.
+- Countdown UI in web, tray and island: web (Overview glance) and island built; floating Fawkes shows it too; the tray shows a disabled "Keep awake: …" menu entry and tooltip (`apps/desktop/src-tauri/src/awake_tray.rs`), never seen in a real tray.
 - Settings → Keep awake (`apps/web/src/components/AwakeSettings.tsx`): status, start (presets 30 min, 1 h, 2 h, 4 h or custom whole minutes 1 to 10080, optional label up to 80 characters), extend and end. Test: `apps/web/test/awake-settings.test.tsx` (fake Core, happy-dom).
 
 ## Exit criteria
@@ -51,7 +51,16 @@ A static review (read-only, not a human audit) found the following; each was **f
 
 ### What was not built
 
-`state_rules` (Fawkes' state does not change) and a tray countdown. The tray menu is Rust and is still **unbuilt**.
+`state_rules` (Fawkes' state does not change).
+
+### Tray countdown
+
+- **Core** answers `GET /api/awake/status` (session token, no parameters, read-only; `core/api/src/awake-status-routes.ts`, `core/runtime/src/awake-status.ts`). The awake capability hands Core its session controller each time it is enabled (`onSession`, also bound to `awakeStatus` in `main.ts`) and `undefined` when it stops. The answer is `{available, active, mode?, remaining_seconds?}` only: no session id, no label, no timestamps. `available: false` means the capability is not running. It cannot start, extend or end a session (those stay confirmed `execute` commands).
+- **Shell** (`awake_tray.rs`, `lib.rs`): over the existing loopback client (`core_status::call`, token never logged) a worker thread asks Core and the main thread updates a **disabled** entry "Keep awake: 1 h 05 min left" at the top of the tray menu (inserted with a separator while a session runs, removed when it ends) and the tray tooltip ("Fawkes - Keep awake: …"). A session held by working agents (`agents_grace`, no end yet) reads "Keep awake: while agents work". Choosing the entry does nothing.
+- **Refresh is bounded and only while it matters:** every 20 s while a session runs (sooner as the end nears, so the entry goes away within about a second of it), and one small loopback request every 60 s while none is shown, so a session started in the web app appears within a minute. The loop ends with the app and is never started by the lifecycle tests.
+- **Hidden, never guessed:** no token, Core not running, a non-200 answer, garbled or wrongly typed JSON, `available: false`, `active: false` (whatever number is left in the document), a session without a believable end that is not `agents_grace`, and a number past 8 days (Core caps a session at 7) all hide the entry. A negative or zero number reads "ending now"; under a minute "less than 1 min left"; then "N min left", "H h MM min left", "D d H h left". The words are fixed in the shell; Core's text is never shown.
+- **Tests:** 11 Rust unit tests (parser edge cases 0, under a minute, hours, days, negative, huge, i64 limits, missing or garbled JSON; wording; refresh interval; `fetch` against a real loopback socket checking the request line and `Authorization`), one mock-runtime lifecycle test with a fake Core (entry appears on top, text, no duplicate, does nothing when chosen, disappears, every request is one authenticated GET of the status route, garbled answer hides it), `core/api/test/awake-status-routes.test.ts` and `core/runtime/test/awake-status.test.ts` (real runtime and HTTP, fake machine; token required, GET only, no label leaks, unavailable after disable).
+- **Not run:** a real tray. The mock runtime has no real menu rendering, and a tray tooltip is not shown on every platform (macOS shows none for menu-bar items in some versions; Linux depends on the indicator host). Whether a disabled entry inserted into an open menu updates live on each OS is unobserved; the entry is refreshed in place with `set_text`, and a menu already open may show the old text until it is reopened.
 
 ### Settings → Keep awake
 
