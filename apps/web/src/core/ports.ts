@@ -26,6 +26,17 @@ export interface PortView {
   is_core: boolean;
   /** Core says whether a connection to 127.0.0.1 reaches this socket; the link itself is built here. */
   reachable: boolean;
+  /**
+   * The restart recipe the owner configured for this port (name, argument list as JSON, folder),
+   * exactly what the approval will show. Null when there is none: no Restart button is offered.
+   */
+  restart: RestartOffer | null;
+}
+
+export interface RestartOffer {
+  recipe: string;
+  argv: string;
+  cwd: string;
 }
 
 export interface PortsThresholds {
@@ -53,6 +64,17 @@ export interface StopResultView {
   can_force: boolean;
 }
 
+export interface RestartResultView {
+  pid: number;
+  port: number;
+  name: string;
+  recipe: string;
+  exited: boolean;
+  started: boolean;
+  new_pid: number | null;
+  can_force: boolean;
+}
+
 const EXPOSURES: readonly string[] = ["all", "loopback", "interface"];
 const REFUSALS: readonly string[] = [
   "self",
@@ -72,6 +94,16 @@ const nullable = <T>(v: unknown, ok: (x: unknown) => x is T): T | null | undefin
   v === null ? null : ok(v) ? v : undefined;
 const str = (v: unknown): v is string => typeof v === "string";
 
+/** The offered recipe; null when there is none (or Core sent none), undefined for a shape the screen cannot trust. */
+function readRestartOffer(raw: unknown): RestartOffer | null | undefined {
+  if (raw === null || raw === undefined) return null;
+  const recipe = field(raw, "recipe");
+  const argv = field(raw, "argv");
+  const cwd = field(raw, "cwd");
+  if (!str(recipe) || !str(argv) || !str(cwd)) return undefined;
+  return { recipe, argv, cwd };
+}
+
 function readPort(raw: unknown): PortView | null {
   const pid = field(raw, "pid");
   const port = field(raw, "port");
@@ -86,6 +118,7 @@ function readPort(raw: unknown): PortView | null {
   const cpu = nullable(field(raw, "cpu_percent"), num);
   const rss = nullable(field(raw, "rss_mb"), num);
   const url = nullable(field(raw, "url"), str);
+  const restart = readRestartOffer(field(raw, "restart"));
   if (
     !int(pid) ||
     !int(port) ||
@@ -102,6 +135,7 @@ function readPort(raw: unknown): PortView | null {
     cpu === undefined ||
     rss === undefined ||
     url === undefined ||
+    restart === undefined ||
     typeof field(raw, "forgotten") !== "boolean" ||
     typeof field(raw, "heavy") !== "boolean" ||
     typeof field(raw, "stoppable") !== "boolean" ||
@@ -128,6 +162,7 @@ function readPort(raw: unknown): PortView | null {
     refusal: refusal as PortRefusal | null,
     is_core: field(raw, "is_core") === true,
     reachable: url !== null,
+    restart,
   };
 }
 
@@ -190,6 +225,36 @@ export function readStopResult(raw: unknown): StopResultView | null {
     name,
     signal,
     exited: field(raw, "exited") === true,
+    can_force: field(raw, "can_force") === true,
+  };
+}
+
+export function readRestartResult(raw: unknown): RestartResultView | null {
+  const pid = field(raw, "pid");
+  const port = field(raw, "port");
+  const name = field(raw, "name");
+  const recipe = field(raw, "recipe");
+  const newPid = nullable(field(raw, "new_pid"), int);
+  if (
+    !int(pid) ||
+    !int(port) ||
+    !str(name) ||
+    !str(recipe) ||
+    newPid === undefined ||
+    typeof field(raw, "exited") !== "boolean" ||
+    typeof field(raw, "started") !== "boolean" ||
+    typeof field(raw, "can_force") !== "boolean"
+  ) {
+    return null;
+  }
+  return {
+    pid,
+    port,
+    name,
+    recipe,
+    exited: field(raw, "exited") === true,
+    started: field(raw, "started") === true,
+    new_pid: newPid,
     can_force: field(raw, "can_force") === true,
   };
 }

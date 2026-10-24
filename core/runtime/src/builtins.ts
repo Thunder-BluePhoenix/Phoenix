@@ -34,6 +34,7 @@ import { createSpotifyCapability } from "@phoenix/capability-spotify";
 import { createMprisCapability } from "@phoenix/capability-mpris";
 import { terminalCapability } from "@phoenix/capability-terminal";
 import { createVercelCapability } from "@phoenix/capability-vercel";
+import { createWebSearchCapability } from "@phoenix/capability-web-search";
 import type { CapabilityModule } from "@phoenix/capability-manager";
 import type { PhoenixConfig } from "@phoenix/config";
 
@@ -99,6 +100,7 @@ export function builtinCapabilities(
     createPlanningCapability({ services: planningServices }),
     createPortsCapability(),
     createScreenRegionCapability(),
+    createWebSearchCapability(),
     createStatusLightsCapability(host.statusLights),
     ...(env === "dev" ? [mockCapability] : []),
   ];

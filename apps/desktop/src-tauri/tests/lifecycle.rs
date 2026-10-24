@@ -9,7 +9,7 @@
 //! stacking, pixels and Quit; those were checked by hand on macOS.
 
 use phoenix_desktop::{
-    builder, file_drop, handle_menu, menu_snapshot, quit_requested, refresh_awake_tray,
+    builder, file_drop, handle_menu, menu_snapshot, open_links, quit_requested, refresh_awake_tray,
     run_shortcut, shortcuts, ShellOptions, AWAKE_ITEM_ID, ISLAND_LABEL, SETTINGS_FILE, TRAY_ID,
     WINDOW_LABEL,
 };
@@ -238,6 +238,49 @@ fn wardrobe_opens_the_pet_panel_wardrobe_tab() {
     assert_eq!(
         *s.opened.lock().unwrap(),
         ["http://127.0.0.1:4999/#/panel/wardrobe"]
+    );
+    assert!(!dir.path().join(SETTINGS_FILE).exists());
+}
+
+fn a_phoenix_approvals_link_opens_the_approvals_panel_and_nothing_else_does() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = start(dir.path());
+    open_links(
+        s.app.handle(),
+        &["phoenix://approvals/apr_0123456789abcdef01234567"],
+    );
+    open_links(
+        s.app.handle(),
+        &["phoenix://approvals/open?s=agent&i=apr_1&h=ab&e=1&m=cd"],
+    );
+    assert_eq!(
+        *s.opened.lock().unwrap(),
+        [
+            "http://127.0.0.1:4999/#/panel/overview",
+            "http://127.0.0.1:4999/#/panel/overview"
+        ]
+    );
+    s.opened.lock().unwrap().clear();
+    for bad in [
+        "phoenix://settings/apr_1",
+        "phoenix://approvals/apr_1/../x",
+        "phoenix://approvals/apr_1?cmd=rm",
+        "https://example.org/",
+        "file:///etc/passwd",
+        "phoenix://approvals/ap\u{202e}r",
+        "",
+    ] {
+        open_links(s.app.handle(), &[bad]);
+    }
+    open_links(
+        s.app.handle(),
+        &["https://example.org/", "phoenix://approvals/apr_1"],
+    );
+    let none: [&str; 0] = [];
+    open_links(s.app.handle(), &none);
+    assert!(
+        s.opened.lock().unwrap().is_empty(),
+        "nothing else opens anything"
     );
     assert!(!dir.path().join(SETTINGS_FILE).exists());
 }
@@ -747,7 +790,7 @@ fn main() {
     #[cfg(target_os = "linux")]
     gtk::init().expect("GTK failed to initialise: is a display available (xvfb-run)?");
 
-    let tests: [(&str, fn()); 20] = [
+    let tests: [(&str, fn()); 21] = [
         (
             "starts with window, tray and full menu",
             starts_with_window_tray_and_full_menu,
@@ -780,6 +823,10 @@ fn main() {
         (
             "Wardrobe opens the pet panel tab",
             wardrobe_opens_the_pet_panel_wardrobe_tab,
+        ),
+        (
+            "a phoenix://approvals link opens the approvals panel and nothing else does",
+            a_phoenix_approvals_link_opens_the_approvals_panel_and_nothing_else_does,
         ),
         (
             "shortcut registration failure never stops startup",

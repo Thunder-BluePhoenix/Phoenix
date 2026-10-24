@@ -12,5 +12,5 @@ Off by default, per project. Design, security model, runtime hooks and limitatio
 
 Layout: `src/binding.ts` (owner mapping, single-use tokens, hash recheck, replay), `src/slack.ts`,
 `src/discord.ts` (provider signature + payloads), `src/teams.ts` (webhook + signed link),
-`src/cards.ts` (sanitized text), `src/config.ts`, `src/index.ts` (capability). `test/rig.ts` is a pretend Core and
+`src/cards.ts` (sanitized text), `src/digest.ts` (opt-in scheduled digest: formatter, quiet hours, verdict), `src/config.ts`, `src/index.ts` (capability). `test/rig.ts` is a pretend Core and
 signers built from runtime-generated keys.

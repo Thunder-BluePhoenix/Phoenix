@@ -68,8 +68,19 @@ export const ports: Record<keyof typeof enports, string> = {
   "ports.force.label": "إيقاف {name} قسريًا على المنفذ {port}",
   "ports.force.hint": "يرفض Phoenix الإيقاف القسري في الثواني الأولى بعد طلب الإغلاق.",
   "ports.force.confirm": "إيقاف قسري",
+  "ports.restart": "إعادة التشغيل…",
+  "ports.restart.label": "إعادة تشغيل {name} على المنفذ {port}",
+  "ports.restart.title": "إعادة تشغيل {name} على المنفذ {port}؟",
+  "ports.restart.body":
+    "بعد موافقتك، يطلب Phoenix من {name} (العملية {pid}) الإنهاء، ولا يشغّل وصفة إعادة التشغيل التي أعددتها، كما هي معروضة أدناه، إلا إذا انتهى البرنامج. قد يفقد البرنامج عملًا غير محفوظ. إذا فشل التشغيل يبقى البرنامج متوقفًا.",
+  "ports.restart.recipe": "الوصفة",
+  "ports.restart.argv": "البرنامج والوسائط",
+  "ports.restart.cwd": "المجلد",
+  "ports.restart.go": "اطلب إعادة التشغيل",
+  "ports.restart.started":
+    "تم إيقاف {name} وبدأت الوصفة {recipe} (العملية {pid}). لا يستطيع Phoenix معرفة ما إذا كان يستمع من جديد؛ افحص مرة أخرى.",
   "ports.restart.note":
-    "إعادة التشغيل غير متاحة: لا يستطيع Phoenix إعادة بناء أمر البرنامج الأصلي بأمان.",
+    "تُعرض إعادة التشغيل فقط لبرنامج على منفذ كتبتَ له وصفة إعادة تشغيل في إعدادات هذه القدرة. لا يعيد Phoenix بناء أمر من برنامج قيد التشغيل أبدًا.",
   "ports.watch.label": "التحديث تلقائيًا أثناء فتح Phoenix",
   "ports.watch.help":
     "متوقف افتراضيًا. عند التفعيل يقرأ Phoenix قائمة المنافذ كل 15 ثانية، وفقط أثناء فتح نافذة من Phoenix.",

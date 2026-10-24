@@ -6,6 +6,12 @@
 // contract supplies side effect and JSON schema. The caller builds the call with `{}`; no spoken
 // text is ever turned into tool input. This intentionally makes the initial assistant useful for
 // zero-input service status tools without accidentally granting arbitrary command execution.
+//
+// The one exception is web search: "search the web for <words>" becomes the input of ONE named tool
+// (`web-search.search_confirmed`), which the registry must list as an `external` command with a
+// single `query` property. The words are bounded and normalised here, and the call is an external
+// action: Core asks a person to approve the exact query before it leaves the computer, and voice can
+// never give that approval.
 
 export type VoiceSideEffect = "none" | "read" | "write" | "execute" | "external" | "production";
 
@@ -17,6 +23,7 @@ export interface VoiceTool {
 
 export type VoiceIntent =
   | { kind: "tool"; tool: string }
+  | { kind: "web_search"; tool: string; query: string }
   | { kind: "switch_pill"; direction: "next" | "previous" }
   | { kind: "mailto_draft"; body: string }
   | { kind: "deny" }
@@ -33,6 +40,20 @@ const PILL = /\b(switch|open|show|change)\b.*\b(pill|floating)\b|\bpill\b/iu;
 const PILL_NAVIGATION = /\b(next|previous)\b/giu;
 const PILL_BACKWARDS = /\b(previous|last|back)\b/iu;
 const WEB = /\b(web|internet|google|search|look up)\b/iu;
+/**
+ * "search the web for X", "search for X", "look up X", "please search the internet about X":
+ * the request must START with the search verb, so a sentence that merely mentions the web is not one.
+ * (The text is already lowercase with punctuation removed.)
+ */
+const WEB_SEARCH =
+  /^(?:please )?(?:search(?: (?:the )?(?:web|internet))?(?: for| about)?|look up)(?: (.*))?$/u;
+/** The only tool voice may start with spoken input, and the only `external` one it may start at all. */
+export const WEB_SEARCH_TOOL = "web-search.search_confirmed";
+/**
+ * Longest spoken query. It is the longest a person can read in full in Core's approval prompt
+ * (the prompt shows 80 characters of a value), so what they approve is all of what is sent.
+ */
+export const MAX_SPOKEN_QUERY_CHARS = 80;
 const MUSIC = /\b(music|song|track|album|artist|playing|listening)\b/iu;
 /** Phrase -> conventional tool names, tried in order; the first that is enabled and read-only wins. */
 const SERVICE_PHRASES: readonly { phrase: RegExp; tools: readonly string[] }[] = [
@@ -63,6 +84,29 @@ export function normaliseIntentText(text: string): string {
     .slice(0, 500);
 }
 
+/**
+ * True only for the confirmed web-search tool exactly as the registry describes it: the one name,
+ * side effect `external` (so Core asks a person every time) and an input of one required `query`.
+ * Anything else with that name, or any other external tool, is not reachable by voice.
+ */
+export function isConfirmedSearchTool(tool: VoiceTool): boolean {
+  if (tool.name !== WEB_SEARCH_TOOL || tool.sideEffect !== "external") return false;
+  const { required, properties, additionalProperties } = tool.inputSchema as {
+    required?: unknown;
+    properties?: unknown;
+    additionalProperties?: unknown;
+  };
+  return (
+    Array.isArray(required) &&
+    required.length === 1 &&
+    required[0] === "query" &&
+    additionalProperties === false &&
+    typeof properties === "object" &&
+    properties !== null &&
+    Object.keys(properties).length === 1
+  );
+}
+
 /** Select a tool by exact registry metadata, never by an instruction contained in the transcript. */
 function findReadTool(
   tools: readonly VoiceTool[],
@@ -85,6 +129,21 @@ export function matchIntent(text: string, tools: readonly VoiceTool[]): VoiceInt
   const request = normaliseIntentText(text);
   if (request.length === 0) return { kind: "refuse", message: "I did not catch a request." };
   if (DENY.test(request)) return { kind: "deny" };
+  const search = WEB_SEARCH.exec(request);
+  if (search) {
+    const query = (search[1] ?? "").trim();
+    if (query.length === 0) return { kind: "refuse", message: "What should I search for?" };
+    if (query.length > MAX_SPOKEN_QUERY_CHARS) {
+      return {
+        kind: "refuse",
+        message: "That search is too long for you to approve in full. Say a shorter one.",
+      };
+    }
+    const tool = tools.find(isConfirmedSearchTool);
+    return tool
+      ? { kind: "web_search", tool: tool.name, query }
+      : { kind: "unavailable", message: "Web search is not enabled." };
+  }
   if (MAIL.test(request) && DRAFT.test(request)) {
     const topic = /\b(?:about|saying|that says)\s+(.+)$/u.exec(request)?.[1] ?? "";
     return { kind: "mailto_draft", body: topic.slice(0, MAX_DRAFT_CHARS) };
@@ -101,7 +160,10 @@ export function matchIntent(text: string, tools: readonly VoiceTool[]): VoiceInt
     return { kind: "switch_pill", direction: PILL_BACKWARDS.test(request) ? "previous" : "next" };
   }
   if (WEB.test(request)) {
-    return { kind: "unavailable", message: "Web search is not available in Phoenix." };
+    return {
+      kind: "refuse",
+      message: "To search the web, say: search the web for, then what to look up.",
+    };
   }
   if (MUSIC.test(request)) {
     const tool = findReadTool(tools, [
@@ -125,6 +187,7 @@ export function matchIntent(text: string, tools: readonly VoiceTool[]): VoiceInt
   }
   return {
     kind: "refuse",
-    message: "I can read the status of enabled services, open the pill, or draft an email.",
+    message:
+      "I can read the status of enabled services, search the web, open the pill, or draft an email.",
   };
 }

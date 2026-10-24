@@ -15,6 +15,8 @@ import { createChatHost, createChatTransport, type ChatHostDeps } from "./index"
 
 /** Capability id; the manager stores the user's switches (projects, providers) under it. */
 export const CHAT_APPROVALS_CAPABILITY = "chat-approvals";
+/** Settings key holding the epoch ms of the last scheduled digest attempt (a number, nothing else). */
+export const CHAT_DIGEST_LAST_KEY = ["chat-approvals", "digest", "last"].join(".");
 
 export interface ChatApprovalsServiceDeps extends ChatHostDeps {
   audit: Pick<AuditLog, "record">;
@@ -27,7 +29,23 @@ export interface ChatApprovalsServiceDeps extends ChatHostDeps {
   transport?: HttpTransport;
   now?: () => number;
   agentApprovals: Pick<AgentApprovals, "list" | "decide">;
+  /** Persists the time of the last scheduled digest (settings store); memory only when absent. */
+  digestClock?: { read(): number | undefined; write(at: number): void };
+  /** How often the opt-in digest schedule is checked. The configured interval (>= 1 hour) still rules. */
+  digestCheckMs?: number;
 }
+
+/** Digest checks are cheap (no network unless one is due); the interval itself is the owner's setting. */
+const DEFAULT_DIGEST_CHECK_MS = 5 * 60_000;
+
+/** How Core's resolve events count in the digest. Counts only; the payload is never read further. */
+const OUTCOMES: Readonly<Record<string, "approved" | "denied" | "expired" | "other">> = {
+  allow: "approved",
+  approved: "approved",
+  deny: "denied",
+  rejected: "denied",
+  expired: "expired",
+};
 
 const TRIGGERS = ["security.confirmation.requested", "agent.approval.requested"] as const;
 
@@ -39,6 +57,9 @@ const TRIGGERS = ["security.confirmation.requested", "agent.approval.requested"]
 export class ChatApprovalsService {
   readonly approvals: ChatApprovals;
   private readonly unsubscribe: () => void;
+  private readonly unsubscribeResolved: () => void;
+  private digestTimer: NodeJS.Timeout | undefined;
+  private digesting: Promise<unknown> = Promise.resolve();
   private posting: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly d: ChatApprovalsServiceDeps) {
@@ -56,10 +77,46 @@ export class ChatApprovalsService {
       transport: d.transport ?? createChatTransport(),
       config: d.config,
       ...(d.now ? { now: d.now } : {}),
+      ...(d.digestClock ? { digestClock: d.digestClock } : {}),
     });
     this.unsubscribe = d.bus.subscribe("chat-approvals", [...TRIGGERS], () => {
       this.schedulePost();
     });
+    this.unsubscribeResolved = d.bus.subscribe(
+      "chat-approvals-digest",
+      ["security.confirmation.resolved", "agent.approval.resolved"],
+      (event) => {
+        // Only the outcome word is read, never anything else in the payload.
+        const outcome = event.payload.outcome;
+        this.approvals.noteDecision(
+          (typeof outcome === "string" && Object.hasOwn(OUTCOMES, outcome)
+            ? OUTCOMES[outcome]
+            : undefined) ?? "other",
+        );
+      },
+    );
+  }
+
+  /** The only caller of the schedule: Core's own timer (none runs until {@link startDigest}). */
+  startDigest(): void {
+    if (this.digestTimer) return;
+    this.digestTimer = setInterval(() => {
+      this.checkDigest();
+    }, this.d.digestCheckMs ?? DEFAULT_DIGEST_CHECK_MS);
+    this.digestTimer.unref();
+  }
+
+  /** One schedule check, serialised with itself; off while the capability is off or stopped. */
+  checkDigest(): Promise<unknown> {
+    this.digesting = this.digesting.then(async () => {
+      if (!this.d.enabled() || this.d.killSwitchEngaged()) return;
+      try {
+        await this.approvals.tickDigest();
+      } catch {
+        // A provider outage must never disturb Core; the audit log has the refusal.
+      }
+    });
+    return this.digesting;
   }
 
   get module(): CapabilityModule {
@@ -84,12 +141,20 @@ export class ChatApprovalsService {
     });
   }
 
+  /** Settles when the digest check queued so far has finished (tests, shutdown). */
+  async digestIdle(): Promise<void> {
+    await this.digesting;
+  }
+
   /** Settles when the posting queued so far has finished (tests, shutdown). */
   async idle(): Promise<void> {
     await this.posting;
   }
 
   close(): void {
+    clearInterval(this.digestTimer);
+    this.digestTimer = undefined;
+    this.unsubscribeResolved();
     this.unsubscribe();
   }
 }

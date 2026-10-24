@@ -5,7 +5,7 @@
 | Stage | Stage 14 — Phoenix originals |
 | Release target | Post-v2.0 track |
 | Priority | Medium |
-| Status | 🟨 Built; macOS read-only listing checked once on a real Mac (guarded `PHOENIX_REAL_PORTS=1` test), everything else simulated: Linux and Windows collectors were written from documented formats and never run on those systems, and no real process was ever signalled; `restart_process` and the Phoenix-browser open are not built; the Linux and Windows listing criterion and the real-stop criterion are not met |
+| Status | 🟨 Built; macOS read-only listing checked once on a real Mac (guarded `PHOENIX_REAL_PORTS=1` test), everything else simulated: Linux and Windows collectors were written from documented formats and never run on those systems, and no real process was ever signalled or started; `restart_process` exists only as owner-written recipes (never a command rebuilt from process data) and is simulated only; the Phoenix-browser open is not built; the Linux and Windows listing criterion and the real-stop criterion are not met |
 | Depends on | [Phase 18 — Terminal / Process Capability](phase-18-terminal-process-capability.md) |
 | Unblocks | — |
 
@@ -17,7 +17,7 @@ Know which dev servers and processes are running, and stop the forgotten ones.
 
 - [ ] List listening ports with process, project and age (macOS, Linux, Windows). Built behind an injected `Runner`: macOS and Linux `lsof -nP -iTCP -sTCP:LISTEN -F pcnL`, a Linux `ss -ltnpH` fallback, Windows `netstat -ano -p TCP` plus `tasklist /FO CSV /NH`; `ps` runs with `TZ=UTC LC_ALL=C`; the project is the name of the nearest `.git` folder (name only) (`capabilities/ports/src/collect.ts`, `parse.ts`, `project.ts`; `capabilities/ports/test/parse.test.ts`, `snapshot.test.ts`). The macOS read was run once for real (see the exit criteria). Unticked because the **Linux and Windows collectors were never run** (their fixtures come from documented formats, not captures), and on Windows ages, projects and stopping are unavailable by design.
 - [ ] Flag forgotten servers (no activity, old) and heavy processes. Forgotten = age over 8 hours, inside a project and stoppable; heavy = `ps` CPU or resident memory at or above a configurable threshold; both have documented definitions (`snapshot.ts`, `capabilities/ports/test/snapshot.test.ts`, [port-radar.md](../port-radar.md)). Fakes only. Unticked because **"no activity" is not measured**: Phoenix cannot see whether traffic still reaches the port, so "forgotten" means only "old and in a project".
-- [ ] Stop or restart a process with approval; never system processes. `stop_process` (SIGTERM, `execute`) and `force_stop` (SIGKILL, only after an approved SIGTERM record for the same pid and start time, valid 10 minutes) go through the real permission gateway; the proof re-reads pid, start time, command and uid, same uid only, never pid 1 or below, never Core's own pid, parent, process group or ancestors, protected names and system prefixes are refused (`stop.ts`, `policy.ts`, `capabilities/ports/test/stop.test.ts`, `capability.test.ts`). Tested with a fake signaler: **no real process was ever signalled.** Unticked because **`restart_process` is not built** and nothing real was stopped.
+- [ ] Stop or restart a process with approval; never system processes. `stop_process` (SIGTERM, `execute`) and `force_stop` (SIGKILL, only after an approved SIGTERM record for the same pid and start time, valid 10 minutes) go through the real permission gateway; the proof re-reads pid, start time, command and uid, same uid only, never pid 1 or below, never Core's own pid, parent, process group or ancestors, protected names and system prefixes are refused (`stop.ts`, `policy.ts`, `capabilities/ports/test/stop.test.ts`, `capability.test.ts`). **`restart_process`** (`execute`, `restart.ts`, `recipes.ts`; `capabilities/ports/test/restart.test.ts`, `capability.test.ts`, `apps/web/test/port-radar.test.tsx`) stops with the same guarded path (SIGTERM only), then starts **only a restart recipe the owner wrote in the config** (`{argv[], cwd, ports[]}` plus `restart_roots`): matched to the process by an owner-declared port, never from `ps`/`lsof` data; the approval shows recipe, exact argv and folder; no shell, minimal environment, checked folder under the declared roots, never as root, audited; nothing starts if the program does not exit; a failed start after the stop is reported as such. Tested with a fake signaler and a fake spawner: **no real process was ever signalled or started.** Unticked because nothing real was stopped or restarted, and a supervisor/`launchd` job that restarts the program itself is invisible to Phoenix.
 - [ ] Open a local server's page in the Phoenix browser (Phase 93). **Not built.** Phoenix has no browser of its own (Phase 93 is not built) and no desktop open-URL path was found; the page offers a plain link `http://127.0.0.1:<port>/`, shown only for a wildcard or exactly 127.0.0.1 bind.
 
 ## Deliverables
@@ -33,7 +33,7 @@ Know which dev servers and processes are running, and stop the forgotten ones.
 
 ### What was built
 
-- **Commands**: `list` (read), `stop_process` (execute, SIGTERM) and `force_stop` (execute, SIGKILL, only after an approved SIGTERM record for the same pid and start, TTL 10 minutes).
+- **Commands**: `list` (read), `stop_process` (execute, SIGTERM), `force_stop` (execute, SIGKILL, only after an approved SIGTERM record for the same pid and start, TTL 10 minutes) and `restart_process` (execute: guarded SIGTERM stop, then the owner's recipe).
 - **Collectors** behind an injected `Runner`, with strict parsing (duplicate pids dropped, a single-pid proof); `ps` pinned to `TZ=UTC LC_ALL=C`.
 - **Flags and project**: forgotten (age over 8 hours, in a project, stoppable) and heavy, with documented definitions; project is the nearest `.git` folder name only.
 - **Polling** is off by default and runs only while the page is watched.
@@ -42,7 +42,7 @@ Know which dev servers and processes are running, and stop the forgotten ones.
 
 ### Deviations
 
-- `restart_process` is not built (documented in [port-radar.md](../port-radar.md)).
+- `restart_process` was first left unbuilt because a command line cannot be rebuilt safely from `ps`. It is now built in a narrower form: **only owner-written recipes** (name, argv, cwd, declared ports; roots; shells refused; minimal environment; never root), never a command derived from a process. Documented in [port-radar.md](../port-radar.md#restarting-owner-written-recipes-only).
 - The "open in the Phoenix browser" task is a plain loopback link, because Phase 93 does not exist.
 - Windows ages, projects and stopping are unavailable by design.
 
@@ -54,11 +54,11 @@ An independent static review (read-only, not a human audit) was followed by fixe
 
 ### What was not built
 
-`restart_process`; opening a server's page in the Phoenix browser; Windows ages, projects and stopping.
+Opening a server's page in the Phoenix browser; Windows ages, projects and stopping; restarting an arbitrary program without an owner-written recipe (deliberately never built); supervisor-aware restarts.
 
 ### What was not run
 
-Linux (`lsof`, `ss`) and Windows (`netstat`, `tasklist`) collectors on real systems, and any real signal: no process was ever stopped. The only real run was the one read-only macOS test. Open items are in the [gap register](../gaps.md).
+Linux (`lsof`, `ss`) and Windows (`netstat`, `tasklist`) collectors on real systems, and any real signal or spawn: no process was ever stopped or started. The only real run was the one read-only macOS test (plus two real-seam tests for `realSpawner` and `realInspect` that start nothing). Open items are in the [gap register](../gaps.md).
 
 
 ## Notes & risks

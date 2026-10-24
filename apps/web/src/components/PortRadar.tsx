@@ -8,10 +8,12 @@ import {
   ageParts,
   localhostUrl,
   readPortsSnapshot,
+  readRestartResult,
   readStopResult,
   usePortsAvailability,
   type PortView,
   type PortsSnapshotView,
+  type RestartResultView,
   type StopResultView,
 } from "../core/ports";
 import { useLocale, useT, type MessageKey } from "../i18n";
@@ -38,10 +40,11 @@ const REFUSAL_TEXT: Record<NonNullable<PortView["refusal"]>, MessageKey> = {
   unknown: "ports.refusal.unknown",
 };
 
-/** What the user is being asked about: one process on one port, with which signal. */
+/** What the user is being asked about: one process on one port, with which action. */
 interface Pending {
   port: PortView;
   force: boolean;
+  restart: boolean;
 }
 
 /**
@@ -59,15 +62,18 @@ export function PortRadar() {
   const scan = useCommandAction("ports", "list");
   const stop = useCommandAction("ports", "stop_process");
   const force = useCommandAction("ports", "force_stop");
+  const restart = useCommandAction("ports", "restart_process");
   const settings = useAction();
   const [pending, setPending] = useState<Pending | null>(null);
   const [last, setLast] = useState<StopResultView | null>(null);
+  const [lastRestart, setLastRestart] = useState<RestartResultView | null>(null);
 
   const snapshot: PortsSnapshotView | null = readPortsSnapshot(scan.result);
   const scanFailed = scan.state === "failed" || (scan.state === "succeeded" && snapshot === null);
   const submitScan = scan.submit;
   const resetStop = stop.reset;
   const resetForce = force.reset;
+  const resetRestart = restart.reset;
 
   // Core announces a changed list only while the user has background refresh on.
   useEffect(() => {
@@ -96,16 +102,49 @@ export function PortRadar() {
       void submitScan({});
     }
   }, [force.state, forced, resetForce, submitScan]);
+  // A finished restart: say whether the recipe was started. A program that did not exit is shown
+  // like a stop that did not end it, so Force stop stays a separate explicit step.
+  const restarted = readRestartResult(restart.result);
+  useEffect(() => {
+    if (restart.state === "succeeded" && restarted) {
+      setPending(null);
+      resetRestart();
+      if (restarted.started) {
+        setLast(null);
+        setLastRestart(restarted);
+      } else {
+        setLastRestart(null);
+        setLast({
+          pid: restarted.pid,
+          port: restarted.port,
+          name: restarted.name,
+          signal: "SIGTERM",
+          exited: restarted.exited,
+          can_force: restarted.can_force,
+        });
+      }
+      void submitScan({});
+    }
+  }, [restart.state, restarted, resetRestart, submitScan]);
+  // A failed restart may already have stopped the program (the error says so): read the list again.
+  useEffect(() => {
+    if (restart.state === "failed") {
+      setPending(null);
+      void submitScan({});
+    }
+  }, [restart.state, submitScan]);
 
   if (availability === "absent") return null;
-  const busy = scan.busy || stop.busy || force.busy;
+  const busy = scan.busy || stop.busy || force.busy || restart.busy;
   const requestError = stop.error ?? force.error;
 
-  const ask = (port: PortView, isForce: boolean) => {
+  const ask = (port: PortView, isForce: boolean, isRestart = false) => {
     resetStop();
     resetForce();
+    resetRestart();
     setLast(null);
-    setPending({ port, force: isForce });
+    setLastRestart(null);
+    setPending({ port, force: isForce, restart: isRestart });
   };
   const confirm = () => {
     if (!pending) return;
@@ -118,6 +157,11 @@ export function PortRadar() {
       command: port.command,
       uid: port.uid,
     };
+    if (pending.restart) {
+      if (port.restart === null) return;
+      void restart.submit({ ...body, ...port.restart });
+      return;
+    }
     void (pending.force ? force.submit(body) : stop.submit(body));
   };
   const toggleWatch = async (on: boolean) => {
@@ -268,18 +312,34 @@ export function PortRadar() {
                                 </a>
                               )}
                               {row.stoppable ? (
-                                <button
-                                  type="button"
-                                  className="btn btn-danger-outline"
-                                  disabled={busy}
-                                  aria-label={t("ports.stop.label", {
-                                    name: row.name,
-                                    port: row.port,
-                                  })}
-                                  onClick={() => ask(row, false)}
-                                >
-                                  {t("ports.stop")}
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn btn-danger-outline"
+                                    disabled={busy}
+                                    aria-label={t("ports.stop.label", {
+                                      name: row.name,
+                                      port: row.port,
+                                    })}
+                                    onClick={() => ask(row, false)}
+                                  >
+                                    {t("ports.stop")}
+                                  </button>
+                                  {row.restart && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-danger-outline"
+                                      disabled={busy}
+                                      aria-label={t("ports.restart.label", {
+                                        name: row.name,
+                                        port: row.port,
+                                      })}
+                                      onClick={() => ask(row, false, true)}
+                                    >
+                                      {t("ports.restart")}
+                                    </button>
+                                  )}
+                                </>
                               ) : (
                                 row.refusal && (
                                   <span className="muted">{t(REFUSAL_TEXT[row.refusal])}</span>
@@ -312,20 +372,42 @@ export function PortRadar() {
             <div className="card port-confirm" role="group" aria-labelledby={`${ids}-confirm`}>
               <p id={`${ids}-confirm`}>
                 <strong>
-                  {t(pending.force ? "ports.force.label" : "ports.confirm.title", {
-                    name: pending.port.name,
-                    port: pending.port.port,
-                  })}
+                  {t(
+                    pending.restart
+                      ? "ports.restart.title"
+                      : pending.force
+                        ? "ports.force.label"
+                        : "ports.confirm.title",
+                    { name: pending.port.name, port: pending.port.port },
+                  )}
                 </strong>
               </p>
               <p className="small">
-                {t("ports.confirm.body", {
+                {t(pending.restart ? "ports.restart.body" : "ports.confirm.body", {
                   name: pending.port.name,
                   pid: pending.port.pid,
                 })}
               </p>
+              {pending.restart && pending.port.restart && (
+                <dl className="small port-recipe">
+                  <dt>{t("ports.restart.recipe")}</dt>
+                  <dd>
+                    <code className="port-mono">{pending.port.restart.recipe}</code>
+                  </dd>
+                  <dt>{t("ports.restart.argv")}</dt>
+                  <dd>
+                    <code className="port-mono">{pending.port.restart.argv}</code>
+                  </dd>
+                  <dt>{t("ports.restart.cwd")}</dt>
+                  <dd>
+                    <code className="port-mono">{pending.port.restart.cwd}</code>
+                  </dd>
+                </dl>
+              )}
               {pending.force && <p className="port-warning small">{t("ports.force.hint")}</p>}
-              {(stop.state === "waiting" || force.state === "waiting") && (
+              {(stop.state === "waiting" ||
+                force.state === "waiting" ||
+                restart.state === "waiting") && (
                 <p className="small" role="status">
                   {t("ports.stop.waiting")}
                 </p>
@@ -338,7 +420,11 @@ export function PortRadar() {
                   disabled={busy}
                   onClick={confirm}
                 >
-                  {pending.force ? t("ports.force.confirm") : t("ports.confirm.go")}
+                  {pending.restart
+                    ? t("ports.restart.go")
+                    : pending.force
+                      ? t("ports.force.confirm")
+                      : t("ports.confirm.go")}
                 </button>
                 <button
                   type="button"
@@ -350,6 +436,17 @@ export function PortRadar() {
                 </button>
               </div>
             </div>
+          )}
+
+          <Feedback error={restart.error} />
+          {lastRestart && !pending && (
+            <p role="status" className="small">
+              {t("ports.restart.started", {
+                name: lastRestart.name,
+                recipe: lastRestart.recipe,
+                pid: lastRestart.new_pid ?? 0,
+              })}
+            </p>
           )}
 
           {last && !pending && (

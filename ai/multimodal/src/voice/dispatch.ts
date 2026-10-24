@@ -3,15 +3,17 @@
 //
 // From a recognised request to a reply. The rules this file enforces:
 //   * The spoken text only SELECTS a fixed intent (intent.ts). It is never a tool input, a command
-//     line or a URL (the one exception, the email draft's body, is URL-encoded data for a draft the
-//     user opens and sends themselves; Fawkes never sends mail).
+//     line or a URL (two exceptions: the email draft's body, which is URL-encoded data for a draft the
+//     user opens and sends themselves; Fawkes never sends mail; and the web-search query, the single
+//     `query` input of ONE `external` tool, which Core only runs after a person approves the exact
+//     query in the Pet Panel. Voice can never give that approval).
 //   * A tool runs only if the live registry lists it with side effect none|read, checked again at
 //     the moment of the call. Core builds the call (`{}` input) and the caller supplies an actor
 //     that does not claim `trustedByUser`; anything that needs approval waits for a person in the
 //     Pet Panel, and gives up after `approvalWaitMs` (the pending request is denied, never approved).
 //   * VOICE MAY DENY, NEVER APPROVE: the only thing voice can do to a confirmation is `deny`.
 //   * Tool output is untrusted data: it is summarised into a fixed sentence (summary.ts).
-import { matchIntent, type VoiceIntent, type VoiceTool } from "./intent";
+import { isConfirmedSearchTool, matchIntent, type VoiceIntent, type VoiceTool } from "./intent";
 import { MAX_REPLY_CHARS, clipSpeech, summariseToolOutput } from "./summary";
 
 /** The narrow view of the permission gateway voice gets: list what is pending, and deny it. */
@@ -24,8 +26,15 @@ export interface VoiceApprovals {
 export interface VoiceActions {
   /** The tools callable right now (enabled capabilities only). */
   tools(): VoiceTool[];
-  /** Runs one tool with empty input as the voice actor. Rejects on any refusal or failure. */
-  call(tool: string, signal: AbortSignal): Promise<{ output: unknown }>;
+  /**
+   * Runs one tool as the voice actor, with empty input unless `input` is given (only the confirmed
+   * web search passes one). Rejects on any refusal or failure.
+   */
+  call(
+    tool: string,
+    signal: AbortSignal,
+    input?: Record<string, unknown>,
+  ): Promise<{ output: unknown }>;
 }
 
 export type VoiceUiAction =
@@ -108,6 +117,8 @@ export async function dispatchRequest(
       };
     case "tool":
       return runTool(session, intent.tool, deps, signal);
+    case "web_search":
+      return runTool(session, intent.tool, deps, signal, { query: intent.query });
   }
 }
 
@@ -116,11 +127,16 @@ async function runTool(
   tool: string,
   deps: VoiceDispatchDeps,
   signal: AbortSignal,
+  input?: Record<string, unknown>,
 ): Promise<VoiceReply> {
-  const base = { intent: "tool", tool } as const;
-  // Re-checked now: the registry may have changed since the intent was chosen.
+  const base = { intent: input ? "web_search" : "tool", tool } as const;
+  // Re-checked now: the registry may have changed since the intent was chosen. A call with input is
+  // allowed for the confirmed web search only; every other tool must be a read that needs no input.
   const contract = deps.actions.tools().find((t) => t.name === tool);
-  if (!contract || (contract.sideEffect !== "none" && contract.sideEffect !== "read")) {
+  const allowed = input
+    ? contract !== undefined && isConfirmedSearchTool(contract)
+    : contract !== undefined && (contract.sideEffect === "none" || contract.sideEffect === "read");
+  if (!contract || !allowed) {
     deps.audit("voice.action", { session, tool, outcome: "refused" });
     return { ...base, text: "That tool is not available to voice.", outcome: "refused" };
   }
@@ -131,7 +147,7 @@ async function runTool(
   signal.addEventListener("abort", onAbort, { once: true });
   const stopWaiting = deps.after(() => own.abort(), deps.approvalWaitMs);
   try {
-    const result = await deps.actions.call(tool, own.signal);
+    const result = await deps.actions.call(tool, own.signal, input);
     deps.audit("voice.action", { session, tool, outcome: "ok" });
     return { ...base, text: summariseToolOutput(tool, result.output), outcome: "ok" };
   } catch {

@@ -4,5 +4,18 @@
 <dict>
   <key>NSMicrophoneUsageDescription</key>
   <string>Phoenix uses the microphone only while you choose to dictate. Dictation audio is processed on this device and is never stored by the dictation pipeline.</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>dev.phoenix.desktop</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>phoenix</string>
+      </array>
+    </dict>
+  </array>
 </dict>
 </plist>

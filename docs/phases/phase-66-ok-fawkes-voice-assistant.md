@@ -5,7 +5,7 @@
 | Stage | Stage 12 — Coucou parity and beyond |
 | Release target | Post-v2.0 track |
 | Priority | Medium |
-| Status | 🟨 Built and tested with a fake recogniser through the real tool gateway; no real microphone, whisper pass, wake recognition or speech synthesis was ever run; only the voice-activity gate's CPU was measured (per component, not whole-app); web page only, nothing in `apps/desktop`; web search is not built; exit criteria not met |
+| Status | 🟨 Built and tested with a fake recogniser through the real tool gateway; no real microphone, whisper pass, wake recognition or speech synthesis was ever run; only the voice-activity gate's CPU was measured (per component, not whole-app); web page only, nothing in `apps/desktop`; web search is built behind a confirmation but only tested against a local mock (no real search service or key); exit criteria not met |
 | Depends on | [Phase 54 — Multimodal Interaction (Speech & Vision)](phase-54-multimodal-interaction.md), [Phase 64 — Dictation Anywhere](phase-64-dictation-anywhere.md) |
 | Unblocks | — |
 
@@ -16,7 +16,7 @@ Talk to Fawkes hands-free and have it answer and act through Phoenix's capabilit
 ## Tasks — parity with Coucou
 
 - [ ] Wake phrase, local recognition, spoken answers. Built: a fuzzy matcher for "ok fawkes" over the text of a VAD-gated utterance (`ai/multimodal/src/voice/wake.ts`, tests `ai/multimodal/test/voice/wake-intent.test.ts`), recognition through the existing on-device `SpeechRecognizer` seam, and replies spoken by the browser's `speechSynthesis` in `Voice.tsx` (`apps/web/test/voice.test.tsx`). Not done: the matcher ran on text strings only, never on a real voice; no real microphone, whisper pass or speech synthesis was exercised. Wake detection is a VAD-gated recogniser pass per utterance, not a keyword spotter.
-- [ ] Questions about services, switching pills, music, web search, drafting emails. Built as a deterministic intent matcher over the live tool registry (`ai/multimodal/src/voice/intent.ts`). Limits: questions are limited to `git.status`, `github.status`, `docker.containers` and `now_playing` (only tools needing no input); "switch pills" selects the next or previous source pill through the Phase 70 pill command (simulated, not run by voice on a real display); music is `now_playing` only because play, pause and skip are write tools; a drafted email is a `mailto:` link the person clicks (never sent); **web search is not built** (no capability exists, so voice says it is not available).
+- [ ] Questions about services, switching pills, music, web search, drafting emails. Built as a deterministic intent matcher over the live tool registry (`ai/multimodal/src/voice/intent.ts`). Limits: questions are limited to `git.status`, `github.status`, `docker.containers` and `now_playing` (only tools needing no input); "switch pills" selects the next or previous source pill through the Phase 70 pill command (simulated, not run by voice on a real display); music is `now_playing` only because play, pause and skip are write tools; a drafted email is a `mailto:` link the person clicks (never sent); **web search** maps to `web-search.search_confirmed` (`capabilities/web-search`): an `external` command, so Core asks a person to approve the exact query before it is sent to the search host (Brave Search; the owner supplies a key, there is no keyless provider); when the capability is not enabled voice says "Web search is not enabled." Tested with a loopback mock and fakes only (`core/runtime/test/voice-web-search.test.ts`, `capabilities/web-search/test/`): no real search service, key or microphone was used.
 - [ ] Off by default; < 1 % CPU when idle (voice activity detection first); audio never saved. Off by default and the audio handling are tested with a fake recogniser (`core/runtime/test/voice.test.ts` "refuses to start, reports itself off…", `ai/multimodal/test/voice/sessions.test.ts`: the pre-roll ring, the partial utterance and every chunk are zeroed on every exit path). The CPU part is **not** demonstrated: see the first exit criterion. Nobody watched the filesystem during a real session.
 
 ## Tasks — Phoenix improvements
@@ -44,7 +44,7 @@ Talk to Fawkes hands-free and have it answer and act through Phoenix's capabilit
 
 ### Decisions
 
-- The spoken words only select a fixed intent; they are never a tool input, a command line or a URL. Tool output is untrusted data, summarised into a fixed sentence, with wake-phrase-like text in third-party fields (repository, branch, track, container names) removed before it is spoken.
+- The spoken words only select a fixed intent; they are never a tool input, a command line or a URL. The one exception is the web-search query (at most 80 characters), the single input of `web-search.search_confirmed`, which is `external`, so a person approves the exact query before it leaves the computer; voice cannot approve, and the audit log never holds the query. Tool output is untrusted data, summarised into a fixed sentence, with wake-phrase-like text in third-party fields (repository, branch, track, container names) removed before it is spoken.
 - No new Fawkes state. No audio file is written by Phoenix, and the transcript is never stored, put in an event or in the audit log.
 - There is no speaker verification: any audio source in the room that says the wake phrase can trigger read-only requests and "deny". It can never approve or run a write. This is documented, not fixed.
 - Fawkes's own speech could re-trigger it; the page drops microphone frames while speaking plus a one-second tail, but real echo behaviour was not tested.
@@ -53,7 +53,7 @@ Talk to Fawkes hands-free and have it answer and act through Phoenix's capabilit
 
 A static review (not a human audit) found that the voice timeout loop could deny confirmations raised by other actors. The loop was removed: after its wait voice aborts only its own call and leaves other actors' confirmations for the person.
 
-What was not done or not run: any real microphone, whisper pass, wake recognition, speech synthesis (including the browser's speech-end events) or room echo; whole-app CPU measurement; web search; voice play, pause or skip; a desktop implementation (`apps/desktop`); speaker verification. Open items are in the [gap register](../gaps.md).
+What was not done or not run: any real microphone, whisper pass, wake recognition, speech synthesis (including the browser's speech-end events) or room echo; whole-app CPU measurement; a run of web search against a real search service or with a real key (it was only tested against a local mock); voice play, pause or skip; a desktop implementation (`apps/desktop`); speaker verification. Open items are in the [gap register](../gaps.md).
 
 ## Notes & risks
 

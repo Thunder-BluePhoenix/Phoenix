@@ -74,13 +74,54 @@ by Core (HMAC-SHA256 under `teams_link_key`, bound to source, id, request hash a
 (`openTeamsLink`) verifies the signature, expiry, that the request is still pending, switched on and
 unchanged, then **shows** it. The decision is made inside Phoenix by the existing desktop path under the
 person's own actor. The webhook URL is a credential and must be https on a Microsoft webhook host.
-No `phoenix://` URL handler exists in the repo yet (see below).
+The desktop shell now registers and handles `phoenix://approvals/…` (see
+[The `phoenix://` handler](#the-phoenix-handler)); the shell does **not** call `openTeamsLink` (it holds no
+Core secret), so a Teams link's signature is not checked by the shell, only the link's shape.
 
 ## Notifications and digests (opt-in)
 
 Per provider `notify` (generic notice for requests not on for chat) and `digest` (counts only; project
 names only for projects switched on). Both default off. Commands `post_pending` and `post_digest` are
 `external` side effects and confirm every time.
+
+### Scheduled digest (opt-in, default off)
+
+Config `digest_schedule: { enabled, interval_minutes, quiet_hours }`, **off by default**, and sent only to
+providers whose own `digest` switch is also on. The destination is the already configured, ID-validated
+channel (Slack channel id, Discord channel id, Teams webhook) through the same transport host allow-list
+as a card; **there is no DM destination** (only the configured channel id is ever used). It adds no new
+recipient and no new credential.
+
+- **Content** (`formatDigest`, `src/digest.ts`): counts of pending and decided approvals since the last
+  digest, plus up to 5 pending approvals named by short id and action (tool) name, only for projects
+  switched on for chat. Ids and action names are cut to `[A-Za-z0-9_-]`, so no URL, mention, markup or
+  hidden character can ride along. Never a title, request body, path, command, project name, secret or
+  agent output. At most 600 characters, control characters stripped.
+- **Schedule** (`tickDigest`, driven by Core's 5-minute timer in `ChatApprovalsService`): at most one per
+  interval (minimum 60 minutes, default 24 hours), the first check after switching on only starts the
+  interval, nothing is sent in quiet hours (it waits for the next check; an unknown time zone or bad time
+  counts as quiet), nothing is sent when nothing was decided and no new request is pending. A failed send
+  still uses up the interval. The time of the last attempt is kept in the settings store
+  (`chat-approvals.digest.last`, a single number).
+- **Counting** uses only the `outcome` word of `agent.approval.resolved` and
+  `security.confirmation.resolved`; counts live in memory and are lost on restart.
+- **Audit:** every send attempt records `chat.digest.sent` (actor `chat:scheduler`; provider names and
+  counts only). The timer does nothing while the capability is disabled or the kill switch is on.
+- The manual `post_digest` command (confirmation-gated) is unchanged.
+
+## The `phoenix://` handler
+
+macOS: `Info.plist` declares `CFBundleURLTypes` for the scheme `phoenix` and Tauri delivers an opened URL
+as `RunEvent::Opened` (no plugin, no new crate; the official deep-link plugin is not in `Cargo.lock`).
+`apps/desktop/src-tauri/src/deeplink.rs` accepts only `phoenix://approvals/<id>` (`[A-Za-z0-9_-]{1,64}`)
+and the Teams form `phoenix://approvals/open?…` (query never read), lowercase scheme and host, no userinfo,
+port, fragment, escapes, extra segments or non-ASCII. The id is dropped and the shell opens the **fixed**
+route `/panel/overview` (where pending approvals are listed) in the browser through the same
+`open_in_phoenix` seam. Nothing from the URL is executed, fetched or forwarded and the link decides nothing.
+Only the first URL of an event is considered. Windows and Linux have no handler (they would need the
+deep-link plugin or single-instance argv handling). It was **not** tried with a real macOS URL open or an
+installed bundle: the tests are a pure parser test, a check that `Info.plist` declares the scheme, and a
+lifecycle test with Tauri's mock runtime calling `open_links`.
 
 ## Configuration
 
@@ -104,6 +145,11 @@ names only for projects switched on). Both default off. Commands `post_pending` 
     "approvers": ["<user id>"],
   },
   "teams": { "enabled": true, "notify": false, "digest": false },
+  "digest_schedule": {
+    "enabled": false,
+    "interval_minutes": 1440,
+    "quiet_hours": { "timezone": "UTC", "start": "22:00", "end": "07:00" },
+  },
 }
 ```
 
@@ -127,13 +173,17 @@ names only for projects switched on). Both default off. Commands `post_pending` 
   `discord.com` and Teams webhook hosts; 15 s timeout; 64 KiB response cap.
 - **Privacy.** The stored config is listed as privacy row `chat_approvals_config`.
 - **Tests.** `core/runtime/test/chat-approvals-wiring.test.ts` (7, real running Core, guards
-  mutation-checked) and `chat-approvals-service.test.ts` (3).
+  mutation-checked) and `chat-approvals-service.test.ts` (3); digest: `capabilities/chat-approvals/test/digest.test.ts`
+  (13) and `core/runtime/test/chat-approvals-digest.test.ts` (3); handler: `deeplink.rs` unit tests (7) and
+  `apps/desktop/src-tauri/tests/lifecycle.rs` (one case). All simulated.
 
 ## Still not done
 
-- A `phoenix://approvals/open` handler calling `openTeamsLink`.
+- A `phoenix://` handler on Windows and Linux, and any run against a real macOS URL open; the handler does
+  not call `openTeamsLink` and does not select a particular approval.
 - Teams inbound approval (Teams stays notify-only).
-- A real Slack/Discord workspace; channel and DM digests.
+- A real Slack/Discord workspace; DM digests (only the configured channel is used); a Settings UI for
+  `digest_schedule` (it is config only).
 - A UI to enter the secrets.
 
 ## Limitations

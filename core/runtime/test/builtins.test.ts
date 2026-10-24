@@ -57,6 +57,7 @@ describe("built-in capabilities", () => {
         "status-lights",
         "stripe",
         "terminal",
+        "web-search",
         "vercel",
       ].sort(),
     );

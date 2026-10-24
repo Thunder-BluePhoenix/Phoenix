@@ -66,8 +66,19 @@ export const ports: Record<keyof typeof enports, string> = {
   "ports.force.hint":
     "Phoenix rechaza forzar la detención durante los primeros segundos tras la petición de cerrar.",
   "ports.force.confirm": "Forzar detención",
+  "ports.restart": "Reiniciar…",
+  "ports.restart.label": "Reiniciar {name} en el puerto {port}",
+  "ports.restart.title": "¿Reiniciar {name} en el puerto {port}?",
+  "ports.restart.body":
+    "Tras tu aprobación, Phoenix pide a {name} (proceso {pid}) que se cierre y, solo si termina, inicia la receta de reinicio que configuraste, exactamente como se muestra abajo. El programa puede perder trabajo sin guardar. Si el inicio falla, el programa queda detenido.",
+  "ports.restart.recipe": "Receta",
+  "ports.restart.argv": "Programa y argumentos",
+  "ports.restart.cwd": "Carpeta",
+  "ports.restart.go": "Pedir reinicio",
+  "ports.restart.started":
+    "{name} se detuvo y se inició la receta {recipe} (proceso {pid}). Phoenix aún no puede saber si vuelve a escuchar; analiza de nuevo.",
   "ports.restart.note":
-    "Reiniciar no está disponible: Phoenix no puede reconstruir de forma segura el comando original de un programa.",
+    "Reiniciar solo se ofrece para un programa en un puerto para el que escribiste una receta de reinicio en los ajustes de esta capacidad. Phoenix nunca reconstruye un comando a partir de un programa en ejecución.",
   "ports.watch.label": "Actualizar automáticamente mientras Phoenix está abierto",
   "ports.watch.help":
     "Desactivado por defecto. Si se activa, Phoenix lee la lista de puertos cada 15 segundos, solo mientras haya una ventana de Phoenix abierta.",

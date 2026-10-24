@@ -14,6 +14,14 @@
 import { defineCapability, type CapabilityContext, type CapabilityModule } from "@phoenix/sdk";
 import { ApprovalBinding, AuditThrottle, ReplayGuard } from "./binding";
 import { cardView, digestText, cardText } from "./cards";
+import {
+  decidedTotal,
+  digestVerdict,
+  emptyActivity,
+  formatDigest,
+  type DigestActivity,
+  type DigestSkip,
+} from "./digest";
 import { CONFIG_SCHEMA, chatAllowed, parseConfig, providerReady, type ChatConfig } from "./config";
 import {
   discordCardBody,
@@ -61,6 +69,7 @@ import {
 export * from "./binding";
 export * from "./cards";
 export * from "./config";
+export * from "./digest";
 export * from "./discord";
 export * from "./headers";
 export * from "./slack";
@@ -93,6 +102,11 @@ export interface ChatApprovalsOptions {
    * of the stored config here. Default: the config the capability was enabled with.
    */
   config?: () => Readonly<Record<string, unknown>>;
+  /**
+   * Where the time of the last scheduled digest is kept, so a restart cannot send a second one
+   * inside the interval. Default: memory only (a restart starts the interval again).
+   */
+  digestClock?: { read(): number | undefined; write(at: number): void };
 }
 
 export type TeamsLinkResult =
@@ -111,6 +125,12 @@ export interface DigestResult {
   text: string;
 }
 
+export interface DigestTickResult {
+  /** `sent` or why nothing was sent. */
+  outcome: "sent" | "failed" | DigestSkip;
+  sent: Record<Provider, boolean>;
+}
+
 /** What {@link createChatApprovals} returns. */
 export interface ChatApprovals {
   /** Register with the capability manager. */
@@ -121,6 +141,10 @@ export interface ChatApprovals {
   openTeamsLink(link: string): Promise<TeamsLinkResult>;
   postPending(): Promise<PostPendingResult>;
   postDigest(): Promise<DigestResult>;
+  /** Counts one decision (`approved`, `denied`, `expired`, anything else) for the next digest. Counts only. */
+  noteDecision(outcome: keyof DigestActivity): void;
+  /** One check of the opt-in schedule: sends a digest only when it is due, outside quiet hours and news. */
+  tickDigest(): Promise<DigestTickResult>;
   binding: ApprovalBinding;
 }
 
@@ -134,6 +158,10 @@ export function createChatApprovals(options: ChatApprovalsOptions): ChatApproval
   const replay = new ReplayGuard(SIGNATURE_WINDOW_MS * 2);
   const throttle = new AuditThrottle(options.audit);
   const posted = new Map<string, string>();
+  let activity = emptyActivity();
+  /** Pending requests the last digest already counted; only a different one is news. */
+  let reported = new Set<string>();
+  let lastDigestAt: number | undefined = options.digestClock?.read();
 
   const secret = async (name: string): Promise<string> => (await ctx?.secret(name)) ?? "";
 
@@ -363,6 +391,9 @@ export function createChatApprovals(options: ChatApprovalsOptions): ChatApproval
     return result;
   }
 
+  const wantsDigest = (cfg: ChatConfig, p: Provider): boolean =>
+    p === "teams" ? cfg.teams.enabled && cfg.teams.digest : providerReady(cfg, p) && cfg[p].digest;
+
   /** Counts only, to the providers whose `digest` switch is on. Names no title or command. */
   async function postDigest(): Promise<DigestResult> {
     const cfg = config();
@@ -372,13 +403,68 @@ export function createChatApprovals(options: ChatApprovalsOptions): ChatApproval
     });
     const sent: Record<Provider, boolean> = { slack: false, discord: false, teams: false };
     for (const p of ["slack", "discord", "teams"] as const) {
-      const on =
-        p === "teams"
-          ? cfg.teams.enabled && cfg.teams.digest
-          : providerReady(cfg, p) && cfg[p].digest;
-      if (on) sent[p] = await noticeTo(p, cfg, text);
+      if (wantsDigest(cfg, p)) sent[p] = await noticeTo(p, cfg, text);
     }
     return { sent, text };
+  }
+
+  const pendingKey = (s: ApprovalSnapshot): string => `${s.source}:${s.id}`;
+
+  /**
+   * The opt-in schedule (config `digest_schedule`, default off). Goes only to the providers whose own
+   * `digest` switch is on, through the same channel and the same transport as a card. At most one
+   * per interval (the attempt time is stored), never in quiet hours, never when nothing happened.
+   * The text is `formatDigest`: counts, short ids and action names, nothing from a request body.
+   */
+  async function tickDigest(): Promise<DigestTickResult> {
+    const cfg = config();
+    const sent: Record<Provider, boolean> = { slack: false, discord: false, teams: false };
+    const at = now();
+    const pending = options.host.pending();
+    const verdict = digestVerdict({
+      schedule: cfg.digestSchedule,
+      now: at,
+      lastAt: lastDigestAt,
+      hasDestination: (["slack", "discord", "teams"] as const).some((p) => wantsDigest(cfg, p)),
+      hasNews: decidedTotal(activity) > 0 || pending.some((s) => !reported.has(pendingKey(s))),
+    });
+    if (verdict === "off") {
+      lastDigestAt = undefined;
+      return { outcome: verdict, sent };
+    }
+    if (verdict === "no_destination") return { outcome: verdict, sent };
+    if (lastDigestAt === undefined) {
+      // First check since it was switched on: the interval starts now, nothing is sent at once.
+      lastDigestAt = at;
+      options.digestClock?.write(at);
+      return { outcome: "not_due", sent };
+    }
+    if (verdict !== "send") return { outcome: verdict, sent };
+    const text = formatDigest({ pending, allowed: (s) => chatAllowed(cfg, s), activity });
+    for (const p of ["slack", "discord", "teams"] as const) {
+      if (wantsDigest(cfg, p)) sent[p] = await noticeTo(p, cfg, text);
+    }
+    const delivered = Object.values(sent).some(Boolean);
+    lastDigestAt = at;
+    options.digestClock?.write(at);
+    options.audit({
+      actor: "chat:scheduler",
+      action: "chat.digest.sent",
+      decision: delivered ? "allowed" : "blocked",
+      details: {
+        providers: (["slack", "discord", "teams"] as const).filter((p) => sent[p]),
+        pending: pending.length,
+        decided: decidedTotal(activity),
+      },
+    });
+    if (!delivered) return { outcome: "failed", sent };
+    activity = emptyActivity();
+    reported = new Set(pending.map(pendingKey));
+    return { outcome: "sent", sent };
+  }
+
+  function noteDecision(outcome: keyof DigestActivity): void {
+    if (outcome in activity) activity[outcome] += 1;
   }
 
   /**
@@ -504,5 +590,14 @@ export function createChatApprovals(options: ChatApprovalsOptions): ChatApproval
     },
   });
 
-  return { module, handleCallback, openTeamsLink, postPending, postDigest, binding };
+  return {
+    module,
+    handleCallback,
+    openTeamsLink,
+    postPending,
+    postDigest,
+    noteDecision,
+    tickDigest,
+    binding,
+  };
 }

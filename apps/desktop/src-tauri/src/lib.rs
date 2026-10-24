@@ -10,6 +10,7 @@
 mod awake_tray;
 mod connection;
 mod core_status;
+mod deeplink;
 mod dictation_hotkey;
 mod dictation_keys;
 mod dictation_paste;
@@ -764,6 +765,15 @@ fn open_route<R: Runtime>(app: &AppHandle<R>, route: &str) {
     }
 }
 
+/// A `phoenix://approvals/…` link was opened (macOS `RunEvent::Opened`). Only an exactly matching
+/// first URL does anything, and what it does is open the fixed approvals route: nothing from the URL
+/// is run, fetched or passed on (see `deeplink`).
+pub fn open_links<R: Runtime, S: AsRef<str>>(app: &AppHandle<R>, urls: &[S]) {
+    if let Some(route) = deeplink::route_for(urls) {
+        open_route(app, route);
+    }
+}
+
 /// What a global shortcut (or its menu twin) does.
 pub fn run_shortcut<R: Runtime>(app: &AppHandle<R>, action: shortcuts::Action) {
     let shell = app.state::<Shell<R>>();
@@ -1464,6 +1474,13 @@ pub fn run() {
                     api.prevent_exit();
                     return;
                 }
+            }
+            // A `phoenix://approvals/…` link opened from a chat message. Tauri delivers custom-scheme
+            // opens as `RunEvent::Opened` on macOS only; other platforms have no handler.
+            #[cfg(target_os = "macos")]
+            if let RunEvent::Opened { urls } = &event {
+                let urls: Vec<&str> = urls.iter().map(|u| u.as_str()).collect();
+                open_links(app, &urls);
             }
             // Keep the latest position.
             if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {

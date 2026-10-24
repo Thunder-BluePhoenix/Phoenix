@@ -65,8 +65,19 @@ export const ports = {
   "ports.force.hint":
     "Phoenix refuses force stop for the first few seconds after the request to quit.",
   "ports.force.confirm": "Force stop",
+  "ports.restart": "Restart…",
+  "ports.restart.label": "Restart {name} on port {port}",
+  "ports.restart.title": "Restart {name} on port {port}?",
+  "ports.restart.body":
+    "After you approve it, Phoenix asks {name} (process {pid}) to quit and, only if it exits, starts the restart recipe you configured, exactly as shown below. The program may lose unsaved work. If the start fails, the program stays stopped.",
+  "ports.restart.recipe": "Recipe",
+  "ports.restart.argv": "Program and arguments",
+  "ports.restart.cwd": "Folder",
+  "ports.restart.go": "Ask to restart",
+  "ports.restart.started":
+    "{name} was stopped and the recipe {recipe} was started (process {pid}). Phoenix cannot tell whether it listens again yet; scan again.",
   "ports.restart.note":
-    "Restarting is not available: Phoenix cannot rebuild a program's original command safely.",
+    "Restart is offered only for a program on a port for which you wrote a restart recipe in the settings of this capability. Phoenix never rebuilds a command from a running program.",
   "ports.watch.label": "Refresh automatically while Phoenix is open",
   "ports.watch.help":
     "Off by default. When on, Phoenix reads the port list every 15 seconds, only while a Phoenix window is open.",

@@ -50,6 +50,7 @@
     "@phoenix/capability-stripe": "workspace:*",
     "@phoenix/capability-terminal": "workspace:*",
     "@phoenix/capability-vercel": "workspace:*",
+    "@phoenix/capability-web-search": "workspace:*",
     "@phoenix/capability-youtube-music": "workspace:*",
     "@phoenix/config": "workspace:*",
     "@phoenix/event-bus": "workspace:*",

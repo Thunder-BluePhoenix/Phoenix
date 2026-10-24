@@ -6,7 +6,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PortRadar } from "../src/components/PortRadar";
 import { PhoenixClient } from "../src/core/client";
 import { CoreProvider } from "../src/core/context";
-import { ageParts, localhostUrl, readPortsSnapshot, readStopResult } from "../src/core/ports";
+import {
+  ageParts,
+  localhostUrl,
+  readPortsSnapshot,
+  readRestartResult,
+  readStopResult,
+} from "../src/core/ports";
 import { I18nProvider } from "../src/i18n";
 import { resetActive } from "../src/i18n/store";
 import { fakeApi, type FakeApi } from "./fake-api";
@@ -402,10 +408,104 @@ describe("stopping", () => {
     expect(screen.queryByText("node stopped.")).toBeNull();
   });
 
-  it("says restart is not available instead of offering one", async () => {
+  it("offers no Restart button for a program without a recipe, and says when it is offered", async () => {
     mount([port()]);
     await screen.findByRole("button", { name: "Scan now" });
-    expect(screen.getByText(/Restarting is not available/)).toBeTruthy();
+    expect(screen.getByText(/Restart is offered only for a program on a port/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /restart/i })).toBeNull();
+  });
+});
+
+describe("restarting with an owner's recipe", () => {
+  const ARGV = JSON.stringify(["/Users/ada/bin/serve", "--port", "3000"]);
+  const offer = { recipe: "app", argv: ARGV, cwd: "/Users/ada/code/app" };
+  const body = { pid: 4242, port: 3000, start: START, command: COMMAND, uid: 501, ...offer };
+  const restarted = (over: Record<string, unknown> = {}) => ({
+    pid: 4242,
+    port: 3000,
+    name: "node",
+    recipe: "app",
+    exited: true,
+    started: true,
+    new_pid: 9000,
+    can_force: false,
+    ...over,
+  });
+  const routes = (result: Record<string, unknown>) => ({
+    "POST /api/capabilities/ports/commands/restart_process": () => ({ id: "op-restart" }),
+    "GET /api/operations/op-restart": () => ({ status: "succeeded", result }),
+  });
+
+  it("Restart shows the recipe name, exact argument list and folder, and sends nothing until confirmed", async () => {
+    const m = mount([port({ restart: offer })], { routes: routes(restarted()) });
+    const table = await scanNow();
+    fireEvent.click(within(table).getByRole("button", { name: "Restart node on port 3000" }));
+    const group = await screen.findByRole("group");
+    expect(within(group).getByText("app")).toBeTruthy();
+    expect(within(group).getByText(ARGV)).toBeTruthy();
+    expect(within(group).getByText("/Users/ada/code/app")).toBeTruthy();
+    expect(m.api.posts("/api/capabilities/ports/commands/restart_process")).toEqual([]);
+    fireEvent.click(within(group).getByRole("button", { name: "Cancel" }));
+    expect(m.api.posts("/api/capabilities/ports/commands/restart_process")).toEqual([]);
+  });
+
+  it("confirming sends the proof and exactly the text shown, then reports that the recipe was started", async () => {
+    const m = mount([port({ restart: offer })], { routes: routes(restarted()) });
+    const table = await scanNow();
+    fireEvent.click(within(table).getByRole("button", { name: "Restart node on port 3000" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Ask to restart" }));
+    await waitFor(() =>
+      expect(
+        m.api.posts("/api/capabilities/ports/commands/restart_process").map((c) => c.body),
+      ).toEqual([{ input: body }]),
+    );
+    expect(await screen.findByText(/the recipe app was started \(process 9000\)/)).toBeTruthy();
+    await waitFor(() => expect(m.scans()).toBe(2));
+    expect(m.api.posts("/api/capabilities/ports/commands/stop_process")).toEqual([]);
+    expect(m.api.posts("/api/capabilities/ports/commands/force_stop")).toEqual([]);
+  });
+
+  it("a program that did not exit is not claimed as restarted: it is shown still running with a separate Force stop", async () => {
+    mount([port({ restart: offer })], {
+      routes: routes(restarted({ exited: false, started: false, new_pid: null, can_force: true })),
+    });
+    const table = await scanNow();
+    fireEvent.click(within(table).getByRole("button", { name: "Restart node on port 3000" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Ask to restart" }));
+    expect(await screen.findByText(/still running/)).toBeTruthy();
+    expect(screen.queryByText(/was started/)).toBeNull();
+  });
+
+  it("a failed restart (for example the start failed after the stop) shows Core's words and reads the list again", async () => {
+    const m = mount([port({ restart: offer })], {
+      routes: {
+        "POST /api/capabilities/ports/commands/restart_process": () => ({ id: "op-restart" }),
+        "GET /api/operations/op-restart": () => ({
+          status: "failed",
+          error: { message: "The program was stopped, but the recipe could not be started." },
+        }),
+      },
+    });
+    const table = await scanNow();
+    fireEvent.click(within(table).getByRole("button", { name: "Restart node on port 3000" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Ask to restart" }));
+    expect(await screen.findByText(/The program was stopped, but the recipe/)).toBeTruthy();
+    expect(screen.queryByText(/was started/)).toBeNull();
+    await waitFor(() => expect(m.scans()).toBe(2));
+  });
+
+  it("a process Phoenix would refuse to stop gets no Restart button even if a recipe is offered", async () => {
+    mount([port({ restart: offer, stoppable: false, refusal: "system" })]);
+    const table = await scanNow();
+    expect(within(table).queryByRole("button", { name: /Restart/ })).toBeNull();
+  });
+
+  it("a malformed offer makes the whole list untrusted", () => {
+    expect(readPortsSnapshot(snapshot([port({ restart: { recipe: 1 } })]))).toBeNull();
+    expect(readPortsSnapshot(snapshot([port({ restart: offer })]))?.ports[0]?.restart).toEqual(
+      offer,
+    );
+    expect(readRestartResult({ ...restarted(), started: "yes" })).toBeNull();
+    expect(readRestartResult(restarted())?.new_pid).toBe(9000);
   });
 });

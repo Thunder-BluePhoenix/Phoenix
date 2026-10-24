@@ -45,6 +45,35 @@ export interface PortsFs {
   exists(path: string): Promise<boolean>;
 }
 
+/** What `inspect` knows about a path after following every symlink. */
+export interface PathFacts {
+  /** The real path (symlinks resolved). */
+  real: string;
+  kind: "file" | "directory" | "other";
+  /** The permission bits (`mode & 0o7777`). */
+  mode: number;
+}
+
+/** Looks at one path. Answers undefined when it does not exist or cannot be read; never throws. */
+export type Inspect = (path: string) => Promise<PathFacts | undefined>;
+
+/** What a restart asks the OS to start: argv-only, no shell, a fixed working directory and environment. */
+export interface SpawnRequest {
+  /** The executable (real path); `args` follow it. */
+  file: string;
+  args: readonly string[];
+  cwd: string;
+  /** The WHOLE environment of the new process: nothing is inherited. */
+  env: Readonly<Record<string, string>>;
+}
+
+/**
+ * Starts one detached process with no stdin or output attached and no shell. Resolves with its pid
+ * once the OS has started it (not once it listens); rejects with an `Error` whose message is a fixed
+ * code when it could not be started. The only implementation that spawns is `realSpawner` (real.ts).
+ */
+export type Spawner = (request: SpawnRequest) => Promise<{ pid: number }>;
+
 /** Waits `ms`, or less if `signal` aborts. Tests replace it to control time. */
 export type Sleep = (ms: number, signal: AbortSignal) => Promise<void>;
 
@@ -67,6 +96,10 @@ export interface PortsEnv {
   /** Epoch milliseconds. */
   now(): number;
   sleep: Sleep;
+  /** Core's own environment (the names a restart recipe may copy are chosen by the owner's config). */
+  environ: Readonly<Record<string, string | undefined>>;
+  inspect: Inspect;
+  spawn: Spawner;
 }
 
 export type Collector = "lsof" | "ss" | "netstat";
@@ -107,7 +140,8 @@ export type PortsErrorKind =
   | "changed"
   | "refused"
   | "too_early"
-  | "term_first";
+  | "term_first"
+  | "spawn_failed";
 
 /** Why a process may not be stopped from here. Shown to the user as a fixed sentence. */
 export type StopRefusal =

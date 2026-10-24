@@ -13,6 +13,7 @@ import {
 } from "./parse";
 import { baseName, isForgotten, isHeavy, stopRefusal, type Thresholds } from "./policy";
 import { findProject } from "./project";
+import { renderArgv, type RecipeTable } from "./recipes";
 import type { Collector, PortsEnv, StopRefusal } from "./types";
 
 /** Which interfaces a port accepts connections from. */
@@ -45,6 +46,12 @@ export interface PortEntry {
   is_core: boolean;
   /** `http://127.0.0.1:<port>/` when a connection to 127.0.0.1 reaches this socket, else null. */
   url: string | null;
+  /**
+   * The owner's restart recipe declared for this port, and only when this process may be stopped:
+   * the name, the argv (JSON) and the folder exactly as the approval prompt will show them. Never
+   * derived from the process itself.
+   */
+  restart: { recipe: string; argv: string; cwd: string } | null;
 }
 
 export interface PortsSnapshot {
@@ -87,7 +94,20 @@ async function tableOrUndefined(env: PortsEnv): Promise<PsParse | undefined> {
   }
 }
 
-export async function buildSnapshot(env: PortsEnv, thresholds: Thresholds): Promise<PortsSnapshot> {
+/** The recipe the owner declared for `port`, if any. The port is the only link between a process and a recipe. */
+function restartOffer(recipes: RecipeTable, port: number): PortEntry["restart"] {
+  for (const [name, recipe] of Object.entries(recipes)) {
+    if (recipe.ports.includes(port))
+      return { recipe: name, argv: renderArgv(recipe.argv), cwd: recipe.cwd };
+  }
+  return null;
+}
+
+export async function buildSnapshot(
+  env: PortsEnv,
+  thresholds: Thresholds,
+  recipes: RecipeTable = {},
+): Promise<PortsSnapshot> {
   const collected = await collectListeners(env);
   const { collector, listeners } = collected;
   const merged = new Map<string, Merged>();
@@ -149,6 +169,7 @@ export async function buildSnapshot(env: PortsEnv, thresholds: Thresholds): Prom
       refusal: refusal ?? null,
       is_core: m.pid === env.pid,
       url: reachable ? `http://127.0.0.1:${m.port}/` : null,
+      restart: refusal === undefined ? restartOffer(recipes, m.port) : null,
     });
     if (entries.length >= MAX_PORTS) break;
   }

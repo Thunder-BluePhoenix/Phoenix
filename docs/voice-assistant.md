@@ -50,19 +50,57 @@ so in a room where people talk, a recogniser pass runs per utterance. Consequenc
 Intent matching is a deterministic phrase matcher (`ai/multimodal/src/voice/intent.ts`). The spoken
 words only **select** a fixed intent; they are never a tool input, a command line or a URL.
 
-| You say                                                                                                           | Result                                                                                                                                                                                                                                                                     |
-| ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| "what is my git status", "github status", "docker containers", "service status"                                   | Runs the matching enabled read-only tool (`git.status`, `github.status`, `docker.containers`) through the tool gateway and speaks a fixed-shape sentence built from counts and clipped names.                                                                              |
-| "what am I listening to"                                                                                          | Runs `spotify.now_playing`, `apple-music.now_playing` or `mpris.now_playing` **if that capability is enabled** (matched by tool name); otherwise says "No music service is enabled".                                                                                       |
-| "search the web …"                                                                                                | "Web search is not available in Phoenix." No such capability exists (see GAPS in the report).                                                                                                                                                                              |
-| "switch to the pill", "next pill", "previous pill"                                                                | The reply carries a `switch_pill` UI action with a `direction` (`next` or `previous`); the page runs the same pill command as the Phoenix shortcut and palette: it selects the next or previous active source pill and opens the page that shows it. Core acts on nothing. |
-| "draft an email about …"                                                                                          | The reply carries a `mailto:` draft link made by Core (URL-encoded, ≤ 300 chars). The page shows it as a link **you** click. Fawkes never sends mail.                                                                                                                      |
-| "deny" / "reject" / "cancel that"                                                                                 | Denies every waiting confirmation.                                                                                                                                                                                                                                         |
-| anything that sounds like an action ("send", "delete", "deploy", "play", "pause", "yes", "approve", "confirm", …) | Refused with a spoken explanation.                                                                                                                                                                                                                                         |
+| You say                                                                                                           | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "what is my git status", "github status", "docker containers", "service status"                                   | Runs the matching enabled read-only tool (`git.status`, `github.status`, `docker.containers`) through the tool gateway and speaks a fixed-shape sentence built from counts and clipped names.                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| "what am I listening to"                                                                                          | Runs `spotify.now_playing`, `apple-music.now_playing` or `mpris.now_playing` **if that capability is enabled** (matched by tool name); otherwise says "No music service is enabled".                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| "search the web for …", "search for …", "look up …"                                                               | **Needs your approval every time.** Runs `web-search.search_confirmed` (an `external` command of the `web-search` capability, **only if you enabled it and set a Brave Search key**; otherwise "Web search is not enabled."). The words after the verb (at most 80 characters, so you can read all of them) are the one input of that call. Core shows the whole query in an approval card, and **nothing is sent until you approve it in the Pet Panel**; voice can only deny, and spoken "yes" or "approve" is refused. The spoken answer is a fixed sentence ("The search found 3 results. The first is …"), never the result text as an instruction. |
+| "switch to the pill", "next pill", "previous pill"                                                                | The reply carries a `switch_pill` UI action with a `direction` (`next` or `previous`); the page runs the same pill command as the Phoenix shortcut and palette: it selects the next or previous active source pill and opens the page that shows it. Core acts on nothing.                                                                                                                                                                                                                                                                                                                                                                               |
+| "draft an email about …"                                                                                          | The reply carries a `mailto:` draft link made by Core (URL-encoded, ≤ 300 chars). The page shows it as a link **you** click. Fawkes never sends mail.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| "deny" / "reject" / "cancel that"                                                                                 | Denies every waiting confirmation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| anything that sounds like an action ("send", "delete", "deploy", "play", "pause", "yes", "approve", "confirm", …) | Refused with a spoken explanation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 A tool is eligible only if the live registry lists it with side effect `none` or `read` **and** it
 needs no input. The check runs twice: when the intent is chosen and again immediately before the
-call. Tools with writes, execution or external effects are unreachable by any phrase.
+call. Tools with writes, execution or external effects are unreachable by any phrase, **with one
+named exception: `web-search.search_confirmed`** (next section).
+
+## Web search (the query leaves this computer)
+
+"Search the web for cats" sends the words **"cats" to the search host** (Brave Search,
+`https://api.search.brave.com`; see `capabilities/web-search/README.md`). That is the one thing in
+Phoenix voice that sends spoken text off the device, so it is held to the rules for external
+actions:
+
+- The request must **start** with "search (the web|the internet) (for|about)", "search for" or "look
+  up"; a sentence that merely mentions the web is refused with a hint. The query is the rest of the
+  phrase, lower-cased with punctuation removed, **at most 80 characters** (longer is refused, not cut).
+- Voice may call only the tool named `web-search.search_confirmed`, and only while the registry
+  lists it exactly as built: side effect `external` and an input of one required `query` with no
+  other property. The same check runs again immediately before the call. If the registry says
+  `read` for that name (no approval) the call is refused. The plain `web-search.search` read command
+  is never named by voice.
+- `external` means Core asks a person **before every call**, and the approval card shows the whole
+  query (`[query: …]`). Voice runs as `{ kind: "agent", id: "voice", trustedByUser: false }`; it has no
+  approve method and spoken approvals are refused. If nobody approves within 60 s voice withdraws its
+  own request and nothing is sent.
+- Before the card is raised, the capability manager refuses a query that looks like a credential;
+  after approval, the capability checks again with the agent secret detector and refuses, so a spoken
+  or misrecognised key is never sent to a search host.
+- Results are untrusted text. The spoken sentence has a fixed shape (count and first title only,
+  with wake-phrase-like text removed). Titles, snippets and links are never followed or fetched.
+- Words that sound like actions ("delete", "send", "yes") **inside** a search are just query text:
+  the query feeds only the one search tool, and a person still approves it. A phrase that does not
+  start with the search verb ("delete my files then search the web for cats") is refused as before.
+- The audit log has `voice.request` (intent kind `web_search`) and `voice.action` (tool name and
+  outcome), **never the query**. The tool gateway's own record carries only the tool name. The query
+  is in the approval card and in the request to the search host.
+
+**What was verified:** only fakes. `ai/multimodal/test/voice/wake-intent.test.ts` (intent, registry
+shape, dispatch), `core/runtime/test/voice-web-search.test.ts` (real tool gateway, permission gateway
+and capability manager against a loopback mock: nothing sent before approval, decline, timeout,
+secret-bearing query, capability not enabled) and `capabilities/web-search/test/`. **No real search
+service was contacted, no real key was used and no speech recogniser heard a real query.**
 
 ## Same approvals as a click; voice may deny, never approve
 
@@ -131,6 +169,6 @@ What it does **not** show, and therefore the exit criterion "< 1 % CPU when idle
 ## Files
 
 `ai/multimodal/src/voice/` (vad, utterance, wake, intent, summary, dispatch, sessions, settings),
-`core/runtime/src/voice.ts`, `core/api/src/voice-{routes,socket}.ts`,
+`core/runtime/src/voice.ts`, `core/api/src/voice-{routes,socket}.ts`, `capabilities/web-search/` (the search),
 `apps/web/src/components/Voice.tsx`, `apps/web/src/core/voice{,-assistant}.ts`,
 `scripts/bench-voice-vad.ts`.

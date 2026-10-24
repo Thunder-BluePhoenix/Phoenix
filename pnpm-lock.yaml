@@ -851,6 +851,25 @@ importers:
         specifier: workspace:*
         version: link:../../sdk/testing
 
+  capabilities/web-search:
+    dependencies:
+      '@phoenix/capability-agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@phoenix/logging':
+        specifier: workspace:*
+        version: link:../../core/logging
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+      '@phoenix/service-kit':
+        specifier: workspace:*
+        version: link:../../sdk/service-kit
+    devDependencies:
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
   capabilities/youtube-music:
     dependencies:
       '@phoenix/sdk':
@@ -1111,6 +1130,9 @@ importers:
       '@phoenix/capability-vercel':
         specifier: workspace:*
         version: link:../../capabilities/vercel
+      '@phoenix/capability-web-search':
+        specifier: workspace:*
+        version: link:../../capabilities/web-search
       '@phoenix/capability-youtube-music':
         specifier: workspace:*
         version: link:../../capabilities/youtube-music

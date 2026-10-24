@@ -63,7 +63,19 @@ export const ports: Record<keyof typeof enports, string> = {
   "ports.force.label": "强制停止端口 {port} 上的 {name}",
   "ports.force.hint": "请求退出后的最初几秒内，Phoenix 会拒绝强制停止。",
   "ports.force.confirm": "强制停止",
-  "ports.restart.note": "不支持重启：Phoenix 无法安全地重建程序的原始命令。",
+  "ports.restart": "重启…",
+  "ports.restart.label": "重启端口 {port} 上的 {name}",
+  "ports.restart.title": "重启端口 {port} 上的 {name}？",
+  "ports.restart.body":
+    "你批准后，Phoenix 会请求 {name}（进程 {pid}）退出，并且只有它退出后，才会严格按下方所示启动你配置的重启配方。程序可能丢失未保存的工作。如果启动失败，程序保持停止。",
+  "ports.restart.recipe": "配方",
+  "ports.restart.argv": "程序和参数",
+  "ports.restart.cwd": "文件夹",
+  "ports.restart.go": "请求重启",
+  "ports.restart.started":
+    "{name} 已停止，配方 {recipe} 已启动（进程 {pid}）。Phoenix 暂时无法确认它是否重新监听；请再次扫描。",
+  "ports.restart.note":
+    "只有为某个端口在本功能设置中写了重启配方，才会为该端口上的程序提供重启。Phoenix 绝不会从正在运行的程序重建命令。",
   "ports.watch.label": "Phoenix 打开时自动刷新",
   "ports.watch.help":
     "默认关闭。开启后，Phoenix 每 15 秒读取一次端口列表，且仅在 Phoenix 窗口打开时进行。",

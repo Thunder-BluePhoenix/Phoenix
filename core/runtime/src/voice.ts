@@ -11,7 +11,9 @@
 //     `resolveConfirmation(id, false, "voice")`.
 //   * Tool calls go through `ToolGateway.call` as an actor that does NOT claim `trustedByUser`, so
 //     the policy engine asks a person for anything above low risk. The call is built here from a
-//     tool name chosen in the registry, with empty input; the spoken text is never part of it.
+//     tool name chosen in the registry, with empty input; the spoken text is never part of it, except
+//     the query of the confirmed web search (`web-search.search_confirmed`, an `external` command):
+//     the capability manager asks a person to approve that exact query, and voice can only deny.
 //   * Fawkes shows LISTENING only during the awake window (after "OK Fawkes"). While it is waiting
 //     for the wake phrase nothing is shown by a state rule; the page shows its own indicator and
 //     `GET /api/voice/status` reports the session, so the two are distinguishable.
@@ -124,9 +126,15 @@ export function voiceActions(gateway: ToolGateway): VoiceActions {
         sideEffect: t.sideEffect,
         inputSchema: t.inputSchema,
       })),
-    call: async (tool, signal) => {
+    call: async (tool, signal, input) => {
       const result = await gateway.call(
-        { actor: VOICE_ACTOR, tool, input: {}, environment: "local", dataClass: "internal" },
+        {
+          actor: VOICE_ACTOR,
+          tool,
+          input: input ?? {},
+          environment: "local",
+          dataClass: "internal",
+        },
         { signal },
       );
       return { output: result.output };

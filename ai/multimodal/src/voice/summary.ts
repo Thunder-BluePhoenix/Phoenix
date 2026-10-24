@@ -65,6 +65,19 @@ function nowPlaying(output: Record<string, unknown>): string | null {
   return artist ? `Playing ${title} by ${artist}.` : `Playing ${title}.`;
 }
 
+function searchResults(output: Record<string, unknown>): string | null {
+  const results = output.results;
+  if (!Array.isArray(results)) return null;
+  if (results.length === 0) return "The search found no results.";
+  const first = results[0];
+  const title =
+    typeof first === "object" && first !== null
+      ? field((first as Record<string, unknown>).title)
+      : null;
+  const count = plural(results.length, "result");
+  return title ? `The search found ${count}. The first is ${title}.` : `The search found ${count}.`;
+}
+
 /** A short fixed-shape sentence for `tool`'s output. Never longer than MAX_REPLY_CHARS. */
 export function summariseToolOutput(tool: string, output: unknown): string {
   const record =
@@ -75,6 +88,7 @@ export function summariseToolOutput(tool: string, output: unknown): string {
   if (record) {
     if (tool.endsWith(".now_playing")) text = nowPlaying(record);
     else if (tool === "git.status") text = repositories(record);
+    else if (tool === "web-search.search_confirmed") text = searchResults(record);
     else {
       const counts = Object.entries(record)
         .filter(([, v]) => Array.isArray(v))

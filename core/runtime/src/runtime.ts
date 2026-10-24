@@ -99,7 +99,11 @@ import { LocalRegistryRuntime, type LocalRegistryConfig } from "./registry";
 import { SyncRuntime, type SyncTransportFactory } from "./sync";
 import { DemoRuntime, type DemoTuning } from "./demo";
 import { TeamWebhooks, WEBHOOK_SETTINGS_KEY } from "./team-status/webhooks";
-import { ChatApprovalsService, CHAT_APPROVALS_CAPABILITY } from "./chat-approvals/service";
+import {
+  ChatApprovalsService,
+  CHAT_APPROVALS_CAPABILITY,
+  CHAT_DIGEST_LAST_KEY,
+} from "./chat-approvals/service";
 import { createChatTransport } from "./chat-approvals";
 import type { HttpTransport } from "@phoenix/capability-chat-approvals";
 import { RemoteRelayService, type RemoteRelayServiceDeps } from "./remote-relay/service";
@@ -763,6 +767,13 @@ export class PhoenixRuntime implements CoreServices {
             enabled: () => this.capabilities.get(CHAT_APPROVALS_CAPABILITY).status === "enabled",
             killSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
             transport: chatTransport,
+            digestClock: {
+              read: () => {
+                const at = this.settings.get<unknown>(CHAT_DIGEST_LAST_KEY, null);
+                return typeof at === "number" && Number.isFinite(at) ? at : undefined;
+              },
+              write: (at) => this.settings.set(CHAT_DIGEST_LAST_KEY, at),
+            },
           });
     if (this.chatApprovals) this.capabilities.registerBuiltin(this.chatApprovals.module);
     this.agentRelay = new AgentRelay({
@@ -1181,6 +1192,7 @@ export class PhoenixRuntime implements CoreServices {
     await this.teamLink?.start();
     await this.scheduledAwake.start();
     await this.mcp.start();
+    this.chatApprovals?.startDigest();
     if (this.options.writeTokenFile ?? true) this.writeTokenFile();
 
     this.ticker = setInterval(() => {

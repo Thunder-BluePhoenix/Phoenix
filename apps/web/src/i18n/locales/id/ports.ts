@@ -67,8 +67,19 @@ export const ports: Record<keyof typeof enports, string> = {
   "ports.force.hint":
     "Phoenix menolak paksa henti selama beberapa detik pertama setelah permintaan untuk keluar.",
   "ports.force.confirm": "Paksa henti",
+  "ports.restart": "Mulai ulang…",
+  "ports.restart.label": "Mulai ulang {name} di port {port}",
+  "ports.restart.title": "Mulai ulang {name} di port {port}?",
+  "ports.restart.body":
+    "Setelah Anda menyetujui, Phoenix meminta {name} (proses {pid}) untuk keluar dan, hanya jika berhasil keluar, menjalankan resep mulai ulang yang Anda atur, persis seperti ditampilkan di bawah. Program dapat kehilangan pekerjaan yang belum disimpan. Jika permulaan gagal, program tetap berhenti.",
+  "ports.restart.recipe": "Resep",
+  "ports.restart.argv": "Program dan argumen",
+  "ports.restart.cwd": "Folder",
+  "ports.restart.go": "Minta mulai ulang",
+  "ports.restart.started":
+    "{name} dihentikan dan resep {recipe} dijalankan (proses {pid}). Phoenix belum bisa memastikan apakah program mendengarkan lagi; pindai ulang.",
   "ports.restart.note":
-    "Memulai ulang tidak tersedia: Phoenix tidak dapat menyusun ulang perintah asli program dengan aman.",
+    "Mulai ulang hanya ditawarkan untuk program pada port yang resep mulai ulangnya Anda tulis di pengaturan kapabilitas ini. Phoenix tidak pernah menyusun ulang perintah dari program yang sedang berjalan.",
   "ports.watch.label": "Segarkan otomatis selama Phoenix terbuka",
   "ports.watch.help":
     "Mati secara bawaan. Jika aktif, Phoenix membaca daftar port setiap 15 detik, hanya saat ada jendela Phoenix yang terbuka.",

@@ -1,0 +1,19 @@
+{
+  "name": "@phoenix/capability-web-search",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@phoenix/capability-agents": "workspace:*",
+    "@phoenix/logging": "workspace:*",
+    "@phoenix/sdk": "workspace:*",
+    "@phoenix/service-kit": "workspace:*"
+  },
+  "devDependencies": {
+    "@phoenix/sdk-testing": "workspace:*"
+  }
+}

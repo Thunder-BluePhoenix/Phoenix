@@ -74,15 +74,143 @@ const audits = () =>
   }[];
 
 describe("manifest", () => {
-  it("lists read-only; stop_process and force_stop are separate execute commands; there is no restart", async () => {
+  it("lists read-only; stop_process, force_stop and restart_process are separate execute commands", async () => {
     await ready();
     const view = h!.manager.get("ports");
     expect(view.commands).toEqual([
       expect.objectContaining({ name: "list", side_effect: "read" }),
       expect.objectContaining({ name: "stop_process", side_effect: "execute" }),
       expect.objectContaining({ name: "force_stop", side_effect: "execute" }),
+      expect.objectContaining({ name: "restart_process", side_effect: "execute" }),
     ]);
-    expect(view.commands.map((c) => c.name)).not.toContain("restart_process");
+  });
+});
+
+describe("restart_process through the permission gateway", () => {
+  const EXE = `${HOME}/bin/serve`;
+  const ROOT = `${HOME}/code`;
+  const CWD = `${ROOT}/app`;
+  const ARGV = JSON.stringify([EXE, "--port", "3000"]);
+  const config = {
+    restart_roots: [ROOT],
+    restart_recipes: { app: { argv: [EXE, "--port", "3000"], cwd: CWD, ports: [3000] } },
+  };
+  const withRecipe = async () => {
+    const r = await ready({ config });
+    r.m.files.set(EXE, { real: EXE, kind: "file", mode: 0o755 });
+    for (const dir of [`${HOME}/bin`, ROOT, CWD]) {
+      r.m.files.set(dir, { real: dir, kind: "directory", mode: 0o755 });
+    }
+    return {
+      ...r,
+      restart: (patch = {}) => ({ ...r.input(), recipe: "app", argv: ARGV, cwd: CWD, ...patch }),
+    };
+  };
+
+  it("the list offers the recipe only for the declared port", async () => {
+    const r = await withRecipe();
+    const op = await h!.run("ports", "list");
+    expect(op.result).toMatchObject({
+      ports: [{ port: 3000, restart: { recipe: "app", argv: ARGV, cwd: CWD } }],
+    });
+    expect(r.m.signals).toEqual([]);
+  });
+
+  it("the confirmation shows the recipe name, the exact argv and the folder", async () => {
+    const r = await withRecipe();
+    const op = h!.manager.invoke("ports", "restart_process", r.restart());
+    await vi.waitFor(() => expect(h!.permissions.pendingConfirmations()).toHaveLength(1));
+    const pending = h!.permissions.pendingConfirmations()[0]!;
+    const shown = JSON.stringify(pending);
+    expect(shown).toContain("app");
+    expect(shown).toContain(JSON.stringify(ARGV).slice(1, -1));
+    expect(shown).toContain(CWD);
+    expect(shown).toContain("4242");
+    expect(r.m.signals).toEqual([]);
+    h!.permissions.resolveConfirmation(pending.id, false);
+    await vi.waitFor(() => expect(op.status).toBe("failed"));
+    expect(r.m.signals).toEqual([]);
+    expect(r.m.spawns).toEqual([]);
+  });
+
+  it("an approved restart stops, starts the recipe, emits an event without argv or folder, and is audited", async () => {
+    const r = await withRecipe();
+    const op = await h!.run("ports", "restart_process", r.restart());
+    expect(op.status).toBe("succeeded");
+    expect(op.result).toMatchObject({ started: true, exited: true, recipe: "app" });
+    expect(r.m.spawns).toHaveLength(1);
+    const event = h!.events.find((e) => e.event_type === "ports.process.restarted");
+    expect(event?.payload).toMatchObject({ pid: 4242, port: 3000, recipe: "app", started: true });
+    const text = JSON.stringify(h!.events.filter((e) => e.source === "ports"));
+    expect(text).not.toContain(HOME);
+    expect(audits().map((a) => a.action)).toEqual(
+      expect.arrayContaining([
+        "confirmation.requested",
+        "confirmation.approved",
+        "action.succeeded",
+      ]),
+    );
+  });
+
+  it("a recipe edited in the config after the list was read is refused as changed", async () => {
+    const r = await withRecipe();
+    h!.manager.configure("ports", {
+      ...config,
+      restart_recipes: { app: { argv: [EXE, "--evil"], cwd: CWD, ports: [3000] } },
+    });
+    await h!.manager.disable("ports");
+    await h!.enable("ports");
+    const op = await h!.run("ports", "restart_process", r.restart());
+    expect(op.status).toBe("failed");
+    expect(r.m.signals).toEqual([]);
+    expect(r.m.spawns).toEqual([]);
+  });
+
+  it("a hostile recipe in the config is dropped: nothing is offered and a restart is refused", async () => {
+    const r = await ready({
+      config: {
+        restart_roots: [ROOT],
+        restart_recipes: { app: { argv: ["/bin/sh", "-c", "evil"], cwd: CWD, ports: [3000] } },
+      },
+    });
+    const listed = await h!.run("ports", "list");
+    expect(listed.result).toMatchObject({ ports: [{ restart: null }] });
+    const op = await h!.run("ports", "restart_process", {
+      ...r.input(),
+      recipe: "app",
+      argv: JSON.stringify(["/bin/sh", "-c", "evil"]),
+      cwd: CWD,
+    });
+    expect(op.status).toBe("failed");
+    expect(r.m.signals).toEqual([]);
+    expect(r.m.spawns).toEqual([]);
+  });
+
+  it("the config schema refuses an unknown recipe field and a shell-looking field set", async () => {
+    await ready();
+    expect(() =>
+      h!.manager.configure("ports", {
+        restart_roots: [ROOT],
+        restart_recipes: { app: { argv: [EXE], cwd: CWD, ports: [3000], env: { A: "b" } } },
+      }),
+    ).toThrow();
+    expect(() =>
+      h!.manager.configure("ports", {
+        restart_roots: [ROOT],
+        restart_recipes: { app: { argv: [EXE], cwd: CWD, ports: [80] } },
+      }),
+    ).toThrow();
+  });
+
+  it("a restart that stops the program and cannot start the recipe is a failed operation that says so", async () => {
+    const r = await withRecipe();
+    r.m.spawnFails = "spawn_failed";
+    const op = await h!.run("ports", "restart_process", r.restart());
+    expect(op.status).toBe("failed");
+    expect(JSON.stringify(op)).toContain("was stopped");
+    expect(r.m.signals).toEqual([{ pid: 4242, signal: "SIGTERM" }]);
+    const event = h!.events.find((e) => e.event_type === "ports.process.restarted");
+    expect(event?.payload).toMatchObject({ spawn_failed: true, started: false });
   });
 });
 

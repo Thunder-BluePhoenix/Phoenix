@@ -5,11 +5,13 @@
 // Runner prints in the formats lsof, ps, ss, netstat and tasklist document. Nothing here reads the
 // real machine or signals a real process.
 import type {
+  PathFacts,
   PortsEnv,
   Platform,
   RunOptions,
   RunResult,
   SignalOutcome,
+  SpawnRequest,
   StopSignal,
 } from "../src/types";
 
@@ -89,6 +91,23 @@ export class FakeMachine {
   /** Sleeps asked for, in order. Time advances by the requested amount. */
   sleeps: number[] = [];
   failCommands = new Set<string>();
+  /** What `inspect` knows, by the path asked about (a symlink is a second entry with the real path inside). */
+  files = new Map<string, PathFacts>();
+  /** Every restart the fake machine was asked to start, in order. */
+  spawns: SpawnRequest[] = [];
+  /** The next `spawn` fails with this message. */
+  spawnFails: string | undefined;
+  /** Called when a spawn succeeds, to mutate the machine (a new listener appears). */
+  onSpawn: ((request: SpawnRequest) => void) | undefined;
+  nextSpawnPid = 9000;
+  /** The pretend `process.env` of Core. */
+  environ: Record<string, string | undefined> = {
+    PATH: "/usr/bin:/bin",
+    HOME: "/Users/ada",
+    USER: "ada",
+    SECRET_TOKEN: "x",
+    PHOENIX_API_TOKEN: "y",
+  };
   signalOutcome: SignalOutcome | undefined;
   signalThrows = false;
   /** Called after every signal, to mutate the machine. */
@@ -263,6 +282,18 @@ export class FakeMachine {
         this.sleeps.push(ms);
         this.now += ms;
         return Promise.resolve();
+      },
+      environ: this.environ,
+      inspect: (path) => Promise.resolve(this.files.get(path)),
+      spawn: (request) => {
+        if (this.spawnFails !== undefined) {
+          const message = this.spawnFails;
+          this.spawnFails = undefined;
+          return Promise.reject(new Error(message));
+        }
+        this.spawns.push(request);
+        this.onSpawn?.(request);
+        return Promise.resolve({ pid: this.nextSpawnPid++ });
       },
       ...over,
     };

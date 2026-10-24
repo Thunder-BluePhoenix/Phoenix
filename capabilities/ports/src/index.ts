@@ -3,12 +3,24 @@
 //
 // Port & process radar (Phase 80): which dev servers listen on this computer, which project they
 // belong to, how old they are, which look forgotten or heavy, and a guarded way to stop one.
-// Read-only unless the user approves `stop_process` / `force_stop`, each of which asks every time.
+// Read-only unless the user approves `stop_process` / `force_stop` / `restart_process`, each of which
+// asks every time. A restart starts only a recipe the owner wrote in this capability's config.
 // Polling is OFF by default; when the user turns `watch` on it runs only while something watches Core.
 import { defineCapability, type CapabilityContext } from "@phoenix/sdk";
 import { buildSnapshot, type PortsSnapshot } from "./snapshot";
 import { DEFAULT_THRESHOLDS, type Thresholds } from "./policy";
 import { realEnv } from "./real";
+import {
+  MAX_ARGV,
+  MAX_RECIPE_PORTS,
+  MAX_RECIPES,
+  MAX_ROOTS,
+  MAX_SHOWN_CHARS,
+  MIN_RECIPE_PORT,
+  parseRecipes,
+  RECIPE_NAME,
+} from "./recipes";
+import { createRestarter, type RestartResult, type RestartTarget } from "./restart";
 import { createStopper, parseTarget, type StopResult } from "./stop";
 import { PortsError, type PortsEnv } from "./types";
 
@@ -16,6 +28,8 @@ export * from "./collect";
 export * from "./parse";
 export * from "./policy";
 export * from "./project";
+export * from "./recipes";
+export * from "./restart";
 export * from "./real";
 export * from "./snapshot";
 export * from "./stop";
@@ -79,6 +93,21 @@ const TARGET_SCHEMA = {
   properties: TARGET_PROPERTIES,
 } as const;
 
+const RESTART_PROPERTIES = {
+  ...TARGET_PROPERTIES,
+  // The prompt shows exactly what will be started: the owner's recipe name, argv and folder.
+  recipe: { type: "string", minLength: 1, maxLength: 40, "x-phoenix-confirm": true },
+  argv: { type: "string", minLength: 1, maxLength: 2048, "x-phoenix-confirm": true },
+  cwd: { type: "string", minLength: 1, maxLength: 1024, "x-phoenix-confirm": true },
+} as const;
+
+const RESTART_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["pid", "port", "start", "command", "uid", "recipe", "argv", "cwd"],
+  properties: RESTART_PROPERTIES,
+} as const;
+
 /** A fresh capability instance (its own polling state and SIGTERM records). */
 export function createPortsCapability(options: PortsCapabilityOptions = {}) {
   const env = options.env ?? realEnv();
@@ -87,6 +116,9 @@ export function createPortsCapability(options: PortsCapabilityOptions = {}) {
   let stopping = false;
   let emitted: CapabilityContext["emit"] | undefined;
   const stopper = createStopper(env, (r: StopResult) => announce(r));
+  const restarter = createRestarter(env, stopper, (r, spawnFailed) =>
+    announceRestart(r, spawnFailed),
+  );
 
   function announce(r: StopResult): void {
     // The command line is never put in an event: only the file name, pid, port and signal.
@@ -105,8 +137,31 @@ export function createPortsCapability(options: PortsCapabilityOptions = {}) {
     });
   }
 
+  function announceRestart(r: RestartResult, spawnFailed: boolean): void {
+    // File name, pid, port and the owner's recipe name only: never the argv or the folder.
+    emitted?.({
+      event_type: "ports.process.restarted",
+      severity: spawnFailed ? "warning" : "info",
+      subject: "Port radar",
+      payload: {
+        pid: r.pid,
+        port: r.port,
+        name: r.name,
+        recipe: r.recipe,
+        exited: r.exited,
+        started: r.started,
+        new_pid: r.new_pid,
+        spawn_failed: spawnFailed,
+      },
+    });
+  }
+
   async function refresh(ctx: CapabilityContext): Promise<PortsSnapshot> {
-    const snapshot = await buildSnapshot(env, thresholdsFrom(ctx.config));
+    const snapshot = await buildSnapshot(
+      env,
+      thresholdsFrom(ctx.config),
+      parseRecipes(ctx.config).recipes,
+    );
     latest = snapshot;
     return snapshot;
   }
@@ -147,6 +202,18 @@ export function createPortsCapability(options: PortsCapabilityOptions = {}) {
     })();
   }
 
+  function parseRestartTarget(input: unknown): RestartTarget {
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new PortsError("invalid", "input must be an object");
+    }
+    const { recipe, argv, cwd, ...rest } = input as Record<string, unknown>;
+    if (typeof recipe !== "string" || typeof argv !== "string" || typeof cwd !== "string") {
+      throw new PortsError("invalid", "recipe, argv and cwd must be the text the radar showed");
+    }
+    // The five stop fields are validated by the same parser as stop_process.
+    return { ...parseTarget(rest), recipe, argv, cwd };
+  }
+
   async function once<T>(work: () => Promise<T>): Promise<T> {
     if (stopping) throw new PortsError("unavailable", "Another stop is in progress. Try again.");
     stopping = true;
@@ -163,7 +230,7 @@ export function createPortsCapability(options: PortsCapabilityOptions = {}) {
       name: "Port & process radar",
       version: "0.1.0",
       description:
-        "Lists the TCP ports listening on this computer with process, project folder and age, flags forgotten dev servers and heavy processes, and stops one only after you approve. Stopping asks every time, works only on your own non-system dev processes, sends SIGTERM first; force stop is a separate approval. No restart. Polling is off unless you turn it on.",
+        "Lists the TCP ports listening on this computer with process, project folder and age, flags forgotten dev servers and heavy processes, and stops one only after you approve. Stopping asks every time, works only on your own non-system dev processes, sends SIGTERM first; force stop is a separate approval. Restart exists only for recipes you write in the configuration (a program, arguments and folder, matched by a port you declare). Polling is off unless you turn it on.",
       license: "GPL-3.0-or-later",
       homepage: "https://github.com/Thunder-BluePhoenix/Phoenix",
       events: ["ports.*"],
@@ -203,6 +270,15 @@ export function createPortsCapability(options: PortsCapabilityOptions = {}) {
           timeout_ms: 30_000,
           input_schema: TARGET_SCHEMA,
         },
+        {
+          name: "restart_process",
+          description:
+            "Stops a listening dev process (SIGTERM, same checks as stop_process) and then starts the restart recipe YOU configured for its port: the approval shows the recipe name, its exact argument list and its folder. Nothing is ever built from the process's own command line. Starts nothing if the program does not exit. Never runs as root.",
+          side_effect: "execute",
+          permissions: ["shell_command"],
+          timeout_ms: 30_000,
+          input_schema: RESTART_SCHEMA,
+        },
       ],
       config_schema: {
         type: "object",
@@ -237,6 +313,51 @@ export function createPortsCapability(options: PortsCapabilityOptions = {}) {
             maximum: 1048576,
             description: `Resident memory in MB at or above which a process is flagged heavy (default ${DEFAULT_THRESHOLDS.heavyRssMb})`,
           },
+          restart_roots: {
+            type: "array",
+            minItems: 1,
+            maxItems: MAX_ROOTS,
+            items: { type: "string", minLength: 1, maxLength: 1000, pattern: "^[^\\p{Cc}]*$" },
+            description:
+              "Folders a restart recipe's working folder must be inside (absolute, never /). Required when restart_recipes is set.",
+          },
+          restart_recipes: {
+            type: "object",
+            maxProperties: MAX_RECIPES,
+            propertyNames: { pattern: RECIPE_NAME.source },
+            additionalProperties: {
+              type: "object",
+              additionalProperties: false,
+              required: ["argv", "cwd", "ports"],
+              properties: {
+                argv: {
+                  type: "array",
+                  minItems: 1,
+                  maxItems: MAX_ARGV,
+                  items: {
+                    type: "string",
+                    minLength: 1,
+                    maxLength: MAX_SHOWN_CHARS,
+                    pattern: "^[^\\p{Cc}]*$",
+                  },
+                },
+                cwd: {
+                  type: "string",
+                  minLength: 1,
+                  maxLength: MAX_SHOWN_CHARS,
+                  pattern: "^[^\\p{Cc}]*$",
+                },
+                ports: {
+                  type: "array",
+                  minItems: 1,
+                  maxItems: MAX_RECIPE_PORTS,
+                  items: { type: "integer", minimum: MIN_RECIPE_PORT, maximum: 65535 },
+                },
+              },
+            },
+            description:
+              "Named restart recipes the owner writes: an absolute program path with fixed arguments (never a shell), a working folder inside restart_roots, and the ports it serves. Restart is offered only for a process listening on one of those ports, and only starts exactly this. Phoenix never builds a command from process data.",
+          },
         },
       },
     },
@@ -262,6 +383,11 @@ export function createPortsCapability(options: PortsCapabilityOptions = {}) {
       force_stop(input, ctx) {
         const target = parseTarget(input);
         return once(() => stopper.force(target, ctx.signal));
+      },
+      restart_process(input, ctx) {
+        const target = parseRestartTarget(input);
+        const { recipes, roots } = parseRecipes(ctx.config);
+        return once(() => restarter.restart(target, recipes, roots, ctx.signal));
       },
     },
     health() {

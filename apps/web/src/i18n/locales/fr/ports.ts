@@ -66,8 +66,19 @@ export const ports: Record<keyof typeof enports, string> = {
   "ports.force.hint":
     "Phoenix refuse l’arrêt forcé pendant les premières secondes après la demande de fermeture.",
   "ports.force.confirm": "Forcer l’arrêt",
+  "ports.restart": "Redémarrer…",
+  "ports.restart.label": "Redémarrer {name} sur le port {port}",
+  "ports.restart.title": "Redémarrer {name} sur le port {port} ?",
+  "ports.restart.body":
+    "Après votre approbation, Phoenix demande à {name} (processus {pid}) de quitter et, seulement s’il se termine, lance la recette de redémarrage que vous avez configurée, exactement comme indiquée ci-dessous. Le programme peut perdre un travail non enregistré. Si le lancement échoue, le programme reste arrêté.",
+  "ports.restart.recipe": "Recette",
+  "ports.restart.argv": "Programme et arguments",
+  "ports.restart.cwd": "Dossier",
+  "ports.restart.go": "Demander le redémarrage",
+  "ports.restart.started":
+    "{name} a été arrêté et la recette {recipe} a été lancée (processus {pid}). Phoenix ne peut pas encore savoir s’il écoute de nouveau ; analysez à nouveau.",
   "ports.restart.note":
-    "Le redémarrage n’est pas disponible : Phoenix ne peut pas reconstruire en toute sécurité la commande d’origine d’un programme.",
+    "Le redémarrage n’est proposé que pour un programme sur un port pour lequel vous avez écrit une recette de redémarrage dans les réglages de cette capacité. Phoenix ne reconstruit jamais une commande à partir d’un programme en cours d’exécution.",
   "ports.watch.label": "Actualiser automatiquement tant que Phoenix est ouvert",
   "ports.watch.help":
     "Désactivé par défaut. Si activé, Phoenix lit la liste des ports toutes les 15 secondes, uniquement quand une fenêtre Phoenix est ouverte.",
