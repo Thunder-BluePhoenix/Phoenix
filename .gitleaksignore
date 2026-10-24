@@ -16,3 +16,8 @@ f9287519f1fa540a3f62e5bb417920fb7046518c:core/runtime/test/phone-cert.test.ts:ge
 # A Stripe TEST-mode key shape, used as a negative case ("the detector must not match sk_test_ keys")
 # in commit 750eb79. It is a fake canary, not a credential, and the file now builds it at runtime.
 750eb79355f6694ea4804c60235ab064ed432e3a:protocol/test/validate.test.ts:stripe-access-token:111
+
+# A test loops over INVALID Coinbase key names ("my key", "../../etc/passwd", ...) and gitleaks'
+# generic-api-key rule matched the loop variable `key`. No secret is on the line; the loop variable
+# is renamed in the file now, this covers the commit already on origin/main.
+c047b46eee8c72209525e8863221e939ee3865ec:capabilities/portfolio/test/coinbase.test.ts:generic-api-key:402

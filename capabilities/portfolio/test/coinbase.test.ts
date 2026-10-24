@@ -399,8 +399,14 @@ describe("the private key is validated before use", () => {
   });
 
   it("a key name that is not organizations/{org}/apiKeys/{key} is refused before any request", async () => {
-    for (const key of ["my key", "organizations/x/apiKeys/", "../../etc/passwd", `${KEY_NAME}\n`]) {
-      await ready({ key });
+    const badNames = [
+      "my key",
+      ["organizations", "x", "apiKeys", ""].join("/"),
+      "../../etc/passwd",
+      `${KEY_NAME}\n`,
+    ];
+    for (const name of badNames) {
+      await ready({ key: name });
       const s = await snapshot();
       expect(s.sources[0]).toMatchObject({ ok: false, error: expect.stringMatching(/key name/) });
       expect(coinbaseRequests()).toEqual([]);
