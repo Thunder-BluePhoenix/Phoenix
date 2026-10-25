@@ -30,6 +30,7 @@ import { shell } from "./shell";
 import { signals } from "./signals";
 import { browserProfiles } from "./browser-profiles";
 import { shields } from "./shields";
+import { browser } from "./browser";
 import { awakeSchedule } from "./awake-schedule";
 import { awakeSettings } from "./awake-settings";
 import { teamStatus } from "./team-status";
@@ -64,6 +65,7 @@ const messages: Messages = {
   ...signals,
   ...browserProfiles,
   ...shields,
+  ...browser,
   ...awakeSchedule,
   ...awakeSettings,
   ...teamStatus,

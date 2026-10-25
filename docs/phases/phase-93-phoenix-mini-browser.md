@@ -28,6 +28,7 @@ A small, private browser that belongs to Fawkes.
 - `apps/web/src/core/browser`: navigation policy, adblock matcher with a starter list, default-deny permissions, in-memory profile. Built as TypeScript only; simulated evidence. See [mini-browser.md](../mini-browser.md), which lists the Rust, Cargo and capability changes still to be made.
 - `core/runtime/src/filter-lists/`, `apps/web/src/core/browser/shields.ts`, `apps/web/src/components/ShieldsSettings.tsx`: the filter-list updater (one GET per press of Update, pinned hosts), stored lists, shields settings and counts. Tests never contact easylist.to. See [filter-lists.md](../filter-lists.md).
 - Not built: the browser window, applying a list to any real page, cosmetic filtering, scheduled list refresh.
+- `apps/web/src/browser/`, `apps/web/browser.html` (Vite entry `browser`), `apps/web/test/browser-chrome.test.tsx`: the browser **chrome page** (tab strip, address bar with `classifyAddress`, back/forward/reload, zoom, per-site Shields toggle and blocked count, confirmation panel before a port-radar loopback open) behind one typed bridge, `shell.ts`, with a fake shell for tests. 25 tests against the fake shell; **nothing ran in a real window or webview**, and the content webviews and enforcement are the Rust side's job. See [mini-browser.md](../mini-browser.md#chrome-ui-appswebsrcbrowser-vite-entry-browser).
 
 ## Exit criteria
 

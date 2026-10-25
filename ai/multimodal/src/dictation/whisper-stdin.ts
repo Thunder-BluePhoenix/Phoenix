@@ -102,7 +102,7 @@ export const runProcess: ProcessRunner = (executable, args, input, signal) => {
   return done.promise;
 };
 
-async function onPath(executable: string): Promise<boolean> {
+export async function onPath(executable: string): Promise<boolean> {
   const dirs = executable.includes("/") ? [""] : (process.env.PATH ?? "").split(delimiter);
   for (const dir of dirs) {
     try {
@@ -123,6 +123,22 @@ export function cleanWhisperOutput(raw: string): string {
     .map((line) => line.trim())
     .filter((line) => line && !/^[[(].{0,40}[\])]$/u.test(line))
     .join(" ");
+}
+
+/** A WAV (44-byte header + 16-bit samples) built in memory from PCM chunks. The caller zeroes it. */
+export function pcmToWav(chunks: readonly Int16Array[]): Uint8Array {
+  const samples = chunks.reduce((n, c) => n + c.length, 0);
+  const wav = new Uint8Array(44 + samples * BYTES_PER_SAMPLE);
+  wav.set(wavHeader(samples * BYTES_PER_SAMPLE), 0);
+  const view = new DataView(wav.buffer);
+  let offset = 44;
+  for (const chunk of chunks) {
+    for (const sample of chunk) {
+      view.setInt16(offset, sample, true);
+      offset += BYTES_PER_SAMPLE;
+    }
+  }
+  return wav;
 }
 
 export interface WhisperStdinOptions {
@@ -174,17 +190,7 @@ export class WhisperStdinRecognizer implements SpeechRecognizer {
       finish: async () => {
         if (ended) throw new Error("recognition stopped");
         ended = true;
-        const samples = chunks.reduce((n, c) => n + c.length, 0);
-        const wav = new Uint8Array(44 + samples * BYTES_PER_SAMPLE);
-        wav.set(wavHeader(samples * BYTES_PER_SAMPLE), 0);
-        const view = new DataView(wav.buffer);
-        let offset = 44;
-        for (const chunk of chunks) {
-          for (const sample of chunk) {
-            view.setInt16(offset, sample, true);
-            offset += BYTES_PER_SAMPLE;
-          }
-        }
+        const wav = pcmToWav(chunks);
         chunks.length = 0;
         try {
           const out = await this.run(

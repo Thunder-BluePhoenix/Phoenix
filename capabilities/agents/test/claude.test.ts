@@ -15,6 +15,7 @@ describe("mapClaudeHook", () => {
     ["NotificationPermission", { state: "waiting", reason: "permission" }],
     ["NotificationIdle", { state: "waiting", reason: "idle" }],
     ["Stop", { state: "completed" }],
+    ["StopFailure", { state: "failed" }],
     ["SessionEnd", { state: "ended" }],
   ] as const)("%s → %j", (name, expected) => {
     expect(mapClaudeHook(HOOKS[name])).toEqual({ ...base, ...expected });
@@ -29,6 +30,11 @@ describe("mapClaudeHook", () => {
       const report = mapClaudeHook(payload);
       if (report) expect(validateReport(report).ok).toBe(true);
     }
+  });
+
+  it("StopFailure never copies the API error type, details or message", () => {
+    const text = JSON.stringify(mapClaudeHook(HOOKS.StopFailure));
+    expect(text).not.toMatch(/rate_limit|429|Rate limit|transcript/);
   });
 
   it("never copies transcript paths, tool inputs/outputs or the prompt", () => {
@@ -106,6 +112,7 @@ describe("claudeHooksConfig", () => {
         "SessionEnd",
         "SessionStart",
         "Stop",
+        "StopFailure",
         "UserPromptSubmit",
       ].sort(),
     );

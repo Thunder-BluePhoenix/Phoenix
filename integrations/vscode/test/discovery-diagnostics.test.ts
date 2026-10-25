@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveCoreUrl, resolveSessionToken, tokenFileCandidates } from "../src/core-discovery.js";
 import { countDiagnostics, createDiagnosticsReporter } from "../src/diagnostics.js";
+import { createSaveCounter } from "../src/saves.js";
 
 describe("Core URL", () => {
   it("prefers the setting, then PHOENIX_CORE_URL, then the default", () => {
@@ -170,5 +171,76 @@ describe("diagnostics reporter", () => {
     expect(r.pending).toBe(false);
     r.advance(60_000);
     expect(r.reports).toHaveLength(2);
+  });
+});
+
+describe("save counter", () => {
+  function rig(opts: { quietMs?: number; maxWaitMs?: number } = {}) {
+    let now = 0;
+    let pending: { at: number; fn: () => void } | undefined;
+    const reports: number[] = [];
+    const counter = createSaveCounter({
+      report: (n) => reports.push(n),
+      setTimer: (fn, ms) => (pending = { at: now + ms, fn }),
+      clearTimer: () => (pending = undefined),
+      clock: () => now,
+      ...opts,
+    });
+    return {
+      reports,
+      counter,
+      advance(ms: number) {
+        now += ms;
+        if (pending && pending.at <= now) {
+          const { fn } = pending;
+          pending = undefined;
+          fn();
+        }
+      },
+      get pending() {
+        return pending !== undefined;
+      },
+    };
+  }
+
+  it("reports one total after a burst of saves goes quiet", () => {
+    const r = rig();
+    for (let i = 0; i < 5; i++) {
+      r.counter.saved();
+      r.advance(1_000);
+    }
+    expect(r.reports).toEqual([]);
+    r.advance(10_000);
+    expect(r.reports).toEqual([5]);
+  });
+  it("reports nothing without saves and restarts the count after a report", () => {
+    const r = rig();
+    r.advance(100_000);
+    expect(r.reports).toEqual([]);
+    r.counter.saved();
+    r.advance(10_000);
+    r.counter.saved();
+    r.counter.saved();
+    r.advance(10_000);
+    expect(r.reports).toEqual([1, 2]);
+  });
+  it("still reports during continuous saving, at the maximum wait", () => {
+    const r = rig({ quietMs: 10_000, maxWaitMs: 30_000 });
+    for (let t = 0; t < 30_000; t += 5_000) {
+      r.counter.saved();
+      r.advance(5_000);
+    }
+    expect(r.reports).toHaveLength(1);
+  });
+  it("dispose drops a pending report", () => {
+    const r = rig();
+    r.counter.saved();
+    r.counter.dispose();
+    expect(r.pending).toBe(false);
+    r.advance(60_000);
+    expect(r.reports).toEqual([]);
+  });
+  it("saved() takes no argument, so a document can never reach the counter", () => {
+    expect(createSaveCounter({ report: () => {} }).saved.length).toBe(0);
   });
 });

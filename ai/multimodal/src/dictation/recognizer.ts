@@ -2,9 +2,13 @@
 // Copyright (C) 2026 Phoenix contributors
 //
 // The speech-to-text seam of dictation. A recogniser is handed 16 kHz mono 16-bit PCM in memory
-// and returns text. It must NOT write audio to disk. Two implementations:
+// and returns text. Implementations:
 //   * FakeRecognizer (here): deterministic, for tests.
 //   * WhisperStdinRecognizer (whisper-stdin.ts): whisper.cpp's CLI reading the audio from stdin.
+//   * ParakeetSherpaRecognizer (parakeet-sherpa.ts): NVIDIA Parakeet through sherpa-onnx's
+//     `sherpa-onnx-offline`, which can only read a WAV FILE: the one recogniser that writes audio
+//     to disk (a private temporary file, erased on every path), and it says so in `audio_on_disk`.
+//   * ChainedRecognizer (speech-engines.ts): the owner's ordered, opted-in list of the above.
 
 export const SAMPLE_RATE = 16_000;
 /** 16-bit mono PCM. */
@@ -17,6 +21,20 @@ export interface RecognizerAvailability {
   detail: string;
   /** Name of the engine, for the user ("whisper.cpp"). */
   engine?: string;
+  /** True when this engine writes the audio to a temporary file while it recognises. Absent = false. */
+  audio_on_disk?: boolean;
+  /** Every engine the owner opted in to, in order, and why the active one was chosen. */
+  engines?: RecognizerEngineStatus[];
+}
+
+export interface RecognizerEngineStatus {
+  /** Stable id: "whisper" | "parakeet". */
+  id: string;
+  available: boolean;
+  /** The engine that will run the next session. */
+  active: boolean;
+  /** Safe to show: no path, no text. */
+  detail: string;
 }
 
 export interface RecognizerSession {

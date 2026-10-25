@@ -6,7 +6,8 @@
 //
 // Privacy contract: events carry the workspace's display name, task names and exit codes, and
 // diagnostic COUNTS. They never carry file paths, file contents, diagnostic messages, task command
-// lines or arguments, or environment variables.
+// lines or arguments, or environment variables. A save is reported as a COUNT of saves in a burst
+// (`editor.files.saved`), never as "this file was saved".
 "use strict";
 
 const { randomUUID } = require("node:crypto");
@@ -185,6 +186,17 @@ function diagnosticsChanged(counts, now) {
 }
 
 /**
+ * How many documents were saved since the last report. A number only: the save notification's
+ * document is never read, so the event has no file identity (no path, name, language or text).
+ * @param {{ count: number }} saves
+ * @param {() => Date} [now]
+ */
+function filesSaved({ count }, now) {
+  const n = Math.max(1, Math.min(Math.trunc(count) || 1, 100_000));
+  return envelope("editor.files.saved", "info", { payload: { count: n } }, now);
+}
+
+/**
  * The manifest the editor registers with Core (external capability protocol). Task failures are
  * ERROR and a running task is WORKING, like terminal commands. Diagnostics counts and workspace
  * events deliberately have no Fawkes state: a red squiggle while typing is not an incident.
@@ -196,14 +208,19 @@ function buildManifest() {
     name: "Editor (VS Code)",
     version: EXTENSION_VERSION,
     description:
-      "Reports the VS Code workspace you opened, task results and the number of errors and warnings.",
+      "Reports the VS Code workspace you opened, task results, the number of errors and warnings, and how many files you saved (a count, never which files).",
     license: "GPL-3.0-or-later",
     events: ["editor.*"],
     commands: [],
     // Observing the workspace and its problems is what this permission discloses; the extension
     // sends names and counts only, never file paths or contents.
     permissions: ["filesystem_read"],
-    data_categories: ["workspace name", "task names and exit codes", "error and warning counts"],
+    data_categories: [
+      "workspace name",
+      "task names and exit codes",
+      "error and warning counts",
+      "number of files saved",
+    ],
     healthcheck: { interval_ms: 15_000 },
     state_rules: [
       {
@@ -229,6 +246,7 @@ module.exports = {
   createTaskTracker,
   diagnosticsChanged,
   envelope,
+  filesSaved,
   label,
   workspaceOpened,
 };

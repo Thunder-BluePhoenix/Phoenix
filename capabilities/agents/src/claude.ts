@@ -17,7 +17,15 @@ import { APPROVAL_TIMEOUT, approvalHookTimeoutSeconds } from "./approval-map";
 
 export const CLAUDE_AGENT = "claude-code";
 
-/** Hook name → what the agent is doing. Every other hook (PreToolUse, SubagentStop, …) is ignored. */
+/**
+ * Hook name → what the agent is doing. Every other hook (PreToolUse, SubagentStop, …) is ignored.
+ * `StopFailure` ("the turn ends due to an API error", code.claude.com/docs/en/hooks#stopfailure,
+ * first listed in the Claude Code changelog at 2.1.78) is the only failure hook mapped: a failed
+ * tool call (`PostToolUseFailure`) is not the agent failing, Claude normally carries on. Claude
+ * Code 2.0.31 rejects the name ("StopFailure" is not valid, shown by `claude doctor` against a
+ * throwaway CLAUDE_CONFIG_DIR), as it does `PermissionRequest`, so these hooks need a newer
+ * Claude Code. The payload's error type, details and message are never copied.
+ */
 export const CLAUDE_HOOK_STATES: Readonly<Record<string, AgentState>> = {
   SessionStart: "started",
   UserPromptSubmit: "working",
@@ -25,6 +33,7 @@ export const CLAUDE_HOOK_STATES: Readonly<Record<string, AgentState>> = {
   PostToolUse: "working",
   Notification: "waiting",
   Stop: "completed",
+  StopFailure: "failed",
   SessionEnd: "ended",
 };
 

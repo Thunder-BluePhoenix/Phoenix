@@ -104,6 +104,39 @@ them. `PERMISSION_KINDS` mirrors the display names of `tauri::webview::Permissio
 profiles are Phase 96. The guard keeps only in-memory counts and grants. The audit sink (`BrowserAuditSink`) receives the
 **host only**: never a path or query, which can hold tokens (a test pins this).
 
+### Chrome UI (`apps/web/src/browser/`, Vite entry `browser`)
+
+**Nothing here ran in a real window or webview.** The chrome page is tested only with React Testing Library in happy-dom
+against a fake shell (`apps/web/src/browser/fake-shell.ts`); no page was loaded, no request was made, no Tauri command was
+invoked. The Rust side (content webviews, enforcement, capability) is a separate piece of work and is not verified by
+these tests.
+
+- `browser.html` + `src/browser/main.tsx`: the page the shell opens in the chrome window (label `phoenix-browser`) on Core's
+  own origin (`<Core>/browser.html`, like the pill), so it gets Core's local-origin CSP (`default-src 'self'`, no remote
+  script, image or frame; `frame-ancestors 'none'`) and reads the injected session token to save a Shields choice.
+  `tauri.conf.json` is unchanged: its CSP is for pages the shell serves itself and this one is served by Core.
+  An optional `?open=<loopback url>` query asks for the port-radar confirmation at start.
+- `shell.ts`: the ONE bridge. `tauriBrowserShell()` maps to the Tauri commands `open_tab`, `close_tab`, `navigate`,
+  `back`, `forward`, `reload`, `zoom` plus `activate_tab`, `set_site_shields`, `set_chrome_height`, and the events
+  `browser://tab`, `browser://tab-closed`, `browser://open-request`. Every payload is parsed (`parseTab`,
+  `parseOpenResult`); a policy refusal is a resolved `{ ok: false, reason }`, never a rejection.
+- `address.ts`: `classifyAddress` (typed text through `resolveOmnibox` and `decideNavigation` with intent `typed`, no
+  private-network exception; search is DuckDuckGo, `DEFAULT_SEARCH_TEMPLATE`; Phoenix's web-search settings configure
+  Core's own search tool and are not read) and `classifyPortRadarUrl` (only `http://127.0.0.1|localhost:<port>/`; the
+  address that is opened is rebuilt from the port number).
+- `state.ts`: the chrome as a pure reducer (tabs, active tab, typed draft, refusal, pending port-radar open).
+- `BrowserApp.tsx`: tab strip, address bar, back/forward/reload, zoom steps (50% to 300%), a per-site Shields checkbox
+  (registrable domain; applied through the shell and saved with `PUT /api/browser/shields/sites/:site`) and the blocked
+  count of the active tab (reported by the shell; 0 until the shell counts something). A refused address is shown as
+  plain text under the bar. A loopback page from the port radar is only opened after the person presses "Open it" in a
+  confirmation panel (the chrome strip grows through `set_chrome_height` while it is shown).
+- Page content is untrusted and is never rendered here: only `TabInfo` text (title, address) crosses, as text nodes.
+- The chrome's refusals are feedback; the Rust shell must validate every URL again.
+- Not built in the chrome: find in page, downloads prompt, the Fawkes corner, permission prompts, a search-provider picker, and
+  the port-radar button itself (the radar still opens loopback links in the system browser; the shell or Phoenix must send
+  `browser://open-request` or open the window with `?open=`).
+- All strings are in the ten locales (`browser.*`); non-English text is machine-translated and unreviewed.
+
 ## What the parent must build
 
 Findings below come from reading `apps/desktop/src-tauri` and the vendored `tauri 2.12.1` / `wry 0.57.0` sources

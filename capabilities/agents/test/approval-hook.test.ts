@@ -506,6 +506,7 @@ describe("hook settings", () => {
         "SessionEnd",
         "SessionStart",
         "Stop",
+        "StopFailure",
         "UserPromptSubmit",
       ].sort(),
     );

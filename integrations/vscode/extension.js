@@ -5,7 +5,7 @@
 // are tested without an editor. This file only connects VS Code's notifications to them.
 //
 // It reports the workspace name, task start/end with exit codes, and the NUMBER of errors and
-// warnings. It never reads or sends file paths, file contents, diagnostic messages or task
+// warnings, and how many files were saved (a count). It never reads or sends file paths, file contents, diagnostic messages or task
 // command lines, and it talks only to Phoenix Core on this machine.
 "use strict";
 
@@ -18,9 +18,11 @@ const {
   buildManifest,
   createTaskTracker,
   diagnosticsChanged,
+  filesSaved,
   workspaceOpened,
 } = require("./src/events");
 const { createPhoenixClient } = require("./src/phoenix-client");
+const { createSaveCounter } = require("./src/saves");
 
 const RECONCILE_MS = 15_000;
 
@@ -107,6 +109,7 @@ async function activate(context) {
     read: () => countDiagnostics(vscode.languages.getDiagnostics()),
     report: (change) => send(diagnosticsChanged(change)),
   });
+  const saves = createSaveCounter({ report: (count) => send(filesSaved({ count })) });
 
   disposables.push(
     vscode.tasks.onDidStartTaskProcess((e) =>
@@ -117,6 +120,9 @@ async function activate(context) {
     ),
     vscode.languages.onDidChangeDiagnostics(() => diagnostics.changed()),
     { dispose: () => diagnostics.dispose() },
+    // The handler takes no argument: the saved document (path, name, text) is never read.
+    vscode.workspace.onDidSaveTextDocument(() => saves.saved()),
+    { dispose: () => saves.dispose() },
     vscode.commands.registerCommand("phoenix.showStatus", () => {
       const state = client?.registered
         ? client.enabled

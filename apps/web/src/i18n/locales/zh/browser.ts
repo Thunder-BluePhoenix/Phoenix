@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+import type { browser as enBrowser } from "../../en/browser";
+
+/** Machine-translated; unreviewed. */
+export const browser: Record<keyof typeof enBrowser, string> = {
+  "browser.tabs.label": "标签页",
+  "browser.tab.untitled": "新标签页",
+  "browser.tab.loading": "正在加载",
+  "browser.tab.close": "关闭标签页 {title}",
+  "browser.tab.new": "新标签页",
+  "browser.nav.back": "后退",
+  "browser.nav.forward": "前进",
+  "browser.nav.reload": "刷新",
+  "browser.address.label": "地址或搜索",
+  "browser.address.placeholder": "搜索或输入地址",
+  "browser.address.go": "前往",
+  "browser.address.blocked": "未打开:{text}",
+  "browser.deny.unparseable": "这不是有效的网址。",
+  "browser.deny.scheme_not_allowed": "只能打开安全网址(https)。",
+  "browser.deny.dangerous_scheme": "无法打开会运行代码或包含页面本身的地址。",
+  "browser.deny.file_blocked": "无法在此打开本机文件。",
+  "browser.deny.credentials_in_url": "包含用户名或密码的地址会被拒绝。",
+  "browser.deny.private_network":
+    "无法在此输入本机或本地网络的地址。请改从端口雷达打开程序的页面。",
+  "browser.deny.bad_port": "该端口已被屏蔽,因为它属于非网页服务。",
+  "browser.deny.insecure_blocked": "不会打开普通 http 地址。",
+  "browser.deny.site_denied": "此网站在屏蔽列表中。",
+  "browser.deny.dns_private": "该名称指向本机或本地网络中的地址。",
+  "browser.deny.port_radar_invalid": "端口雷达的请求不是本机上的普通页面,已被忽略。",
+  "browser.deny.unknown": "该地址被拒绝。",
+  "browser.zoom.label": "缩放",
+  "browser.zoom.out": "缩小",
+  "browser.zoom.in": "放大",
+  "browser.zoom.reset": "将缩放重置为 {percent}",
+  "browser.shields.label": "在 {site} 上拦截广告和跟踪器",
+  "browser.shields.saveFailed": "该选择已在此处应用,但无法保存到 Phoenix Core。",
+  "browser.shields.blocked": "{count, plural, other {已拦截 # 个请求}}",
+  "browser.empty": "没有打开的标签页。请在上方输入地址或搜索内容。",
+  "browser.noShell": "此页面是 Phoenix 浏览器的工具栏,只能在 Phoenix 桌面应用中使用。",
+  "browser.radar.title": "打开本机上的程序?",
+  "browser.radar.body": "端口雷达请求打开此地址。它是在本机上运行的程序,不是网站,且未加密。",
+  "browser.radar.url": "地址:{url}",
+  "browser.radar.open": "打开",
+  "browser.radar.cancel": "取消",
+  "browser.error.action": "浏览器无法执行该操作。",
+};

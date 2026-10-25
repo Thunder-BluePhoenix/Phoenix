@@ -42,4 +42,12 @@ export const HOOKS = {
   SessionEnd: { ...common, hook_event_name: "SessionEnd", reason: "prompt_input_exit" },
   PreToolUse: { ...common, hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: {} },
   SubagentStop: { ...common, hook_event_name: "SubagentStop", stop_hook_active: false },
+  // Shape copied from code.claude.com/docs/en/hooks#stopfailure (a newer Claude Code; 2.0.31 never sends it).
+  StopFailure: {
+    ...common,
+    hook_event_name: "StopFailure",
+    error: "rate_limit",
+    error_details: "429 Too Many Requests",
+    last_assistant_message: "API Error: Rate limit reached",
+  },
 } as const;

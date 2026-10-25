@@ -5,6 +5,7 @@ import {
   buildManifest,
   createTaskTracker,
   diagnosticsChanged,
+  filesSaved,
   workspaceOpened,
 } from "../src/events.js";
 
@@ -103,6 +104,29 @@ describe("workspace and diagnostics events", () => {
     });
     expect(e.payload).toEqual({ errors: 3, warnings: 5, previous_errors: 0, previous_warnings: 5 });
     expect(e.subject).toBeUndefined();
+  });
+});
+
+describe("files saved", () => {
+  it("carries a count only: no subject, no path, name, language or text", () => {
+    const e = filesSaved({ count: 7 });
+    expect(e.event_type).toBe("editor.files.saved");
+    expect(e.payload).toEqual({ count: 7 });
+    expect(e.subject).toBeUndefined();
+    expect(e.correlation_id).toBeUndefined();
+  });
+  it("clamps nonsense counts", () => {
+    expect(filesSaved({ count: 0 }).payload).toEqual({ count: 1 });
+    expect(filesSaved({ count: Number.NaN }).payload).toEqual({ count: 1 });
+    expect(filesSaved({ count: 10 ** 9 }).payload).toEqual({ count: 100_000 });
+  });
+  it("is declared with a data category and has no Fawkes state rule", () => {
+    const manifest = buildManifest() as {
+      data_categories: string[];
+      state_rules: { match: string }[];
+    };
+    expect(manifest.data_categories).toContain("number of files saved");
+    expect(manifest.state_rules.some((r) => r.match.includes("saved"))).toBe(false);
   });
 });
 

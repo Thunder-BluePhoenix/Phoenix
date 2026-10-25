@@ -100,6 +100,21 @@ describe("claude-hook.ts against a real Core", () => {
     });
   });
 
+  it("a StopFailure hook (docs fixture) makes Fawkes ERROR without copying the API error text", async () => {
+    const c = await core();
+    await hook(HOOKS.UserPromptSubmit, { PHOENIX_CORE_URL: c.base });
+    await vi.waitFor(() => expect(c.state().state).toBe("WORKING"));
+    expect(await hook(HOOKS.StopFailure, { PHOENIX_CORE_URL: c.base })).toEqual({
+      status: 0,
+      stdout: "",
+      stderr: "",
+    });
+    await vi.waitFor(() => expect(c.state()).toMatchObject({ state: "ERROR", source: "agents" }));
+    expect(agentEvents(c)).toContain("agent.failed");
+    const text = JSON.stringify(c.runtime.events.recent({ limit: 50 }));
+    expect(text).not.toMatch(/rate_limit|Rate limit|429/);
+  });
+
   it("the full session: started → working → waiting → working → completed → ended", async () => {
     const c = await core();
     const env = { PHOENIX_CORE_URL: c.base };

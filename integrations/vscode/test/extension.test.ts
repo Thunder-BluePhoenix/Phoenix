@@ -30,6 +30,7 @@ function makeVscode(coreUrl: string) {
   const start = emitter<{ execution: Execution }>();
   const end = emitter<{ execution: Execution; exitCode: number | undefined }>();
   const diag = emitter<unknown>();
+  const save = emitter<{ uri: { fsPath: string }; getText(): string }>();
   let diagnostics: [string, { severity: number }[]][] = [];
   const messages: string[] = [];
   const commands: Record<string, () => void> = {};
@@ -44,6 +45,7 @@ function makeVscode(coreUrl: string) {
       isTrusted: true,
       workspaceFolders: [{ uri: { fsPath: "/private/path/that/must/not/leak" } }],
       getConfiguration: () => ({ get: () => coreUrl }),
+      onDidSaveTextDocument: save.event,
     },
     tasks: { onDidStartTaskProcess: start.event, onDidEndTaskProcess: end.event },
     languages: {
@@ -62,6 +64,7 @@ function makeVscode(coreUrl: string) {
     start,
     end,
     diag,
+    save,
     messages,
     commands,
     setDiagnostics: (d: typeof diagnostics) => (diagnostics = d),
@@ -152,6 +155,34 @@ describe("extension.js with a stubbed vscode API and a real Core", () => {
     const all = JSON.stringify((await core.api("GET", "/api/events?limit=200")).json);
     expect(all).not.toContain("secret.ts");
     expect(all).not.toContain("/private/path");
+  });
+
+  it("sends saves as one count with no file identity", async () => {
+    const core = await startCore();
+    stops.push(() => core.runtime.stop());
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const vs = await activate(core.base);
+    await core.api("POST", "/api/capabilities/editor/enable", {});
+    for (const name of ["secret-a.ts", "secret-b.ts", "secret-c.ts"]) {
+      vs.save.fire({
+        uri: { fsPath: `/private/path/${name}` },
+        getText: () => "TOP SECRET FILE TEXT",
+      });
+    }
+    await vi.advanceTimersByTimeAsync(10_100);
+    vi.useRealTimers();
+    await vi.waitFor(async () => {
+      const events = (await core.api("GET", "/api/events?source=editor&limit=50")).json.events as {
+        event: { event_type: string; payload: unknown; subject?: string };
+      }[];
+      const saved = events.filter((x) => x.event.event_type === "editor.files.saved");
+      expect(saved).toHaveLength(1);
+      expect(saved[0]?.event.payload).toEqual({ count: 3 });
+      expect(saved[0]?.event.subject).toBeUndefined();
+    });
+    const all = JSON.stringify((await core.api("GET", "/api/events?limit=200")).json);
+    expect(all).not.toMatch(/secret-|private\/path|TOP SECRET/);
+    expect((await core.api("GET", "/api/pet/state")).json.state).toBe("IDLE");
   });
 
   it("refuses a non-loopback Core URL and never contacts it", async () => {
