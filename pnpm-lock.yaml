@@ -522,6 +522,31 @@ importers:
         specifier: workspace:*
         version: link:../../sdk/testing
 
+  capabilities/browser:
+    dependencies:
+      '@phoenix/ai-browsing':
+        specifier: workspace:*
+        version: link:../../ai/browsing
+      '@phoenix/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@phoenix/sdk':
+        specifier: workspace:*
+        version: link:../../sdk/capability
+    devDependencies:
+      '@phoenix/ai-models':
+        specifier: workspace:*
+        version: link:../../ai/models
+      '@phoenix/ai-tool-gateway':
+        specifier: workspace:*
+        version: link:../../ai/tool-gateway
+      '@phoenix/policy':
+        specifier: workspace:*
+        version: link:../../core/policy
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+
   capabilities/calcom:
     dependencies:
       '@phoenix/logging':
@@ -1055,6 +1080,9 @@ importers:
       '@phoenix/capability-awake':
         specifier: workspace:*
         version: link:../../capabilities/awake
+      '@phoenix/capability-browser':
+        specifier: workspace:*
+        version: link:../../capabilities/browser
       '@phoenix/capability-calcom':
         specifier: workspace:*
         version: link:../../capabilities/calcom

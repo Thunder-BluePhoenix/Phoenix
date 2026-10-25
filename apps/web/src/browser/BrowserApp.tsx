@@ -15,6 +15,7 @@ import {
   type OpenResult,
   type TabInfo,
 } from "./shell";
+import { useBrowserRelay } from "./relay";
 import { INITIAL_STATE, activeTab, addressText, clampZoom, reduce } from "./state";
 
 /** Zoom steps the buttons walk through. The shell clamps anything else. */
@@ -84,6 +85,8 @@ export function BrowserApp({
 }: BrowserAppProps) {
   const t = useT();
   const client = useClient();
+  // Phase 95: serves the browsing assistant's requests for the ACTIVE tab (chrome page only).
+  useBrowserRelay(client, shell);
   const [state, dispatch] = useReducer(reduce, INITIAL_STATE);
   const [shields, setShields] = useState(() => new Shields());
   const [, bump] = useState(0);

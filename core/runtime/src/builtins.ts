@@ -10,6 +10,7 @@ import { createAgentsCapability, type AgentsServices } from "@phoenix/capability
 import { createAppleMusicCapability } from "@phoenix/capability-apple-music";
 import { createDockerCapability } from "@phoenix/capability-docker";
 import { createFrappeCapability } from "@phoenix/capability-frappe";
+import { createBrowserCapability, type BrowserRelay } from "@phoenix/capability-browser";
 import { createCalcomCapability } from "@phoenix/capability-calcom";
 import { createCalendarCapability, type ReminderStore } from "@phoenix/capability-calendar";
 import { createGitCapability } from "@phoenix/capability-git";
@@ -50,6 +51,8 @@ export interface BuiltinHost {
   dockerIdle?: DockerIdle;
   /** Phase 83: where the calendar keeps its reminder de-dup keys, so a restart does not remind again. */
   calendarReminders?: ReminderStore;
+  /** Phase 95: the queue the Phoenix browser's chrome page polls; the same instance is given to the runtime. */
+  browserRelay?: BrowserRelay;
 }
 
 /**
@@ -100,6 +103,7 @@ export function builtinCapabilities(
     createPlanningCapability({ services: planningServices }),
     createPortsCapability(),
     createScreenRegionCapability(),
+    createBrowserCapability(host.browserRelay ? { relay: host.browserRelay } : {}),
     createWebSearchCapability(),
     createStatusLightsCapability(host.statusLights),
     ...(env === "dev" ? [mockCapability] : []),

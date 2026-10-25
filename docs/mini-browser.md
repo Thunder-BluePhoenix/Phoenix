@@ -117,7 +117,7 @@ them. `PERMISSION_KINDS` mirrors the display names of `tauri::webview::Permissio
 
 `PRIVATE_PROFILE`: `persistence: "none"`, third-party cookies off, HTTPS upgrade on, telemetry off, downloads `ask`.
 `webviewSettings()` states what the Rust builder must set (`incognito`, no `data_directory`, devtools off). Persistent
-profiles are Phase 96. The guard keeps only in-memory counts and grants. The audit sink (`BrowserAuditSink`) receives the
+profiles are Phase 96: a PRIVATE tab keeps the contract above; a profile tab (`open_tab` with `profileId`) is the one exception and exists only because the person chose that profile (see [browser-profiles.md](browser-profiles.md#the-shell-side-rust-phase-96)). The guard keeps only in-memory counts and grants. The audit sink (`BrowserAuditSink`) receives the
 **host only**: never a path or query, which can hold tokens (a test pins this).
 
 ### Chrome UI (`apps/web/src/browser/`, Vite entry `browser`)
@@ -153,6 +153,29 @@ these tests.
   `browser://open-request` or open the window with `?open=`).
 - All strings are in the ten locales (`browser.*`); non-English text is machine-translated and unreviewed.
 
+### Phase 95: chrome relay and approval card (`apps/web`)
+
+**Only ran against fakes in happy-dom** (a scripted client, `fake-shell.ts`, a fake fetch). No Tauri command was invoked,
+no real webview, window or display was involved, and Core's relay routes were not exercised from here.
+
+- `shell.ts`: `pageSnapshot()` and `pageAction(req)` map to the chrome-only commands `page_snapshot` / `page_action`
+  (camelCase args). `parsePageSnapshotResult` / `parsePageActionResult` accept only the documented shapes; anything else,
+  a rejected invoke included, becomes the resolved `{ ok: false, reason: "failed" }`. A reason must be a short lower-case id.
+- `relay.ts`: while a shell exists and Core is online, the chrome page long-polls `GET /api/browser/relay/next?wait=20000`
+  and handles one request at a time. The request is validated strictly (kind whitelist, exact field set, string types,
+  lengths 512/4096/2048, no control characters except in typed text); unknown shapes are answered `{ ok: false, reason:
+"failed" }` without calling the shell. The result goes to `POST /api/browser/relay/:id/result`: snapshot ->
+  `{ ok: true, snapshot: { url, title, html, truncated } }` (no `tabId`), action -> `{ ok: true, url }` or `{ ok: false,
+reason }`; a body over ~14 MiB serialised is replaced by `{ ok: false, reason: "too_large" }`. Errors back off 1 s,
+  doubling to 15 s; unmount aborts and nothing is run or posted afterwards. The loop never throws and never logs; snapshot
+  HTML and typed text are never put in the DOM.
+- `Approvals.tsx`: a confirmation with `details.browser` (or capability `browser`) shows the localised action, the page
+  (host and path; any query, fragment or credentials Core might send are cut again here), the selector or destination
+  (with a note when the query is hidden) and, for `type`, the FULL text in a `pre-wrap` text node with its length. A missing
+  fact is said to be missing. The typed text is in no attribute, live-region announcement, console call or storage.
+  The high-risk "I understand" step is unchanged. Strings: `browserApproval.*` in all ten locales (machine-translated,
+  unreviewed).
+
 ## The Rust host
 
 Files in `apps/desktop/src-tauri/src/`:
@@ -164,6 +187,7 @@ Files in `apps/desktop/src-tauri/src/`:
 | `browser_core.rs`   | Pure helpers: tab ids, zoom clamp, history counter, popup rate limit, download names, port-radar URL rules                                                     |
 | `browser_native.rs` | The only platform code: folder dialogs (macOS, Windows, Linux) and the macOS WKContentRuleList compile and attach                                              |
 | `browser.rs`        | `Host` state, the window builder, `on_*` hooks, the chrome commands, the lifecycle                                                                             |
+| `browser_page.rs`   | Phase 95, pure: the fixed page scripts, selector allow-pattern, JSON string-literal substitution, request validation, reply decoding and caps                  |
 
 ### Window layout
 
@@ -226,24 +250,117 @@ All arguments are camelCase from the page. Every command's first statement is `c
 source to enforce that), so a call from any other window label (the pet, a content window, anything) returns
 `{"code":"forbidden"}` and does nothing. The contract with the chrome page is in `apps/web/src/browser/shell.ts`.
 
-| Command                                    | Behaviour                                                                                                                                                        |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `open_tab { url, intent }`                 | `typed` or `port_radar`. URL: at most 2048 bytes, no control characters. Refusals resolve `{ok:false, reason}`; success `{ok:true, tab}`                         |
-| `navigate { tabId, url, intent: "typed" }` | the same validation; any other intent is rejected                                                                                                                |
-| `close_tab`, `activate_tab`                | tab id is canonical decimal digits only and must exist                                                                                                           |
-| `back`, `forward`, `reload`                | `back`/`forward` use a host-side history counter and `history.back()`/`history.forward()` (the only script Phoenix ever evaluates in a page; it carries no data) |
-| `zoom { tabId, factor }`                   | clamped to 0.5 to 3, NaN to 1; applies `set_zoom`                                                                                                                |
-| `set_chrome_height { height }`             | clamped to 40 to 400 logical px                                                                                                                                  |
-| `set_site_shields { site, blocking }`      | `site` must be a plain host name; recompiles and re-attaches the rule list on macOS                                                                              |
-| `shields_status`                           | whether native blocking is active, which source (lists, starter, off), the conversion report and any attach error                                                |
+| Command                                                             | Behaviour                                                                                                                                                                                   |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `open_tab { url, intent }`                                          | `typed` or `port_radar`. URL: at most 2048 bytes, no control characters. Refusals resolve `{ok:false, reason}`; success `{ok:true, tab}`                                                    |
+| `navigate { tabId, url, intent: "typed" }`                          | the same validation; any other intent is rejected                                                                                                                                           |
+| `close_tab`, `activate_tab`                                         | tab id is canonical decimal digits only and must exist                                                                                                                                      |
+| `back`, `forward`, `reload`                                         | `back`/`forward` use a host-side history counter and `history.back()`/`history.forward()` (the only script Phoenix ever evaluates in a page; it carries no data)                            |
+| `zoom { tabId, factor }`                                            | clamped to 0.5 to 3, NaN to 1; applies `set_zoom`                                                                                                                                           |
+| `set_chrome_height { height }`                                      | clamped to 40 to 400 logical px                                                                                                                                                             |
+| `set_site_shields { site, blocking }`                               | `site` must be a plain host name; recompiles and re-attaches the rule list on macOS                                                                                                         |
+| `shields_status`                                                    | whether native blocking is active, which source (lists, starter, off), the conversion report and any attach error                                                                           |
+| `page_snapshot {}`                                                  | Phase 95: the active tab's markup (at most 4 MiB) with the host's tab id, URL and title; see [Phase 95: page snapshot and page actions](#phase-95-page-snapshot-and-page-actions-rust-host) |
+| `page_action { kind, selector?, text?, destination?, expectedUrl }` | Phase 95: one approved click, type, submit, download or navigate on the active tab, same section                                                                                            |
 
 Events to the chrome window only: `browser://tab` (a `TabInfo` upsert), `browser://tab-closed`, `browser://open-request`,
 `browser://download-refused`. `TabInfo.blocked` is always 0: no webview reports how many requests a content rule list
 blocked.
 
+### Phase 95: page snapshot and page actions (Rust host)
+
+**Never run against a real webview.** Everything below was exercised only with pure unit tests and the mock runtime plus
+the `Hooks::script_runner` fake, which answers instead of a page. The fixed scripts were never executed by any
+JavaScript engine from here, in WKWebView, WebView2 or WebKitGTK or anywhere else. What is proven is the host: caller
+check, validation, the active-tab and URL checks, how replies are decoded and bounded, and that a refusal is a resolved value.
+
+Two more chrome-only commands (first statement `chrome_only(&window)?`, in `browser.rs`; pure parts and the scripts in
+`browser_page.rs`). Neither takes a tab id: both act on the Host's ACTIVE tab, whose id, URL and title are the HOST's
+tracked values, never script output. Core's relay (see the chrome section above) drives them after the person approved.
+
+| Command                                                             | Behaviour                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `page_snapshot {}`                                                  | `{ok:true, tabId, url, title, html, truncated}` or `{ok:false, reason}`; reasons `no_active_tab`, `not_a_web_page` (tab URL is not http/https), `page_changed`, `timeout`, `too_large` (raw reply over 24 MiB), `failed`                                                                                                 |
+| `page_action { kind, selector?, text?, destination?, expectedUrl }` | `kind` is `click`, `type`, `submit`, `download` or `navigate`. `{ok:true, url}` or `{ok:false, reason}`; reasons `bad_kind`, `bad_selector`, `bad_text`, `bad_url`, `no_active_tab`, `page_changed`, `timeout`, `not_found`, `ambiguous`, `protected`, `unsupported`, `failed`, or a navigation-denial id for `navigate` |
+
+Bounds: selector at most 512 characters (its pattern is far tighter, below), `text` at most 4096 characters (required for
+`type`, forbidden otherwise), `destination` at most 2048 (`navigate` only), `expectedUrl` at most 2048 and http(s); no
+control characters in the URLs. Validation happens before the tab is looked at and before any script text exists.
+
+**Page check.** `expectedUrl` (fragment stripped, compared as parsed URL strings) must equal the active tab's host-tracked
+URL, else `page_changed`, and this happens before any script runs. A snapshot is `page_changed` when the host URL (or the
+active tab) differs before and after the script, or when the page's own `location.href` (fragment stripped) differs from
+the host URL. For the scripted kinds the host first runs the fixed `URL_SCRIPT` (returns `location.href`, no input) and
+refuses if it is not the approved page, re-checks the host state, then runs the action script, which reports the page it
+started on; that must match too. This narrows, and cannot close, the gap between the check and the click: a page can still
+navigate between the last check and the script's first statement.
+
+**Fixed scripts.** `SNAPSHOT_SCRIPT` and `URL_SCRIPT` have no input. The action scripts are `const &str` text with two
+placeholders; the ONLY values that ever enter one are the selector and (for `type`) the text, each as ONE serde_json
+string literal with U+2028/U+2029 additionally escaped. Substitution is a single pass over the template, so a value that
+contains a placeholder name is never substituted again. No other field (`destination`, `expectedUrl`, anything a page
+returned) can reach a script. Tests parse the declaration line back as JSON and check a hostile text (quotes,
+`</script>`, backslashes, U+2028/2029, `${}`, backticks, control characters) appears exactly once, only as that literal.
+
+The scripts never call `querySelector`, `eval`, `Function` or `innerHTML`. They resolve the control by iterating
+`document.getElementsByTagName(tag)` and comparing a cleaned `id` (or, when the element has no id, cleaned `name`) with
+the selector's token, where "clean" is the reader's `cleanToken` (strip invisible, bidi and control characters, collapse
+whitespace, trim, cut to 80, replace `[^A-Za-z0-9_:.-]` with `_`); exactly one match is required (`not_found`,
+`ambiguous`). Defence in depth, repeating `ai/browsing` rules inside the page: `click`/`download` only on a `button` or
+`input`; `type` only into `textarea` or `input` of type text/search/email/url/tel, not disabled or read-only, using the
+native prototype value setter and then dispatching bubbling `input` and `change` events; `submit` on a `form` or a submit
+control through `requestSubmit`. Password, hidden and file types and any control whose type, autocomplete, name, id,
+aria-label, placeholder, title or label matches the reader's `forbiddenField` pattern are `protected`, and a form with any
+protected control is never submitted or clicked-to-submit. The script returns `JSON.stringify({ok:true,u})` or
+`{ok:false,reason}`; the host decodes either a JSON string of JSON or an object, maps `reason` onto
+`not_found|ambiguous|protected|unsupported|failed` (anything else becomes `failed`, so page text never reaches the chrome),
+and bounds the raw reply (24 MiB).
+
+**Selector allow-pattern.** Exactly what `ai/browsing/src/page-snapshot.ts` emits for a unique control: `<tag>#<token>` or
+`<tag>[name="<token>"]` with `tag` one of `input`, `button`, `form`, `select`, `textarea` (lower case) and `token` =
+`[A-Za-z0-9_:.-]{1,80}`. Refused as `bad_selector`: the reader's `:nth-of-type(N)` form, its `~N` duplicate suffix,
+`<form> :unreported-controls`, quotes, backslashes, angle brackets, spaces, newlines, any non-ASCII, any other tag, empty,
+and anything over 80 token characters. Those reader forms are not valid CSS and not unique, so they cannot be clicked.
+The cost: a control with neither a usable id nor name cannot be acted on at all.
+
+**Snapshot.** The fixed script returns `document.documentElement.outerHTML` cut at 4 MiB (4,194,304 UTF-16 units) with the
+page's `location.href`; lone surrogates become U+FFFD so the reply is valid JSON. Rust cuts again at 4 Mi characters after
+decoding and sets `truncated` if either cut anything. The page's markup is untrusted input for the reader in `ai/browsing`,
+which is the only thing that should interpret it; the chrome never renders it. The shadow DOM, iframes and anything
+rendered after the script ran are not in `outerHTML`.
+
+**`navigate` kind.** The destination is vetted exactly like the `navigate` command (`Host::vet(radar, url, typed = true)`,
+DNS lookup off the main thread); a policy denial resolves `{ok:false, reason: <denial id>}` (`private_network`, `dns_private`,
+...), and success calls the tab's `navigate` and returns the new URL. The page is re-checked after the DNS wait.
+
+**Timeouts and the test seam.** The real path calls `eval_with_callback` on the active tab's content window and waits on a
+one-shot channel (`Mutex<Option<Sender>>` taken once) with `recv_timeout` of 10 s, on a blocking thread. The callback may
+never fire (a hung page, or a platform that drops it): that is `timeout`, and a late answer is dropped. `Hooks` has an
+optional `script_runner(label, script) -> Option<String>`; `Hooks::system` sets `None`. `Some(raw)` is the raw callback
+string, `None` falls through to the real eval path (the mock runtime evaluates and never calls back, which the timeout test
+uses).
+
+**Never logged.** `text` is never in a result, an error, a log line, or `Debug` output (`Plan` prints only its variant); a
+refusal reason is one of the fixed ids above.
+
+**Not verified:**
+
+- Whether `eval_with_callback` returns what the code assumes on WKWebView, WebView2 and WebKitGTK (a JSON string of the
+  script's string result, per tauri's docs, and the Windows note that exceptions are swallowed). The decoder accepts both
+  an object and a JSON string of JSON because this was not observed.
+- That any of the scripts behave as described on a real page: React/Vue controlled inputs (the prototype-setter plus
+  `input` event is the usual trick, not proof), `requestSubmit` validation, a click that opens a popup or a download (the
+  download path still goes through `on_download` and its folder dialog, not through this command), shadow DOM, cross-origin
+  iframes, pages with a Trusted Types or script-blocking policy, sandboxed pages, a CSP (`eval_with_callback` is not
+  subject to the page's CSP, but this was not observed).
+- Behaviour of the 4 MiB / 24 MiB bounds against real memory pressure; and the timing gap between the URL checks and the
+  action (above).
+- That the chrome-only ACL rejects a call from a real remote page (as for every command here: the mock runtime checks the
+  label only).
+
 ### Capabilities
 
-`capabilities/browser.json` grants `core:default` and the eleven `allow-*` browser commands to the window
+`capabilities/browser.json` grants `core:default` and the `allow-*` permission of every browser command (13 as of Phase 95: the eleven above plus `page_snapshot` and `page_action`) to the window
 `phoenix-browser` only, as a **local** capability (the chrome is a page from the app bundle). The content windows have
 no capability file, no `remote` entry anywhere lists a web origin (the only remote entry in the repository is the exact
 loopback `pill.html` URL of Phoenix Core), and the one runtime `add_capability` call names only the pill window.

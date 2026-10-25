@@ -37,6 +37,9 @@ fn main() {
             "set_chrome_height",
             "set_site_shields",
             "shields_status",
+            "page_snapshot",
+            "page_action",
+            "purge_profile_data",
         ]),
     ))
     .expect("Tauri build failed");

@@ -111,6 +111,13 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.voice.settings.notListening":
     "语音已开启，但此页面尚未开始监听（重新加载后，浏览器会再次询问）。",
   "capture.voice.settings.start": "开始监听",
+  "capture.voice.window.title": "语音助手（OK Fawkes）",
+  "capture.voice.window.intro":
+    "说“OK Fawkes”，然后提问。语音在“设置”的“语音”中开启；此窗口只负责开始和停止监听。",
+  "capture.voice.window.shell":
+    "麦克风开启期间，Phoenix 会在此窗口标题和托盘提示中显示 LISTENING。托盘菜单中的“Stop voice listening”可从应用本身结束监听。",
+  "capture.voice.window.listening": "LISTENING：麦克风已开启。",
+  "capture.voice.window.off": "麦克风已关闭。",
   "capture.multimodal.title": "一次性设备采集",
   "capture.multimodal.intro":
     "请求方：用户。Core 会检查你的能力授权，并在浏览器请求设备访问之前，先请求每次使用的批准。不会在后台采集任何内容；没有云端回退。",

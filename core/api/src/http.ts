@@ -10,6 +10,13 @@ export const MAX_BODY_BYTES = 256 * 1024;
  * path only, and only after authentication; every other route keeps MAX_BODY_BYTES.
  */
 export const ATTACHMENT_BODY_MAX_BYTES = 7 * 1024 * 1024;
+/**
+ * The second larger body: `POST /api/browser/relay/:id/result` (Phase 95), where the Phoenix browser's
+ * chrome page returns a page snapshot (at most 4 MiB of HTML, up to 3 bytes per character as JSON). The
+ * server grants it to that exact method and path pattern only, and only after authentication.
+ */
+export const BROWSER_RELAY_BODY_MAX_BYTES = 16 * 1024 * 1024;
+export const BROWSER_RELAY_RESULT_PATH = /^\/api\/browser\/relay\/[^/]+\/result$/;
 
 /** Thrown when a body exceeds its limit (MAX_BODY_BYTES unless the route asked for more); answered with 413 and the connection closed. */
 export class BodyTooLargeError extends PhoenixError {

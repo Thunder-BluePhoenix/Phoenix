@@ -121,6 +121,13 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.voice.settings.notListening":
     "La voix est activée, mais cette page n’écoute pas encore (après un rechargement, le navigateur redemande l’autorisation).",
   "capture.voice.settings.start": "Démarrer l’écoute",
+  "capture.voice.window.title": "Assistant vocal (OK Fawkes)",
+  "capture.voice.window.intro":
+    "Dites « OK Fawkes », puis posez votre question. La voix s’active dans les Réglages, sous « Voix » ; cette fenêtre ne fait que démarrer et arrêter l’écoute.",
+  "capture.voice.window.shell":
+    "Phoenix affiche LISTENING dans le titre de cette fenêtre et dans l’info-bulle de la barre d’état tant que le micro est actif. « Stop voice listening » dans le menu de la barre d’état l’arrête depuis l’application elle-même.",
+  "capture.voice.window.listening": "LISTENING : le micro est actif.",
+  "capture.voice.window.off": "Le micro est coupé.",
   "capture.multimodal.title": "Capture ponctuelle depuis un appareil",
   "capture.multimodal.intro":
     "Demandé par : l’utilisateur. Core vérifie votre autorisation de capacité et demande une approbation pour chaque usage avant que votre navigateur ne demande l’accès à l’appareil. Rien ne capture en arrière-plan ; aucun repli vers le cloud.",

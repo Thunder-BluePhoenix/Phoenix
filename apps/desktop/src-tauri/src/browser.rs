@@ -26,10 +26,15 @@ use crate::browser_core::{
     same_radar_origin, tab_label, tab_of_label, url_text_ok, History, RateLimit, CHROME_LABEL,
     MAX_TABS,
 };
+use crate::browser_extensions::{self, ScriptSource};
+use crate::browser_page::{
+    self as page, ActionOutcome, ActionReply, ActionRequest, Plan, ScriptFail, SnapshotOutcome,
+};
 use crate::browser_policy::{
     classify_host, classify_ip, decide_navigation, host_matches_site, registrable_domain, Decision,
     Denial, HostClass, Intent, Policy, SitePermissions,
 };
+use crate::browser_profiles::{self, StoreError};
 use crate::browser_rules::{
     self, Exemption, Options as RuleOptions, RulesReport, WEBKIT_RULE_LIMIT,
 };
@@ -39,7 +44,7 @@ use crate::shortcuts::Refusal;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::net::{IpAddr, ToSocketAddrs};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -52,6 +57,7 @@ use tauri::{
 use url::Url;
 
 pub use crate::browser_core::{CHROME_LABEL as CHROME_WINDOW_LABEL, DEFAULT_CHROME_HEIGHT};
+pub use crate::browser_profiles::{CoreProfiles, ProfileStore};
 
 pub const TAB_EVENT: &str = "browser://tab";
 pub const TAB_CLOSED_EVENT: &str = "browser://tab-closed";
@@ -69,6 +75,8 @@ const SHIELDS_TTL: Duration = Duration::from_secs(300);
 /// Longest wait for WebKit to compile and attach the rule list before a tab loads anyway.
 #[cfg(target_os = "macos")]
 const SHIELDS_ATTACH_TIMEOUT: Duration = Duration::from_secs(20);
+/// Longest wait for a page to answer one script.
+const SCRIPT_TIMEOUT: Duration = Duration::from_secs(page::SCRIPT_TIMEOUT_SECS);
 const MAX_LIST_RESPONSE: u64 = 12 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------------------------
@@ -94,6 +102,9 @@ type Resolver = Arc<dyn Fn(&str) -> Result<Vec<IpAddr>, ()> + Send + Sync>;
 /// Asks the person for a folder; the text names the file and the site. Called on the main thread.
 type Picker = Arc<dyn Fn(&str) -> Option<PathBuf> + Send + Sync>;
 type ShieldsSource = Arc<dyn Fn() -> ShieldsInput + Send + Sync>;
+/// Runs a script in the content window with this label and returns the raw callback string.
+/// `None` means "not faked": the real `eval_with_callback` path runs.
+pub type ScriptRunner = Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>;
 
 /// Everything that touches the machine; tests replace it with fakes (`Builder::manage(hooks)`).
 #[derive(Clone)]
@@ -104,15 +115,32 @@ pub struct Hooks {
     pub pick_folder: Picker,
     /// Reads the shields settings and list text from Core.
     pub shields: ShieldsSource,
+    /// Phase 96: where a profile's web data lives (and is deleted from).
+    pub profiles: ProfileStore,
+    /// Phase 96: which approved content scripts Core allows for (profile id, origin) right now.
+    /// `Err` means "inject nothing".
+    pub scripts: ScriptSource,
+    /// Phase 96: what Core says about profiles (does it exist, which deletions are pending).
+    pub core_profiles: CoreProfiles,
+    /// Phase 95 test seam: answers `page_snapshot` / `page_action` scripts (window label, script)
+    /// with the raw callback string. `None` (and `Hooks::system`) runs the real eval path.
+    pub script_runner: Option<ScriptRunner>,
 }
 
 impl Hooks {
     /// The real app: system DNS, the native folder dialog, Phoenix Core over loopback.
-    pub fn system(locator: Locator) -> Self {
+    pub fn system(locator: Locator, profiles_root: PathBuf) -> Self {
         Hooks {
             resolve: Arc::new(system_resolve),
             pick_folder: Arc::new(crate::browser_native::pick_folder),
-            shields: Arc::new(move || read_shields_from_core(&locator)),
+            shields: Arc::new({
+                let locator = locator.clone();
+                move || read_shields_from_core(&locator)
+            }),
+            profiles: ProfileStore::new(profiles_root),
+            core_profiles: CoreProfiles::from_core(locator.clone()),
+            scripts: browser_extensions::core_source(locator),
+            script_runner: None,
         }
     }
 }
@@ -253,6 +281,8 @@ struct Tab {
     zoom: f64,
     /// Set for a tab opened from the port radar: the one dev-server origin it may stay on.
     radar: Option<(String, u16)>,
+    /// Phase 96: the stored profile this tab belongs to; `None` is a private (incognito) tab.
+    profile: Option<String>,
 }
 
 /// One compiled rule list and what is known about it.
@@ -285,6 +315,11 @@ struct Inner {
     popups: RateLimit,
     downloads: RateLimit,
     shields: ShieldsState,
+    /// Profiles whose data is being deleted right now: no tab may open in them.
+    purging: HashSet<String>,
+    /// Tabs being opened per profile (counted from `add_tab_in` until the window exists), so a
+    /// purge never starts while a window is still being built in that profile.
+    opening: HashMap<String, usize>,
 }
 
 pub struct Host {
@@ -308,6 +343,8 @@ pub struct TabInfo {
     pub zoom: f64,
     /// Always 0: no supported webview reports how many requests a content rule list blocked.
     pub blocked: u32,
+    /// The stored profile the tab belongs to; `null` for a private tab.
+    pub profile_id: Option<String>,
 }
 
 fn info(id: u64, tab: &Tab) -> TabInfo {
@@ -320,6 +357,7 @@ fn info(id: u64, tab: &Tab) -> TabInfo {
         can_go_forward: tab.history.can_go_forward(),
         zoom: tab.zoom,
         blocked: 0,
+        profile_id: tab.profile.clone(),
     }
 }
 
@@ -356,6 +394,8 @@ impl Host {
                 popups: RateLimit::new(3, Duration::from_secs(10)),
                 downloads: RateLimit::new(3, Duration::from_secs(10)),
                 shields: ShieldsState::default(),
+                purging: HashSet::new(),
+                opening: HashMap::new(),
             }),
         }
     }
@@ -644,13 +684,31 @@ impl Host {
     }
 
     /// A new tab's state; `None` when too many tabs are open.
+    #[cfg(test)]
     fn add_tab(&self, url: &str, radar: Option<(String, u16)>) -> Option<u64> {
+        self.add_tab_in(url, radar, None).ok()
+    }
+
+    /// [`Host::add_tab`] for a tab that may belong to a stored profile. `profile_busy` while that
+    /// profile's data is being deleted.
+    fn add_tab_in(
+        &self,
+        url: &str,
+        radar: Option<(String, u16)>,
+        profile: Option<String>,
+    ) -> Result<u64, &'static str> {
         let mut inner = self.inner.lock();
+        if profile.as_ref().is_some_and(|p| inner.purging.contains(p)) {
+            return Err("profile_busy");
+        }
         if inner.tabs.len() >= MAX_TABS {
-            return None;
+            return Err("too_many_tabs");
         }
         let id = inner.next_id;
         inner.next_id += 1;
+        if let Some(p) = &profile {
+            *inner.opening.entry(p.clone()).or_insert(0) += 1;
+        }
         inner.tabs.insert(
             id,
             Tab {
@@ -660,9 +718,10 @@ impl Host {
                 history: History::default(),
                 zoom: 1.0,
                 radar,
+                profile,
             },
         );
-        Some(id)
+        Ok(id)
     }
 
     /// Removes a tab; the next active tab (the previous one, else the next) when it was active.
@@ -827,6 +886,7 @@ impl Host {
         inner.dns.clear();
         inner.pending_radar.clear();
         inner.chrome_height = DEFAULT_CHROME_HEIGHT;
+        inner.opening.clear();
     }
 }
 
@@ -1005,6 +1065,7 @@ fn build_tab_window<R: Runtime>(
     app: &AppHandle<R>,
     id: u64,
     first_url: Url,
+    profile: Option<(String, PathBuf)>,
 ) -> tauri::Result<WebviewWindow<R>> {
     let chrome = app
         .get_webview_window(CHROME_LABEL)
@@ -1031,10 +1092,23 @@ fn build_tab_window<R: Runtime>(
         .skip_taskbar(true)
         .visible(false)
         .focused(false)
-        .shadow(false)
-        // Untrusted page: a private store that is dropped with the webview, no folder on disk,
-        // no developer tools, and NO initialization script of ours.
-        .incognito(true)
+        .shadow(false);
+    // A private tab is untrusted and leaves nothing: a store dropped with the webview, no folder on
+    // disk. A profile tab (Phase 96, opened only because the person chose that profile) gets ITS
+    // OWN persistent store: `data_directory` on Windows and Linux, a `WKWebsiteDataStore`
+    // identifier on macOS 14+ (wry ignores the directory there). Either way no initialization
+    // script of ours, and no developer tools.
+    let builder = match profile {
+        Some((profile_id, dir)) => {
+            let mut b = builder.incognito(false).data_directory(dir);
+            if let Some(store) = browser_profiles::store_identifier(&profile_id) {
+                b = b.data_store_identifier(store);
+            }
+            b
+        }
+        None => builder.incognito(true),
+    };
+    let builder = builder
         .devtools(false)
         .on_navigation(move |url| {
             let Some(host) = nav.try_state::<Host>() else {
@@ -1066,8 +1140,12 @@ fn build_tab_window<R: Runtime>(
             if let Some(host) = new_win.try_state::<Host>() {
                 if let Some(target) = host.popup_target(id, &url) {
                     let app = new_win.clone();
+                    // A popup stays in the profile of the tab that opened it.
+                    let opener_profile = host.tab_profile(id);
                     tauri::async_runtime::spawn(async move {
-                        let _ = open_url_as_tab(&app, target.to_string(), None, false).await;
+                        let _ =
+                            open_url_as_tab(&app, target.to_string(), None, false, opener_profile)
+                                .await;
                     });
                 }
             }
@@ -1118,6 +1196,9 @@ fn build_tab_window<R: Runtime>(
             if let Some(tab) = updated {
                 emit_tab(&started, &tab);
             }
+            if matches!(payload.event(), PageLoadEvent::Finished) {
+                inject_content_scripts(&started, id, payload.url());
+            }
             let _ = window;
         })
         .on_document_title_changed(move |_window, text| {
@@ -1159,6 +1240,7 @@ async fn open_vetted_tab<R: Runtime>(
     app: &AppHandle<R>,
     url: Url,
     radar: Option<(String, u16)>,
+    profile: Option<String>,
 ) -> Result<TabInfo, &'static str> {
     let host = app.state::<Host>();
     if app.get_webview_window(CHROME_LABEL).is_none() {
@@ -1176,8 +1258,21 @@ async fn open_vetted_tab<R: Runtime>(
     } else {
         None
     };
-    let Some(id) = host.add_tab(url.as_str(), radar) else {
-        return Err("too_many_tabs");
+    // Phase 96: a profile tab is registered FIRST (so a purge that starts later sees it and
+    // answers "busy"), then Core is asked whether the profile still exists (a purge only ever
+    // starts after Core removed the profile, so a removed profile is refused here), and only then
+    // does its directory come into existence, because the person opened a tab in it.
+    let id = host.add_tab_in(url.as_str(), radar, profile.clone())?;
+    let _opening = OpenGuard::new(app, profile.clone());
+    let profile_dir = match &profile {
+        Some(profile_id) => match prepare_profile(app, profile_id).await {
+            Ok(dir) => Some(dir),
+            Err(reason) => {
+                host.remove_tab(id);
+                return Err(reason);
+            }
+        },
+        None => None,
     };
     // With native rules the window starts on about:blank and loads `url` after they are attached.
     let first: Url = if native {
@@ -1188,7 +1283,9 @@ async fn open_vetted_tab<R: Runtime>(
     let builder_app = app.clone();
     let (tx, rx) = std::sync::mpsc::channel::<tauri::Result<()>>();
     let _ = app.run_on_main_thread(move || {
-        let _ = tx.send(build_tab_window(&builder_app, id, first).map(|_| ()));
+        let _ = tx.send(
+            build_tab_window(&builder_app, id, first, profile.clone().zip(profile_dir)).map(|_| ()),
+        );
     });
     let built =
         tauri::async_runtime::spawn_blocking(move || rx.recv_timeout(Duration::from_secs(10)).ok())
@@ -1273,6 +1370,7 @@ async fn open_url_as_tab<R: Runtime>(
     input: String,
     radar: Option<(String, u16)>,
     typed: bool,
+    profile: Option<String>,
 ) -> Outcome {
     let vetter = app.clone();
     let radar_for_vet = radar.clone();
@@ -1283,7 +1381,7 @@ async fn open_url_as_tab<R: Runtime>(
     })
     .await;
     match vetted {
-        Ok(Ok(url)) => match open_vetted_tab(app, url, radar).await {
+        Ok(Ok(url)) => match open_vetted_tab(app, url, radar, profile).await {
             Ok(tab) => Outcome::opened(tab),
             Err(reason) => Outcome::denied(reason),
         },
@@ -1328,14 +1426,23 @@ pub async fn open_tab<R: Runtime>(
     window: WebviewWindow<R>,
     url: String,
     intent: OpenIntent,
+    profile_id: Option<String>,
 ) -> Result<Outcome, Refusal> {
     chrome_only(&window)?;
     let app = window.app_handle().clone();
     if !url_text_ok(&url) {
         return Ok(Outcome::denied("unparseable"));
     }
+    // `private` (any case) and no profile both mean an incognito tab; anything else must be a
+    // plain profile id. A port-radar tab is always private.
+    let profile = match profile_id.as_deref() {
+        None => None,
+        Some(p) if p.eq_ignore_ascii_case(browser_profiles::PRIVATE) => None,
+        Some(p) if browser_profiles::valid_profile_id(p) => Some(p.to_string()),
+        Some(_) => return Ok(Outcome::denied("profile_invalid")),
+    };
     match intent {
-        OpenIntent::Typed => Ok(open_url_as_tab(&app, url, None, true).await),
+        OpenIntent::Typed => Ok(open_url_as_tab(&app, url, None, true, profile).await),
         OpenIntent::PortRadar => {
             // Only a URL the main Phoenix window asked for, once, after the chrome's confirmation.
             let host = app.state::<Host>();
@@ -1345,7 +1452,10 @@ pub async fn open_tab<R: Runtime>(
             if !host.take_radar_request(&url) {
                 return Ok(Outcome::denied("not_requested"));
             }
-            Ok(open_url_as_tab(&app, url.trim().to_string(), Some(origin), true).await)
+            if profile.is_some() {
+                return Ok(Outcome::denied("profile_invalid"));
+            }
+            Ok(open_url_as_tab(&app, url.trim().to_string(), Some(origin), true, None).await)
         }
     }
 }
@@ -1573,6 +1683,225 @@ pub fn shields_status<R: Runtime>(window: WebviewWindow<R>) -> Result<ShieldsSta
     })
 }
 
+// ---------------------------------------------------------------------------------------------
+// Phase 95: read the ACTIVE tab and act on it (chrome window only; Core's relay drives these)
+// ---------------------------------------------------------------------------------------------
+
+/// The active tab as the host tracks it: id, URL and title are the HOST's values, not the page's.
+fn active_tab<R: Runtime>(app: &AppHandle<R>) -> Option<(u64, TabInfo)> {
+    let host = app.state::<Host>();
+    let inner = host.inner.lock();
+    let id = inner.active?;
+    inner.tabs.get(&id).map(|t| (id, info(id, t)))
+}
+
+/// Runs `script` in tab `id`'s content window and returns what the page answered. Blocks (at most
+/// `timeout`): call off the main thread. The test runner answers first; `None` there, and always
+/// in the real app, evaluates in the webview and waits on a one-shot channel.
+fn run_script<R: Runtime>(
+    app: &AppHandle<R>,
+    id: u64,
+    script: &str,
+    timeout: Duration,
+) -> Result<String, ScriptFail> {
+    let label = tab_label(id);
+    if let Some(runner) = &app.state::<Host>().hooks.script_runner {
+        if let Some(raw) = runner(&label, script) {
+            return Ok(raw);
+        }
+    }
+    let window = app.get_webview_window(&label).ok_or(ScriptFail::Failed)?;
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    // The callback may fire more than once or after we gave up: the sender is taken exactly once.
+    let slot = Mutex::new(Some(tx));
+    window
+        .eval_with_callback(script, move |raw| {
+            if let Some(tx) = slot.lock().take() {
+                let _ = tx.send(raw);
+            }
+        })
+        .map_err(|_| ScriptFail::Failed)?;
+    rx.recv_timeout(timeout).map_err(|_| ScriptFail::Timeout)
+}
+
+/// The same tab is still active and still on `url` (compared without the fragment).
+fn still_on<R: Runtime>(app: &AppHandle<R>, id: u64, url: &str) -> bool {
+    active_tab(app).is_some_and(|(now, tab)| now == id && page::same_page(&tab.url, url))
+}
+
+fn snapshot_blocking<R: Runtime>(app: &AppHandle<R>, timeout: Duration) -> SnapshotOutcome {
+    let Some((id, start)) = active_tab(app) else {
+        return SnapshotOutcome::refused("no_active_tab");
+    };
+    if !page::is_web_url(&start.url) {
+        return SnapshotOutcome::refused("not_a_web_page");
+    }
+    let raw = match run_script(app, id, page::SNAPSHOT_SCRIPT, timeout) {
+        Ok(raw) => raw,
+        Err(fail) => return SnapshotOutcome::refused(fail.reason()),
+    };
+    let reply = match page::parse_snapshot(&raw) {
+        Ok(reply) => reply,
+        Err(reason) => return SnapshotOutcome::refused(reason),
+    };
+    drop(raw);
+    // The page that answered must be the page the host said was open, before and after.
+    let Some((now, end)) = active_tab(app) else {
+        return SnapshotOutcome::refused("page_changed");
+    };
+    if now != id || end.url != start.url || !page::same_page(&reply.href, &start.url) {
+        return SnapshotOutcome::refused("page_changed");
+    }
+    let (html, cut) = page::cap_html(reply.html);
+    SnapshotOutcome::Page(page::PageSnapshot {
+        ok: true,
+        tab_id: end.tab_id,
+        url: end.url,
+        title: end.title,
+        html,
+        truncated: reply.truncated || cut,
+    })
+}
+
+/// The scripted kinds: the page must still be the approved one, asked once more right before the
+/// action script (which cannot take the URL as an input), and again by that script itself.
+fn script_action_blocking<R: Runtime>(
+    app: &AppHandle<R>,
+    id: u64,
+    expected: &str,
+    script: &str,
+    timeout: Duration,
+) -> ActionOutcome {
+    let asked = match run_script(app, id, page::URL_SCRIPT, timeout) {
+        Ok(raw) => page::parse_action(&raw),
+        Err(fail) => return ActionOutcome::refused(fail.reason()),
+    };
+    match asked {
+        ActionReply::Done { href } if page::same_page(&href, expected) => {}
+        ActionReply::Done { .. } => return ActionOutcome::refused("page_changed"),
+        ActionReply::Refused(reason) => return ActionOutcome::refused(reason),
+    }
+    if !still_on(app, id, expected) {
+        return ActionOutcome::refused("page_changed");
+    }
+    let reply = match run_script(app, id, script, timeout) {
+        Ok(raw) => page::parse_action(&raw),
+        Err(fail) => return ActionOutcome::refused(fail.reason()),
+    };
+    match reply {
+        ActionReply::Done { href } if page::same_page(&href, expected) => {
+            let url = active_tab(app)
+                .map(|(_, tab)| tab.url)
+                .unwrap_or_else(|| expected.to_string());
+            ActionOutcome::done(url)
+        }
+        ActionReply::Done { .. } => ActionOutcome::refused("page_changed"),
+        ActionReply::Refused(reason) => ActionOutcome::refused(reason),
+    }
+}
+
+/// `navigate` kind: the same vetting as the `navigate` command (typed intent, DNS included).
+fn navigate_action_blocking<R: Runtime>(
+    app: &AppHandle<R>,
+    id: u64,
+    expected: &str,
+    destination: &str,
+) -> ActionOutcome {
+    let host = app.state::<Host>();
+    let radar = host
+        .inner
+        .lock()
+        .tabs
+        .get(&id)
+        .and_then(|t| t.radar.clone());
+    let target = match host.vet(radar.as_ref(), destination, true) {
+        Ok(target) => target,
+        Err(denial) => return ActionOutcome::refused(denial.as_str()),
+    };
+    // Vetting waited on DNS: the page the person approved must still be the one open.
+    if !still_on(app, id, expected) {
+        return ActionOutcome::refused("page_changed");
+    }
+    let Some(window) = app.get_webview_window(&tab_label(id)) else {
+        return ActionOutcome::refused("no_active_tab");
+    };
+    if window.navigate(target.clone()).is_err() {
+        return ActionOutcome::refused("failed");
+    }
+    ActionOutcome::done(target.as_str().chars().take(2048).collect())
+}
+
+fn action_blocking<R: Runtime>(
+    app: &AppHandle<R>,
+    request: &ActionRequest,
+    timeout: Duration,
+) -> ActionOutcome {
+    // Every field is validated before the tab is touched, and before any script exists.
+    let plan = match page::plan(request) {
+        Ok(plan) => plan,
+        Err(reason) => return ActionOutcome::refused(reason),
+    };
+    let expected = request.expected_url.as_str();
+    let Some((id, tab)) = active_tab(app) else {
+        return ActionOutcome::refused("no_active_tab");
+    };
+    if !page::same_page(&tab.url, expected) {
+        return ActionOutcome::refused("page_changed");
+    }
+    match plan {
+        Plan::Script { script } => script_action_blocking(app, id, expected, &script, timeout),
+        Plan::Navigate { destination } => navigate_action_blocking(app, id, expected, &destination),
+    }
+}
+
+async fn snapshot_active<R: Runtime>(app: AppHandle<R>, timeout: Duration) -> SnapshotOutcome {
+    tauri::async_runtime::spawn_blocking(move || snapshot_blocking(&app, timeout))
+        .await
+        .unwrap_or(SnapshotOutcome::refused("failed"))
+}
+
+async fn act_on_active<R: Runtime>(
+    app: AppHandle<R>,
+    request: ActionRequest,
+    timeout: Duration,
+) -> ActionOutcome {
+    tauri::async_runtime::spawn_blocking(move || action_blocking(&app, &request, timeout))
+        .await
+        .unwrap_or(ActionOutcome::refused("failed"))
+}
+
+/// The active tab's page, as markup (at most 4 MiB), for the assistant to read. Resolves with
+/// `{ok:false, reason}` for every refusal.
+#[tauri::command]
+pub async fn page_snapshot<R: Runtime>(
+    window: WebviewWindow<R>,
+) -> Result<SnapshotOutcome, Refusal> {
+    chrome_only(&window)?;
+    Ok(snapshot_active(window.app_handle().clone(), SCRIPT_TIMEOUT).await)
+}
+
+/// One user-approved action on the ACTIVE tab (the approval itself happened in Core). Takes no tab
+/// id: `expected_url` says which page the person approved, and a different page refuses.
+#[tauri::command]
+pub async fn page_action<R: Runtime>(
+    window: WebviewWindow<R>,
+    kind: String,
+    selector: Option<String>,
+    text: Option<String>,
+    destination: Option<String>,
+    expected_url: String,
+) -> Result<ActionOutcome, Refusal> {
+    chrome_only(&window)?;
+    let request = ActionRequest {
+        kind,
+        selector,
+        text,
+        destination,
+        expected_url,
+    };
+    Ok(act_on_active(window.app_handle().clone(), request, SCRIPT_TIMEOUT).await)
+}
+
 /// Phase 80: the port radar asks the Phoenix browser to open a loopback dev server. It opens
 /// nothing: it records the request, shows the chrome window and tells the chrome page, which asks
 /// the person; only the chrome's confirmation (`open_tab` with `port_radar`) opens a tab, once.
@@ -1598,23 +1927,292 @@ pub fn request_open_from_port_radar<R: Runtime>(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------------------------
+// Phase 96: profile tabs, content scripts and the purge of a deleted profile's data
+// ---------------------------------------------------------------------------------------------
+
+/// Counts a profile tab as "being opened" until its window exists (or failed), so a purge that
+/// starts meanwhile answers `busy` instead of deleting a directory a window is about to use.
+struct OpenGuard<R: Runtime> {
+    app: AppHandle<R>,
+    profile: Option<String>,
+}
+
+impl<R: Runtime> OpenGuard<R> {
+    fn new(app: &AppHandle<R>, profile: Option<String>) -> Self {
+        OpenGuard {
+            app: app.clone(),
+            profile,
+        }
+    }
+}
+
+impl<R: Runtime> Drop for OpenGuard<R> {
+    fn drop(&mut self) {
+        if let (Some(profile), Some(host)) = (&self.profile, self.app.try_state::<Host>()) {
+            host.finish_opening(profile);
+        }
+    }
+}
+
+impl Host {
+    /// The stored profile a tab belongs to; `None` for a private tab or an unknown tab.
+    fn tab_profile(&self, id: u64) -> Option<String> {
+        self.inner
+            .lock()
+            .tabs
+            .get(&id)
+            .and_then(|t| t.profile.clone())
+    }
+
+    fn finish_opening(&self, profile: &str) {
+        let mut inner = self.inner.lock();
+        if let Some(n) = inner.opening.get_mut(profile) {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                inner.opening.remove(profile);
+            }
+        }
+    }
+
+    /// Marks the profile as being deleted and returns its open tabs. From here `add_tab_in` refuses
+    /// the profile (`profile_busy`). `Err` when a purge of it already runs or a window of it is
+    /// still being built.
+    pub fn begin_purge(&self, profile: &str) -> Result<Vec<u64>, &'static str> {
+        let mut inner = self.inner.lock();
+        if inner.purging.contains(profile) || inner.opening.get(profile).is_some_and(|n| *n > 0) {
+            return Err("busy");
+        }
+        inner.purging.insert(profile.to_string());
+        Ok(inner
+            .tabs
+            .iter()
+            .filter(|(_, t)| t.profile.as_deref() == Some(profile))
+            .map(|(id, _)| *id)
+            .collect())
+    }
+
+    pub fn end_purge(&self, profile: &str) {
+        self.inner.lock().purging.remove(profile);
+    }
+}
+
+/// Core must still have the profile, and must not have it queued for deletion; the answer comes
+/// from Core, never from the page. `Err` is the reason code the chrome shows.
+async fn prepare_profile<R: Runtime>(
+    app: &AppHandle<R>,
+    profile: &str,
+) -> Result<PathBuf, &'static str> {
+    if !browser_profiles::store_supported() {
+        return Err("profile_unsupported");
+    }
+    let worker = app.clone();
+    let id = profile.to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        let host = worker.state::<Host>();
+        match (host.hooks.core_profiles.known)(&id) {
+            Ok(true) => {}
+            Ok(false) => return Err("profile_invalid"),
+            Err(()) => return Err("profile_failed"),
+        }
+        match (host.hooks.core_profiles.pending_purges)() {
+            Ok(pending) if !pending.contains(&id) => {}
+            Ok(_) => return Err("profile_busy"),
+            Err(()) => return Err("profile_failed"),
+        }
+        host.hooks.profiles.prepare(&id).map_err(|e| match e {
+            StoreError::InvalidId => "profile_invalid",
+            _ => "profile_failed",
+        })
+    })
+    .await
+    .map_err(|_| "profile_failed")?
+}
+
+/// After a profile tab's page finished loading: asks Core (see `browser_extensions`) and, only if
+/// every check passes, evaluates the approved scripts in that tab. Never blocks the caller.
+fn inject_content_scripts<R: Runtime>(app: &AppHandle<R>, id: u64, loaded: &Url) {
+    let Some(host) = app.try_state::<Host>() else {
+        return;
+    };
+    let Some(profile) = host.tab_profile(id) else {
+        return; // a private tab never gets a script
+    };
+    let source = host.hooks.scripts.clone();
+    let (app, loaded) = (app.clone(), loaded.clone());
+    std::thread::spawn(move || {
+        let Some(window) = app.get_webview_window(&tab_label(id)) else {
+            return;
+        };
+        let current = || window.url().ok();
+        if let Some(program) = browser_extensions::plan(Some(&profile), &loaded, &current, &source)
+        {
+            let _ = window.eval(program);
+        }
+    });
+}
+
+/// What `purge_profile_data` reports.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PurgeReport {
+    pub closed_tabs: usize,
+    pub data_removed: bool,
+}
+
+/// Phase 96: deletes the web data of a profile Core has removed. Chrome window only. Core must
+/// list the id as a pending deletion (so a bug or a hostile chrome page cannot erase a live
+/// profile), the profile's tabs are closed first, and the directory goes through
+/// [`ProfileStore::purge`] (canonical path strictly inside the profiles root, no symlinks).
+#[tauri::command]
+pub async fn purge_profile_data<R: Runtime>(
+    window: WebviewWindow<R>,
+    profile_id: String,
+) -> Result<PurgeReport, Refusal> {
+    chrome_only(&window)?;
+    let app = window.app_handle().clone();
+    if !browser_profiles::valid_profile_id(&profile_id) {
+        return Err(refusal("bad_profile", "That is not a profile id."));
+    }
+    purge_profile(&app, &profile_id).await
+}
+
+async fn purge_profile<R: Runtime>(
+    app: &AppHandle<R>,
+    profile: &str,
+) -> Result<PurgeReport, Refusal> {
+    let host = app.state::<Host>();
+    let ask = host.hooks.core_profiles.pending_purges.clone();
+    let pending = tauri::async_runtime::spawn_blocking(move || ask())
+        .await
+        .map_err(|_| refusal("purge_failed", "Phoenix Core could not be asked."))?;
+    match pending {
+        Ok(list) if list.iter().any(|p| p == profile) => {}
+        Ok(_) => {
+            return Err(refusal(
+                "bad_profile",
+                "Phoenix Core has no pending deletion for that profile.",
+            ))
+        }
+        Err(()) => return Err(refusal("purge_failed", "Phoenix Core could not be asked.")),
+    }
+    let tabs = host
+        .begin_purge(profile)
+        .map_err(|_| refusal("busy", "That profile is being opened or deleted."))?;
+    let result = run_purge(app, profile, tabs).await;
+    host.end_purge(profile);
+    result
+}
+
+async fn run_purge<R: Runtime>(
+    app: &AppHandle<R>,
+    profile: &str,
+    tabs: Vec<u64>,
+) -> Result<PurgeReport, Refusal> {
+    for id in &tabs {
+        if let Some(win) = app.get_webview_window(&tab_label(*id)) {
+            let _ = win.destroy();
+        }
+        tab_gone(app, *id);
+    }
+    let mut removed = remove_native_store(app, profile).await?;
+    let worker = app.clone();
+    let id = profile.to_string();
+    // A window that was just destroyed may keep its files open for a moment (WebView2 on Windows):
+    // try a few times before giving up. The deletion stays pending in Core and is retried later.
+    let files = tauri::async_runtime::spawn_blocking(move || {
+        let host = worker.state::<Host>();
+        let mut last = Err(StoreError::Io(std::io::ErrorKind::Other));
+        for attempt in 0..5 {
+            last = host.hooks.profiles.purge(&id);
+            if last.is_ok() {
+                break;
+            }
+            if attempt < 4 {
+                std::thread::sleep(Duration::from_millis(300));
+            }
+        }
+        last
+    })
+    .await
+    .map_err(|_| refusal("purge_failed", "The profile data could not be deleted."))?;
+    match files {
+        Ok(deleted) => removed |= deleted,
+        Err(_) => {
+            return Err(refusal(
+                "purge_failed",
+                "The profile data could not be deleted.",
+            ))
+        }
+    }
+    Ok(PurgeReport {
+        closed_tabs: tabs.len(),
+        data_removed: removed,
+    })
+}
+
+/// macOS 14+: the profile's `WKWebsiteDataStore`. Deleting it fails while a webview uses it, so a
+/// few attempts are made after the tabs were closed. Other platforms keep everything in the
+/// profile directory. The mock runtime has no native stores (`native` is false there).
+#[cfg(target_vendor = "apple")]
+async fn remove_native_store<R: Runtime>(
+    app: &AppHandle<R>,
+    profile: &str,
+) -> Result<bool, Refusal> {
+    if !app.state::<Host>().native || !browser_profiles::store_supported() {
+        return Ok(false);
+    }
+    let Some(uuid) = browser_profiles::store_identifier(profile) else {
+        return Ok(false);
+    };
+    let failed = || refusal("purge_failed", "The profile data could not be deleted.");
+    let known = app
+        .fetch_data_store_identifiers()
+        .await
+        .map_err(|_| failed())?;
+    if !known.contains(&uuid) {
+        return Ok(false);
+    }
+    for attempt in 0..5 {
+        match app.remove_data_store(uuid).await {
+            Ok(()) => return Ok(true),
+            Err(_) if attempt < 4 => {
+                let _ = tauri::async_runtime::spawn_blocking(|| {
+                    std::thread::sleep(Duration::from_millis(300))
+                })
+                .await;
+            }
+            Err(_) => return Err(failed()),
+        }
+    }
+    Err(failed())
+}
+
+#[cfg(not(target_vendor = "apple"))]
+async fn remove_native_store<R: Runtime>(
+    _app: &AppHandle<R>,
+    _profile: &str,
+) -> Result<bool, Refusal> {
+    Ok(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    fn ip(s: &str) -> IpAddr {
+    pub(super) fn ip(s: &str) -> IpAddr {
         s.parse().unwrap()
     }
 
-    struct Fakes {
-        dns: Arc<Mutex<HashMap<String, Vec<IpAddr>>>>,
+    pub(super) struct Fakes {
+        pub(super) dns: Arc<Mutex<HashMap<String, Vec<IpAddr>>>>,
         lookups: Arc<AtomicUsize>,
         folder: Arc<Mutex<Option<PathBuf>>>,
         dialogs: Arc<AtomicUsize>,
     }
 
-    fn host() -> (Host, Fakes) {
+    pub(super) fn host() -> (Host, Fakes) {
         let dns: Arc<Mutex<HashMap<String, Vec<IpAddr>>>> = Arc::default();
         let lookups = Arc::new(AtomicUsize::new(0));
         let folder: Arc<Mutex<Option<PathBuf>>> = Arc::default();
@@ -1635,6 +2233,12 @@ mod tests {
                 f.lock().clone()
             }),
             shields: Arc::new(ShieldsInput::default),
+            profiles: ProfileStore::new(
+                std::env::temp_dir().join("phoenix-unit-never-used-profiles"),
+            ),
+            core_profiles: CoreProfiles::fixed(vec![], Arc::default()),
+            scripts: Arc::new(|_, _| Err(())),
+            script_runner: None,
         };
         (
             Host::new(hooks, false, 4870),
@@ -2044,6 +2648,7 @@ mod tests {
                 "canGoBack",
                 "canGoForward",
                 "loading",
+                "profileId",
                 "tabId",
                 "title",
                 "url",
@@ -2053,6 +2658,576 @@ mod tests {
         assert_eq!(json["tabId"], "1");
         let (applied, _) = h.set_zoom(id, 99.0).unwrap();
         assert_eq!(applied, 3.0);
+    }
+
+    #[test]
+    fn a_purge_blocks_new_tabs_in_that_profile_only_and_waits_for_a_window_being_built() {
+        let (h, _) = host();
+        let url = "https://example.com/";
+        let a = h.add_tab_in(url, None, Some("alpha".into())).unwrap();
+        let b = h.add_tab_in(url, None, Some("beta".into())).unwrap();
+        let private = h.add_tab_in(url, None, None).unwrap();
+        // The windows of both profile tabs are still being built: a purge says busy.
+        assert_eq!(h.begin_purge("alpha"), Err("busy"));
+        h.finish_opening("alpha");
+        h.finish_opening("beta");
+        // Only that profile's tabs are returned; a private tab never is.
+        assert_eq!(h.begin_purge("alpha"), Ok(vec![a]));
+        assert_eq!(h.begin_purge("alpha"), Err("busy"), "one purge at a time");
+        assert_eq!(
+            h.add_tab_in(url, None, Some("alpha".into())),
+            Err("profile_busy")
+        );
+        assert!(h.add_tab_in(url, None, Some("beta".into())).is_ok());
+        assert!(h.add_tab_in(url, None, None).is_ok());
+        h.end_purge("alpha");
+        assert!(h.add_tab_in(url, None, Some("alpha".into())).is_ok());
+        assert_eq!(h.tab_profile(b).as_deref(), Some("beta"));
+        assert_eq!(h.tab_profile(private), None);
+        assert_eq!(h.tab_info(a).unwrap().profile_id.as_deref(), Some("alpha"));
+        assert_eq!(h.tab_info(private).unwrap().profile_id, None);
+    }
+}
+
+/// Phase 95: `page_snapshot` and `page_action` against the mock runtime with the script-runner
+/// fake. The fake answers instead of a webview, so these prove the host's checks and decoding,
+/// NOT what the fixed scripts do on a real page.
+#[cfg(test)]
+mod page_tests {
+    use super::tests::{host, ip};
+    use super::*;
+    use std::collections::VecDeque;
+    use tauri::test::{mock_app, MockRuntime};
+    use tauri::App;
+
+    const SHORT: Duration = Duration::from_millis(200);
+    const PAGE: &str = "https://example.com/a";
+
+    type Calls = Arc<Mutex<Vec<(String, String)>>>;
+    type Replies = Arc<Mutex<VecDeque<Option<String>>>>;
+    type Effect = Arc<Mutex<Option<Box<dyn FnOnce() + Send>>>>;
+
+    struct Rig {
+        app: App<MockRuntime>,
+        calls: Calls,
+        replies: Replies,
+        effect: Effect,
+        dns: Arc<Mutex<HashMap<String, Vec<IpAddr>>>>,
+    }
+
+    impl Rig {
+        fn handle(&self) -> AppHandle<MockRuntime> {
+            self.app.handle().clone()
+        }
+        fn reply(&self, raw: &str) {
+            self.replies.lock().push_back(Some(raw.to_string()));
+        }
+        fn real_path(&self) {
+            self.replies.lock().push_back(None);
+        }
+        fn scripts(&self) -> Vec<String> {
+            self.calls.lock().iter().map(|(_, s)| s.clone()).collect()
+        }
+        /// A tab as the host tracks it (no window), made active.
+        fn tab(&self, url: &str) -> u64 {
+            let host = self.app.state::<Host>();
+            let id = host.add_tab(url, None).unwrap();
+            host.inner.lock().active = Some(id);
+            id
+        }
+        /// A tab WITH a (mock) content window, made active.
+        fn window_tab(&self, url: &str) -> u64 {
+            let id = self.tab(url);
+            WebviewWindowBuilder::new(
+                &self.app,
+                tab_label(id),
+                WebviewUrl::External(Url::parse(url).unwrap()),
+            )
+            .build()
+            .unwrap();
+            id
+        }
+    }
+
+    fn rig() -> Rig {
+        let calls: Calls = Arc::default();
+        let replies: Replies = Arc::default();
+        let effect: Effect = Arc::default();
+        let (mut host, fakes) = host();
+        let (c, r, e) = (calls.clone(), replies.clone(), effect.clone());
+        host.hooks.script_runner = Some(Arc::new(move |label: &str, script: &str| {
+            c.lock().push((label.to_string(), script.to_string()));
+            if let Some(run) = e.lock().take() {
+                run();
+            }
+            r.lock().pop_front().unwrap_or(Some("null".into()))
+        }));
+        let app = mock_app();
+        app.manage(host);
+        Rig {
+            app,
+            calls,
+            replies,
+            effect,
+            dns: fakes.dns,
+        }
+    }
+
+    fn snapshot_reply(href: &str, html: &str, cut: bool) -> String {
+        let inner = serde_json::json!({"u": href, "h": html, "t": cut}).to_string();
+        serde_json::to_string(&inner).unwrap()
+    }
+
+    fn ok_reply(href: &str) -> String {
+        serde_json::to_string(&serde_json::json!({"ok": true, "u": href}).to_string()).unwrap()
+    }
+
+    fn fail_reply(reason: &str) -> String {
+        serde_json::json!({"ok": false, "reason": reason}).to_string()
+    }
+
+    fn refused(reason: &'static str) -> SnapshotOutcome {
+        SnapshotOutcome::refused(reason)
+    }
+
+    fn request(kind: &str, selector: Option<&str>, text: Option<&str>, url: &str) -> ActionRequest {
+        ActionRequest {
+            kind: kind.into(),
+            selector: selector.map(str::to_string),
+            text: text.map(str::to_string),
+            destination: None,
+            expected_url: url.into(),
+        }
+    }
+
+    fn act(rig: &Rig, req: &ActionRequest) -> ActionOutcome {
+        action_blocking(&rig.handle(), req, SHORT)
+    }
+
+    #[test]
+    fn a_snapshot_returns_the_hosts_url_and_title_and_the_pages_markup() {
+        let rig = rig();
+        let id = rig.window_tab(PAGE);
+        rig.app.state::<Host>().set_title(id, "Host title").unwrap();
+        rig.reply(&snapshot_reply(
+            "https://example.com/a#section",
+            "<p>hi</p>",
+            false,
+        ));
+        let out = snapshot_blocking(&rig.handle(), SHORT);
+        assert_eq!(
+            out,
+            SnapshotOutcome::Page(page::PageSnapshot {
+                ok: true,
+                tab_id: "1".into(),
+                url: PAGE.into(),
+                title: "Host title".into(),
+                html: "<p>hi</p>".into(),
+                truncated: false,
+            })
+        );
+        assert_eq!(
+            *rig.calls.lock(),
+            [(
+                "phoenix-browser-tab-1".to_string(),
+                page::SNAPSHOT_SCRIPT.to_string()
+            )]
+        );
+        let json = serde_json::to_value(&out).unwrap();
+        assert_eq!(json["ok"], true);
+        assert_eq!(json["tabId"], "1");
+        assert_eq!(json["truncated"], false);
+    }
+
+    #[test]
+    fn markup_over_four_mebibytes_is_cut_and_flagged() {
+        let rig = rig();
+        rig.tab(PAGE);
+        let html = "é".repeat(page::MAX_HTML_CHARS + 10);
+        rig.reply(&snapshot_reply(PAGE, &html, false));
+        let SnapshotOutcome::Page(snap) = snapshot_blocking(&rig.handle(), SHORT) else {
+            panic!("refused");
+        };
+        assert!(snap.truncated, "Rust re-capped what the script did not");
+        assert_eq!(snap.html.chars().count(), page::MAX_HTML_CHARS);
+        // The script's own flag is passed on.
+        rig.reply(&snapshot_reply(PAGE, "<p>cut by the script</p>", true));
+        let SnapshotOutcome::Page(snap) = snapshot_blocking(&rig.handle(), SHORT) else {
+            panic!("refused");
+        };
+        assert!(snap.truncated);
+        // Exactly 4 MiB is not truncated.
+        rig.reply(&snapshot_reply(
+            PAGE,
+            &"a".repeat(page::MAX_HTML_CHARS),
+            false,
+        ));
+        let SnapshotOutcome::Page(snap) = snapshot_blocking(&rig.handle(), SHORT) else {
+            panic!("refused");
+        };
+        assert!(!snap.truncated);
+    }
+
+    #[test]
+    fn a_snapshot_is_refused_with_a_reason_and_never_runs_a_script_without_a_web_page() {
+        let rig = rig();
+        assert_eq!(
+            snapshot_blocking(&rig.handle(), SHORT),
+            refused("no_active_tab")
+        );
+        let id = rig.tab("about:blank");
+        assert_eq!(
+            snapshot_blocking(&rig.handle(), SHORT),
+            refused("not_a_web_page")
+        );
+        rig.app
+            .state::<Host>()
+            .inner
+            .lock()
+            .tabs
+            .get_mut(&id)
+            .unwrap()
+            .url = "file:///etc/passwd".into();
+        assert_eq!(
+            snapshot_blocking(&rig.handle(), SHORT),
+            refused("not_a_web_page")
+        );
+        assert!(rig.calls.lock().is_empty(), "no script ran");
+    }
+
+    #[test]
+    fn a_snapshot_of_a_page_that_changed_is_refused() {
+        let rig = rig();
+        let id = rig.tab(PAGE);
+        // The page that answered is not the page the host has open.
+        rig.reply(&snapshot_reply("https://evil.test/", "<p>x</p>", false));
+        assert_eq!(
+            snapshot_blocking(&rig.handle(), SHORT),
+            refused("page_changed")
+        );
+        // Same page, other query: still another page.
+        rig.reply(&snapshot_reply(
+            "https://example.com/a?q=1",
+            "<p>x</p>",
+            false,
+        ));
+        assert_eq!(
+            snapshot_blocking(&rig.handle(), SHORT),
+            refused("page_changed")
+        );
+        // The host's URL moved while the script ran.
+        let handle = rig.handle();
+        *rig.effect.lock() = Some(Box::new(move || {
+            handle
+                .state::<Host>()
+                .page_started(id, "https://example.com/b")
+                .unwrap();
+        }));
+        rig.reply(&snapshot_reply(PAGE, "<p>x</p>", false));
+        assert_eq!(
+            snapshot_blocking(&rig.handle(), SHORT),
+            refused("page_changed")
+        );
+        // The active tab changed while the script ran.
+        rig.app
+            .state::<Host>()
+            .inner
+            .lock()
+            .tabs
+            .get_mut(&id)
+            .unwrap()
+            .url = PAGE.into();
+        let handle = rig.handle();
+        *rig.effect.lock() = Some(Box::new(move || {
+            let host = handle.state::<Host>();
+            let other = host.add_tab(PAGE, None).unwrap();
+            host.inner.lock().active = Some(other);
+        }));
+        rig.reply(&snapshot_reply(PAGE, "<p>x</p>", false));
+        assert_eq!(
+            snapshot_blocking(&rig.handle(), SHORT),
+            refused("page_changed")
+        );
+        // A fragment-only difference is the same page.
+        rig.app.state::<Host>().inner.lock().active = Some(id);
+        rig.reply(&snapshot_reply(
+            "https://example.com/a#x",
+            "<p>x</p>",
+            false,
+        ));
+        assert!(matches!(
+            snapshot_blocking(&rig.handle(), SHORT),
+            SnapshotOutcome::Page(_)
+        ));
+    }
+
+    #[test]
+    fn a_bad_or_oversized_snapshot_reply_is_failed_or_too_large() {
+        let rig = rig();
+        rig.tab(PAGE);
+        for junk in [
+            "",
+            "null",
+            "\"oops\"",
+            "{}",
+            "{\"ok\":false,\"reason\":\"failed\"}",
+        ] {
+            rig.reply(junk);
+            assert_eq!(
+                snapshot_blocking(&rig.handle(), SHORT),
+                refused("failed"),
+                "{junk}"
+            );
+        }
+        rig.reply(&"x".repeat(page::MAX_RAW_REPLY + 1));
+        assert_eq!(
+            snapshot_blocking(&rig.handle(), SHORT),
+            refused("too_large")
+        );
+    }
+
+    #[test]
+    fn a_page_that_never_answers_times_out() {
+        let rig = rig();
+        rig.window_tab(PAGE);
+        // `None` is the real path: the mock webview evaluates and never calls back.
+        rig.real_path();
+        assert_eq!(snapshot_blocking(&rig.handle(), SHORT), refused("timeout"));
+        rig.real_path();
+        let req = request("click", Some("button#go"), None, PAGE);
+        assert_eq!(act(&rig, &req), ActionOutcome::refused("timeout"));
+        // The real path without a window is a plain failure, not a hang.
+        let rig = self::rig();
+        rig.tab(PAGE);
+        rig.real_path();
+        assert_eq!(snapshot_blocking(&rig.handle(), SHORT), refused("failed"));
+    }
+
+    #[test]
+    fn each_scripted_action_runs_its_fixed_script_after_confirming_the_page() {
+        let cases = [
+            ("click", Some("button#go"), None, page::Kind::Click),
+            (
+                "download",
+                Some("button[name=\"dl\"]"),
+                None,
+                page::Kind::Download,
+            ),
+            ("submit", Some("form#f"), None, page::Kind::Submit),
+            (
+                "type",
+                Some("input#q"),
+                Some("he said \"hi\" </script>"),
+                page::Kind::Type,
+            ),
+        ];
+        for (kind, selector, text, k) in cases {
+            let rig = rig();
+            rig.window_tab(PAGE);
+            rig.reply(&ok_reply(PAGE));
+            rig.reply(&ok_reply("https://example.com/a"));
+            let out = act(
+                &rig,
+                &request(kind, selector, text, "https://example.com/a#frag"),
+            );
+            assert_eq!(out, ActionOutcome::done(PAGE.into()), "{kind}");
+            let want = page::action_script(k, selector.unwrap(), text);
+            assert_eq!(
+                rig.scripts(),
+                [page::URL_SCRIPT.to_string(), want],
+                "{kind}"
+            );
+            assert!(rig
+                .calls
+                .lock()
+                .iter()
+                .all(|(l, _)| l == "phoenix-browser-tab-1"));
+            let json = serde_json::to_string(&out).unwrap();
+            assert!(
+                !json.contains("hi") && !json.contains("script"),
+                "text never echoed"
+            );
+        }
+    }
+
+    #[test]
+    fn an_expected_url_that_is_not_the_active_page_is_refused_before_any_script() {
+        let rig = rig();
+        rig.window_tab(PAGE);
+        for expected in [
+            "https://example.com/b",
+            "https://example.com/a?x=1",
+            "http://example.com/a",
+            "https://example.org/a",
+        ] {
+            let out = act(&rig, &request("click", Some("button#go"), None, expected));
+            assert_eq!(out, ActionOutcome::refused("page_changed"), "{expected}");
+        }
+        let mut nav = request("navigate", None, None, "https://example.com/b");
+        nav.destination = Some("https://example.org/".into());
+        assert_eq!(act(&rig, &nav), ActionOutcome::refused("page_changed"));
+        assert!(
+            rig.calls.lock().is_empty(),
+            "no script ran for a wrong page"
+        );
+        // The active tab changing makes the old approval stale too.
+        let host = rig.app.state::<Host>();
+        let other = host.add_tab("https://other.test/", None).unwrap();
+        host.inner.lock().active = Some(other);
+        let out = act(&rig, &request("click", Some("button#go"), None, PAGE));
+        assert_eq!(out, ActionOutcome::refused("page_changed"));
+        assert!(rig.calls.lock().is_empty());
+    }
+
+    #[test]
+    fn a_page_that_moved_before_the_action_script_stops_the_action() {
+        let rig = rig();
+        rig.window_tab(PAGE);
+        // The page's own href is not the approved page: the action script is never sent.
+        rig.reply(&ok_reply("https://example.com/other"));
+        let out = act(&rig, &request("click", Some("button#go"), None, PAGE));
+        assert_eq!(out, ActionOutcome::refused("page_changed"));
+        assert_eq!(rig.scripts(), [page::URL_SCRIPT.to_string()]);
+        // The action script itself reports the page it started on.
+        rig.reply(&ok_reply(PAGE));
+        rig.reply(&ok_reply("https://example.com/other"));
+        let out = act(&rig, &request("click", Some("button#go"), None, PAGE));
+        assert_eq!(out, ActionOutcome::refused("page_changed"));
+        // The host's URL moved after the page was asked.
+        let handle = rig.handle();
+        *rig.effect.lock() = Some(Box::new(move || {
+            handle
+                .state::<Host>()
+                .page_started(1, "https://example.com/moved")
+                .unwrap();
+        }));
+        rig.reply(&ok_reply(PAGE));
+        let out = act(&rig, &request("click", Some("button#go"), None, PAGE));
+        assert_eq!(out, ActionOutcome::refused("page_changed"));
+    }
+
+    #[test]
+    fn the_pages_reasons_become_a_fixed_set_and_garbage_is_failed() {
+        let rig = rig();
+        rig.window_tab(PAGE);
+        let req = request("click", Some("button#go"), None, PAGE);
+        for (page_says, want) in [
+            ("not_found", "not_found"),
+            ("ambiguous", "ambiguous"),
+            ("protected", "protected"),
+            ("unsupported", "unsupported"),
+            ("failed", "failed"),
+            ("Error: secret text from the page", "failed"),
+        ] {
+            rig.reply(&ok_reply(PAGE));
+            rig.reply(&fail_reply(page_says));
+            assert_eq!(act(&rig, &req), ActionOutcome::refused(want), "{page_says}");
+        }
+        rig.reply(&ok_reply(PAGE));
+        rig.reply("not json");
+        assert_eq!(act(&rig, &req), ActionOutcome::refused("failed"));
+        rig.reply(&ok_reply(PAGE));
+        rig.reply("null");
+        assert_eq!(act(&rig, &req), ActionOutcome::refused("failed"));
+    }
+
+    #[test]
+    fn a_bad_request_is_refused_before_the_tab_or_any_script_is_touched() {
+        let rig = rig();
+        rig.window_tab(PAGE);
+        let long = "x".repeat(page::MAX_TEXT_CHARS + 1);
+        let hostile = [
+            request("tap", Some("button#go"), None, PAGE),
+            request("click", None, None, PAGE),
+            request("click", Some("button:nth-of-type(2)"), None, PAGE),
+            request("click", Some("button#go~1"), None, PAGE),
+            request("submit", Some("form#f :unreported-controls"), None, PAGE),
+            request("click", Some("button#go\"]"), None, PAGE),
+            request("click", Some("button#a b"), None, PAGE),
+            request("click", Some("div#go"), None, PAGE),
+            request("click", Some("button#é"), None, PAGE),
+            request("click", Some("button#go"), Some("x"), PAGE),
+            request("type", Some("input#q"), None, PAGE),
+            request("type", Some("input#q"), Some(&long), PAGE),
+            request("click", Some("button#go"), None, "file:///etc/passwd"),
+            request("click", Some("button#go"), None, ""),
+        ];
+        let want = [
+            "bad_kind",
+            "bad_selector",
+            "bad_selector",
+            "bad_selector",
+            "bad_selector",
+            "bad_selector",
+            "bad_selector",
+            "bad_selector",
+            "bad_selector",
+            "bad_text",
+            "bad_text",
+            "bad_text",
+            "bad_url",
+            "bad_url",
+        ];
+        for (req, reason) in hostile.iter().zip(want) {
+            assert_eq!(
+                act(&rig, req),
+                ActionOutcome::refused(reason),
+                "{}",
+                req.kind
+            );
+        }
+        assert!(
+            rig.calls.lock().is_empty(),
+            "no script ran for a refused request"
+        );
+        // No tab at all.
+        let empty = self::rig();
+        let out = act(&empty, &request("click", Some("button#go"), None, PAGE));
+        assert_eq!(out, ActionOutcome::refused("no_active_tab"));
+    }
+
+    #[test]
+    fn navigate_uses_the_navigate_commands_vetting_and_resolves_denials() {
+        let rig = rig();
+        rig.dns
+            .lock()
+            .insert("example.org".into(), vec![ip("93.184.216.34")]);
+        rig.dns
+            .lock()
+            .insert("rebind.test".into(), vec![ip("127.0.0.1")]);
+        rig.window_tab(PAGE);
+        let go = |destination: &str| {
+            let mut r = request("navigate", None, None, PAGE);
+            r.destination = Some(destination.into());
+            act(&rig, &r)
+        };
+        for (destination, reason) in [
+            ("http://localhost:3000/", "private_network"),
+            ("https://127.0.0.1/", "private_network"),
+            ("file:///etc/passwd", "file_blocked"),
+            ("javascript:alert(1)", "dangerous_scheme"),
+            ("https://user:pw@example.org/", "credentials_in_url"),
+            ("https://rebind.test/", "dns_private"),
+            ("https://nxdomain.test/", "dns_failed"),
+            ("ftp://example.org/", "scheme_not_allowed"),
+        ] {
+            assert_eq!(
+                go(destination),
+                ActionOutcome::refused(reason),
+                "{destination}"
+            );
+        }
+        assert_eq!(
+            go("https://example.org/next"),
+            ActionOutcome::done("https://example.org/next".into())
+        );
+        assert!(rig.calls.lock().is_empty(), "navigate runs no script");
+        // A denial is a resolved value with the denial id.
+        let json = serde_json::to_value(go("http://localhost/")).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"ok": false, "reason": "private_network"})
+        );
     }
 }
 
@@ -2080,7 +3255,7 @@ mod capability_tests {
         out
     }
 
-    const COMMANDS: [&str; 12] = [
+    const COMMANDS: [&str; 15] = [
         "open-tab",
         "close-tab",
         "activate-tab",
@@ -2093,6 +3268,9 @@ mod capability_tests {
         "set-site-shields",
         "shields-status",
         "open-in-phoenix-browser",
+        "page-snapshot",
+        "page-action",
+        "purge-profile-data",
     ];
 
     fn windows(cap: &Value) -> Vec<String> {
@@ -2195,7 +3373,7 @@ mod capability_tests {
         let source =
             std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/browser.rs"))
                 .unwrap();
-        let production = source.split("#[cfg(test)]").next().unwrap();
+        let production = source.split("\n#[cfg(test)]\nmod ").next().unwrap();
         let mut seen = Vec::new();
         for (i, _) in production.match_indices("#[tauri::command]") {
             let rest = &production[i..];
@@ -2216,7 +3394,7 @@ mod capability_tests {
             );
             seen.push(name);
         }
-        assert_eq!(seen.len(), 11, "{seen:?}");
+        assert_eq!(seen.len(), 14, "{seen:?}");
         // The commands registered in lib.rs are exactly these.
         let lib = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"))
             .unwrap();

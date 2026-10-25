@@ -4,6 +4,7 @@ import { readFileSync, statSync } from "node:fs";
 import { loadConfig, type PhoenixConfig } from "@phoenix/config";
 import { createLogger } from "@phoenix/logging";
 import { KeychainSecretStore, type SecretStore } from "@phoenix/persistence";
+import { BrowserRelay } from "@phoenix/capability-browser";
 import { builtinCapabilities } from "./builtins";
 import { settingsReminderStore } from "./calendar";
 import { dockerIdleFrom } from "./docker-idle";
@@ -78,11 +79,13 @@ if (signerRootKeyFile && signerRegistryFile) {
     fail(new Error("PHOENIX_EXTENSION_SIGNER_ROOT_KEY_FILE could not be read"));
   }
 }
+const browserRelay = new BrowserRelay();
 let runtime: PhoenixRuntime;
 try {
   runtime = new PhoenixRuntime({
     config,
     logger,
+    browserRelay,
     ...(secrets ? { secrets } : {}),
     ...(trustedKeyFile && indexFile && artifactDirectory
       ? { registry: { trustedKeyFile, indexFile, artifactDirectory } }
@@ -110,6 +113,7 @@ try {
           invokeAndWait: (...args) => runtime.capabilities.invokeAndWait(...args),
         }),
         calendarReminders: settingsReminderStore(() => runtime.settings),
+        browserRelay,
       },
     ),
   });

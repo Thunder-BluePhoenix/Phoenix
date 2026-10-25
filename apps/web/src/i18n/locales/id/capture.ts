@@ -117,6 +117,13 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.voice.settings.notListening":
     "Suara aktif tetapi halaman ini belum mendengarkan (setelah dimuat ulang, browser akan bertanya lagi).",
   "capture.voice.settings.start": "Mulai mendengarkan",
+  "capture.voice.window.title": "Asisten suara (OK Fawkes)",
+  "capture.voice.window.intro":
+    "Ucapkan “OK Fawkes”, lalu bertanya. Suara diaktifkan di Pengaturan, bagian “Suara”; jendela ini hanya memulai dan menghentikan pendengaran.",
+  "capture.voice.window.shell":
+    "Phoenix menampilkan LISTENING pada judul jendela ini dan pada tooltip baki saat mikrofon menyala. “Stop voice listening” di menu baki menghentikannya dari aplikasi itu sendiri.",
+  "capture.voice.window.listening": "LISTENING: mikrofon menyala.",
+  "capture.voice.window.off": "Mikrofon mati.",
   "capture.multimodal.title": "Penangkapan perangkat sekali pakai",
   "capture.multimodal.intro":
     "Diminta oleh: pengguna. Core memeriksa pemberian kemampuan Anda dan meminta persetujuan per penggunaan sebelum browser Anda meminta akses perangkat. Tidak ada yang menangkap di latar belakang; tidak ada cadangan cloud.",

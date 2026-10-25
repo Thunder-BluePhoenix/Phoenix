@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { needsSecondStep, RISK_LABEL, SIDE_EFFECT_ACTION } from "../core/agent";
 import { formatTime, SIDE_EFFECT_LABEL } from "../core/format";
 import { useAction, useConfirmations } from "../core/hooks";
-import type { Confirmation } from "../core/types";
+import type { BrowserActionDetails, Confirmation } from "../core/types";
 import { useT, type MessageKey } from "../i18n";
 import { TaskCard } from "./TaskView";
 
@@ -26,6 +26,108 @@ const RISK_NOTE: Record<NonNullable<Confirmation["risk"]>, MessageKey> = {
 
 function Missing({ children }: { children: string }) {
   return <span className="approval-missing">{children}</span>;
+}
+
+const BROWSER_KIND_LABEL: Readonly<Record<string, MessageKey>> = {
+  click: "browserApproval.action.click",
+  type: "browserApproval.action.type",
+  submit: "browserApproval.action.submit",
+  download: "browserApproval.action.download",
+  navigate: "browserApproval.action.navigate",
+};
+
+/** Host and path only, whatever Core sent: credentials, query and fragment are never shown. */
+function hostAndPath(value: unknown): { shown: string; cut: boolean } | null {
+  if (typeof value !== "string" || value === "") return null;
+  const [head = ""] = value.split(/[?#]/, 1);
+  const cut = head.length < value.length;
+  const scheme = /^[a-z][a-z0-9+.-]*:\/\//i.exec(head)?.[0] ?? "";
+  const rest = head.slice(scheme.length);
+  const slash = rest.indexOf("/");
+  const authority = slash < 0 ? rest : rest.slice(0, slash);
+  const at = authority.lastIndexOf("@");
+  const shown = scheme + (at < 0 ? rest : rest.slice(at + 1));
+  return shown === "" ? null : { shown, cut };
+}
+
+/**
+ * Phase 95: the facts of a browsing-assistant action. Everything is a text node; the typed text is
+ * shown whole and is never put into an attribute, a live region or storage.
+ */
+function BrowserActionFacts({ details }: { details: BrowserActionDetails | undefined }) {
+  const t = useT();
+  const kind = typeof details?.kind === "string" ? details.kind : "";
+  const label = BROWSER_KIND_LABEL[kind];
+  const page = hostAndPath(details?.pageUrl);
+  const destination = hostAndPath(details?.destination);
+  const selector =
+    typeof details?.selector === "string" && details.selector !== "" ? details.selector : null;
+  const text = typeof details?.text === "string" ? details.text : null;
+  const length =
+    typeof details?.textLength === "number" &&
+    Number.isSafeInteger(details.textLength) &&
+    details.textLength >= 0
+      ? details.textLength
+      : null;
+  const queryHidden = details?.queryHidden === true || destination?.cut === true;
+  return (
+    <>
+      <dt>{t("browserApproval.action")}</dt>
+      <dd data-browser-fact="kind">
+        {label ? t(label) : <Missing>{t("browserApproval.action.missing")}</Missing>}
+      </dd>
+      <dt>{t("browserApproval.page")}</dt>
+      <dd data-browser-fact="page">
+        {page ? page.shown : <Missing>{t("browserApproval.page.missing")}</Missing>}
+      </dd>
+      {kind === "navigate" ? (
+        <>
+          <dt>{t("browserApproval.destination")}</dt>
+          <dd data-browser-fact="destination">
+            {destination ? (
+              destination.shown
+            ) : (
+              <Missing>{t("browserApproval.destination.missing")}</Missing>
+            )}
+            {destination && queryHidden && (
+              <span className="muted small"> {t("browserApproval.queryHidden")}</span>
+            )}
+          </dd>
+        </>
+      ) : (
+        <>
+          <dt>{t("browserApproval.selector")}</dt>
+          <dd data-browser-fact="selector">
+            {selector ? (
+              <code>{selector}</code>
+            ) : (
+              <Missing>{t("browserApproval.selector.missing")}</Missing>
+            )}
+          </dd>
+        </>
+      )}
+      {kind === "type" && (
+        <>
+          <dt>{t("browserApproval.text")}</dt>
+          <dd data-browser-fact="text">
+            {text !== null ? (
+              <pre className="browser-typed-text">{text}</pre>
+            ) : (
+              <Missing>{t("browserApproval.text.missing")}</Missing>
+            )}
+          </dd>
+          <dt>{t("browserApproval.textLength")}</dt>
+          <dd data-browser-fact="textLength">
+            {length !== null ? (
+              t("browserApproval.textLength.value", { length })
+            ) : (
+              <Missing>{t("browserApproval.textLength.missing")}</Missing>
+            )}
+          </dd>
+        </>
+      )}
+    </>
+  );
 }
 
 /** One pending request, fully explained before the buttons. Missing facts are said to be missing. */
@@ -118,6 +220,9 @@ function ApprovalCard({
                 : t("agents.approvals.toolPolicyApproval")}
             </dd>
           </>
+        )}
+        {(c.capabilityId === "browser" || c.details?.browser) && (
+          <BrowserActionFacts details={c.details?.browser} />
         )}
         {(c.task_id || (c.evidence_ids && c.evidence_ids.length > 0)) && (
           <>

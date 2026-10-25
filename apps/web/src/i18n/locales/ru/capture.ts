@@ -122,6 +122,13 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.voice.settings.notListening":
     "Голосовой режим включён, но эта страница ещё не слушает (после перезагрузки браузер снова спросит разрешение).",
   "capture.voice.settings.start": "Начать слушать",
+  "capture.voice.window.title": "Голосовой помощник (OK Fawkes)",
+  "capture.voice.window.intro":
+    "Скажите «OK Fawkes», затем задайте вопрос. Голос включается в Настройках, в разделе «Голос»; это окно только запускает и останавливает прослушивание.",
+  "capture.voice.window.shell":
+    "Пока микрофон включён, Phoenix показывает LISTENING в заголовке этого окна и во всплывающей подсказке значка в трее. Пункт «Stop voice listening» в меню трея останавливает его из самого приложения.",
+  "capture.voice.window.listening": "LISTENING: микрофон включён.",
+  "capture.voice.window.off": "Микрофон выключен.",
   "capture.multimodal.title": "Одноразовый захват с устройства",
   "capture.multimodal.intro":
     "Запрошено: пользователем. Core проверяет разрешение возможности и запрашивает одобрение каждого использования до того, как браузер запросит доступ к устройству. Ничего не захватывается в фоне; облачного резервного варианта нет.",

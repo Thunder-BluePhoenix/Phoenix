@@ -581,7 +581,12 @@ export class CapabilityManager {
             permissions: spec.permissions ?? [],
             sideEffect: spec.side_effect,
             summary: `${entry.manifest.name}: ${spec.description}${targetSuffix(targets)}`,
-            details: { actor, operation_id: op.id, ...targets },
+            details: {
+              actor,
+              operation_id: op.id,
+              ...targets,
+              ...confirmInputs(input, spec.input_schema),
+            },
           },
           controller.signal,
         );
@@ -1076,6 +1081,40 @@ export function commandTargets(
         : shown.slice(0, MAX_TARGET_CHARS);
   }
   return targets;
+}
+
+/**
+ * A command's `input_schema` property may carry `"x-phoenix-confirm-input": true` to hand its RAW
+ * string value (at most {@link MAX_CONFIRM_INPUT_CHARS}) to the confirmation card builder in
+ * `details.confirm_input`. Unlike `x-phoenix-confirm` it is neither clipped nor redacted, because the
+ * card must show exactly what will be typed or opened. It is never part of the summary or the audit
+ * record: `PermissionGateway` forwards it only to a builder that whitelists and re-validates it for
+ * that one capability.
+ */
+export const CONFIRM_INPUT_KEYWORD = "x-phoenix-confirm-input";
+export const MAX_CONFIRM_INPUT_CHARS = 8192;
+
+export function confirmInputs(
+  input: unknown,
+  inputSchema?: Record<string, unknown>,
+): { confirm_input?: Record<string, string> } {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return {};
+  const properties = inputSchema?.properties;
+  if (typeof properties !== "object" || properties === null || Array.isArray(properties)) return {};
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(input)) {
+    const property = (properties as Record<string, unknown>)[name];
+    if (
+      typeof value === "string" &&
+      value.length <= MAX_CONFIRM_INPUT_CHARS &&
+      typeof property === "object" &&
+      property !== null &&
+      (property as Record<string, unknown>)[CONFIRM_INPUT_KEYWORD] === true
+    ) {
+      out[name] = value;
+    }
+  }
+  return Object.keys(out).length ? { confirm_input: out } : {};
 }
 
 /** " [deployment_id: dpl_1]" for the approval prompt; empty when the input names no target. */

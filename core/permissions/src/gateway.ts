@@ -14,6 +14,7 @@ import {
   type SideEffect,
 } from "@phoenix/protocol";
 import { AuditLog } from "./audit";
+import { browserCard, type BrowserCard } from "./browser-card";
 import { GrantStore } from "./grants";
 
 /** A capability asking to perform one command. */
@@ -49,6 +50,8 @@ export interface Confirmation {
     run?: string;
     step?: string;
     dailyDigest?: { preview: string; citedSourceCount: number };
+    /** Phase 95: what a browser action will do. Display only; `text` is the full typed text. */
+    browser?: BrowserCard;
   };
 }
 
@@ -280,6 +283,13 @@ export class PermissionGateway {
           workflow[field] = value;
       }
       return workflow;
+    }
+    if (request.capabilityId === "browser") {
+      const browser = browserCard(request.command, request.details);
+      // Fail closed: a browser action the card cannot describe exactly is never put to the user.
+      if (!browser)
+        throw new PhoenixError(ErrorCode.INVALID_REQUEST, "The browser action cannot be described");
+      return { browser };
     }
     if (request.capabilityId !== "chat-approvals" || request.command !== "post_daily_digest")
       return {};

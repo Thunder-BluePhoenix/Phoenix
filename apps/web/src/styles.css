@@ -1090,6 +1090,17 @@ code.break {
   font-weight: 600;
   outline: 1px dotted currentColor;
 }
+/* Phase 95: the text a browsing-assistant action will type, shown whole. */
+.browser-typed-text {
+  margin: 2px 0 0;
+  padding: 6px 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border, currentColor);
+  border-radius: 4px;
+  max-height: none;
+}
 /* A missing fact is flagged in words, and underlined so it does not rely on colour. */
 .approval-missing {
   color: var(--warning-text);
@@ -2372,4 +2383,12 @@ code.break {
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+}
+
+/* Voice assistant window of the desktop shell (Phase 66). */
+.voice-window {
+  padding: 16px;
+}
+.voice-state {
+  font-weight: 600;
 }

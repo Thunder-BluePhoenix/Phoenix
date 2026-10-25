@@ -10,8 +10,8 @@
 
 use phoenix_desktop::{
     browser, builder, file_drop, handle_menu, menu_snapshot, open_links, quit_requested,
-    refresh_awake_tray, run_shortcut, shortcuts, ShellOptions, AWAKE_ITEM_ID, ISLAND_LABEL,
-    SETTINGS_FILE, TRAY_ID, WINDOW_LABEL,
+    refresh_awake_tray, run_shortcut, shortcuts, voice_window, ShellOptions, AWAKE_ITEM_ID,
+    ISLAND_LABEL, SETTINGS_FILE, TRAY_ID, WINDOW_LABEL,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -87,6 +87,8 @@ fn starts_with_window_tray_and_full_menu() {
             "dictation_hotkey",
             "dictation_key",
             "dictation_pill",
+            "voice_open",
+            "voice_stop",
             "shortcuts_enabled",
             "mute",
             "on_top",
@@ -441,6 +443,110 @@ fn jump_to_terminal_asks_core_with_the_token_then_opens_the_agents_page_when_the
     );
 }
 
+/// Phase 66: the voice window is opened only from the tray menu, allows the microphone for itself
+/// alone, shows LISTENING from the shell's own decision, keeps the Keep-awake tooltip text, and the
+/// tray's "Stop voice listening" requests the window's destruction and clears the indicator. The mock runtime has no web engine, so this
+/// proves the shell's decisions and bookkeeping, not a real prompt, microphone or window title.
+fn the_voice_window_allows_only_its_own_microphone_shows_listening_and_stops_from_the_tray() {
+    use tauri::webview::{PermissionKind, PermissionResponse};
+    let dir = tempfile::tempdir().unwrap();
+    let s = start(dir.path());
+    let app = s.app.handle().clone();
+
+    // Nothing opens at startup: no window, microphone off, no capability for the label.
+    let before = voice_window::snapshot(&app);
+    assert!(!before.window_open && !before.listening);
+    assert_eq!(before.title, voice_window::TITLE_OFF);
+
+    // Opening it (twice) makes one window on Core's own voice page; the microphone is still off.
+    handle_menu(&app, "voice_open");
+    handle_menu(&app, "voice_open");
+    assert_eq!(
+        app.webview_windows()
+            .keys()
+            .filter(|label| label.as_str() == voice_window::LABEL)
+            .count(),
+        1
+    );
+    assert!(voice_window::snapshot(&app).window_open);
+    assert!(!voice_window::snapshot(&app).listening);
+
+    // Before the page is known to be Core's voice page, even the microphone is denied.
+    let mic = PermissionKind::Microphone;
+    assert_eq!(
+        voice_window::test_permission(&app, voice_window::LABEL, mic),
+        PermissionResponse::Deny
+    );
+    voice_window::test_page_load(&app, "http://127.0.0.1:4999/voice.html", true);
+
+    // Every other kind, and the microphone for any other window, is denied and shows nothing.
+    for kind in [
+        PermissionKind::Camera,
+        PermissionKind::DisplayCapture,
+        PermissionKind::Geolocation,
+        PermissionKind::Other,
+    ] {
+        assert_eq!(
+            voice_window::test_permission(&app, voice_window::LABEL, kind),
+            PermissionResponse::Deny
+        );
+    }
+    for label in [
+        "phoenix-pill",
+        WINDOW_LABEL,
+        ISLAND_LABEL,
+        "phoenix-browser-tab-1",
+    ] {
+        assert_eq!(
+            voice_window::test_permission(&app, label, mic),
+            PermissionResponse::Deny,
+            "{label}"
+        );
+    }
+    assert!(!voice_window::snapshot(&app).listening);
+
+    // The microphone for the voice window on its page: allowed, and the shell's indicator is on
+    // before the page has said anything.
+    assert_eq!(
+        voice_window::test_permission(&app, voice_window::LABEL, mic),
+        PermissionResponse::Allow
+    );
+    let on = voice_window::snapshot(&app);
+    assert!(on.listening);
+    assert_eq!(on.title, voice_window::TITLE_LISTENING);
+    assert!(on.tooltip.ends_with(voice_window::TOOLTIP_SUFFIX));
+
+    // A page claiming "idle" before it said "active" does not clear it; after "active" it does.
+    voice_window::test_title_claim(&app, voice_window::CLAIM_IDLE);
+    assert!(voice_window::snapshot(&app).listening);
+    voice_window::test_title_claim(&app, voice_window::CLAIM_ACTIVE);
+    voice_window::test_title_claim(&app, voice_window::CLAIM_IDLE);
+    assert!(!voice_window::snapshot(&app).listening);
+
+    // A reload clears the indicator (the old page's stream is gone with it).
+    voice_window::test_permission(&app, voice_window::LABEL, mic);
+    assert!(voice_window::snapshot(&app).listening);
+    voice_window::test_page_load(&app, "http://127.0.0.1:4999/voice.html", true);
+    assert!(!voice_window::snapshot(&app).listening);
+
+    // The shell-side stop: always available, destroys the window and clears the indicator, and
+    // asking again is harmless.
+    voice_window::test_permission(&app, voice_window::LABEL, mic);
+    // The tray entry runs the same path as `kill`. The mock runtime accepts the destroy request but
+    // never fires the window's Destroyed event, so only the shell's own state is observable here.
+    assert!(voice_window::kill(&app), "a destroy was requested");
+    handle_menu(&app, "voice_stop");
+    let after = voice_window::snapshot(&app);
+    assert!(!after.listening);
+    assert_eq!(after.title, voice_window::TITLE_OFF);
+    assert!(!after.tooltip.contains("LISTENING"));
+    // With the window gone nothing is allowed any more.
+    assert_eq!(
+        voice_window::test_permission(&app, voice_window::LABEL, mic),
+        PermissionResponse::Deny
+    );
+}
+
 fn wait_until(mut done: impl FnMut() -> bool) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while !done() && std::time::Instant::now() < deadline {
@@ -790,6 +896,15 @@ fn a_dropped_file_is_announced_without_its_path_and_read_once_by_its_window_only
 /// window open. The mock runtime has no webview engine, so what it proves is the command surface
 /// (caller checks, validation, tab bookkeeping, events), not rendering or blocking.
 fn start_browser(dir: &Path, dns: &[(&str, &str)]) -> (App<MockRuntime>, Arc<Mutex<Vec<String>>>) {
+    start_browser_with(dir, dns, None)
+}
+
+/// [`start_browser`] with the Phase 95 script-runner fake (answers `page_snapshot`/`page_action`).
+fn start_browser_with(
+    dir: &Path,
+    dns: &[(&str, &str)],
+    script_runner: Option<browser::ScriptRunner>,
+) -> (App<MockRuntime>, Arc<Mutex<Vec<String>>>) {
     use std::collections::HashMap;
     let table: HashMap<String, std::net::IpAddr> = dns
         .iter()
@@ -804,6 +919,10 @@ fn start_browser(dir: &Path, dns: &[(&str, &str)]) -> (App<MockRuntime>, Arc<Mut
             None
         }),
         shields: Arc::new(browser::ShieldsInput::default),
+        profiles: browser::ProfileStore::new(dir.join("browser-profiles")),
+        core_profiles: browser::CoreProfiles::fixed(vec![], Arc::default()),
+        scripts: Arc::new(|_, _| Err(())),
+        script_runner,
     };
     let options = ShellOptions {
         settings_dir: Some(dir.to_path_buf()),
@@ -1024,7 +1143,7 @@ fn browser_commands_run_for_the_chrome_window_only_and_validate_everything() {
     )
     .build()
     .expect("stranger");
-    let calls: [(&str, Value); 11] = [
+    let calls: [(&str, Value); 14] = [
         (
             "open_tab",
             serde_json::json!({"url": "https://example.com/", "intent": "typed"}),
@@ -1045,6 +1164,15 @@ fn browser_commands_run_for_the_chrome_window_only_and_validate_everything() {
             serde_json::json!({"site": "example.com", "blocking": true}),
         ),
         ("shields_status", serde_json::json!({})),
+        (
+            "purge_profile_data",
+            serde_json::json!({"profileId": "prof-1"}),
+        ),
+        ("page_snapshot", serde_json::json!({})),
+        (
+            "page_action",
+            serde_json::json!({"kind": "click", "selector": "button#go", "expectedUrl": "https://example.com/b"}),
+        ),
     ];
     for caller in [&pet, &content, &stranger] {
         for (cmd, args) in &calls {
@@ -1104,6 +1232,114 @@ fn browser_commands_run_for_the_chrome_window_only_and_validate_everything() {
     assert!(
         dialogs.lock().unwrap().is_empty(),
         "no dialog without a download"
+    );
+}
+
+/// Phase 95: `page_snapshot` / `page_action` through the IPC layer with the script-runner fake:
+/// the chrome gets RESOLVED values, a content window gets `forbidden` and no script runs for it.
+fn page_snapshot_and_page_action_answer_the_chrome_and_refuse_every_other_window() {
+    let dir = tempfile::tempdir().unwrap();
+    let scripts = Arc::new(Mutex::new(Vec::<(String, String)>::new()));
+    let log = scripts.clone();
+    let runner: browser::ScriptRunner = Arc::new(move |label, script| {
+        log.lock()
+            .unwrap()
+            .push((label.to_string(), script.to_string()));
+        let inner = if script.contains("outerHTML") {
+            serde_json::json!({"u": "https://example.com/a#x", "h": "<p>hello</p>", "t": false})
+        } else {
+            serde_json::json!({"ok": true, "u": "https://example.com/a"})
+        };
+        Some(serde_json::to_string(&inner.to_string()).unwrap())
+    });
+    let (app, _) = start_browser_with(
+        dir.path(),
+        &[("example.com", "93.184.216.34")],
+        Some(runner),
+    );
+    let key = app.invoke_key().to_string();
+    let chrome = app
+        .get_webview_window(browser::CHROME_WINDOW_LABEL)
+        .expect("chrome window");
+    let pet = app.get_webview_window(WINDOW_LABEL).expect("pet window");
+    let snapshot = |w: &tauri::WebviewWindow<MockRuntime>| {
+        invoke(&key, w, "page_snapshot", serde_json::json!({}))
+    };
+    let action =
+        |w: &tauri::WebviewWindow<MockRuntime>, args: Value| invoke(&key, w, "page_action", args);
+    let click = serde_json::json!({
+        "kind": "click", "selector": "button#go", "expectedUrl": "https://example.com/a"
+    });
+
+    // No tab yet: resolved refusals, no script.
+    assert_eq!(
+        snapshot(&chrome).unwrap(),
+        serde_json::json!({"ok": false, "reason": "no_active_tab"})
+    );
+    assert_eq!(
+        action(&chrome, click.clone()).unwrap(),
+        serde_json::json!({"ok": false, "reason": "no_active_tab"})
+    );
+
+    let opened = invoke(
+        &key,
+        &chrome,
+        "open_tab",
+        serde_json::json!({"url": "https://example.com/a", "intent": "typed"}),
+    )
+    .expect("open");
+    assert_eq!(opened["ok"], true, "{opened}");
+    let content = app
+        .get_webview_window("phoenix-browser-tab-1")
+        .expect("content window");
+
+    let snap = snapshot(&chrome).expect("snapshot");
+    assert_eq!(snap["ok"], true, "{snap}");
+    assert_eq!(snap["tabId"], "1");
+    assert_eq!(snap["url"], "https://example.com/a");
+    assert_eq!(snap["html"], "<p>hello</p>");
+    assert_eq!(snap["truncated"], false);
+
+    assert_eq!(
+        action(&chrome, click.clone()).unwrap(),
+        serde_json::json!({"ok": true, "url": "https://example.com/a"})
+    );
+    // Wrong page, bad selector, bad kind: resolved refusals.
+    let wrong = serde_json::json!({
+        "kind": "click", "selector": "button#go", "expectedUrl": "https://example.com/b"
+    });
+    assert_eq!(action(&chrome, wrong).unwrap()["reason"], "page_changed");
+    let nth = serde_json::json!({
+        "kind": "click", "selector": "button:nth-of-type(2)", "expectedUrl": "https://example.com/a"
+    });
+    assert_eq!(action(&chrome, nth).unwrap()["reason"], "bad_selector");
+    let navigate = serde_json::json!({
+        "kind": "navigate", "destination": "http://localhost:3000/", "expectedUrl": "https://example.com/a"
+    });
+    assert_eq!(
+        action(&chrome, navigate).unwrap(),
+        serde_json::json!({"ok": false, "reason": "private_network"})
+    );
+    let ran = scripts.lock().unwrap().len();
+
+    // Every other window is refused, and nothing ran for it.
+    let stranger = tauri::WebviewWindowBuilder::new(
+        &app,
+        "stranger",
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .build()
+    .expect("stranger");
+    for caller in [&pet, &content, &stranger] {
+        let refused = snapshot(caller).expect_err("snapshot");
+        assert_eq!(refused["code"], "forbidden", "{}", caller.label());
+        let refused = action(caller, click.clone()).expect_err("action");
+        assert_eq!(refused["code"], "forbidden", "{}", caller.label());
+    }
+    assert_eq!(
+        scripts.lock().unwrap().len(),
+        ran,
+        "no script for a refused caller"
     );
 }
 
@@ -1184,13 +1420,226 @@ fn a_port_radar_request_opens_a_tab_only_after_the_chromes_confirmation_and_only
     );
 }
 
+/// Phase 96: a start whose Core knows exactly `known` profiles and whose pending-deletion list is
+/// the shared `pending`. Profile data lives under `dir/browser-profiles`.
+fn start_profile_browser(
+    dir: &Path,
+    known: &[&str],
+    pending: Arc<parking_lot::Mutex<Vec<String>>>,
+) -> App<MockRuntime> {
+    use std::collections::HashMap;
+    let table: HashMap<String, std::net::IpAddr> =
+        HashMap::from([("example.com".to_string(), "93.184.216.34".parse().unwrap())]);
+    let hooks = browser::Hooks {
+        resolve: Arc::new(move |name| table.get(name).map(|ip| vec![*ip]).ok_or(())),
+        pick_folder: Arc::new(|_| None),
+        shields: Arc::new(browser::ShieldsInput::default),
+        profiles: browser::ProfileStore::new(dir.join("browser-profiles")),
+        core_profiles: browser::CoreProfiles::fixed(
+            known.iter().map(|k| k.to_string()).collect(),
+            pending,
+        ),
+        scripts: Arc::new(|_, _| Err(())),
+        script_runner: None,
+    };
+    let options = ShellOptions {
+        settings_dir: Some(dir.to_path_buf()),
+        open_url: Some(Box::new(|_| {})),
+        env: Some(Box::new(|k| {
+            (k == "PHOENIX_PORT").then(|| "4999".to_string())
+        })),
+        confirm_quit: None,
+        skip_native_window_styling: true,
+        browser_hooks: Some(hooks),
+    };
+    let mut app = builder::<MockRuntime>(options)
+        .build(mock_context(noop_assets()))
+        .expect("app builds");
+    #[allow(deprecated)]
+    app.run_iteration(|_, _| {});
+    browser::show(app.handle()).expect("chrome window");
+    app
+}
+
+fn open_in(key: &str, chrome: &tauri::WebviewWindow<MockRuntime>, profile: Option<&str>) -> Value {
+    let mut args = serde_json::json!({"url": "https://example.com/", "intent": "typed"});
+    if let Some(p) = profile {
+        args["profileId"] = p.into();
+    }
+    invoke(key, chrome, "open_tab", args).expect("open_tab resolves")
+}
+
+/// Phase 96 lifecycle through the mock runtime: a profile tab gets its directory only when opened,
+/// a private tab never does, a removed profile cannot be opened, and `purge_profile_data` (chrome
+/// only, only for a deletion Core lists as pending) closes the profile's tabs and deletes exactly
+/// its directory. The mock runtime has no webview engine, so nothing here proves WebKit/WebView2
+/// behaviour.
+fn profile_tabs_get_their_own_directory_and_a_pending_purge_deletes_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let pending = Arc::new(parking_lot::Mutex::new(Vec::<String>::new()));
+    let app = start_profile_browser(dir.path(), &["prof-1", "prof-2"], pending.clone());
+    let key = app.invoke_key().to_string();
+    let chrome = app
+        .get_webview_window(browser::CHROME_WINDOW_LABEL)
+        .expect("chrome");
+    let root = dir.path().join("browser-profiles");
+
+    // A private tab (no profile, or "private" in any case) leaves no directory and has no profile.
+    for p in [None, Some("private"), Some("PRIVATE")] {
+        let opened = open_in(&key, &chrome, p);
+        assert_eq!(opened["ok"], true, "{opened}");
+        assert_eq!(opened["tab"]["profileId"], Value::Null);
+    }
+    assert!(!root.exists(), "no profile directory without a profile tab");
+
+    // Bad ids are refused before anything is created.
+    for bad in ["../x", "a/b", "", "a b", &"a".repeat(65), "é"] {
+        let denied = open_in(&key, &chrome, Some(bad));
+        assert_eq!(denied["ok"], false, "{bad}");
+        assert_eq!(denied["reason"], "profile_invalid", "{bad}");
+    }
+    // A well-formed id Core does not have is refused too.
+    let unknown = open_in(&key, &chrome, Some("not-a-profile"));
+    assert_eq!(unknown["reason"], "profile_invalid");
+    assert!(!root.exists());
+
+    // A profile tab is created and keeps its profile.
+    let one = open_in(&key, &chrome, Some("prof-1"));
+    assert_eq!(one["ok"], true, "{one}");
+    assert_eq!(one["tab"]["profileId"], "prof-1");
+    let two = open_in(&key, &chrome, Some("prof-2"));
+    assert_eq!(two["ok"], true, "{two}");
+    let dir1 = root.join("p-prof-1");
+    let dir2 = root.join("p-prof-2");
+    assert!(dir1.is_dir() && dir2.is_dir());
+    std::fs::write(dir1.join("cookies"), b"x").unwrap();
+    std::fs::write(dir2.join("cookies"), b"y").unwrap();
+    let tab1 = one["tab"]["tabId"].as_str().unwrap().to_string();
+    let tab2 = two["tab"]["tabId"].as_str().unwrap().to_string();
+    assert!(app
+        .get_webview_window(&format!("phoenix-browser-tab-{tab1}"))
+        .is_some());
+
+    // Not pending in Core: the purge refuses and deletes nothing (a live profile is safe).
+    let refused = invoke(
+        &key,
+        &chrome,
+        "purge_profile_data",
+        serde_json::json!({"profileId": "prof-1"}),
+    )
+    .expect_err("not pending");
+    assert_eq!(refused["code"], "bad_profile");
+    assert!(dir1.join("cookies").exists());
+
+    // Invalid ids are refused by the command itself.
+    for bad in ["../prof-1", "private", "", "a/b"] {
+        let refused = invoke(
+            &key,
+            &chrome,
+            "purge_profile_data",
+            serde_json::json!({"profileId": bad}),
+        )
+        .expect_err(bad);
+        assert_eq!(refused["code"], "bad_profile", "{bad}");
+    }
+    assert!(dir1.join("cookies").exists() && dir2.join("cookies").exists());
+
+    // Core removed prof-1: its deletion is pending. New tabs in it are refused; the purge closes
+    // its tab and deletes ITS directory only.
+    pending.lock().push("prof-1".into());
+    let busy = open_in(&key, &chrome, Some("prof-1"));
+    assert_eq!(busy["reason"], "profile_busy", "{busy}");
+    let report = invoke(
+        &key,
+        &chrome,
+        "purge_profile_data",
+        serde_json::json!({"profileId": "prof-1"}),
+    )
+    .expect("purge");
+    assert_eq!(report["closedTabs"], 1);
+    assert_eq!(report["dataRemoved"], true);
+    assert!(!dir1.exists());
+    assert!(
+        dir2.join("cookies").exists(),
+        "another profile is untouched"
+    );
+    assert!(root.exists());
+    // The mock runtime keeps the window object after `destroy`; the host's tab state is what
+    // proves the tab was closed (the chrome gets `browser://tab-closed` from it).
+    assert!(
+        invoke(&key, &chrome, "reload", serde_json::json!({"tabId": tab1})).is_err(),
+        "the profile's tab is gone"
+    );
+    assert!(
+        invoke(&key, &chrome, "reload", serde_json::json!({"tabId": tab2})).is_ok(),
+        "the other profile's tab is not"
+    );
+    assert!(app
+        .get_webview_window(&format!("phoenix-browser-tab-{tab2}"))
+        .is_some());
+
+    // The purge is idempotent while Core still lists it.
+    let again = invoke(
+        &key,
+        &chrome,
+        "purge_profile_data",
+        serde_json::json!({"profileId": "prof-1"}),
+    )
+    .expect("second purge");
+    assert_eq!(again["closedTabs"], 0);
+    assert_eq!(again["dataRemoved"], false);
+
+    // Still pending in Core, so it cannot be reopened even though Core "knows" the id here.
+    assert_eq!(
+        open_in(&key, &chrome, Some("prof-1"))["reason"],
+        "profile_busy"
+    );
+    // Once Core acknowledged the purge (and, in real life, no longer has the profile) nothing is
+    // pending; prof-2 stays usable throughout.
+    pending.lock().clear();
+    assert_eq!(open_in(&key, &chrome, Some("prof-2"))["ok"], true);
+
+    // A symlinked profile directory is refused and its target survives.
+    #[cfg(unix)]
+    {
+        let outside = dir.path().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::write(outside.join("precious"), b"z").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("p-prof-2-link")).unwrap();
+        std::fs::remove_dir_all(&dir2).unwrap();
+        std::os::unix::fs::symlink(&outside, &dir2).unwrap();
+        pending.lock().push("prof-2".into());
+        let refused = invoke(
+            &key,
+            &chrome,
+            "purge_profile_data",
+            serde_json::json!({"profileId": "prof-2"}),
+        )
+        .expect_err("symlink");
+        assert_eq!(refused["code"], "purge_failed");
+        assert!(outside.join("precious").exists());
+    }
+
+    // The data of a profile that never had a tab: nothing to delete, no error.
+    pending.lock().clear();
+    pending.lock().push("prof-9".into());
+    let none = invoke(
+        &key,
+        &chrome,
+        "purge_profile_data",
+        serde_json::json!({"profileId": "prof-9"}),
+    )
+    .expect("nothing to delete");
+    assert_eq!(none["dataRemoved"], false);
+}
+
 fn main() {
     // Tauri's Linux runtime builds GTK menus, which need GTK initialised (and a display; CI
     // runs this under xvfb). Without this the mock runtime panics in gtk::Menu::new.
     #[cfg(target_os = "linux")]
     gtk::init().expect("GTK failed to initialise: is a display available (xvfb-run)?");
 
-    let tests: [(&str, fn()); 23] = [
+    let tests: [(&str, fn()); 26] = [
         (
             "starts with window, tray and full menu",
             starts_with_window_tray_and_full_menu,
@@ -1265,8 +1714,20 @@ fn main() {
             browser_commands_run_for_the_chrome_window_only_and_validate_everything,
         ),
         (
+            "page_snapshot and page_action answer the chrome and refuse every other window",
+            page_snapshot_and_page_action_answer_the_chrome_and_refuse_every_other_window,
+        ),
+        (
             "a port radar request opens a tab only after the chrome confirms, once",
             a_port_radar_request_opens_a_tab_only_after_the_chromes_confirmation_and_only_once,
+        ),
+        (
+            "profile tabs get their own directory and a pending purge deletes it",
+            profile_tabs_get_their_own_directory_and_a_pending_purge_deletes_it,
+        ),
+        (
+            "the voice window allows only its own microphone, shows LISTENING and stops from the tray",
+            the_voice_window_allows_only_its_own_microphone_shows_listening_and_stops_from_the_tray,
         ),
     ];
     for (name, test) in tests {

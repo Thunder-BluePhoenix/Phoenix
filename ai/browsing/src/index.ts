@@ -6,6 +6,11 @@ import type { Actor, Environment, PolicyAuditSink } from "@phoenix/policy";
 import { MAX_PAGE_CHARS } from "./page-snapshot";
 
 export {
+  BROWSER_SELECTOR_PATTERN,
+  BROWSER_TOOL_NAMES,
+  isActionableSelector,
+} from "./browser-tools";
+export {
   MAX_PAGE_CHARS,
   PageSnapshotError,
   SnapshotPageReader,
@@ -139,6 +144,15 @@ function isProtectedField(field: PublicField): boolean {
   return forbiddenField.test(
     [field.type, field.autocomplete, field.name, field.label, field.selector].join(" "),
   );
+}
+
+/**
+ * Throws `BrowsingSafetyError` unless the action is allowed on this page: protected fields, forms with
+ * protected controls, unsupported or over-long typing and invalid URLs are refused. Exported so the
+ * host that performs the action can run the SAME check on a fresh read AFTER the user approved it.
+ */
+export function checkBrowserAction(action: BrowserAction, page: PublicPage): void {
+  checkAction(action, page);
 }
 
 function checkAction(action: BrowserAction, page: PublicPage): void {
@@ -326,7 +340,8 @@ export class BrowsingAssistant {
           tool: name,
           input,
           environment: this.options.environment,
-          resource: pageUrl,
+          // The policy audit keeps `resource`; the query string may carry session tokens, so it is cut.
+          resource: auditUrl(pageUrl).pageUrl,
           dataClass: "internal",
         },
         { signal },

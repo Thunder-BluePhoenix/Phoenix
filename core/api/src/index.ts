@@ -20,7 +20,7 @@ export * from "./awake-status-routes";
 export * from "./phone-listener";
 export * from "./notetaker-routes";
 export * from "./voice-routes";
-export { ATTACHMENT_BODY_MAX_BYTES, MAX_BODY_BYTES } from "./http";
+export { ATTACHMENT_BODY_MAX_BYTES, BROWSER_RELAY_BODY_MAX_BYTES, MAX_BODY_BYTES } from "./http";
 export * from "./security";
 export * from "./server";
 export * from "./services";

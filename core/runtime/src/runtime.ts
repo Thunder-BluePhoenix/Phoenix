@@ -114,6 +114,7 @@ import { FawkesRebirthService } from "./fawkes-rebirth/service";
 import { BrowserProfilesService } from "./browser-profiles/service";
 import { MusicConnectorsService } from "./music-connectors/service";
 import { FilterListsService, type FilterListsTuning } from "./filter-lists/service";
+import type { BrowserRelay } from "@phoenix/capability-browser";
 import { QuitCheckService } from "./quit-check";
 import { AwakeStatusService } from "./awake-status";
 import { ScheduledAwakeService, type ScheduledAwakeDependencies } from "./scheduled-awake/service";
@@ -258,6 +259,8 @@ export interface RuntimeOptions {
   syncTransport?: SyncTransportFactory;
   /** Filter list downloader tuning; code only (tests inject a loopback origin and a fetcher). No setting or request sets it. */
   filterLists?: FilterListsTuning;
+  /** Phase 95: the queue between the browser capability and the chrome page's relay routes (same instance as `BuiltinHost.browserRelay`). */
+  browserRelay?: BrowserRelay;
 }
 
 /**
@@ -377,6 +380,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly musicConnectors: MusicConnectorsService;
   /** Ad and tracker filter lists (Phase 93): downloaded only when the user asks; no browser window applies them yet. */
   readonly filterLists: FilterListsService;
+  /** Phase 95: served to the Phoenix browser's chrome page through `/api/browser/relay/*`; absent in runtimes without a browser. */
+  readonly browserRelay: BrowserRelay | undefined;
   /** The sharing choices and teammate view of {@link teamLink}, as the routes see them. */
   readonly teamStatus: TeamLinkService | undefined;
   /** Phoenix MCP server (Phase 76): off by default; a separate loopback listener with per-client tokens. */
@@ -872,6 +877,7 @@ export class PhoenixRuntime implements CoreServices {
       settings: this.settings,
       audit: this.permissions.audit,
     });
+    this.browserRelay = options.browserRelay;
     this.filterLists = new FilterListsService({
       settings: this.settings,
       audit: this.permissions.audit,
@@ -1617,6 +1623,7 @@ export class PhoenixRuntime implements CoreServices {
       await this.scheduledAwake.close();
       await this.teamLink?.close();
       await this.remoteRelay?.close();
+      this.browserRelay?.close();
       await this.mcp.close();
       await this.api?.close();
       await this.agents.close();

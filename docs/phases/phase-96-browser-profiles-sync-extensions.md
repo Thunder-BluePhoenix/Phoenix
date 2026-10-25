@@ -5,7 +5,7 @@
 | Stage | Stage 15 — Phoenix browser |
 | Release target | Post-v2.0 track |
 | Priority | Low |
-| Status | 🟨 Built as code and wired into Core (`BrowserProfilesService`, `/api/browser/*` routes); every check is simulated (fakes, in-memory databases, two Cores sharing a fake relay). **Not built:** no browser engine, partition purge, extension sandbox (scripts are stored as data and never run) or issuing/fetching service for signers. Signer distribution (host-supplied signed file) and revocation are built, simulated. The sync round trip was only run through a fake relay; the exit criterion is not met |
+| Status | 🟨 Built as code and wired into Core (`BrowserProfilesService`, `/api/browser/*` routes); every check is simulated (fakes, in-memory databases, two Cores sharing a fake relay). The Rust shell now has per-profile web data directories, a chrome-only `purge_profile_data` and an approved-content-script injector (cargo and mock-runtime tests only; nothing ran on a real webview). **Not built:** an extension sandbox (an injected script runs in the page's main world, with no isolation from the page), a real two-device round trip, or an issuing/fetching service for signers. Signer distribution (host-supplied signed file) and revocation are built, simulated. The sync round trip was only run through a fake relay; the exit criterion is not met |
 | Depends on | [Phase 93 — Phoenix Mini Browser](phase-93-phoenix-mini-browser.md), [Phase 45 — Cross-Device Context & Sync](phase-45-cross-device-context.md) |
 | Unblocks | — |
 
@@ -15,7 +15,7 @@ Make the Phoenix browser yours across devices.
 
 ## Tasks
 
-- [ ] Several profiles (work, personal, testing). Per-profile partitions and namespaced credentials (write-only through the routes, deleted with the profile) are built and served by routes. Simulated. Unticked: no browser engine; `DELETE profile` returns `purge_partition` because Core cannot clear a webview store that does not exist.
+- [ ] Several profiles (work, personal, testing). Per-profile partitions and namespaced credentials (write-only through the routes, deleted with the profile) are built and served by routes. Simulated. `DELETE profile` queues the purge in Core (`purge_partition` kept for compatibility, plus `purge: {profile_id, status: "pending"}`); the Phoenix browser chrome calls the shell's chrome-only `purge_profile_data`, which closes the profile's tabs and deletes its data directory. Unticked: no real webview, display or window ever ran this, so no web data was ever actually stored or deleted.
 - [ ] Bookmarks and history synced through Phoenix's encrypted sync (Phase 45). Sync is off at account and profile level; staged remote revisions are applied only on accept. A synced item is capped at about 32 KB. Simulated. Unticked: only a fake relay was used.
 - [ ] Import bookmarks from other browsers. Bookmark HTML import is built (http/https only). Simulated. Unticked: not run on a real browser export.
 - [ ] Small extension API through capabilities (page actions, content scripts with declared permissions). Only Ed25519-signed extension manifests are built (unapproved by default, fails closed); approval asks the user. Signers come only from the host (`RuntimeOptions.extensionSigners` static map or `extensionSignerRegistry`; default none), so by default no extension can be installed. Signers come from a pinned-root signed registry (`extensionSignerRegistry`, offline file) with revocation, expiry and rollback refusal; revocation is retroactive. Simulated only. **No extension sandbox exists.**
@@ -27,7 +27,8 @@ Make the Phoenix browser yours across devices.
 - Sync reuses the Phase 45 `SyncRuntime` only after account sync is configured and the profile opted in; the relay holds only sealed envelopes. Credentials never come back from any route. Approving an extension asks the user (blocks); withdrawing and uninstalling never ask; every `authorize()` is decided by the gateway (fails closed; the kill switch makes it say no).
 - `core/runtime/src/browser-profiles/signer-registry.ts`: signed, versioned, bounded signer registry plus revocation list, verified against a host-pinned Ed25519 root, monotonic `sequence`, bounded expiry; consulted at install and on every read/authorise. Details in [browser-profiles.md](../browser-profiles.md). Simulated evidence only.
 - Tests: `core/runtime/test/browser-profiles-wiring.test.ts` (12, two Cores sharing a fake relay, plus two signer-registry file tests) and `core/runtime/test/signer-registry.test.ts` (25, keys generated at test time).
-- Not built: a browser engine, partition purge, an extension runtime or sandbox, a tool or service that issues registry documents, any network fetch or scheduled refresh of the registry. Settings section: `apps/web/src/components/BrowserProfilesSettings.tsx`.
+- Rust shell (`apps/desktop/src-tauri/src/browser_profiles.rs`, `browser_extensions.rs`, profile parts of `browser.rs`): per-profile data directories keyed by profile id, `open_tab` `profileId`, chrome-only `purge_profile_data` with strictly-inside-the-root deletion, and approved-content-script injection through Core's authorize. Unit tests (path safety, planner) and a mock-runtime lifecycle test. See [browser-profiles.md](../browser-profiles.md#the-shell-side-rust-phase-96).
+- Not built: an extension sandbox (the injector is not one), a tool or service that issues registry documents, any network fetch or scheduled refresh of the registry. Settings section: `apps/web/src/components/BrowserProfilesSettings.tsx`.
 
 ## Exit criteria
 
@@ -37,7 +38,7 @@ Make the Phoenix browser yours across devices.
 
 ### What was built
 
-- **Profiles:** per-profile partitions and namespaced credentials, purged on remove.
+- **Profiles:** per-profile partitions and namespaced credentials, purged on remove; the web data of a removed profile is deleted by the shell when the Phoenix browser window is open (a pending-purge queue in Core survives until then).
 - **Sync:** off at the account and the profile level; staged remote revisions are applied only on accept; the synced item cap is about 32 KB.
 - **Import:** bookmark HTML (http/https only).
 - **Extensions:** Ed25519-signed manifests, unapproved by default, fail closed. Signer registry with revocation (signer or manifest hash), signer and document expiry, rollback refusal; installed extensions flip to `revoked` on the next read. New Settings strings are machine-translated and unreviewed.
@@ -45,7 +46,7 @@ Make the Phoenix browser yours across devices.
 
 ### What was not built
 
-A browser engine, an extension sandbox, a registry issuing tool, network fetch/refresh of the registry, and the web partition purge (Core returns `purge_partition`; the host must act on it).
+An extension sandbox (injected scripts run in the page's main world), a registry issuing tool, and network fetch/refresh of the registry. The partition purge and the injector exist in the Rust shell but never ran on a real webview.
 
 ### What was not run
 

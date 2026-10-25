@@ -49,13 +49,14 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: true,
-    // Five pages: the main app, the transparent floating Fawkes, the island, the pill and the browser chrome (apps/desktop).
+    // Six pages: the main app, the transparent floating Fawkes, the island, the pill, the voice window and the browser chrome (apps/desktop).
     rolldownOptions: {
       input: {
         index: resolve(__dirname, "index.html"),
         floating: resolve(__dirname, "floating.html"),
         island: resolve(__dirname, "island.html"),
         pill: resolve(__dirname, "pill.html"),
+        voice: resolve(__dirname, "voice.html"),
         browser: resolve(__dirname, "browser.html"),
       },
     },

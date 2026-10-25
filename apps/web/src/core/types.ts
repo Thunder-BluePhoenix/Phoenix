@@ -54,6 +54,22 @@ export interface Notification {
   createdAt: string;
 }
 
+/** Phase 95: Core's description of one browsing-assistant action, shown on the approval card. */
+export interface BrowserActionDetails {
+  kind: "click" | "type" | "submit" | "download" | "navigate";
+  /** Host and path of the page, without query, fragment or credentials. */
+  pageUrl: string;
+  selector?: string;
+  /** Host and path, never the query. */
+  destination?: string;
+  /** The destination had a query that is not shown. */
+  queryHidden?: boolean;
+  /** type only: the FULL typed text, invisible/control characters as \u{XXXX} escapes. */
+  text?: string;
+  /** type only: UTF-16 length of the raw text. */
+  textLength?: number;
+}
+
 export interface Confirmation {
   id: string;
   capabilityId: string;
@@ -69,6 +85,8 @@ export interface Confirmation {
     run?: string;
     step?: string;
     dailyDigest?: { preview: string; citedSourceCount: number };
+    /** Phase 95: what the browsing assistant asks to do on the active tab. Display only. */
+    browser?: BrowserActionDetails;
   };
   /** Optional, present only for a request raised by an active agent run (Phase 31). */
   task_id?: string;

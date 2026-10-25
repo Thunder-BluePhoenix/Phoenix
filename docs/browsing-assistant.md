@@ -4,9 +4,13 @@ Package: `ai/browsing` (`@phoenix/ai-browsing`). Evidence for this slice is **si
 inject a fake page reader, fake local model, fake gateway, fake approval and an in-memory audit sink.
 No browser, network, model or device is touched, and no real test site has been exercised.
 
-This slice was reviewed again after the Core wiring of Phases 86 to 96 and was deliberately not wired: it still needs a browser to supply the document, registered browser tools and an approval UI, none of which exist, so no Core piece would be real without them.
+**Phase 95 host pieces (fakes only; nothing ran in a real webview, window, browser, site or model):**
+the browser capability (`capabilities/browser`), the relay between Core and the Phoenix browser's chrome page,
+the Rust commands `page_snapshot` / `page_action`, the chrome-page relay loop and an approval card. Details in
+[Phoenix browser actions](#phoenix-browser-actions-phase-95). **`BrowsingAssistant` itself is still NOT wired into
+Core**: it is a library (see [Why the assistant is not wired](#why-the-assistant-is-not-wired-into-core)).
 
-**Built since then (simulated):** a pure page reader (`page-snapshot.ts`) that turns an HTML snapshot into a `PublicPage`, and an injection suite (`ai/evaluation/test/browsing-injection.test.ts`). **Still unbuilt:** gateway browser tools, the approval UI, any real browser (Phase 93) and any measurement of a real model.
+Earlier, built (simulated): a pure page reader (`page-snapshot.ts`) that turns an HTML snapshot into a `PublicPage`, and an injection suite (`ai/evaluation/test/browsing-injection.test.ts`). **Still unbuilt:** any measurement of a real model and any real-site flow.
 
 ## What it does
 
@@ -103,23 +107,77 @@ Disabling single lines (hidden attribute, comment skipping, form value leak, lin
 rewriting, character stripping, raw-text handling) made it fail. **A real model's resistance was not measured:**
 visible attacker text is passed to the model, and whether a real model follows it is untested.
 
-## Integration hooks (for the parent)
+## Phoenix browser actions (Phase 95)
 
-1. Have the Phoenix mini browser (phase 93) hand its loaded document to a `SnapshotPageReader` source.
-2. Register browser capability commands (`click`, `type`, `submit`, `navigate`, `download`) with a
-   side effect of `external`/`write` or stronger, and pass their tool names as `tools`.
-3. Provide a `BrowserGateway` (a `ToolGateway` plus `registry.list()` fits) and a `PolicyAuditSink`.
-4. Provide an `ActionApproval` backed by the approval UI that shows the action and page URL.
-5. Provide a `LocalPageModel` wrapping an on-device provider from `@phoenix/ai-models`.
-6. The package's three workspace dependencies (`ai-models`, `ai-tool-gateway`, `policy`) are all used;
-   `ai/browsing/node_modules/@phoenix` needs `pnpm install` on a clean checkout.
+**Evidence: fakes only.** The tests use a fake chrome page that answers the relay with canned HTML, the real
+capability manager, permission gateway, policy engine, tool gateway, reader and `BrowsingAssistant`, and a fake
+model and approval. The Rust commands were tested only through Tauri's mock runtime with a fake script runner
+(see [mini-browser.md](mini-browser.md)). No `WKWebView`, WebView2, display, Tauri IPC from a real page, real
+site or real model was used.
+
+### Path of one action
+
+`BrowsingAssistant` (library) → `ToolGateway` (policy + audit) → capability `browser` (`capabilities/browser`,
+tools `browser.click|type|submit|navigate|download`, exported as `BROWSER_TOOL_NAMES`) → Core confirmation →
+relay (`BrowserRelay`, in memory) → chrome page long-polling `GET /api/browser/relay/next` → Tauri commands
+`page_snapshot` / `page_action` (chrome window only) → the ACTIVE tab's content webview.
+
+- **Side effect `external` on every tool**, so Core's confirmation asks for every action even when the `network`
+  permission is granted, in addition to the assistant's own `ActionApproval`.
+- **Active tab only, chrome-window-only path.** No Tauri command is added that a content window can call
+  (`capability_tests` pin that); the relay routes need Core's session token, which a page loaded in a tab does not have.
+- **Approved URL.** Every command carries `pageUrl` (the page the user approved; the assistant's resource is audited
+  without its query). After the confirmation the handler reads the active tab again through `page_snapshot`,
+  runs the reader and the assistant's own `checkBrowserAction` on the FRESH page, and refuses (`page_changed`,
+  `protected`) if the URL differs or the action is no longer allowed; Rust compares `expectedUrl` with the
+  host-tracked tab URL again immediately before running (a second, independent check).
+- **Selectors.** Only `<tag>#id` / `<tag>[name="x"]` for input/button/form/select/textarea with `[A-Za-z0-9_:.-]{1,80}`
+  tokens, checked in the manifest schema, in the handler (`isActionableSelector`) and in Rust. Positional selectors
+  (`:nth-of-type`), de-duplicated ones (`~1`) and `:unreported-controls` are refused: such controls cannot be
+  acted on (a limitation, by design). The Rust script finds the control by comparing cleaned id/name values with
+  `getElementsByTagName`, never with `querySelector`, and requires exactly one match.
+- **Typed text** goes only inside the fixed script as a JSON string literal. It is shown in full on the approval
+  card and is never in a summary, an audit record, an event, an error, or any result.
+
+### Page source for the reader
+
+`createRelayPageReader(relay)` is a real `PageReader`: the Rust command `page_snapshot` evaluates a FIXED script
+(no input interpolated) in the active tab that returns `document.documentElement.outerHTML` (cut at 4 MiB), the
+result is read back through a one-shot channel, and the chrome page posts it to Core, where `readPageSnapshot`
+turns it into a `PublicPage`. URL and title come from the host's own tab record, not from the page's script.
+Result bodies up to 16 MiB are accepted on `POST /api/browser/relay/:id/result` only.
+
+### Approval card
+
+The capability marks its inputs with `x-phoenix-confirm-input` (capability manager); `PermissionGateway` passes
+them, only for capability `browser`, to `browserCard`, which re-validates them and produces
+`details.browser = { kind, pageUrl (host+path), selector | destination (+queryHidden), text (FULL, invisible
+characters escaped), textLength }`. An action the card cannot describe exactly is refused before a confirmation
+exists. `Approvals.tsx` renders it (action, page, control/destination, full typed text); the same pending
+confirmation is also what the phone link and chat approvals list (they show only the summary, which never holds
+typed text, and the card details as Core serialises them).
+
+### Why the assistant is not wired into Core
+
+A safe seam does not exist yet. `BrowsingAssistant` needs a `LocalPageModel`, and the pieces Core has
+(`AiService.run`) restrict an embedding to one local provider but offer **no local-only mode for `generate`**: with
+cloud opt-in on, `internal` data (page text) can route to a cloud provider, and the assistant would only notice
+afterwards from the result's provenance. Sending the page first and checking later is exactly what the rules forbid.
+Wiring needs a local-only task option in `ai/models` (a `generate` analogue of `localProvider`) and a user-facing
+entry point (a chat command or route) that builds the plan from the person's own words. Neither was built. Until
+then the assistant is a library: an integration builds `new BrowsingAssistant({ page: createRelayPageReader(relay),
+gateway: <ToolGateway>, tools: BROWSER_TOOL_NAMES, approval, audit, model, ... })`. The capability and relay ARE
+wired into Core (`builtinCapabilities`, `PhoenixRuntime.browserRelay`, `/api/browser/relay/*`), installed and not
+enabled like every other built-in.
 
 ## Limitations and unmet exit criteria
 
 - The phase's exit criteria (a multi-step flow on a real test site; injection tests passing) are **not
   claimed**. The injection suite exists but is simulated: no real browser, site or model was used.
-- Unbuilt: browser tools in the gateway, the approval UI, a real browser source for the reader (Phase 93),
-  measurement of a real model against the visible attacker text, and wiring into Core.
+- Built with fakes only: browser tools in the gateway, the approval card and a browser source for the reader (see
+  above). Unbuilt: measurement of a real model against the visible attacker text, a local-only `generate` seam and
+  an entry point for the assistant in Core, log-in, and any run in a real webview or on a real site. Controls
+  without a unique id or name cannot be acted on.
 - Login is only possible by the user typing credentials themselves; the assistant never fills them.
 - Field protection is lexical over the reader's metadata; a hostile page can mislabel a field. The user
   approval step is the backstop. Pages whose controls are not reported in `fields` cannot be typed into.

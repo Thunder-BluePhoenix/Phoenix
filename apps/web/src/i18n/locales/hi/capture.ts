@@ -118,6 +118,13 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.voice.settings.notListening":
     "वॉइस चालू है, पर यह पेज अभी सुन नहीं रहा (रीलोड के बाद ब्राउज़र दोबारा पूछता है)।",
   "capture.voice.settings.start": "सुनना शुरू करें",
+  "capture.voice.window.title": "वॉइस असिस्टेंट (OK Fawkes)",
+  "capture.voice.window.intro":
+    "“OK Fawkes” कहें, फिर पूछें। वॉइस सेटिंग्स में “वॉइस” के अंतर्गत चालू होता है; यह विंडो केवल सुनना शुरू और बंद करती है।",
+  "capture.voice.window.shell":
+    "माइक्रोफ़ोन चालू रहने पर Phoenix इस विंडो के शीर्षक और ट्रे टूलटिप में LISTENING दिखाता है। ट्रे मेनू का “Stop voice listening” इसे ऐप से ही बंद कर देता है।",
+  "capture.voice.window.listening": "LISTENING: माइक्रोफ़ोन चालू है।",
+  "capture.voice.window.off": "माइक्रोफ़ोन बंद है।",
   "capture.multimodal.title": "एक बार का डिवाइस कैप्चर",
   "capture.multimodal.intro":
     "अनुरोधकर्ता: उपयोगकर्ता। आपका ब्राउज़र डिवाइस की पहुँच माँगे, उससे पहले Core आपकी क्षमता अनुमति जाँचता है और हर उपयोग के लिए मंज़ूरी माँगता है। पृष्ठभूमि में कुछ भी कैप्चर नहीं होता; क्लाउड विकल्प नहीं है।",

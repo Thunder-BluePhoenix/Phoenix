@@ -42,12 +42,10 @@ export class ChainedRecognizer implements SpeechRecognizer {
     const results: RecognizerAvailability[] = [];
     let active = -1;
     for (const [index, engine] of this.engines.entries()) {
-      const result = await engine.recognizer
-        .availability()
-        .catch((): RecognizerAvailability => ({
-          available: false,
-          detail: "Speech engine check failed",
-        }));
+      const result = await engine.recognizer.availability().catch((): RecognizerAvailability => ({
+        available: false,
+        detail: "Speech engine check failed",
+      }));
       results.push(result);
       if (result.available && active < 0) active = index;
     }

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-page-snapshot"
+description = "Enables the page_snapshot command without any pre-configured scope."
+commands.allow = ["page_snapshot"]
+
+[[permission]]
+identifier = "deny-page-snapshot"
+description = "Denies the page_snapshot command without any pre-configured scope."
+commands.deny = ["page_snapshot"]

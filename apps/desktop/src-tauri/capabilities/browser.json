@@ -16,6 +16,9 @@
     "allow-zoom",
     "allow-set-chrome-height",
     "allow-set-site-shields",
-    "allow-shields-status"
+    "allow-shields-status",
+    "allow-page-snapshot",
+    "allow-page-action",
+    "allow-purge-profile-data"
   ]
 }

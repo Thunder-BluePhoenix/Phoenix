@@ -116,6 +116,13 @@ export const capture = {
   "capture.voice.settings.notListening":
     "Voice is on but this page is not listening yet (after a reload the browser asks again).",
   "capture.voice.settings.start": "Start listening",
+  "capture.voice.window.title": "Voice assistant (OK Fawkes)",
+  "capture.voice.window.intro":
+    "Say “OK Fawkes”, then ask. Voice is turned on in Settings, under Voice; this window only starts and stops listening.",
+  "capture.voice.window.shell":
+    "Phoenix shows LISTENING in this window’s title and in the tray tooltip while the microphone is on. “Stop voice listening” in the tray menu ends it from the app itself.",
+  "capture.voice.window.listening": "LISTENING: the microphone is on.",
+  "capture.voice.window.off": "The microphone is off.",
   "capture.multimodal.title": "One-time device capture",
   "capture.multimodal.intro":
     "Requested by: user. Core checks your capability grant and asks for per-use approval before your browser asks for device access. Nothing captures in the background; no cloud fallback.",

@@ -6,6 +6,8 @@ import type { Duplex } from "node:stream";
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
 import {
   ATTACHMENT_BODY_MAX_BYTES,
+  BROWSER_RELAY_BODY_MAX_BYTES,
+  BROWSER_RELAY_RESULT_PATH,
   decodeParams,
   matchRoute,
   readJsonBody,
@@ -133,15 +135,16 @@ export class ApiServer {
         res,
         url,
         params: decodeParams(params),
-        // Only POST /api/attachments may read more than the default; the route (already
+        // Only POST /api/attachments and POST /api/browser/relay/:id/result may read more than the default; the route (already
         // authenticated above) asks for it, nobody else gets it.
         body: (maxBytes) =>
           readJsonBody(
             req,
             maxBytes !== undefined &&
               req.method === "POST" &&
-              url.pathname === "/api/attachments" &&
-              maxBytes <= ATTACHMENT_BODY_MAX_BYTES
+              ((url.pathname === "/api/attachments" && maxBytes <= ATTACHMENT_BODY_MAX_BYTES) ||
+                (BROWSER_RELAY_RESULT_PATH.test(url.pathname) &&
+                  maxBytes <= BROWSER_RELAY_BODY_MAX_BYTES))
               ? maxBytes
               : undefined,
           ),

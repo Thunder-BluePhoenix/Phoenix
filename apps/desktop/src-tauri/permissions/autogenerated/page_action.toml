@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-page-action"
+description = "Enables the page_action command without any pre-configured scope."
+commands.allow = ["page_action"]
+
+[[permission]]
+identifier = "deny-page-action"
+description = "Denies the page_action command without any pre-configured scope."
+commands.deny = ["page_action"]

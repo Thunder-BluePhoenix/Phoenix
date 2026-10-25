@@ -114,6 +114,13 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.voice.settings.notListening":
     "الصوت قيد التشغيل لكن هذه الصفحة لا تستمع بعد (يطلب المتصفح الإذن مجددًا بعد إعادة التحميل).",
   "capture.voice.settings.start": "بدء الاستماع",
+  "capture.voice.window.title": "المساعد الصوتي (OK Fawkes)",
+  "capture.voice.window.intro":
+    "قل «OK Fawkes» ثم اسأل. يُفعَّل الصوت من الإعدادات، ضمن «الصوت»؛ هذه النافذة تبدأ الاستماع وتوقفه فقط.",
+  "capture.voice.window.shell":
+    "يعرض Phoenix كلمة LISTENING في عنوان هذه النافذة وفي تلميح أيقونة الشريط أثناء تشغيل الميكروفون. الأمر «Stop voice listening» في قائمة الشريط ينهيه من التطبيق نفسه.",
+  "capture.voice.window.listening": "LISTENING: الميكروفون قيد التشغيل.",
+  "capture.voice.window.off": "الميكروفون متوقف.",
   "capture.multimodal.title": "التقاط لمرة واحدة من الجهاز",
   "capture.multimodal.intro":
     "الطلب من: المستخدم. يتحقق Core من منح القدرة لديك ويطلب موافقة لكل استخدام قبل أن يطلب متصفحك الوصول إلى الجهاز. لا شيء يُلتقط في الخلفية؛ ولا بديل سحابيًا.",

@@ -32,6 +32,7 @@ describe("built-in capabilities", () => {
         "agents",
         "apple-music",
         "awake",
+        "browser",
         "calcom",
         "calendar",
         "capture-microphone",

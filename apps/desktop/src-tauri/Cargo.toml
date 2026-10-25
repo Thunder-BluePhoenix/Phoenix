@@ -21,6 +21,9 @@ serde_json = "1"
 parking_lot = "0.12"
 # Phase 93: the browser policy port parses URLs with the same WHATWG parser tauri/wry use (already in the lockfile).
 url = "2"
+# Phase 96: the per-profile WebKit data store identifier is a hash of the profile id (sha2 0.10 is
+# already in the lockfile through tauri; MIT OR Apache-2.0).
+sha2 = "0.10"
 
 # Island window styling on macOS: window level above the menu bar, all Spaces, and notch
 # detection through NSScreen (safe-area inset + auxiliary areas). Same versions tauri/tao

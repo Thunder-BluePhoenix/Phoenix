@@ -192,7 +192,14 @@ export function parsePageSnapshotResult(value: unknown): PageSnapshotResult {
       typeof html === "string" &&
       typeof truncated === "boolean"
     )
-      return { ok: true, tabId, url: url.slice(0, 2048), title: title.slice(0, 300), html, truncated };
+      return {
+        ok: true,
+        tabId,
+        url: url.slice(0, 2048),
+        title: title.slice(0, 300),
+        html,
+        truncated,
+      };
     return { ...FAILED };
   }
   if (ok === false) return { ok: false, reason: parseReason(field(value, "reason")) };

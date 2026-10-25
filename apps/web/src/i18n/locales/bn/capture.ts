@@ -115,6 +115,13 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.voice.settings.notListening":
     "ভয়েস চালু আছে কিন্তু এই পাতা এখনো শুনছে না (রিলোডের পর ব্রাউজার আবার অনুমতি চায়)।",
   "capture.voice.settings.start": "শোনা শুরু করুন",
+  "capture.voice.window.title": "ভয়েস সহকারী (OK Fawkes)",
+  "capture.voice.window.intro":
+    "বলুন “OK Fawkes”, তারপর জিজ্ঞাসা করুন। ভয়েস চালু করা হয় সেটিংসে, “ভয়েস” অংশে; এই উইন্ডো শুধু শোনা শুরু ও বন্ধ করে।",
+  "capture.voice.window.shell":
+    "মাইক্রোফোন চালু থাকলে Phoenix এই উইন্ডোর শিরোনামে ও ট্রে টুলটিপে LISTENING দেখায়। ট্রে মেনুর “Stop voice listening” অ্যাপ থেকেই এটি বন্ধ করে।",
+  "capture.voice.window.listening": "LISTENING: মাইক্রোফোন চালু আছে।",
+  "capture.voice.window.off": "মাইক্রোফোন বন্ধ আছে।",
   "capture.multimodal.title": "একবারের ডিভাইস ক্যাপচার",
   "capture.multimodal.intro":
     "অনুরোধকারী: ব্যবহারকারী। আপনার ব্রাউজার ডিভাইসের অনুমতি চাওয়ার আগে Core আপনার সক্ষমতার অনুমোদন যাচাই করে এবং প্রতি ব্যবহারে আলাদা অনুমোদন চায়। ব্যাকগ্রাউন্ডে কিছুই ক্যাপচার হয় না; ক্লাউডে ফিরে যাওয়ার পথ নেই।",

@@ -5,7 +5,7 @@
 | Stage | Stage 12 — Coucou parity and beyond |
 | Release target | Post-v2.0 track |
 | Priority | Medium |
-| Status | 🟨 Built and tested with a fake recogniser through the real tool gateway; no real microphone, whisper pass, wake recognition or speech synthesis was ever run; only the voice-activity gate's CPU was measured (per component, not whole-app); web page only, nothing in `apps/desktop`; web search is built behind a confirmation but only tested against a local mock (no real search service or key); exit criteria not met |
+| Status | 🟨 Built and tested with a fake recogniser through the real tool gateway; no real microphone, whisper pass, wake recognition or speech synthesis was ever run; only the voice-activity gate's CPU was measured (per component, not whole-app); hosted by a desktop shell window (`apps/desktop`) that was only exercised with Tauri's mock runtime and unit tests, never on a real microphone, permission prompt or packaged app; web search is built behind a confirmation but only tested against a local mock (no real search service or key); exit criteria not met |
 | Depends on | [Phase 54 — Multimodal Interaction (Speech & Vision)](phase-54-multimodal-interaction.md), [Phase 64 — Dictation Anywhere](phase-64-dictation-anywhere.md) |
 | Unblocks | — |
 
@@ -26,7 +26,7 @@ Talk to Fawkes hands-free and have it answer and act through Phoenix's capabilit
 
 ## Deliverables
 
-- Voice assistant: **web page only** (`apps/web/src/components/Voice.tsx`), **not built in `apps/desktop`**: no desktop code, no Info.plist microphone wording update, no Tauri change.
+- Voice assistant: the web page (`apps/web/src/components/Voice.tsx`) plus a desktop host, **built but never run**: `apps/web/voice.html` (`apps/web/src/voice/`) is a small page for the shell's own window `phoenix-voice` (`apps/desktop/src-tauri/src/voice_window.rs`, opened only from the tray menu "Open voice assistant (OK Fawkes)"). The shell allows the microphone for that window on Core's own `/voice.html` only and denies every other permission and window (never `Default`), shows LISTENING in the window title and tray tooltip from its own decision, and has a tray "Stop voice listening" that destroys the window. The `Info.plist` `NSMicrophoneUsageDescription` now describes the voice assistant. No capability and no command is granted to the voice window. See [voice-assistant.md](../voice-assistant.md#desktop-host-tauri-never-run-on-a-real-microphone).
 - Intent → tool mapping: built (`ai/multimodal/src/voice/intent.ts`, `dispatch.ts`), documented in [voice-assistant.md](../voice-assistant.md).
 
 ## Exit criteria
@@ -53,7 +53,7 @@ Talk to Fawkes hands-free and have it answer and act through Phoenix's capabilit
 
 A static review (not a human audit) found that the voice timeout loop could deny confirmations raised by other actors. The loop was removed: after its wait voice aborts only its own call and leaves other actors' confirmations for the person.
 
-What was not done or not run: any real microphone, whisper pass, wake recognition, speech synthesis (including the browser's speech-end events) or room echo; whole-app CPU measurement; a run of web search against a real SearXNG instance, Brave Search or DuckDuckGo, or with a real key (it was only tested against local mocks; the DuckDuckGo shape comes from one manual request); voice play, pause or skip; a desktop implementation (`apps/desktop`); speaker verification. Open items are in the [gap register](../gaps.md).
+What was not done or not run: any real microphone, whisper pass, wake recognition, speech synthesis (including the browser's speech-end events) or room echo; whole-app CPU measurement; a run of web search against a real SearXNG instance, Brave Search or DuckDuckGo, or with a real key (it was only tested against local mocks; the DuckDuckGo shape comes from one manual request); voice play, pause or skip; a run of the desktop voice window on a real display, microphone, OS permission prompt or packaged app (and the changed `Info.plist` text, which only takes effect in a built bundle); speaker verification. Open items are in the [gap register](../gaps.md).
 
 ## Notes & risks
 

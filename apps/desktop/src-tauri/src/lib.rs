@@ -10,8 +10,11 @@
 mod awake_tray;
 pub mod browser;
 pub mod browser_core;
+pub mod browser_extensions;
 mod browser_native;
+pub mod browser_page;
 pub mod browser_policy;
+pub mod browser_profiles;
 pub mod browser_rules;
 mod connection;
 mod core_status;
@@ -44,6 +47,7 @@ mod system_audio;
 #[cfg(target_os = "macos")]
 mod system_audio_macos;
 pub mod terminal_jump;
+pub mod voice_window;
 
 use connection::{connection, locate, phoenix_url, CoreConnection, Locator};
 use island_controller::{Frame, PageEvent};
@@ -110,6 +114,8 @@ struct Shell<R: Runtime> {
     open_url: UrlOpener,
     island: island::Host,
     dictation: pill::Host,
+    /// Phase 66: the voice assistant's window and its shell-enforced indicator and kill switch.
+    voice: voice_window::Host,
     /// Where keyboard focus was when the current dictation started (set by the hotkey worker).
     focus: focus_target::FocusGuard<focus_target::SystemFocus>,
     shortcuts: shortcuts::Host,
@@ -1083,6 +1089,20 @@ fn build_menu<R: Runtime>(
         settings.pill,
         None::<&str>,
     )?;
+    let voice_open = MenuItem::with_id(
+        app,
+        "voice_open",
+        "Open voice assistant (OK Fawkes)",
+        true,
+        None::<&str>,
+    )?;
+    let voice_stop = MenuItem::with_id(
+        app,
+        "voice_stop",
+        "Stop voice listening",
+        true,
+        None::<&str>,
+    )?;
     let wardrobe = MenuItem::with_id(app, "wardrobe", "Wardrobe", true, None::<&str>)?;
     let shortcuts_enabled = CheckMenuItem::with_id(
         app,
@@ -1116,6 +1136,7 @@ fn build_menu<R: Runtime>(
         &dictation_key,
         &dictation_pill,
     ]);
+    entries.extend([&voice_open as &dyn IsMenuItem<R>, &voice_stop]);
     entries.push(&separators[3]);
     entries.extend([
         &shortcuts_enabled as &dyn IsMenuItem<R>,
@@ -1189,6 +1210,15 @@ pub fn handle_menu<R: Runtime>(app: &AppHandle<R>, id: &str) {
             set_dictation_hotkey(app, on);
         }
         "dictation_key" => cycle_dictation_key(app),
+        "voice_open" => {
+            if let Err(e) = voice_window::show(app) {
+                pill::error(app, &format!("Could not open the voice assistant: {e}"));
+            }
+        }
+        // The shell-side emergency stop: always available, never asks Core or the page.
+        "voice_stop" => {
+            voice_window::kill(app);
+        }
         "dictation_pill" => {
             let on = !app.state::<Shell<R>>().settings.lock().pill;
             set_dictation_pill(app, on);
@@ -1252,7 +1282,9 @@ fn apply_awake<R: Runtime>(app: &AppHandle<R>, awake: &awake_tray::Awake) {
         }
     }
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
-        let _ = tray.set_tooltip(Some(awake_tray::tooltip(awake)));
+        // The voice indicator rides on top of the keep-awake text and is never dropped by it.
+        shell.voice.set_base_tooltip(awake_tray::tooltip(awake));
+        let _ = tray.set_tooltip(Some(shell.voice.tooltip()));
     }
 }
 
@@ -1350,7 +1382,10 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
             browser::zoom,
             browser::set_chrome_height,
             browser::set_site_shields,
-            browser::shields_status
+            browser::shields_status,
+            browser::page_snapshot,
+            browser::page_action,
+            browser::purge_profile_data
         ])
         .setup(move |app| {
             let handle = app.handle();
@@ -1400,7 +1435,9 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
             // Phase 93: the browser host. Real DNS, the native folder dialog and Core's shields
             // under the real runtime; the mock runtime (lifecycle tests) injects its own.
             app.manage(browser::Host::new(
-                browser_hooks.unwrap_or_else(|| browser::Hooks::system(locator.clone())),
+                browser_hooks.unwrap_or_else(|| {
+                    browser::Hooks::system(locator.clone(), settings_dir.join("browser-profiles"))
+                }),
                 !skip_native_window_styling,
                 locator_port(&locator),
             ));
@@ -1419,6 +1456,7 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
                     !skip_native_window_styling,
                 ),
                 dictation: pill::Host::new(skip_native_window_styling),
+                voice: voice_window::Host::default(),
                 focus: focus_target::FocusGuard::new(focus_target::SystemFocus),
                 shortcuts: shortcuts::Host::default(),
                 file_drop: file_drop::Registry::default(),
@@ -1485,6 +1523,7 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
                 );
             }
             browser::window_event(window, event);
+            voice_window::window_event(window, event);
             if window.label() == pill::LABEL && matches!(event, WindowEvent::Destroyed) {
                 if let Some(shell) = window.app_handle().try_state::<Shell<R>>() {
                     shell.dictation.unload();
