@@ -9,9 +9,9 @@
 //! stacking, pixels and Quit; those were checked by hand on macOS.
 
 use phoenix_desktop::{
-    builder, file_drop, handle_menu, menu_snapshot, open_links, quit_requested, refresh_awake_tray,
-    run_shortcut, shortcuts, ShellOptions, AWAKE_ITEM_ID, ISLAND_LABEL, SETTINGS_FILE, TRAY_ID,
-    WINDOW_LABEL,
+    browser, builder, file_drop, handle_menu, menu_snapshot, open_links, quit_requested,
+    refresh_awake_tray, run_shortcut, shortcuts, ShellOptions, AWAKE_ITEM_ID, ISLAND_LABEL,
+    SETTINGS_FILE, TRAY_ID, WINDOW_LABEL,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -38,6 +38,7 @@ fn start(settings_dir: &Path) -> Started {
         })),
         confirm_quit: None,
         skip_native_window_styling: true,
+        browser_hooks: None,
     };
     let mut app = builder::<MockRuntime>(options)
         .build(mock_context(noop_assets()))
@@ -355,6 +356,7 @@ fn start_with_fake_core(
             answer
         })),
         skip_native_window_styling: true,
+        browser_hooks: None,
     };
     let mut app = builder::<MockRuntime>(options)
         .build(mock_context(noop_assets()))
@@ -784,13 +786,411 @@ fn a_dropped_file_is_announced_without_its_path_and_read_once_by_its_window_only
     assert_eq!(announced.lock().unwrap().len(), 1);
 }
 
+/// Phase 93: a start with fake DNS, a fake folder dialog and fake shields, and the browser's chrome
+/// window open. The mock runtime has no webview engine, so what it proves is the command surface
+/// (caller checks, validation, tab bookkeeping, events), not rendering or blocking.
+fn start_browser(dir: &Path, dns: &[(&str, &str)]) -> (App<MockRuntime>, Arc<Mutex<Vec<String>>>) {
+    use std::collections::HashMap;
+    let table: HashMap<String, std::net::IpAddr> = dns
+        .iter()
+        .map(|(n, ip)| (n.to_string(), ip.parse().unwrap()))
+        .collect();
+    let dialogs = Arc::new(Mutex::new(Vec::<String>::new()));
+    let seen = dialogs.clone();
+    let hooks = browser::Hooks {
+        resolve: Arc::new(move |name| table.get(name).map(|ip| vec![*ip]).ok_or(())),
+        pick_folder: Arc::new(move |message| {
+            seen.lock().unwrap().push(message.to_string());
+            None
+        }),
+        shields: Arc::new(browser::ShieldsInput::default),
+    };
+    let options = ShellOptions {
+        settings_dir: Some(dir.to_path_buf()),
+        open_url: Some(Box::new(|_| {})),
+        env: Some(Box::new(|k| {
+            (k == "PHOENIX_PORT").then(|| "4999".to_string())
+        })),
+        confirm_quit: None,
+        skip_native_window_styling: true,
+        browser_hooks: Some(hooks),
+    };
+    let mut app = builder::<MockRuntime>(options)
+        .build(mock_context(noop_assets()))
+        .expect("app builds");
+    #[allow(deprecated)]
+    app.run_iteration(|_, _| {});
+    browser::show(app.handle()).expect("chrome window");
+    (app, dialogs)
+}
+
+fn browser_commands_run_for_the_chrome_window_only_and_validate_everything() {
+    let dir = tempfile::tempdir().unwrap();
+    let (app, dialogs) = start_browser(
+        dir.path(),
+        &[
+            ("example.com", "93.184.216.34"),
+            ("rebind.test", "127.0.0.1"),
+        ],
+    );
+    let key = app.invoke_key().to_string();
+    let chrome = app
+        .get_webview_window(browser::CHROME_WINDOW_LABEL)
+        .expect("chrome window");
+    let pet = app.get_webview_window(WINDOW_LABEL).expect("pet window");
+    let events = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+    for name in [browser::TAB_EVENT, browser::TAB_CLOSED_EVENT] {
+        let sink = events.clone();
+        chrome.listen(name, move |e| {
+            sink.lock()
+                .unwrap()
+                .push((name.to_string(), serde_json::from_str(e.payload()).unwrap()));
+        });
+    }
+
+    // The chrome opens a tab; the page gets a TabInfo.
+    let opened = invoke(
+        &key,
+        &chrome,
+        "open_tab",
+        serde_json::json!({"url": "https://example.com/a", "intent": "typed"}),
+    )
+    .expect("open");
+    assert_eq!(opened["ok"], true, "{opened}");
+    let tab = &opened["tab"];
+    assert_eq!(tab["tabId"], "1");
+    assert_eq!(tab["url"], "https://example.com/a");
+    assert_eq!(tab["zoom"], 1.0);
+    assert_eq!(tab["blocked"], 0);
+    let label = "phoenix-browser-tab-1";
+    assert!(
+        app.get_webview_window(label).is_some(),
+        "content window exists"
+    );
+
+    // Policy refusals RESOLVE with a reason (never reject), and open nothing.
+    for (url, reason) in [
+        ("http://localhost:3000/", "private_network"),
+        ("https://127.0.0.1/", "private_network"),
+        ("file:///etc/passwd", "file_blocked"),
+        ("javascript:alert(1)", "dangerous_scheme"),
+        ("https://user:pw@example.com/", "credentials_in_url"),
+        ("https://example.com:22/", "bad_port"),
+        ("https://rebind.test/", "dns_private"),
+        ("https://does-not-resolve.test/", "dns_failed"),
+        ("ftp://example.com/", "scheme_not_allowed"),
+        ("", "unparseable"),
+    ] {
+        let denied = invoke(
+            &key,
+            &chrome,
+            "open_tab",
+            serde_json::json!({"url": url, "intent": "typed"}),
+        )
+        .expect(url);
+        assert_eq!(
+            denied,
+            serde_json::json!({"ok": false, "reason": reason}),
+            "{url}"
+        );
+    }
+    let long = format!("https://example.com/{}", "a".repeat(3000));
+    assert_eq!(
+        invoke(
+            &key,
+            &chrome,
+            "open_tab",
+            serde_json::json!({"url": long, "intent": "typed"})
+        )
+        .unwrap()["reason"],
+        "unparseable"
+    );
+    assert!(
+        app.get_webview_window("phoenix-browser-tab-2").is_none(),
+        "no refusal opened a window"
+    );
+
+    // A port-radar open that Phoenix never asked for is refused; so is Core's own port.
+    let radar = |url: &str| {
+        invoke(
+            &key,
+            &chrome,
+            "open_tab",
+            serde_json::json!({"url": url, "intent": "port_radar"}),
+        )
+        .unwrap()
+    };
+    assert_eq!(radar("http://localhost:3000/")["reason"], "not_requested");
+    assert_eq!(radar("http://localhost:4999/")["reason"], "private_network");
+    assert_eq!(
+        radar("http://example.com:3000/")["reason"],
+        "private_network"
+    );
+
+    // Tab ids are validated; an unknown or malformed one is an error, not a tab.
+    for bad in ["", "7", "01", "1;x", "-1", "phoenix-browser-tab-1"] {
+        let err =
+            invoke(&key, &chrome, "reload", serde_json::json!({"tabId": bad})).expect_err(bad);
+        assert_eq!(err["code"], "bad_tab", "{bad}");
+    }
+    let tab_again =
+        invoke(&key, &chrome, "reload", serde_json::json!({"tabId": "1"})).expect("reload");
+    assert_eq!(tab_again["tabId"], "1");
+    assert_eq!(
+        invoke(
+            &key,
+            &chrome,
+            "zoom",
+            serde_json::json!({"tabId": "1", "factor": 99.0})
+        )
+        .unwrap(),
+        3.0
+    );
+    assert_eq!(
+        invoke(
+            &key,
+            &chrome,
+            "zoom",
+            serde_json::json!({"tabId": "1", "factor": 0.0})
+        )
+        .unwrap(),
+        0.5
+    );
+    let back = invoke(&key, &chrome, "back", serde_json::json!({"tabId": "1"})).expect("back");
+    assert_eq!(back["canGoBack"], false);
+    // Navigation re-validates the typed address (and only a typed one).
+    let nav = invoke(
+        &key,
+        &chrome,
+        "navigate",
+        serde_json::json!({"tabId": "1", "url": "http://localhost/", "intent": "typed"}),
+    )
+    .unwrap();
+    assert_eq!(nav["reason"], "private_network");
+    assert!(invoke(
+        &key,
+        &chrome,
+        "navigate",
+        serde_json::json!({"tabId": "1", "url": "https://example.com/b", "intent": "port_radar"})
+    )
+    .is_err());
+    let nav = invoke(
+        &key,
+        &chrome,
+        "navigate",
+        serde_json::json!({"tabId": "1", "url": "https://example.com/b", "intent": "typed"}),
+    )
+    .unwrap();
+    assert_eq!(nav["ok"], true);
+    assert!(invoke(
+        &key,
+        &chrome,
+        "set_site_shields",
+        serde_json::json!({"site": "https://x.test/", "blocking": false})
+    )
+    .is_err());
+    assert!(invoke(
+        &key,
+        &chrome,
+        "set_site_shields",
+        serde_json::json!({"site": "example.com", "blocking": false})
+    )
+    .is_ok());
+    assert!(invoke(
+        &key,
+        &chrome,
+        "set_chrome_height",
+        serde_json::json!({"height": 220.0})
+    )
+    .is_ok());
+    assert_eq!(
+        invoke(&key, &chrome, "shields_status", serde_json::json!({})).unwrap()["platformBlocking"],
+        false
+    );
+    assert!(invoke(
+        &key,
+        &chrome,
+        "activate_tab",
+        serde_json::json!({"tabId": "1"})
+    )
+    .is_ok());
+
+    // EVERY command refuses every window but the chrome: the pet, a content window, a stranger.
+    let content = app.get_webview_window(label).expect("content window");
+    let stranger = tauri::WebviewWindowBuilder::new(
+        &app,
+        "stranger",
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .build()
+    .expect("stranger");
+    let calls: [(&str, Value); 11] = [
+        (
+            "open_tab",
+            serde_json::json!({"url": "https://example.com/", "intent": "typed"}),
+        ),
+        ("close_tab", serde_json::json!({"tabId": "1"})),
+        ("activate_tab", serde_json::json!({"tabId": "1"})),
+        (
+            "navigate",
+            serde_json::json!({"tabId": "1", "url": "https://example.com/", "intent": "typed"}),
+        ),
+        ("back", serde_json::json!({"tabId": "1"})),
+        ("forward", serde_json::json!({"tabId": "1"})),
+        ("reload", serde_json::json!({"tabId": "1"})),
+        ("zoom", serde_json::json!({"tabId": "1", "factor": 2.0})),
+        ("set_chrome_height", serde_json::json!({"height": 100.0})),
+        (
+            "set_site_shields",
+            serde_json::json!({"site": "example.com", "blocking": true}),
+        ),
+        ("shields_status", serde_json::json!({})),
+    ];
+    for caller in [&pet, &content, &stranger] {
+        for (cmd, args) in &calls {
+            let refused = invoke(&key, caller, cmd, args.clone()).expect_err(cmd);
+            assert_eq!(
+                refused["code"],
+                "forbidden",
+                "{} from {}",
+                cmd,
+                caller.label()
+            );
+        }
+    }
+    assert!(
+        app.get_webview_window(label).is_some(),
+        "refused commands closed nothing"
+    );
+    assert_eq!(
+        invoke(
+            &key,
+            &chrome,
+            "zoom",
+            serde_json::json!({"tabId": "1", "factor": 1.0})
+        )
+        .unwrap(),
+        1.0
+    );
+
+    // Closing: the state and the chrome's event follow the window's destruction.
+    events.lock().unwrap().clear();
+    invoke(
+        &key,
+        &chrome,
+        "close_tab",
+        serde_json::json!({"tabId": "1"}),
+    )
+    .expect("close");
+    wait_until(|| {
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(n, _)| n == browser::TAB_CLOSED_EVENT)
+    });
+    let closed = events
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|(n, _)| n == browser::TAB_CLOSED_EVENT)
+        .cloned()
+        .unwrap();
+    assert_eq!(closed.1, serde_json::json!({"tabId": "1"}));
+    assert!(
+        invoke(&key, &chrome, "reload", serde_json::json!({"tabId": "1"})).is_err(),
+        "gone"
+    );
+    assert!(
+        dialogs.lock().unwrap().is_empty(),
+        "no dialog without a download"
+    );
+}
+
+/// Phase 80: the port radar only ASKS; nothing opens until the chrome confirms, and only once.
+fn a_port_radar_request_opens_a_tab_only_after_the_chromes_confirmation_and_only_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let (app, _) = start_browser(dir.path(), &[("localhost", "127.0.0.1")]);
+    let key = app.invoke_key().to_string();
+    let chrome = app
+        .get_webview_window(browser::CHROME_WINDOW_LABEL)
+        .expect("chrome window");
+    let asked = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let sink = asked.clone();
+    chrome.listen(browser::OPEN_REQUEST_EVENT, move |e| {
+        sink.lock()
+            .unwrap()
+            .push(serde_json::from_str(e.payload()).unwrap());
+    });
+
+    // Not a loopback dev server, Core's own port (4999 here), or a link of the wrong shape: refused.
+    let link = |url: &str| {
+        format!(
+            "phoenix://browser/open?url={}",
+            url.replace(':', "%3A").replace('/', "%2F")
+        )
+    };
+    for bad in [
+        "http://example.com:3000/",
+        "http://localhost:4999/",
+        "file:///etc/passwd",
+        "http://192.168.0.2:3000/",
+    ] {
+        open_links(app.handle(), &[link(bad)]);
+    }
+    open_links(
+        app.handle(),
+        &["phoenix://browser/open?url=http%3A%2F%2Flocalhost%3A3000%2F&x=1"],
+    );
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    assert!(
+        asked.lock().unwrap().is_empty(),
+        "nothing was even announced"
+    );
+    assert!(app.get_webview_window("phoenix-browser-tab-1").is_none());
+
+    open_links(app.handle(), &[link("http://localhost:3000/app")]);
+    wait_until(|| !asked.lock().unwrap().is_empty());
+    assert_eq!(
+        asked.lock().unwrap()[0],
+        serde_json::json!({"url": "http://localhost:3000/app", "source": "port_radar"})
+    );
+    assert!(
+        app.get_webview_window("phoenix-browser-tab-1").is_none(),
+        "asking opens nothing"
+    );
+
+    // A different URL than the one asked for is refused; the asked one opens once.
+    let open = |url: &str| {
+        invoke(
+            &key,
+            &chrome,
+            "open_tab",
+            serde_json::json!({"url": url, "intent": "port_radar"}),
+        )
+        .unwrap()
+    };
+    assert_eq!(open("http://localhost:3001/")["reason"], "not_requested");
+    let opened = open("http://localhost:3000/app");
+    assert_eq!(opened["ok"], true, "{opened}");
+    assert_eq!(
+        opened["tab"]["url"], "http://localhost:3000/app",
+        "no https upgrade for the dev server"
+    );
+    assert_eq!(
+        open("http://localhost:3000/app")["reason"],
+        "not_requested",
+        "once"
+    );
+}
+
 fn main() {
     // Tauri's Linux runtime builds GTK menus, which need GTK initialised (and a display; CI
     // runs this under xvfb). Without this the mock runtime panics in gtk::Menu::new.
     #[cfg(target_os = "linux")]
     gtk::init().expect("GTK failed to initialise: is a display available (xvfb-run)?");
 
-    let tests: [(&str, fn()); 21] = [
+    let tests: [(&str, fn()); 23] = [
         (
             "starts with window, tray and full menu",
             starts_with_window_tray_and_full_menu,
@@ -859,6 +1259,14 @@ fn main() {
         (
             "a dropped file is announced without its path and read once by its window only",
             a_dropped_file_is_announced_without_its_path_and_read_once_by_its_window_only,
+        ),
+        (
+            "browser commands run for the chrome window only and validate everything",
+            browser_commands_run_for_the_chrome_window_only_and_validate_everything,
+        ),
+        (
+            "a port radar request opens a tab only after the chrome confirms, once",
+            a_port_radar_request_opens_a_tab_only_after_the_chromes_confirmation_and_only_once,
         ),
     ];
     for (name, test) in tests {

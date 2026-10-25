@@ -30,7 +30,9 @@ export const browserProfiles: Record<keyof typeof enBrowserProfiles, string> = {
   "browserProfiles.remove.ask":
     "Remover “{name}”? Isto apaga os seus favoritos, histórico, extensões e credenciais guardadas, e não pode ser desfeito.",
   "browserProfiles.remove.done":
-    "Perfil removido. Os seus favoritos, histórico, extensões e credenciais guardadas foram apagados. O Phoenix Core ainda não consegue limpar o armazenamento web isolado chamado {partition}.",
+    "Perfil removido. Os seus favoritos, histórico, extensões e credenciais guardadas foram apagados. Os dados web guardados (cookies e armazenamento de sites) são apagados quando a janela do navegador Phoenix está aberta, porque só essa janela pode pedir ao shell do ambiente de trabalho que os apague.",
+  "browserProfiles.purge.pending":
+    "Os dados web guardados de {count, plural, one {# perfil removido aguardam} other {# perfis removidos aguardam}} a eliminação. Abra o navegador Phoenix para concluir.",
   "browserProfiles.devices.heading": "Outros dispositivos",
   "browserProfiles.devices.check": "Procurar perfis dos meus outros dispositivos",
   "browserProfiles.devices.none": "Não há perfis novos dos seus outros dispositivos.",

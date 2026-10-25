@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-site-shields"
+description = "Enables the set_site_shields command without any pre-configured scope."
+commands.allow = ["set_site_shields"]
+
+[[permission]]
+identifier = "deny-set-site-shields"
+description = "Denies the set_site_shields command without any pre-configured scope."
+commands.deny = ["set_site_shields"]

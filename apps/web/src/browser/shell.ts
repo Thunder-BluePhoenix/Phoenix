@@ -27,6 +27,22 @@ export interface TabInfo {
   zoom: number;
   /** Requests blocked on the current page. */
   blocked: number;
+  /** The saved profile this tab belongs to; null for a private (incognito) tab. */
+  profileId: string | null;
+}
+
+/** What `purge_profile_data` reports once a removed profile's web data has been handled. */
+export interface PurgeResult {
+  closedTabs: number;
+  dataRemoved: boolean;
+}
+
+/** A refused or failed purge. `code` is the shell's closed code (forbidden, bad_profile, busy, purge_failed). */
+export class PurgeError extends Error {
+  constructor(readonly code: string) {
+    super(`Profile data purge failed: ${code}`);
+    this.name = "PurgeError";
+  }
 }
 
 /** A refusal is a resolved value (never a rejected promise); `reason` is a navigation.ts denial id, or `dns_private`. */
@@ -37,8 +53,36 @@ export interface OpenRequest {
   source: "port_radar";
 }
 
+/** The actions the assistant may ask for on the ACTIVE tab (Phase 95). */
+export type PageActionKind = "click" | "type" | "submit" | "download" | "navigate";
+export const PAGE_ACTION_KINDS: readonly PageActionKind[] = [
+  "click",
+  "type",
+  "submit",
+  "download",
+  "navigate",
+];
+
+/** What `page_snapshot` returns for the active tab. `html` is untrusted page data: never render it. */
+export type PageSnapshotResult =
+  | { ok: true; tabId: string; url: string; title: string; html: string; truncated: boolean }
+  | { ok: false; reason: string };
+
+/** One action on the active tab; `text` is what the user approved to be typed (never log it). */
+export interface PageActionRequest {
+  kind: PageActionKind;
+  selector?: string;
+  text?: string;
+  destination?: string;
+  /** The page the action was approved for; the shell refuses when the tab has moved on. */
+  expectedUrl: string;
+}
+
+export type PageActionResult = { ok: true; url: string } | { ok: false; reason: string };
+
 export interface BrowserShell {
-  openTab(url: string, intent: BrowserIntent): Promise<OpenResult>;
+  /** `profileId` omitted = a private tab; the shell re-validates it (the picker is not a boundary). */
+  openTab(url: string, intent: BrowserIntent, profileId?: string): Promise<OpenResult>;
   closeTab(tabId: string): Promise<void>;
   activateTab(tabId: string): Promise<void>;
   navigate(tabId: string, url: string): Promise<OpenResult>;
@@ -54,6 +98,12 @@ export interface BrowserShell {
   onTab(listener: (tab: TabInfo) => void): Promise<() => void>;
   onTabClosed(listener: (tabId: string) => void): Promise<() => void>;
   onOpenRequest(listener: (request: OpenRequest) => void): Promise<() => void>;
+  /** Chrome window only: the active tab's page, read by a fixed script. A refusal is a resolved value. */
+  pageSnapshot(): Promise<PageSnapshotResult>;
+  /** Chrome window only: one approved action on the active tab. A refusal is a resolved value. */
+  pageAction(req: PageActionRequest): Promise<PageActionResult>;
+  /** Chrome window only: deletes a removed profile's saved web data and closes its tabs. */
+  purgeProfileData(profileId: string): Promise<PurgeResult>;
 }
 
 type Invoke = <T = void>(command: string, args?: Record<string, unknown>) => Promise<T>;
@@ -85,12 +135,14 @@ export function parseTab(value: unknown): TabInfo | null {
   const canGoForward = field(value, "canGoForward");
   const zoom = field(value, "zoom");
   const blocked = field(value, "blocked");
+  const profileId = field(value, "profileId") ?? null;
   if (typeof tabId !== "string" || tabId === "" || tabId.length > 64) return null;
   if (typeof url !== "string" || typeof title !== "string") return null;
   if (typeof loading !== "boolean" || typeof canGoBack !== "boolean") return null;
   if (typeof canGoForward !== "boolean") return null;
   if (typeof zoom !== "number" || !Number.isFinite(zoom)) return null;
   if (typeof blocked !== "number" || !Number.isSafeInteger(blocked) || blocked < 0) return null;
+  if (profileId !== null && (typeof profileId !== "string" || profileId.length > 80)) return null;
   return {
     tabId,
     url: url.slice(0, 2048),
@@ -100,6 +152,7 @@ export function parseTab(value: unknown): TabInfo | null {
     canGoForward,
     zoom,
     blocked,
+    profileId,
   };
 }
 
@@ -112,6 +165,49 @@ export function parseOpenResult(value: unknown): OpenResult {
   const reason = field(value, "reason");
   if (ok === false && typeof reason === "string") return { ok: false, reason: reason.slice(0, 64) };
   return { ok: false, reason: "unparseable" };
+}
+
+const FAILED = { ok: false, reason: "failed" } as const;
+
+/** A reason string is a short closed id (`no_active_tab`, a navigation denial id...); anything else is `failed`. */
+function parseReason(value: unknown): string {
+  return typeof value === "string" && /^[a-z0-9_]{1,64}$/.test(value) ? value : "failed";
+}
+
+/** Accepts only a well-formed `page_snapshot` answer; every other shape is `{ok:false, reason:'failed'}`. */
+export function parsePageSnapshotResult(value: unknown): PageSnapshotResult {
+  const ok = field(value, "ok");
+  if (ok === true) {
+    const tabId = field(value, "tabId");
+    const url = field(value, "url");
+    const title = field(value, "title");
+    const html = field(value, "html");
+    const truncated = field(value, "truncated");
+    if (
+      typeof tabId === "string" &&
+      tabId !== "" &&
+      tabId.length <= 64 &&
+      typeof url === "string" &&
+      typeof title === "string" &&
+      typeof html === "string" &&
+      typeof truncated === "boolean"
+    )
+      return { ok: true, tabId, url: url.slice(0, 2048), title: title.slice(0, 300), html, truncated };
+    return { ...FAILED };
+  }
+  if (ok === false) return { ok: false, reason: parseReason(field(value, "reason")) };
+  return { ...FAILED };
+}
+
+/** Accepts only a well-formed `page_action` answer; every other shape is `{ok:false, reason:'failed'}`. */
+export function parsePageActionResult(value: unknown): PageActionResult {
+  const ok = field(value, "ok");
+  if (ok === true) {
+    const url = field(value, "url");
+    return typeof url === "string" ? { ok: true, url: url.slice(0, 2048) } : { ...FAILED };
+  }
+  if (ok === false) return { ok: false, reason: parseReason(field(value, "reason")) };
+  return { ...FAILED };
 }
 
 function requireTab(value: unknown): TabInfo {
@@ -133,7 +229,10 @@ export function tauriBrowserShell(win: Window = window): BrowserShell | null {
   const listen = tauri?.event?.listen;
   if (!invoke || !listen) return null;
   return {
-    openTab: async (url, intent) => parseOpenResult(await invoke("open_tab", { url, intent })),
+    openTab: async (url, intent, profileId) =>
+      parseOpenResult(
+        await invoke("open_tab", { url, intent, ...(profileId ? { profileId } : {}) }),
+      ),
     closeTab: (tabId) => invoke("close_tab", { tabId }),
     activateTab: (tabId) => invoke("activate_tab", { tabId }),
     navigate: async (tabId, url) =>
@@ -146,6 +245,47 @@ export function tauriBrowserShell(win: Window = window): BrowserShell | null {
       return typeof applied === "number" && Number.isFinite(applied) ? applied : factor;
     },
     setSiteShields: (site, blocking) => invoke("set_site_shields", { site, blocking }),
+    purgeProfileData: async (profileId) => {
+      try {
+        const result = await invoke<unknown>("purge_profile_data", { profileId });
+        const closedTabs = field(result, "closedTabs");
+        const dataRemoved = field(result, "dataRemoved");
+        if (
+          typeof closedTabs !== "number" ||
+          !Number.isSafeInteger(closedTabs) ||
+          closedTabs < 0 ||
+          typeof dataRemoved !== "boolean"
+        )
+          throw new PurgeError("purge_failed");
+        return { closedTabs, dataRemoved };
+      } catch (error) {
+        if (error instanceof PurgeError) throw error;
+        const code = field(error, "code");
+        throw new PurgeError(typeof code === "string" ? code.slice(0, 32) : "purge_failed");
+      }
+    },
+    pageSnapshot: async () => {
+      try {
+        return parsePageSnapshotResult(await invoke<unknown>("page_snapshot", {}));
+      } catch {
+        return { ...FAILED };
+      }
+    },
+    pageAction: async (req) => {
+      try {
+        return parsePageActionResult(
+          await invoke<unknown>("page_action", {
+            kind: req.kind,
+            ...(req.selector !== undefined ? { selector: req.selector } : {}),
+            ...(req.text !== undefined ? { text: req.text } : {}),
+            ...(req.destination !== undefined ? { destination: req.destination } : {}),
+            expectedUrl: req.expectedUrl,
+          }),
+        );
+      } catch {
+        return { ...FAILED };
+      }
+    },
     setChromeHeight: (height) => invoke("set_chrome_height", { height }),
     onTab: (listener) =>
       listen<unknown>(TAB_EVENT, (e) => {

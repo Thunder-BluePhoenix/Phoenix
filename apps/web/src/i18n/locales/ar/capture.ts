@@ -14,6 +14,8 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.audio.emergencyStop": "الإيقاف الطارئ مفعّل.",
   "capture.audio.recognizerAvailable": "مُعرِّف الكلام: متاح. {detail}",
   "capture.audio.recognizerUnavailable": "مُعرِّف الكلام: غير متاح. {detail}",
+  "capture.audio.onDisk":
+    "الصوت على القرص: يكتب هذا المحرك الصوت في ملف مؤقت خاص أثناء التعرف عليه ثم يمحوه فورًا.",
   "capture.mic.unsupported": "لا يستطيع هذا المتصفح استخدام الميكروفون",
   "capture.mic.sampleRate": "لا يستطيع هذا الجهاز توفير صوت ميكروفون بتردد 16 kHz",
   "capture.notetaker.settings.title": "مدوّن الملاحظات",

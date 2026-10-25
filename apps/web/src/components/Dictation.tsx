@@ -362,6 +362,7 @@ export function DictationSettingsSection() {
           { detail: status.recognizer.detail },
         )}
       </p>
+      {status.audio_on_disk && <p className="small">{t("capture.audio.onDisk")}</p>}
       {status.kill_switch_engaged && <p role="status">{t("capture.dictation.killSwitch")}</p>}
       <Feedback error={error} saved={saved} />
 

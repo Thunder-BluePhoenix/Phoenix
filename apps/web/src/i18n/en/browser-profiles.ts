@@ -29,7 +29,9 @@ export const browserProfiles = {
   "browserProfiles.remove.ask":
     "Remove “{name}”? This deletes its bookmarks, history, extensions and saved credentials, and cannot be undone.",
   "browserProfiles.remove.done":
-    "Profile removed. Its bookmarks, history, extensions and saved credentials were deleted. The isolated web storage named {partition} cannot be cleared by Phoenix Core yet.",
+    "Profile removed. Its bookmarks, history, extensions and saved credentials were deleted. Its saved web data (cookies and site storage) is deleted when the Phoenix browser window is open, because only that window can ask the desktop shell to delete it.",
+  "browserProfiles.purge.pending":
+    "Saved web data of {count, plural, one {# removed profile is} other {# removed profiles are}} waiting to be deleted. Open the Phoenix browser to finish.",
   "browserProfiles.devices.heading": "Other devices",
   "browserProfiles.devices.check": "Check for profiles from my other devices",
   "browserProfiles.devices.none": "No new profiles from your other devices.",

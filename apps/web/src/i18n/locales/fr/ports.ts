@@ -42,8 +42,11 @@ export const ports: Record<keyof typeof enports, string> = {
     "Lourd : CPU de {cpu} % ou plus, ou mémoire de {mb} Mo ou plus, selon ps (une moyenne, pas une mesure en direct).",
   "ports.open": "Ouvrir dans le navigateur",
   "ports.open.label": "Ouvrir {name} sur le port {port} dans votre navigateur par défaut",
+  "ports.openPhoenix": "Ouvrir dans le navigateur Phoenix",
+  "ports.openPhoenix.label":
+    "Ouvrir {name} sur le port {port} dans le navigateur Phoenix (demande d’abord votre confirmation)",
   "ports.openNote":
-    "Les liens ouvrent http://127.0.0.1 dans votre navigateur par défaut. Phoenix n’a pas encore de navigateur à lui.",
+    "« Ouvrir dans le navigateur » ouvre http://127.0.0.1 dans votre navigateur par défaut. « Ouvrir dans le navigateur Phoenix » transmet la même adresse de bouclage à l’application de bureau Phoenix (macOS uniquement), dont le navigateur vous demande de confirmer avant d’ouvrir quoi que ce soit. Si l’application de bureau n’est pas installée, utilisez le lien simple.",
   "ports.stop": "Arrêter…",
   "ports.stop.label": "Arrêter {name} sur le port {port}",
   "ports.refusal.self": "C’est Phoenix lui-même, qui ne s’arrête jamais lui-même.",

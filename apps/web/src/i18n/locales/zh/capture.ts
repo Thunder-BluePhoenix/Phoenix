@@ -14,6 +14,8 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.audio.emergencyStop": "紧急停止已开启。",
   "capture.audio.recognizerAvailable": "语音识别器：可用。{detail}",
   "capture.audio.recognizerUnavailable": "语音识别器：不可用。{detail}",
+  "capture.audio.onDisk":
+    "音频写入磁盘：此引擎在识别期间把音频写入私有临时文件，并在识别后立即删除。",
   "capture.mic.unsupported": "此浏览器无法使用麦克风",
   "capture.mic.sampleRate": "此设备无法提供 16 kHz 的麦克风音频",
   "capture.notetaker.settings.title": "记录员",

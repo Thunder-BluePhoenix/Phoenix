@@ -1,8 +1,8 @@
 # Ad and tracker filter lists and shields (Phase 93)
 
-## Status: settings, a downloader and a pure matcher. Nothing is blocked in any real page.
+## Status: settings, a downloader, a pure matcher and (macOS only, never run) a Rust translation to WebKit content rules.
 
-Phoenix has **no browser window** yet (see [mini-browser.md](mini-browser.md)). Everything here is the data and the logic a
+Phoenix's browser host exists in Rust but **was never run on a display** (see [mini-browser.md](mini-browser.md)); on macOS it translates the enabled lists below to a WebKit content rule list (with a reported truncation at WebKit's 150,000-rule limit), and on Windows and Linux it blocks nothing. Everything below is the data and the logic a
 future browser will use: it records the user's choices, can download two public filter lists on request, and has a pure
 TypeScript matcher and counter that decide, for a given request, whether it would be blocked. No page is filtered today, the
 blocked count is always 0 outside tests, and this is **not** comparable to Brave Shields: it can match network requests only.

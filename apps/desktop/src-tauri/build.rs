@@ -26,6 +26,17 @@ fn main() {
             "shortcuts_set_enabled",
             "shortcuts_set_muted",
             "read_dropped_file",
+            "open_tab",
+            "close_tab",
+            "activate_tab",
+            "navigate",
+            "back",
+            "forward",
+            "reload",
+            "zoom",
+            "set_chrome_height",
+            "set_site_shields",
+            "shields_status",
         ]),
     ))
     .expect("Tauri build failed");

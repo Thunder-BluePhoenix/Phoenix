@@ -13,6 +13,8 @@ export const capture = {
   "capture.audio.emergencyStop": "The emergency stop is engaged.",
   "capture.audio.recognizerAvailable": "Speech recogniser: available. {detail}",
   "capture.audio.recognizerUnavailable": "Speech recogniser: unavailable. {detail}",
+  "capture.audio.onDisk":
+    "Audio on disk: this engine writes the audio to a private temporary file while it recognises and erases it straight after.",
   "capture.mic.unsupported": "This browser cannot use a microphone",
   "capture.mic.sampleRate": "This device cannot provide 16 kHz microphone audio",
   "capture.notetaker.settings.title": "Notetaker",

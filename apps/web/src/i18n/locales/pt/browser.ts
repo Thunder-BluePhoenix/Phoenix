@@ -51,4 +51,16 @@ export const browser: Record<keyof typeof enBrowser, string> = {
   "browser.radar.open": "Abrir",
   "browser.radar.cancel": "Cancelar",
   "browser.error.action": "O navegador não conseguiu fazer isso.",
+  "browser.profile.label": "Os novos separadores abrem em",
+  "browser.profile.private": "Privado (nada é guardado)",
+  "browser.tab.profile": "Perfil: {name}",
+  "browser.deny.profile_invalid": "Esse perfil não é válido, por isso nada foi aberto.",
+  "browser.deny.profile_unsupported":
+    "Os perfis guardados não estão disponíveis nesta versão do navegador.",
+  "browser.deny.profile_busy":
+    "Esse perfil está a ser eliminado ou está ocupado. Tente novamente daqui a pouco.",
+  "browser.deny.profile_failed": "Não foi possível abrir o armazenamento web do perfil.",
+  "browser.purge.running": "A apagar os dados web guardados de um perfil removido…",
+  "browser.purge.failed":
+    "Ainda não foi possível apagar os dados web guardados de um perfil removido. O Phoenix tentará novamente.",
 };

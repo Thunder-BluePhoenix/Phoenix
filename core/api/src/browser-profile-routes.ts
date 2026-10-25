@@ -27,6 +27,11 @@ export interface BrowserProfilesApi {
   install(id: string, input: unknown): unknown;
   approve(id: string, extensionId: string, input: unknown): Promise<unknown>;
   uninstall(id: string, extensionId: string): unknown;
+  /** Removed profiles whose saved web data the Phoenix browser window has not yet deleted. */
+  pendingPurges(): string[];
+  purgeDone(id: string): string[];
+  /** Scripts the shell may inject on one exact https origin; only after the gateway agreed. */
+  contentScriptsFor(id: string, origin: string): Promise<unknown>;
 }
 
 const ID = /^[a-zA-Z0-9_-]{1,80}$/;
@@ -104,5 +109,14 @@ export function browserProfileRoutes(service: BrowserProfilesApi): Route[] {
         id(params.extension, "an extension id"),
       ),
     })),
+    // Web data purges: Core only keeps the queue; the browser window deletes and acknowledges.
+    route("GET", "/api/browser/profile-purges", () => ({ pending: service.pendingPurges() })),
+    route("POST", "/api/browser/profile-purges/:id/done", ({ params }) => ({
+      pending: service.purgeDone(id(params.id, "a profile id")),
+    })),
+    // `:origin` is one percent-encoded segment, e.g. https%3A%2F%2Fexample.com.
+    route("GET", "/api/browser/profiles/:id/content-scripts/:origin", ({ params }) =>
+      service.contentScriptsFor(id(params.id, "a profile id"), params.origin ?? ""),
+    ),
   ];
 }

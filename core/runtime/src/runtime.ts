@@ -13,7 +13,8 @@ import {
 } from "@phoenix/ai-tool-gateway";
 import {
   LocalOllamaVision,
-  WhisperStdinRecognizer,
+  buildSpeechRecognizer,
+  type SpeechEngineConfig,
   type SpeechRecognizer,
 } from "@phoenix/ai-multimodal";
 import { ApiServer, generateSessionToken, type CoreServices } from "@phoenix/api";
@@ -142,6 +143,14 @@ export const PET_SETTINGS_CHANGED = "pet.settings.changed";
 export const PHOENIX_VERSION = "0.1.0-dev";
 export const SESSION_TOKEN_FILE = "session.token";
 
+function speechEngineConfig(options: RuntimeOptions): SpeechEngineConfig {
+  return {
+    ...(options.whisperModelPath ? { whisperModelPath: options.whisperModelPath } : {}),
+    ...(options.parakeetModelDir ? { parakeetModelDir: options.parakeetModelDir } : {}),
+    ...(options.speechEngines ? { order: options.speechEngines } : {}),
+  };
+}
+
 export interface RuntimeOptions {
   config: PhoenixConfig;
   logger?: Logger;
@@ -182,6 +191,10 @@ export interface RuntimeOptions {
   anthropicUrl?: string;
   /** Host-selected local Whisper model file; no capture is started by Core. */
   whisperModelPath?: string;
+  /** Owner opt-in: directory of the NVIDIA Parakeet model files for sherpa-onnx-offline (PHOENIX_PARAKEET_MODEL_DIR). It writes audio to a private temp file while recognising. */
+  parakeetModelDir?: string;
+  /** Owner's ordered speech engines, comma separated ("whisper", "parakeet"); default "whisper" (PHOENIX_SPEECH_ENGINES). Fallback only when an engine is unavailable. */
+  speechEngines?: string;
   /** Host-selected local Ollama vision model; no remote/cloud selection. */
   visionModel?: string;
   /**
@@ -557,11 +570,7 @@ export class PhoenixRuntime implements CoreServices {
       permissions: this.permissions,
       ai: this.ai.service,
       aiEnabled: () => this.ai.aiSettings().enabled,
-      recognizer:
-        options.dictationRecognizer ??
-        (options.whisperModelPath
-          ? new WhisperStdinRecognizer({ modelPath: options.whisperModelPath })
-          : null),
+      recognizer: options.dictationRecognizer ?? buildSpeechRecognizer(speechEngineConfig(options)),
       logger: this.logger.child("dictation"),
     });
     this.notetaker = new NotetakerRuntime({
@@ -575,9 +584,7 @@ export class PhoenixRuntime implements CoreServices {
       recognizer:
         options.notetakerRecognizer ??
         options.dictationRecognizer ??
-        (options.whisperModelPath
-          ? new WhisperStdinRecognizer({ modelPath: options.whisperModelPath })
-          : null),
+        buildSpeechRecognizer(speechEngineConfig(options)),
       logger: this.logger.child("notetaker"),
       consent: options.notetakerConsent ?? null,
       ...(options.notetakerWindowSamples ? { windowSamples: options.notetakerWindowSamples } : {}),
@@ -1017,9 +1024,7 @@ export class PhoenixRuntime implements CoreServices {
       recognizer:
         options.voiceRecognizer ??
         options.dictationRecognizer ??
-        (options.whisperModelPath
-          ? new WhisperStdinRecognizer({ modelPath: options.whisperModelPath })
-          : null),
+        buildSpeechRecognizer(speechEngineConfig(options)),
       logger: this.logger.child("voice"),
       ...options.voice,
     });

@@ -42,8 +42,11 @@ export const ports: Record<keyof typeof enports, string> = {
     "Berat: CPU {cpu}% atau lebih, atau memori {mb} MB atau lebih, menurut ps (rata-rata, bukan bacaan langsung).",
   "ports.open": "Buka di peramban",
   "ports.open.label": "Buka {name} di port {port} di peramban bawaan Anda",
+  "ports.openPhoenix": "Buka di peramban Phoenix",
+  "ports.openPhoenix.label":
+    "Buka {name} di port {port} di peramban Phoenix (meminta konfirmasi Anda lebih dulu)",
   "ports.openNote":
-    "Tautan membuka http://127.0.0.1 di peramban bawaan Anda. Phoenix belum memiliki peramban sendiri.",
+    "“Buka di peramban” membuka http://127.0.0.1 di peramban bawaan Anda. “Buka di peramban Phoenix” meneruskan alamat loopback yang sama ke aplikasi desktop Phoenix (hanya macOS), yang peramban-nya meminta konfirmasi Anda sebelum membuka apa pun. Jika aplikasi desktop belum terpasang, gunakan tautan biasa.",
   "ports.stop": "Hentikan…",
   "ports.stop.label": "Hentikan {name} di port {port}",
   "ports.refusal.self": "Ini Phoenix sendiri, yang tidak pernah menghentikan dirinya sendiri.",

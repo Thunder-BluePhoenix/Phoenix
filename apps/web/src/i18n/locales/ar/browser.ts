@@ -49,4 +49,14 @@ export const browser: Record<keyof typeof enBrowser, string> = {
   "browser.radar.open": "فتح",
   "browser.radar.cancel": "إلغاء",
   "browser.error.action": "تعذّر على المتصفح تنفيذ ذلك.",
+  "browser.profile.label": "تُفتح علامات التبويب الجديدة في",
+  "browser.profile.private": "خاص (لا يُحفظ شيء)",
+  "browser.tab.profile": "ملف التعريف: {name}",
+  "browser.deny.profile_invalid": "ملف التعريف هذا غير صالح، لذا لم يُفتح شيء.",
+  "browser.deny.profile_unsupported": "ملفات التعريف المحفوظة غير متاحة في هذا الإصدار من المتصفح.",
+  "browser.deny.profile_busy": "ملف التعريف هذا قيد الحذف أو مشغول. حاول مرة أخرى بعد قليل.",
+  "browser.deny.profile_failed": "تعذّر فتح تخزين الويب لملف التعريف.",
+  "browser.purge.running": "جارٍ حذف بيانات الويب المحفوظة لملف تعريف محذوف…",
+  "browser.purge.failed":
+    "تعذّر حذف بيانات الويب المحفوظة لملف تعريف محذوف حتى الآن. سيحاول Phoenix مرة أخرى.",
 };

@@ -50,4 +50,14 @@ export const browser: Record<keyof typeof enBrowser, string> = {
   "browser.radar.open": "Buka",
   "browser.radar.cancel": "Batal",
   "browser.error.action": "Peramban tidak dapat melakukannya.",
+  "browser.profile.label": "Tab baru dibuka di",
+  "browser.profile.private": "Pribadi (tidak ada yang disimpan)",
+  "browser.tab.profile": "Profil: {name}",
+  "browser.deny.profile_invalid": "Profil itu tidak valid, jadi tidak ada yang dibuka.",
+  "browser.deny.profile_unsupported": "Profil tersimpan tidak tersedia di versi browser ini.",
+  "browser.deny.profile_busy": "Profil itu sedang dihapus atau sibuk. Coba lagi sebentar lagi.",
+  "browser.deny.profile_failed": "Penyimpanan web profil tidak dapat dibuka.",
+  "browser.purge.running": "Menghapus data web tersimpan dari profil yang dihapus…",
+  "browser.purge.failed":
+    "Data web tersimpan dari profil yang dihapus belum dapat dihapus. Phoenix akan mencoba lagi.",
 };

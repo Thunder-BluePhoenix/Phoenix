@@ -269,6 +269,42 @@ export function localhostUrl(port: number, reachable: boolean): string | null {
   return `http://127.0.0.1:${port}/`;
 }
 
+/** Prefix of the link the desktop shell's URL handler parses (`browser_core::radar_link`). */
+export const PHOENIX_BROWSER_OPEN = "phoenix://browser/open?url=";
+
+/**
+ * The link that asks the Phoenix desktop shell to open a listening port in its own browser:
+ * `phoenix://browser/open?url=<percent-encoded http://127.0.0.1:<port>/>`, exactly the shape
+ * `browser_core::radar_link` parses (host `browser`, path `/open`, ONE `url` parameter, no fragment).
+ * It carries only what `localhostUrl` builds from the port number. Null for the same cases as
+ * `localhostUrl`, and for Phoenix Core's own page (the shell refuses Core's port as well).
+ */
+export function phoenixBrowserLink(
+  port: number,
+  reachable: boolean,
+  isCore: boolean,
+): string | null {
+  if (isCore) return null;
+  const url = localhostUrl(port, reachable);
+  return url === null ? null : `${PHOENIX_BROWSER_OPEN}${encodeURIComponent(url)}`;
+}
+
+/**
+ * How a page hands a `phoenix://` link to the desktop shell. The shell registers the `phoenix`
+ * scheme with the operating system (macOS `Info.plist`, delivered as `RunEvent::Opened` to
+ * `lib::open_links`, the same path chat-message approval links use), so the hand-off is a
+ * navigation to the link. There is deliberately no Tauri command for it: the page that shows the
+ * radar is an ordinary web page and must not be able to drive the browser host directly.
+ */
+export interface PhoenixLinkShell {
+  open(link: string): void;
+}
+
+/** Hands the link to the operating system through the page's own navigation. */
+export function windowLinkShell(win: Pick<Window, "location"> = window): PhoenixLinkShell {
+  return { open: (link) => win.location.assign(link) };
+}
+
 export type AgeUnit = { unit: "minutes" | "hours" | "days"; count: number } | null;
 
 /** A process age as a whole number of the largest fitting unit; null when unknown. */

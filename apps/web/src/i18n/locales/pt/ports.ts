@@ -42,8 +42,11 @@ export const ports: Record<keyof typeof enports, string> = {
     "Pesado: CPU de {cpu}% ou mais, ou memória de {mb} MB ou mais, segundo o ps (uma média, não uma leitura ao vivo).",
   "ports.open": "Abrir no navegador",
   "ports.open.label": "Abrir {name} na porta {port} no seu navegador padrão",
+  "ports.openPhoenix": "Abrir no navegador do Phoenix",
+  "ports.openPhoenix.label":
+    "Abrir {name} na porta {port} no navegador do Phoenix (pede sua confirmação antes)",
   "ports.openNote":
-    "Os links abrem http://127.0.0.1 no seu navegador padrão. O Phoenix ainda não tem um navegador próprio.",
+    "“Abrir no navegador” abre http://127.0.0.1 no seu navegador padrão. “Abrir no navegador do Phoenix” entrega o mesmo endereço de loopback ao aplicativo de desktop do Phoenix (somente macOS), cujo navegador pede sua confirmação antes de abrir qualquer coisa. Se o aplicativo de desktop não estiver instalado, use o link simples.",
   "ports.stop": "Parar…",
   "ports.stop.label": "Parar {name} na porta {port}",
   "ports.refusal.self": "Este é o próprio Phoenix, que nunca para a si mesmo.",

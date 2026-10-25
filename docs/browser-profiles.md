@@ -2,14 +2,14 @@
 
 Module: `core/runtime/src/browser-profiles/index.ts` (`BrowserProfileManager`). Tests: `core/runtime/test/browser-profiles.test.ts` (manager) and `core/runtime/test/browser-profiles-wiring.test.ts` (10, through a real running Core, two Cores sharing a fake relay).
 
-The manager is local-first policy and data logic. It performs no network, browser or OS operation of its own. Core now wires it (see "How it is wired"); the host webview and the sandbox that would run extension code do not exist.
+The manager is local-first policy and data logic. It performs no network, browser or OS operation of its own. Core now wires it (see "How it is wired"). Core never opens a page or clears a webview store; the host shell does that, and nothing here ran on a real webview. No sandbox that runs extension code exists in Core.
 
 ## Profiles and isolation
 
 - `create(name)` makes a profile (work, personal, testing …) with a random `id` and a random `partition`. The host MUST use `partition` as the isolated cookie / cache / local-storage / webview partition, so profiles never share web state. The partition is local only and is never synced.
 - Bookmarks (`addBookmark`) and history (`recordVisit`) belong to exactly one profile. Only `http(s)` URLs without embedded credentials are accepted; ids match `[A-Za-z0-9_-]{1,80}`; each list is capped at 10 000 entries (history keeps the newest).
 - State is stored through `SettingsStore` under `browser.profiles.v1`. It contains no secrets.
-- `remove(id)` deletes the profile, its extensions and every credential saved through `putCredential`. The host must still purge the web partition named by `partition`.
+- `remove(id)` deletes the profile, its extensions and every credential saved through `putCredential`. The profile's saved **web data** is not in Core: `BrowserProfilesService.remove` puts the profile id on the durable pending-purge queue (below) for the Phoenix browser window to act on. `adopt` refuses the reserved id `private` (always the incognito tab) and any id still on that queue.
 
 ## Per-profile credentials
 
@@ -38,7 +38,7 @@ Small API: `pageAction` and `contentScript`, each tied to declared exact origins
 2. `approve(profileId, extensionId, true)` is the explicit user approval. Re-installing (e.g. a new version) resets approval.
 3. `authorize(profileId, extensionId, permission, origin)` is checked on every operation and fails closed: the extension must be approved, its signer and manifest hash still trusted **now** (registry re-consulted, signature re-verified under the signer's current key), the permission and exact origin declared, and the injected `PermissionDecision` (the permission/tool gateway, which also audits) must agree. Without a gateway the answer is always `false`.
 
-The `contentScript` text is data. Only a host-side sandbox that has received a positive `authorize` may run it.
+The `contentScript` text is data. Only a host-side sandbox that has received a positive `authorize` may run it. The extension list, install, approval and uninstall replies never include the script text (`withoutScript` in the service); the only route that returns it is the content-scripts route below.
 
 ## Signer registry, distribution and revocation
 
@@ -63,17 +63,18 @@ Evidence is simulated: `core/runtime/test/signer-registry.test.ts` (25 tests, ke
 - **Routes** (`core/api/src/browser-profile-routes.ts`, session token only), under `/api/browser/*`: profile CRUD, per-profile sync opt-in, bookmark HTML import (256 KiB body limit), history, write-only credentials `PUT/DELETE …/credentials/:name`, publish, `POST /api/browser/sync/pull`, sync preview / accept / adopt, and extension list / approval / uninstall.
 - **Sync** reuses the Phase 45 `SyncRuntime`, and only runs after account sync is configured **and** the profile opted in. The relay holds only sealed envelopes.
 - **Credentials** never come back from any route and are deleted with the profile.
-- **Delete** returns `purge_partition`: Core cannot clear a webview store that does not exist, so the host must purge the partition named by the profile.
+- **Delete** returns `{ removed: true, purge_partition, purge: { profile_id, status: "pending" } }` (`purge_partition` is kept for compatibility). Core cannot clear a webview store and the Settings page runs outside the Phoenix browser chrome window, which is the only caller the Rust shell lets use `purge_profile_data`. So Core records the removed profile id in `ProfilePurgeQueue` (`core/runtime/src/browser-profiles/purges.ts`, settings key `browser.profile-purges.v1`: ids `[A-Za-z0-9_-]{1,80}`, deduplicated, at most 2000 (the oldest drops first), a corrupt stored value reads as empty). The browser chrome page (`apps/web/src/browser/BrowserApp.tsx`) reads `GET /api/browser/profile-purges` (`{ pending: string[] }`) on mount and every 5 s, calls the shell's `purge_profile_data` for each id one at a time, and only on success calls `POST /api/browser/profile-purges/:id/done` (idempotent, same id check, returns `{ pending }`). `busy` and `purge_failed` leave the id pending and it is retried on the next tick; a status line shows while a purge runs or has failed. If the browser window is never opened the purge stays pending, and Settings says so ("Saved web data of N removed profile(s) is waiting to be deleted. Open the Phoenix browser to finish."). Both routes are session-token only.
+- **Content scripts for the shell.** `GET /api/browser/profiles/:id/content-scripts/:origin` (`:origin` is one percent-encoded path segment such as `https%3A%2F%2Fexample.com`; the router decodes it after splitting on `/`) returns `{ scripts: [{ extension, version, origins, script }] }`. Only exact `https:` origins are served (anything else is a 400, an unknown profile a 404). `BrowserProfileManager.contentScripts` picks installed extensions that declare the `contentScript` permission, have a script and list that exact origin, then calls `authorize(profile, extension, "contentScript", origin)` for each (approval, signer or registry trust re-checked now, signature re-verified, exact origin, permission gateway, which audits). A script is included only after a positive answer; an unapproved, revoked, untrusted, kill-switched or denied extension is simply absent, and an unexpected error fails the whole request rather than returning a partial list. At most 8 scripts per answer. Script text is not logged or audited.
 - **Extension signers** come only from the host: `RuntimeOptions.extensionSignerRegistry` (signed registry, above) or else `RuntimeOptions.extensionSigners` (static map, default none, no revocation). No route can add one, so by default no extension can be installed. Installing checks the Ed25519 signature (`POST …/extensions`).
 - **Approval.** Approving an extension asks the user through the permission gateway and the request blocks. Withdrawing approval and uninstalling never ask. Every `authorize()` is decided by the gateway; it fails closed, and the kill switch makes it answer no.
 - **Privacy.** Profiles, bookmarks, history and credential names are privacy row `browser_profiles`.
 - **Settings section:** `apps/web/src/components/BrowserProfilesSettings.tsx` (profiles, sync opt-in, import, publish, other devices, extensions).
 
-Still the host's job: honor `partition` in a webview and purge it on delete, and provide the signer key map from Phoenix-controlled configuration.
+Still the host's job: honor the per-profile web store in the webview (the Rust shell keys it by profile id), delete it when `purge_profile_data` is called, inject the returned content scripts, and provide the signer key map from Phoenix-controlled configuration.
 
 ## Limitations
 
 - Evidence is simulated: two Cores in one test process share a fake relay and use the real `SyncRuntime` crypto. The exit criterion "bookmarks round-trip between two devices encrypted end to end" is demonstrated only in that simulation, not on real devices or a real relay.
-- No browser engine, partition purge or extension sandbox exists (extension scripts are stored as data and never run). Signer distribution is a host-supplied file; there is no network fetch, no scheduled refresh and no signing tool or issuing service for the registry (the root key holder must produce documents elsewhere). The static `extensionSigners` map still has no revocation.
+- Everything about the purge hand-off and content scripts is simulated: the Core queue, the routes and the chrome purge loop are tested against Core's real test harness and a fake shell, and nothing ran on a real webview, display or Tauri window, so no web data was ever actually deleted and no script was ever injected into a real page. Extension scripts are stored as data and Core never runs them; there is no extension sandbox in Core. Signer distribution is a host-supplied file; there is no network fetch, no scheduled refresh and no signing tool or issuing service for the registry (the root key holder must produce documents elsewhere). The static `extensionSigners` map still has no revocation.
 - Sync stores one item per profile (last writer wins after a user-confirmed accept); there is no per-bookmark merge.
 - The sync item value is limited by `SyncRuntime` to about 32 KB serialized, so very large profiles cannot be published.

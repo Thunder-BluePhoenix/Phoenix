@@ -5,7 +5,7 @@
 | Stage | Stage 12 — Coucou parity and beyond |
 | Release target | Post-v2.0 track |
 | Priority | High |
-| Status | 🟨 Built and tested with an injected fake consent dialog, but **cannot be used end to end**: Core refuses every token-only recording start and nothing in `apps/desktop` provides the trusted consent dialog yet, so in the shipped app "Record a call" is disabled and no call can be recorded; no system-audio capture; no real call, microphone or speech was ever run |
+| Status | 🟨 Built and tested with an injected fake consent dialog, but **cannot be used end to end**: Core refuses every token-only recording start and nothing in `apps/desktop` provides the trusted consent dialog yet, so in the shipped app "Record a call" is disabled and no call can be recorded; system-audio adapter written but unreachable and never run; no real call, microphone or speech was ever run |
 | Depends on | [Phase 15 — Kage Adapter & Meeting Lifecycle](phase-15-kage-adapter-meeting-lifecycle.md), [Phase 35 — Kage Decisions & Action-Item Extraction](phase-35-kage-decisions-and-action-items.md), [Phase 64 — Dictation Anywhere](phase-64-dictation-anywhere.md) |
 | Unblocks | [Phase 83 — Calendar Awareness & Meeting Prep](phase-83-calendar-and-meeting-prep.md) |
 
@@ -28,7 +28,7 @@ Record a call from this computer, without a bot joining, and get transcript, sum
 
 ## Deliverables
 
-- Local capture in apps/desktop: **not built**. Capture is in the web page; the desktop shell has no recording code and no consent dialog.
+- Local capture in apps/desktop: the **system-audio adapter is written but unreachable and never run** (see "System-audio adapter" below); the microphone is still captured in the web page, and the desktop shell has no consent dialog.
 - Meeting pipeline adapter: built (`core/runtime/src/notetaker.ts`, capability id `notetaker`).
 
 ## Exit criteria
@@ -61,13 +61,47 @@ What would make it possible (an owner decision, the same one the Phase 63 and Ph
 
 Whichever is chosen, the dialog text stays fixed (never Core-supplied apart from a cleaned participant count or meeting label), defaults to Cancel, collapses duplicate dialogs, fails closed on any error and is audited on every grant and denial.
 
+### System-audio adapter (shell side): written, unreachable, never run
+
+`apps/desktop/src-tauri/src/system_audio.rs` (platform-neutral core and tests in `system_audio_tests.rs`) and `system_audio_macos.rs` (ScreenCaptureKit backend, `cfg(target_os = "macos")`). **No audio was ever captured with this code.**
+
+**Why it cannot be reached.** `CaptureSession::start` takes a `ConsentGrant`, and nothing outside the unit tests can construct one. The consent channel that would mint it is the open decision above (Core refuses every token-only start). There is no Tauri command, menu item, capability permission or `build.rs` command entry for it, so no web page, agent or token holder can start capture. When the owner resolves the consent decision, only the code implementing the chosen mechanism may create a `ConsentGrant`, one per recording (consumed by `start`). This work does not fix or bypass that decision.
+
+**What it does once started.** macOS 13+ ScreenCaptureKit, audio only: a display filter (all applications except Phoenix), `capturesAudio`, `excludesCurrentProcessAudio`, 16 kHz, 1 channel, a 2x2 pixel 1 fps video side that is never read, microphone off, and an `SCStreamOutput` of type Audio only. Each sample buffer is read using its own `AudioStreamBasicDescription` (float32 or int16, interleaved or planar, any rate 8 to 384 kHz, up to 8 channels), downmixed by averaging, resampled by a streaming area-average resampler (a plain low-pass-by-averaging, adequate for speech recognition, not a studio filter) to 16 kHz mono 16-bit little-endian PCM, and handed in 100 ms chunks (3 200 bytes, notetaker channel byte 2 = "Others", `CHANNEL_ID`) to an injected `PcmSink`. The intended sink is Core's single-use WebSocket; none is written.
+
+**Guarantees, mirroring the page's microphone path, and the test that holds each.**
+
+| Guarantee | Test (`system_audio_tests.rs`) |
+|---|---|
+| Bounded buffers: frames per OS buffer, channels, rate range, chunk size fixed, 4 h cap; over a bound ends the session | `malformed_buffers_end_the_session_and_deliver_nothing`, `an_oversized_buffer_ends_the_session`, `chunks_never_exceed_the_bound_whatever_the_input_size`, `the_session_time_limit_ends_the_session` |
+| Zeroing: chunk, byte scratch (including spare capacity) and resampler state wiped after every chunk and on every end path | `buffers_are_zeroed_after_every_chunk_and_every_end_path`, `spare_capacity_of_the_sample_buffer_is_wiped_too` |
+| No disk: the module has no file or path code; only the sink decides where PCM goes | by construction (read the file); no test |
+| Visible indicator: an injected `Indicator` is shown before the OS is asked (failure means nothing starts) and hidden only after the OS confirmed the stop; an unconfirmed stop keeps it shown and the slot taken | `the_indicator_is_shown_before_the_os_is_asked_and_hidden_after_it_stopped`, `without_an_indicator_nothing_starts`, `an_unconfirmed_stop_keeps_the_indicator_and_the_slot` |
+| Stop on drop, on a refusing sink, on a bad buffer and when the OS ends the stream; one capture at a time | `dropping_the_session_stops_capture_and_hides_the_indicator`, `a_sink_that_refuses_ends_the_session_and_gets_nothing_more`, `a_bad_buffer_from_the_os_ends_the_capture_through_the_session`, `the_os_ending_the_stream_stops_everything`, `only_one_capture_at_a_time` |
+| Conversion: pass-through, 48 kHz and 44.1 kHz down, 8 kHz up, stereo and planar downmix, int16, NaN becomes silence | `sixteen_khz_mono_passes_through_unchanged`, `downsampling_*`, `upsampling_8k_*`, `output_length_tracks_the_ratio_*`, `stereo_*`, `non_interleaved_*`, `sixteen_bit_*`, `non_finite_*` |
+| Clean "unsupported" off macOS: `start` returns `Unsupported` and touches no indicator | `elsewhere_than_macos_start_says_unsupported_and_touches_nothing` (runs on Linux and Windows CI only; the Windows and Linux builds were not run locally, the cfg gates were reasoned) |
+
+Mutations that make tests fail (run on macOS): removing the post-delivery wipe, removing the frame cap, removing the stop in `Drop`, removing the single-slot check, hiding the indicator before the OS confirms, and dropping the downmix division each fail named tests.
+
+**What is only reasoned, not verified.** All of `system_audio_macos.rs` runs against ScreenCaptureKit, which needs a display session, the Screen Recording permission for the host binary and a signed app, none available here: that the display filter delivers system audio with the current-process exclusion, that macOS honours 16 kHz mono (the conversion does not depend on it), the permission prompt and relaunch flow (`CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess` are called before any stream is built), the mapped error codes, the callback queue behaviour, and the OS's own copy of each sample buffer, which this module cannot zero. macOS 15 shows its own recurring screen-recording prompt and menu-bar indicator; Phoenix's `Indicator` is separate and the real one is not written (Core's `notetaker.recording` event remains what Fawkes shows). `Info.plist` has no new key: ScreenCaptureKit has no usage-description key, the permission is the Screen Recording privacy switch and no entitlement is added (the app is unsandboxed). No notarised build was tried.
+
+**Dependency decision (justified).** The only alternative to `objc2-screen-capture-kit` is hand-written `objc2` `msg_send!` bindings for roughly twenty ScreenCaptureKit and CoreMedia methods, which is more unsafe code than the generated, typed bindings. The crate (0.3.2, `Zlib OR Apache-2.0 OR MIT`, same author and 0.3 generation as the `objc2-app-kit`, `objc2-foundation` and `objc2-web-kit` crates already locked) is a macOS-only dependency. It adds five lockfile entries, all macOS-gated and of that family: `objc2-screen-capture-kit`, `objc2-core-media`, `objc2-core-audio-types`, and (pulled in by `objc2-core-media`'s own default features, which cannot be switched off for those two) `objc2-core-audio` and `objc2-core-video`. `dispatch2`, `block2`, `objc2-foundation` and `objc2-core-foundation` were already locked and are now also direct dependencies. `THIRD_PARTY_NOTICES.md` was regenerated and `--check` passes.
+
+### Per-person transcript (decision, nothing built)
+
+Diarisation needs a speaker-embedding or segmentation model (for example pyannote or a sherpa-onnx speaker model) plus a runtime to run it. None is in the repository, the lockfiles or the on-device model set, and a model download is an owner decision (size, licence, a new on-device model class). Even with system audio, the "Others" channel mixes every remote participant into one stream, so labels beyond "You" and "Others" need that model. Decision recommended: keep the two labels, which the protocol, the UI and the meeting records already carry honestly, until a diarisation model is chosen. No code changed.
+
+### Hand-off to Kage (decision, nothing built)
+
+Not small. The Kage contract (ADR-0017, `capabilities/kage`) has no audio-ingest route for Phoenix to call: meetings reach Kage when its extension or bot uploads audio after a call, auth is a per-user `X-API-Key` held in the keychain, and the adapter offers `meeting.start`, `list`, `get_status`, `get_transcript` and `get_summary` only. A hand-off would also change the notetaker's central guarantee: audio today exists only in memory and is zeroed, while a hand-off has to deliver a recording to another process (a temp file or a long-lived buffer plus a network call), needs an explicit consent to leave Phoenix, and needs Kage to publish an upload endpoint and say what it retains. Decision recommended: drop "hand off to Kage" from Phase 65 and treat it as a Kage contract ask (an ingest endpoint with a retention statement). No code changed.
+
 ### Other decisions
 
 - Local-only summary: the summary purpose is outside the sensitive-cloud allow-list, so even with a routed cloud provider, the grant and every opt-in no cloud request is made and no summary is stored (`notetaker-summary.test.ts`, `notetaker.test.ts` "the summary is local only and never faked"). A failed or unreadable model reply stores no summary; the transcript stays.
 - `notetaker` and `dictation` are reserved capability ids and event namespaces: an external capability cannot declare them, and `POST /api/events` refuses `dictation.listening`, `dictation.idle`, `notetaker.recording` and `notetaker.idle`.
 - Limits: 4 h maximum, 1 MiB frames, no faster than twice real time per channel, one session at a time, off by default.
 
-What was not done or not run: system-audio capture, per-person diarisation, hand-off to Kage, the desktop consent dialog, any real call, microphone or Whisper run on speech, any real model summary. Open items are in the [gap register](../gaps.md).
+What was not done or not run: any real system-audio capture (the adapter exists but is unreachable and was never run), per-person diarisation, hand-off to Kage, the desktop consent dialog, any real call, microphone or Whisper run on speech, any real model summary. Open items are in the [gap register](../gaps.md).
 
 ## Notes & risks
 

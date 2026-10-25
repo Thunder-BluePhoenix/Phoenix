@@ -44,4 +44,13 @@ export const browser: Record<keyof typeof enBrowser, string> = {
   "browser.radar.open": "打开",
   "browser.radar.cancel": "取消",
   "browser.error.action": "浏览器无法执行该操作。",
+  "browser.profile.label": "新标签页打开方式",
+  "browser.profile.private": "隐私（不保存任何内容）",
+  "browser.tab.profile": "配置文件：{name}",
+  "browser.deny.profile_invalid": "该配置文件无效，因此未打开任何内容。",
+  "browser.deny.profile_unsupported": "此版本的浏览器不支持已保存的配置文件。",
+  "browser.deny.profile_busy": "该配置文件正在被删除或处于忙碌状态。请稍后再试。",
+  "browser.deny.profile_failed": "无法打开该配置文件的网页存储。",
+  "browser.purge.running": "正在删除已移除配置文件的已保存网页数据…",
+  "browser.purge.failed": "已移除配置文件的已保存网页数据暂时无法删除。Phoenix 将重试。",
 };

@@ -4,6 +4,7 @@ import { useId, useState, type FormEvent } from "react";
 import {
   PROFILES_PATH,
   PULL_PATH,
+  PURGES_PATH,
   useLoaded,
   type BrowserExtension,
   type BrowserProfile,
@@ -19,11 +20,14 @@ const profilePath = (id: string) => `${PROFILES_PATH}/${encodeURIComponent(id)}`
 export function BrowserProfilesSection() {
   const t = useT();
   const { state, reload } = useLoaded<{ profiles: BrowserProfile[] }>(PROFILES_PATH);
-  const [purged, setPurged] = useState<string | null>(null);
+  // Unreachable or absent: Core simply shows nothing extra.
+  const purges = useLoaded<{ pending: string[] }>(PURGES_PATH);
+  const [purged, setPurged] = useState(false);
+  const waiting = purges.state.phase === "ready" ? purges.state.data.pending.length : 0;
 
-  const removed = async (partition: string) => {
-    setPurged(partition);
-    await reload();
+  const removed = async () => {
+    setPurged(true);
+    await Promise.all([reload(), purges.reload()]);
   };
 
   return (
@@ -44,10 +48,12 @@ export function BrowserProfilesSection() {
       {state.phase === "ready" && (
         <>
           <CreateProfile onCreated={reload} />
-          <Feedback
-            error={null}
-            saved={purged === null ? null : t("browserProfiles.remove.done", { partition: purged })}
-          />
+          <Feedback error={null} saved={purged ? t("browserProfiles.remove.done") : null} />
+          {waiting > 0 && (
+            <p className="muted small" role="status">
+              {t("browserProfiles.purge.pending", { count: waiting })}
+            </p>
+          )}
           {state.data.profiles.length === 0 ? (
             <p className="muted">{t("browserProfiles.empty")}</p>
           ) : (
@@ -108,7 +114,7 @@ function ProfileCard({
 }: {
   profile: BrowserProfile;
   onChanged: () => Promise<void>;
-  onRemoved: (partition: string) => Promise<void>;
+  onRemoved: () => Promise<void>;
 }) {
   const t = useT();
   const ids = useId();
@@ -145,9 +151,9 @@ function ProfileCard({
 
   const remove = async () => {
     setNote(null);
-    const result = await run<{ purge_partition: string }>("DELETE", path);
+    const result = await run<{ removed: boolean }>("DELETE", path);
     setConfirming(false);
-    if (result) await onRemoved(result.purge_partition);
+    if (result) await onRemoved();
   };
 
   return (

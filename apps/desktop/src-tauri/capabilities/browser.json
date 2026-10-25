@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "browser",
+  "description": "Phase 93. ONLY the Phoenix browser's own chrome window (tabs, address bar), which is a local Phoenix page, may call the browser commands. The content webviews (labels phoenix-browser-tab-N) are untrusted web pages: they have NO capability file, and no `remote` entry anywhere lists a web origin, so a page cannot invoke any command. Every command also refuses any caller whose label is not the chrome's.",
+  "local": true,
+  "windows": ["phoenix-browser"],
+  "permissions": [
+    "core:default",
+    "allow-open-tab",
+    "allow-close-tab",
+    "allow-activate-tab",
+    "allow-navigate",
+    "allow-back",
+    "allow-forward",
+    "allow-reload",
+    "allow-zoom",
+    "allow-set-chrome-height",
+    "allow-set-site-shields",
+    "allow-shields-status"
+  ]
+}

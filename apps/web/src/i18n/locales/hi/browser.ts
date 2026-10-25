@@ -47,4 +47,16 @@ export const browser: Record<keyof typeof enBrowser, string> = {
   "browser.radar.open": "खोलें",
   "browser.radar.cancel": "रद्द करें",
   "browser.error.action": "ब्राउज़र ऐसा नहीं कर सका।",
+  "browser.profile.label": "नए टैब यहाँ खुलेंगे",
+  "browser.profile.private": "निजी (कुछ भी सहेजा नहीं जाता)",
+  "browser.tab.profile": "प्रोफ़ाइल: {name}",
+  "browser.deny.profile_invalid": "यह प्रोफ़ाइल मान्य नहीं है, इसलिए कुछ नहीं खुला।",
+  "browser.deny.profile_unsupported":
+    "ब्राउज़र के इस संस्करण में सहेजी गई प्रोफ़ाइल उपलब्ध नहीं हैं।",
+  "browser.deny.profile_busy":
+    "यह प्रोफ़ाइल हटाई जा रही है या व्यस्त है। कुछ देर बाद फिर कोशिश करें।",
+  "browser.deny.profile_failed": "प्रोफ़ाइल का वेब स्टोरेज नहीं खोला जा सका।",
+  "browser.purge.running": "हटाई गई प्रोफ़ाइल का सहेजा हुआ वेब डेटा मिटाया जा रहा है…",
+  "browser.purge.failed":
+    "हटाई गई प्रोफ़ाइल का सहेजा हुआ वेब डेटा अभी नहीं मिटाया जा सका। Phoenix फिर कोशिश करेगा।",
 };

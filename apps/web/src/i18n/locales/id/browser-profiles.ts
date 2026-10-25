@@ -29,7 +29,9 @@ export const browserProfiles: Record<keyof typeof enBrowserProfiles, string> = {
   "browserProfiles.remove.ask":
     "Hapus “{name}”? Ini menghapus bookmark, riwayat, ekstensi, dan kredensial tersimpannya, dan tidak dapat dibatalkan.",
   "browserProfiles.remove.done":
-    "Profil dihapus. Bookmark, riwayat, ekstensi, dan kredensial tersimpannya telah dihapus. Penyimpanan web terisolasi bernama {partition} belum dapat dibersihkan oleh Phoenix Core.",
+    "Profil dihapus. Bookmark, riwayat, ekstensi, dan kredensial tersimpannya telah dihapus. Data web tersimpannya (cookie dan penyimpanan situs) dihapus saat jendela browser Phoenix terbuka, karena hanya jendela itu yang dapat meminta shell desktop menghapusnya.",
+  "browserProfiles.purge.pending":
+    "Data web tersimpan dari {count} profil yang dihapus menunggu untuk dihapus. Buka browser Phoenix untuk menyelesaikannya.",
   "browserProfiles.devices.heading": "Perangkat lain",
   "browserProfiles.devices.check": "Periksa profil dari perangkat saya yang lain",
   "browserProfiles.devices.none": "Tidak ada profil baru dari perangkat Anda yang lain.",

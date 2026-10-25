@@ -41,7 +41,10 @@ export const ports: Record<keyof typeof enports, string> = {
     "占用高：CPU 达到 {cpu}% 或以上，或内存达到 {mb} MB 或以上（由 ps 报告，是平均值而非实时读数）。",
   "ports.open": "在浏览器中打开",
   "ports.open.label": "在默认浏览器中打开端口 {port} 上的 {name}",
-  "ports.openNote": "链接会在默认浏览器中打开 http://127.0.0.1。Phoenix 目前还没有自己的浏览器。",
+  "ports.openPhoenix": "在 Phoenix 浏览器中打开",
+  "ports.openPhoenix.label": "在 Phoenix 浏览器中打开端口 {port} 上的 {name}（会先请你确认）",
+  "ports.openNote":
+    "“在浏览器中打开”会在默认浏览器中打开 http://127.0.0.1。“在 Phoenix 浏览器中打开”会把同一个回环地址交给 Phoenix 桌面应用（仅 macOS），其浏览器会先请你确认再打开任何内容。若未安装桌面应用，请使用普通链接。",
   "ports.stop": "停止…",
   "ports.stop.label": "停止端口 {port} 上的 {name}",
   "ports.refusal.self": "这是 Phoenix 自身，它不会停止自己。",

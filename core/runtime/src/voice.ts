@@ -229,7 +229,7 @@ export class VoiceRuntime implements VoiceApi {
       enabled: this.load().enabled,
       kill_switch_engaged: killSwitchEngaged,
       recognizer,
-      audio_on_disk: false,
+      audio_on_disk: recognizer.audio_on_disk === true,
       active: this.sessions.active(),
       limits: {
         max_frame_bytes: this.d.limits?.maxFrameBytes ?? VOICE_LIMITS.maxFrameBytes,

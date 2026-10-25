@@ -59,6 +59,15 @@ export interface ExtensionView extends Omit<InstalledExtension, "signature"> {
   status: "trusted" | "revoked" | "untrusted";
   reason?: ExtensionRefusal;
 }
+/** One script a host may inject on one origin, returned only after `authorize` said yes. */
+export interface ContentScriptGrant {
+  extension: string;
+  version: string;
+  origins: string[];
+  script: string;
+}
+/** A page never receives more than this many scripts in one answer. */
+export const MAX_CONTENT_SCRIPTS = 8;
 interface State {
   profiles: BrowserProfile[];
   extensions: Record<string, InstalledExtension[]>;
@@ -555,6 +564,7 @@ export class BrowserProfileManager {
    * sync is enabled for it because the user explicitly chose to adopt it.
    */
   adopt(id: string, revision: string): BrowserProfile {
+    requireValid(id !== "private", "Invalid profile id"); // reserved: always the incognito tab
     const adapter = this.adapter();
     requireValid(validId(id), "Invalid profile id");
     const state = this.state();
@@ -672,5 +682,38 @@ export class BrowserProfileManager {
     )
       return false;
     return this.permission({ profileId, extensionId, permission, origin });
+  }
+  /**
+   * The content scripts that may be injected on one exact https origin, for the host that runs the
+   * page. Every candidate goes through `authorize` (approval, signer/registry trust, signature,
+   * exact origin, permission gateway), so a script is returned only after a positive answer; any
+   * error rejects the whole call rather than returning a partial list. The script text is data and
+   * is returned to this caller only: it is never part of `extensions()`.
+   */
+  async contentScripts(profileId: string, origin: string): Promise<ContentScriptGrant[]> {
+    requireValid(
+      validOrigin(origin) && origin.startsWith("https://"),
+      "Content scripts need an exact https origin",
+    );
+    this.profile(this.state(), profileId);
+    const granted: ContentScriptGrant[] = [];
+    for (const item of this.state().extensions[profileId] ?? []) {
+      if (granted.length >= MAX_CONTENT_SCRIPTS) break;
+      const { manifest } = item;
+      if (
+        typeof manifest.contentScript !== "string" ||
+        !manifest.permissions.includes("contentScript") ||
+        !manifest.origins.includes(origin)
+      )
+        continue;
+      if (!(await this.authorize(profileId, manifest.id, "contentScript", origin))) continue;
+      granted.push({
+        extension: manifest.id,
+        version: manifest.version,
+        origins: [...manifest.origins],
+        script: manifest.contentScript,
+      });
+    }
+    return granted;
   }
 }

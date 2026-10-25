@@ -1,24 +1,40 @@
 # Phoenix mini browser (Phase 93)
 
-## Status: policy engine only. There is no browser surface yet.
+## Status: Rust host built and unit-tested; never run on a real display or webview.
 
-What exists is a tested TypeScript **policy engine** in `apps/web/src/core/browser/`. What does **not** exist:
+Two things exist:
 
-- no browser window, no webview, no tabs, no address bar, no `MiniBrowser.tsx`;
-- no Rust or Tauri change (`Cargo.toml`, `tauri.conf.json`, `main.rs`, capabilities were not touched);
-- no enforcement. Nothing calls this code from a webview. A policy that runs in page-reachable JavaScript would
-  protect nothing, so the real checks must run in the Rust host (see [What the parent must build](#what-the-parent-must-build)).
-  This TypeScript is the executable specification and test vectors for that port, and it can drive the chrome UI (address
-  bar feedback, blocked count, permission prompts) once a webview exists.
-- not verified: "Browsing works on macOS; blocking measured on a test page" and "Browser data is separate from the main
-  browser" (Phase 93 exit criteria). Both need a real webview and are **unmet**. All evidence here is unit tests on injected
-  inputs; no network, window, or OS call was made.
+1. the tested TypeScript **policy engine** in `apps/web/src/core/browser/` (the specification), and
+2. the **Rust host** in `apps/desktop/src-tauri/src/browser*.rs` (the enforcement), plus `capabilities/browser.json`.
+   The chrome page (tabs, address bar) is a separate web entry (`apps/web/src/browser/`, `browser.html`).
 
-This slice was reviewed again after the Core wiring of Phases 86 to 96 and was deliberately not wired: a policy running in page JavaScript would protect nothing, so enforcement has to live in Rust, and no webview or Rust/Tauri change exists.
+**What was actually exercised** (cargo tests, the mock runtime and pure functions only):
 
-`MiniBrowser.tsx` was deliberately not written: a React component that draws an address bar and an `<iframe>` would be a fake
-browser (iframes cannot be sandboxed to the degree required, are blocked by most sites' `X-Frame-Options`, and share
-Phoenix's origin policy). It needs the native webview below.
+- the Rust port of `decideNavigation`, `classifyHost`, `registrableDomain` and `SitePermissions`, against the SAME
+  vectors as the TypeScript (`apps/web/test/fixtures/browser-policy-vectors.json`, read by both suites);
+- DNS-on-the-resolved-address, HTTPS upgrade verdicts, popup, download, permission and port-radar decisions, with
+  fake DNS and a fake folder dialog;
+- the Adblock to WKContentRuleList **translation** (as JSON text, including the 150,000-rule truncation and its report);
+- every browser command through Tauri's mock runtime: only the chrome window may call it, everything else gets
+  `forbidden`, URLs and tab ids are validated, policy refusals resolve with a reason, tabs open and close;
+- the capability files (one test reads `capabilities/*.json` and `tauri.conf.json`).
+
+**What was NOT exercised, only reasoned from the vendored tauri 2.12.1 / wry 0.57 / objc2-web-kit 0.3.2 sources:**
+
+- anything involving a real `WKWebView`, WebView2 or WebKitGTK: that `on_navigation` really fires for redirects,
+  frames and `history.back()`; that incognito really leaves nothing on disk; that two top-level windows line up over
+  each other; that `on_permission_request` returning `Deny` really suppresses the system prompt; that a download
+  callback receives the folder the dialog chose;
+- the compile and attach of the WebKit rule list (`browser_native::attach_rules`): it compiles under `objc2-web-kit`,
+  but WebKit may reject the JSON, the regex subset or the rule count, and no page was ever filtered;
+- the native folder dialogs (AppKit `NSOpenPanel` compiles on macOS but was never shown; the Windows `SHBrowseForFolderW`
+  code was type-checked in a scratch crate for `x86_64-pc-windows-msvc`; the GTK `FileChooserDialog` code was read
+  against gtk 0.18.2 and never compiled, because this machine cannot build GTK);
+- Windows and Linux compile of `browser.rs` itself: not run locally (Windows `cargo check` of the full crate needs
+  `llvm-rc`; Linux needs GTK). The cfg gates were reasoned (see [Platform support](#platform-support)).
+
+Both Phase 93 exit criteria ("Browsing works on macOS; blocking measured on a test page" and "Browser data is separate
+from the main browser") remain **unmet**: that needs a person to run the app and look.
 
 ## What was built
 
@@ -33,9 +49,9 @@ Phoenix's origin policy). It needs the native webview below.
 | `guard.ts`                          | `BrowserGuard`: one object per window combining the above, per-tab blocked counts, per-site toggle, audit events                                                                |
 | `shields.ts`                        | `Shields`: global switch, per-site off-list, per-site blocked counts, connector-policy exemption, matcher built from enabled list text (see [filter-lists.md](filter-lists.md)) |
 
-Tests: `apps/web/test/browser-policy.test.ts` (80 tests), `apps/web/test/shields.test.ts` (shields model, matcher, a ~2 MB synthetic list and hostile rules) and `apps/web/test/shields-settings.test.tsx` (the settings card against a fake Core). Core side: `core/runtime/src/filter-lists/` and `core/runtime/test/filter-lists.test.ts`.
+Tests: `apps/web/test/browser-policy.test.ts` (84 tests, 4 of them over the shared Rust/TypeScript fixture), `apps/web/test/shields.test.ts` (shields model, matcher, a ~2 MB synthetic list and hostile rules) and `apps/web/test/shields-settings.test.tsx` (the settings card against a fake Core). Core side: `core/runtime/src/filter-lists/` and `core/runtime/test/filter-lists.test.ts`.
 
-The filter-list updater, the per-site toggle and the blocked count now exist as **data and settings**, not as blocking: see [filter-lists.md](filter-lists.md). Nothing is blocked in any real page, because there is no browser window.
+The filter-list updater, the per-site toggle and the shields model exist as **data and settings**: see [filter-lists.md](filter-lists.md). On macOS the Rust host now compiles the enabled lists into a WKContentRuleList (reasoned, never run); the blocked count is still always 0 (see [Blocking](#blocking-macos-only)).
 
 ### Navigation rules (`decideNavigation`)
 
@@ -76,7 +92,7 @@ every rule. See [filter-lists.md](filter-lists.md) for measurements.
 
 Limits: no EasyList or EasyPrivacy text is bundled. The filter-list updater exists in Core (`core/runtime/src/filter-lists/`,
 [filter-lists.md](filter-lists.md)): it downloads a list only when the user presses Update. Nothing applies a downloaded list
-to a page, since no browser window exists. `STARTER_RULES` is a short hand-written host list used only while no list is on.
+to a page in this TypeScript; the Rust host reads the same stored lists and translates them for WebKit (see [Blocking](#blocking-macos-only)). `STARTER_RULES` is a short hand-written host list used only while no list is on.
 `$third-party` uses the built-in suffix list in `site.ts`, so look-alike tenants under suffixes missing from it are treated as
 one site. Cosmetic filtering (element hiding, scriptlets) is not implemented and its rules are counted and ignored, so this
 is request blocking only and not comparable to Brave Shields.
@@ -137,92 +153,202 @@ these tests.
   `browser://open-request` or open the window with `?open=`).
 - All strings are in the ten locales (`browser.*`); non-English text is machine-translated and unreviewed.
 
-## What the parent must build
+## The Rust host
 
-Findings below come from reading `apps/desktop/src-tauri` and the vendored `tauri 2.12.1` / `wry 0.57.0` sources
-(`Cargo.lock` pins 2.12.1). Existing windows use `WebviewWindowBuilder` in `island.rs`, `pill.rs` and `lib.rs`; the pill
-already loads an external URL with `on_permission_request`, which is the closest pattern. Nothing there is a browser.
+Files in `apps/desktop/src-tauri/src/`:
 
-### 1. Cargo (`apps/desktop/src-tauri/Cargo.toml`)
+| File                | Purpose                                                                                                                                                        |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `browser_policy.rs` | Port of `network.ts`, `site.ts`, `navigation.ts`, `permissions.ts`. Pure. Adds `dns_private` and `dns_failed` denials and `classify_ip` for resolved addresses |
+| `browser_rules.rs`  | Adblock text to WebKit content rule list JSON; the 150,000-rule limit; per-site exemptions; fixed private-network block                                        |
+| `browser_core.rs`   | Pure helpers: tab ids, zoom clamp, history counter, popup rate limit, download names, port-radar URL rules                                                     |
+| `browser_native.rs` | The only platform code: folder dialogs (macOS, Windows, Linux) and the macOS WKContentRuleList compile and attach                                              |
+| `browser.rs`        | `Host` state, the window builder, `on_*` hooks, the chrome commands, the lifecycle                                                                             |
 
-- To put a remote page and Phoenix's chrome UI in one window, `Window::add_child` is needed; in tauri 2.12.1 it is gated
-  behind `#[cfg(any(test, all(desktop, feature = "unstable")))]`, so add the `unstable` feature to the `tauri` dependency
-  (`features = ["tray-icon", "macos-private-api", "unstable"]`). The alternative that needs no feature is two top-level
-  windows (chrome window + content window) at the cost of managing their geometry together.
-- Do **not** enable the `devtools` feature (and keep `.devtools(false)`); the content page is untrusted.
-- Real subresource blocking needs platform code (item 4): `objc2-web-kit` for macOS (`WKContentRuleListStore`), `webkit2gtk`
-  for Linux (`UserContentFilterStore`), and nothing extra on Windows beyond `windows`/`webview2-com` if
-  `WebResourceRequested` is reached through `with_webview`. [INFERENCE] The exact crates and features were not checked
-  against the lockfile; none of them is a dependency today.
-- `macos-proxy` is not needed.
+### Window layout
 
-### 2. New webview window (new `browser.rs`, plus `lib.rs` registration)
+Two kinds of top-level window, no `unstable` feature, no `Window::add_child`:
 
-Build with `WebviewWindowBuilder` / `WebviewBuilder`, label `phoenix-browser` (chrome) and `phoenix-browser-tab-<n>`
-(content), and for each content webview:
+- the **chrome** window, label `phoenix-browser`, loads `browser.html` from the app bundle (tabs, address bar, buttons);
+- one **content** window per tab, label `phoenix-browser-tab-N` (`N` counts up and is never reused), undecorated, hidden
+  unless active, a child window of the chrome window (`WebviewWindowBuilder::parent`), moved and resized over the chrome
+  window's area below the chrome strip (`set_chrome_height`: 80 logical px, 220 while the confirmation panel is open) on
+  every chrome move, resize and scale change.
 
-| Builder call                                   | Value                                                                                                                                                                    |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `.incognito(true)`                             | macOS: non-persistent data store; Windows: InPrivate (WebView2 ≥ 101.0.1210.39, older does nothing); Linux: see limits                                                   |
-| no `.data_directory(..)`                       | nothing written under the app data dir. Phase 96 adds named profiles                                                                                                     |
-| `.on_navigation(\|url\| …)`                    | port of `decideNavigation`; **cannot rewrite a URL**, so for an HTTPS upgrade return `false` and call the webview's `navigate` on the https URL                          |
-| `.on_new_window(…)`                            | return Deny, or open a tab only after `decideNavigation(…, "new_window")`                                                                                                |
-| `.on_download(…)`                              | return `false` until the user has picked a folder in a Phoenix dialog; set `destination` to that folder                                                                  |
-| `.on_permission_request(…)`                    | map `PermissionKind` to the policy; return `Allow` only for a granted pair, otherwise **`Deny`, never `Default`** (macOS/Windows `Default` continues the OS prompt flow) |
-| `.devtools(false)`, no `initialization_script` | untrusted page gets no Phoenix script                                                                                                                                    |
+The cost of this choice: two windows must be kept aligned by events (a drag can lag a frame), the child-window behaviour
+differs per OS (macOS `addChildWindow`, Windows owner window, Linux transient-for) and was not seen on any of them, and
+a window manager that lets the user focus the content window alone can leave the chrome behind it. `Window::add_child`
+(one window, several webviews) would remove those problems but needs tauri's `unstable` feature; it was not taken.
 
-Also resolve DNS in Rust and run the `classifyHost` rules on the **resolved address**: the TypeScript check sees names only
-and cannot stop DNS rebinding (a public name that resolves to `127.0.0.1`).
+At most 12 tabs. Closing the chrome closes every tab and forgets grants, DNS answers and pending requests.
 
-### 3. Capabilities (`apps/desktop/src-tauri/capabilities/`)
+### What every content webview gets
 
-- A new `browser.json` granting only the chrome webview/window (label `phoenix-browser`) the browser commands (new
-  `permissions/autogenerated/*.toml` entries for each command, following `pill.json`).
-- The content webviews get **no capability file**, and `"remote"` must never list a web origin for them. Check
-  `app.withGlobalTauri: true` in `tauri.conf.json`: it makes `window.__TAURI__` present in webviews it applies to, and while
-  commands are still gated by capabilities, confirm with a test page that a content webview cannot invoke any command.
-  [INFERENCE] I did not run a webview to verify this.
-- The chrome UI page needs its own Vite entry (`apps/web/vite.config.ts` lists `index`, `floating`, `island`, `pill`
-  inputs; add `browser`) and a local-origin CSP. The CSP in `tauri.conf.json` applies to Phoenix pages only, not to the
-  remote content.
+| Setting                                     | Value                                                                                                                                                                                                                          |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `incognito(true)`                           | macOS: `WKWebsiteDataStore.nonPersistentDataStore`. Windows: InPrivate (WebView2 101.0.1210.39 or newer; older does nothing). Linux: see below                                                                                 |
+| no `data_directory`                         | nothing is written under Phoenix's app data directory by the browser                                                                                                                                                           |
+| `devtools(false)`                           | and the tauri `devtools` feature is not enabled                                                                                                                                                                                |
+| no `initialization_script`                  | the page gets no Phoenix script; `withGlobalTauri` injects `window.__TAURI__` only for webviews with IPC access                                                                                                                |
+| `on_navigation`                             | `Host::judge`: the Rust `decideNavigation` (intent "link"), then DNS (below); `Upgrade` = return `false` and `navigate` to the https URL on a thread                                                                           |
+| `on_new_window`                             | always returns `Deny`; a permitted target (`decideNavigation` intent "new_window", https only, at most 3 per 10 s) is reopened as a tab                                                                                        |
+| `on_download`                               | refused unless the URL passes the policy and the person picks a folder in a native dialog (at most 3 dialogs per 10 s); the file name is sanitised, an existing file gets ` (2)`; a refusal emits `browser://download-refused` |
+| `on_permission_request`                     | `Allow` only for an origin and kind the person granted (`SitePermissions`), otherwise `Deny`. **Never `Default`**. Nothing grants yet (see limits)                                                                             |
+| `on_page_load`, `on_document_title_changed` | update the tab and emit `browser://tab`; title is stripped of control characters and cut to 300                                                                                                                                |
 
-### 4. Things Tauri/wry do not give for free
+Only the top-level `https:` or loopback-radar navigation reaches the page. `about:blank` and `about:srcdoc` are the only
+`about:` URLs allowed (the webview creates them itself); every other `about:`, `file:`, `data:`, `blob:`, `javascript:`,
+`tauri:`, `ipc:`, `asset:` is refused by the port.
 
-- **Subresource blocking.** `on_navigation` sees top-level and frame navigations only, not scripts, images or XHR. In wry
-  0.57 `WebResourceRequested` appears only inside `src/webview2/mod.rs` (internal); I found no public wry/tauri API for
-  per-request filtering on any platform. Blocking therefore needs platform-native code reached through `Webview::with_webview`:
-  WKContentRuleList (compiled from the rules; `RequestBlocker` rules map onto its JSON format) on macOS, a
-  `WebResourceRequested` handler on WebView2, and `UserContentFilter` on WebKitGTK. Until that exists, **no request is
-  blocked** and the blocked count is always 0.
-- **Third-party cookie blocking** has no Tauri setting. WKWebView and WebView2 have their own tracking prevention; wry exposes
-  `cookies()`/`delete_cookie()` only. Treat "third-party cookies off" as unmet until a native setting or a cookie sweep is built.
-- **Linux:** wry's `with_incognito` and the `PermissionResponse::Default` behaviour (= Deny) differ from macOS/Windows.
-  macOS has no backend for geolocation/notification permission prompts (`PermissionKind` docs), so those cannot be answered
-  there.
-- **Fingerprinting protection** is whatever each webview ships; Phoenix adds none. The Phase 93 task "document what each
-  webview can and cannot do" is therefore only partly done: this section records the API surface checked, not measured
-  behaviour of the three engines.
-- Find in page, zoom (`set_zoom` exists on the webview) and tab management are native work not started.
+### DNS and the remaining time-of-check gap
 
-### 5. Enforcement port
+For every allowed `http`/`https` navigation to a **name** (not an IP literal) the host resolves the name in Rust
+(`ToSocketAddrs`, 2 s limit, answers cached 60 s) and applies the `classify_host` tables to **every** returned address
+(`classify_ip`): a name with one private address among public ones is refused too (`dns_private`); a name that does not
+resolve in time is refused (`dns_failed`, fail closed). A port-radar tab may reach its one dev-server origin
+(`localhost`/`127.0.0.1`/`[::1]` and the confirmed port) only if every answer is loopback.
 
-The Rust port of `decideNavigation`, `classifyHost`, `SitePermissions` and the blocklist (or a loader that compiles the
-rules to WKContentRuleList JSON) should be tested against the same vectors as `browser-policy.test.ts`. Use the Public
-Suffix List (a Rust crate) instead of the built-in suffix list in `site.ts`.
+**The gap that remains (time of check to time of use).** The webview resolves the name again when it connects. A DNS
+server that answers with a public address to Phoenix and a private one to the webview a moment later (short-TTL
+rebinding) is not caught by this check. What narrows it: the 60 s cache means Phoenix and the webview usually see the
+same answer; subresources and redirects of a loaded page are not re-resolved by Phoenix at all; and on macOS the
+content rule list blocks private-range **literal** hosts in subresources. What does NOT close it: no connect-time hook
+exists in tauri/wry on any platform, and pinning an address is impossible through the webview API. Closing it needs a
+local proxy or a custom resolver in the engine; that is not built.
 
-### 6. Gateway, audit, Fawkes
+`on_navigation` is synchronous on the main thread, so a DNS lookup there blocks the UI for up to 2 s the first time a
+name is seen (cached afterwards). Commands (`open_tab`, `navigate`) resolve on a worker thread first, so the typed path
+normally warms the cache before the webview asks.
 
-Side effects the browser can cause (download, form submit, opening a private-network site the user listed, granting a
-permission) must go through the permission/tool gateway; `BrowserAuditSink` is the shape of the audit record, not a wired
-sink. Page text is untrusted data: `BrowserGuard` never reads page content and nothing here lets page text change a policy
-(grants require `userGesture` from Phoenix's own prompt). The "Fawkes in the corner of every tab" task is not started and
-needs i18n keys under `apps/web/src/i18n/en/` in all nine locales once any user-visible string exists; none was added
-because this slice has no UI.
+### Commands (chrome window only)
+
+All arguments are camelCase from the page. Every command's first statement is `chrome_only(&window)?` (a test reads the
+source to enforce that), so a call from any other window label (the pet, a content window, anything) returns
+`{"code":"forbidden"}` and does nothing. The contract with the chrome page is in `apps/web/src/browser/shell.ts`.
+
+| Command                                    | Behaviour                                                                                                                                                        |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `open_tab { url, intent }`                 | `typed` or `port_radar`. URL: at most 2048 bytes, no control characters. Refusals resolve `{ok:false, reason}`; success `{ok:true, tab}`                         |
+| `navigate { tabId, url, intent: "typed" }` | the same validation; any other intent is rejected                                                                                                                |
+| `close_tab`, `activate_tab`                | tab id is canonical decimal digits only and must exist                                                                                                           |
+| `back`, `forward`, `reload`                | `back`/`forward` use a host-side history counter and `history.back()`/`history.forward()` (the only script Phoenix ever evaluates in a page; it carries no data) |
+| `zoom { tabId, factor }`                   | clamped to 0.5 to 3, NaN to 1; applies `set_zoom`                                                                                                                |
+| `set_chrome_height { height }`             | clamped to 40 to 400 logical px                                                                                                                                  |
+| `set_site_shields { site, blocking }`      | `site` must be a plain host name; recompiles and re-attaches the rule list on macOS                                                                              |
+| `shields_status`                           | whether native blocking is active, which source (lists, starter, off), the conversion report and any attach error                                                |
+
+Events to the chrome window only: `browser://tab` (a `TabInfo` upsert), `browser://tab-closed`, `browser://open-request`,
+`browser://download-refused`. `TabInfo.blocked` is always 0: no webview reports how many requests a content rule list
+blocked.
+
+### Capabilities
+
+`capabilities/browser.json` grants `core:default` and the eleven `allow-*` browser commands to the window
+`phoenix-browser` only, as a **local** capability (the chrome is a page from the app bundle). The content windows have
+no capability file, no `remote` entry anywhere lists a web origin (the only remote entry in the repository is the exact
+loopback `pill.html` URL of Phoenix Core), and the one runtime `add_capability` call names only the pill window.
+`capability_tests` in `browser.rs` read `capabilities/*.json`, `tauri.conf.json` and `lib.rs` to assert this; the
+lifecycle test also invokes every command from the pet window, a content window and a stranger window and expects
+`forbidden`. **Not verified:** that a real remote page with `window.__TAURI__` cannot invoke a command (the mock runtime
+checks the label, not the ACL; the ACL layer is tauri's own). A person should open a test page in a tab and run
+`window.__TAURI__.core.invoke("close_tab", …)` from its console, but devtools are off, so use a page that calls it.
+
+### Blocking (macOS only)
+
+`browser_rules::convert` turns the **enabled and downloaded** lists (read from Core over loopback: `GET
+/api/browser/filter-lists` then `/:id/text`; the starter rules only when no list contributed a rule, exactly as
+`Shields` does) into WebKit content rule list JSON, and `browser_native::attach_rules` compiles it (store in a
+per-process 0700 temp directory, removed again after attaching) and attaches it to the tab's `WKUserContentController`
+BEFORE the first page loads (the tab starts on `about:blank`, then `navigate`). If compiling fails the tab is **not
+opened** (`shields_unavailable`): it never loads unfiltered on macOS.
+
+Translation limits (all in `browser_rules.rs`, tested): a rule WebKit's format cannot express is **skipped and counted**,
+never widened: `$websocket`, `$ping`, `$other`, `$subdocument` mixed with other types, `$important`, `$redirect`, `$csp`,
+`$popup`, regex rules, `domain=` mixing include and exclude, non-ASCII patterns, `@@…$document`. Cosmetic rules are
+counted and ignored. A rule with no type option covers image, style-sheet, script, font, raw (XHR/fetch), svg-document
+and media: requests WebKit files as `ping`, `websocket` or `other` are not blocked. A trailing `^` needs one more
+character in the URL.
+
+**The 150,000-rule limit.** WebKit refuses a list over 150,000 rules. EasyList plus EasyPrivacy convert to well over
+110,000 rules, so Phoenix keeps a deterministic prefix: the fixed rules first counted, then up to 10,000 exceptions, then
+blocking rules **in the order Core stores the lists**; the tail is dropped. The conversion report
+(`shields_status.report`: `converted`, `keptBlocking`, `truncatedBlocking`, `truncatedExceptions`, `unsupported`,
+`cosmetic`, `duplicates`, `fixedRules`, `siteExemptions`, `limit`) says exactly how many were dropped, and a test pins
+that the same input gives the same output. Whether the truncated list blocks usefully was not measured.
+
+Fixed rules, always on and last in the list (nothing earlier can lift them): subresources and child frames to loopback,
+private ranges, link-local, CGNAT and intranet names are blocked (loopback is allowed only when the page itself is
+`localhost` or `127.0.0.1`, i.e. a dev server opened from the port radar); Phoenix Core's port is blocked for **every**
+page. These work on the URL text WebKit holds, so a public **name** that resolves to a private address in a subresource is
+not caught (the DNS gap above).
+
+The master switch off leaves only the fixed rules. Per-site "shields off" (from Core's off-list and the music
+connector's exact hosts, YouTube by default) becomes `ignore-previous-rules` rules scoped by `if-domain` to the page's
+host; the off-list entries are registrable domains and match subdomains. At most 600 are kept, and the report counts what
+was dropped. `set_site_shields` also applies at once, keeping an in-memory override until Core's list catches up.
+
+### Platform support
+
+- **macOS:** everything above; blocking is built but unseen.
+- **Windows:** tabs open with navigation policy, DNS check, popup, download and permission handling, and NO request
+  blocking: `shields_status.platformBlocking` is `false`. A `WebResourceRequested` filter through
+  `Webview::with_webview` was **not built**: it needs the `webview2-com` types and a request-pattern list, which could not
+  be compiled or exercised here. The download dialog uses `SHBrowseForFolderW` (type-checked only).
+- **Linux:** the same as Windows; `UserContentFilterStore` was not built for the same reason (no GTK here). The download
+  dialog is `gtk::FileChooserDialog`, not compiled here. WebKitGTK has no in-private flag exposed by wry's `incognito`
+  on every version: whether a Linux tab leaves cookies on disk was not checked.
+
+CI compiles Windows and Linux; the cfg gates were written so no helper is dead there (`SHIELDS_ATTACH_TIMEOUT`,
+`attach_and_load` and `reattach` carry the macOS cfg or a non-macOS twin), but that is reasoning, not a CI run.
+
+### Other things tauri and wry do not give for free
+
+- **Third-party cookie blocking** has no Tauri setting; incognito stores are dropped with the webview, which limits what a
+  tracker can keep, but third-party cookies within one session are whatever the engine does. "Third-party cookies off" is
+  **unmet**.
+- **Fingerprinting protection** is whatever each webview ships; Phoenix adds none.
+- **Permission prompts:** no chrome UI grants a permission, so every request is denied (`SitePermissions::grant` is
+  reachable from Rust code and tests only). macOS has no backend for geolocation or notification prompts.
+- **Find in page** is not built. **Zoom, back, forward, reload** exist as commands.
+- **Frame awareness:** `on_navigation` does not say which frame navigated. The HTTPS upgrade-in-place is limited to the
+  same registrable domain as the tab (or a tab with no page yet), so an iframe cannot steer the tab to another site; a
+  third-party http link in a frame is simply refused.
+- **Public Suffix List:** `registrable_domain` uses the same small built-in list as `site.ts`, not the PSL (no PSL crate is
+  in the lockfile).
+- **`TabInfo.blocked`:** always 0.
+
+### Phase 80: opening a radar server in the Phoenix browser
+
+The Rust side is `phoenix://browser/open?url=<percent-encoded loopback URL>`, handled where `phoenix://approvals/…` already
+is (`open_links`, macOS `RunEvent::Opened`; `Info.plist` already declares the `phoenix` scheme). There is no Tauri command
+for it, so no web page can ask the browser to open anything.
+
+1. The link must be exactly that shape (host `browser`, path `/open`, one `url` query parameter, no fragment) and the
+   inner URL must be `http` or `https` to `127.0.0.1`, `localhost` or `[::1]` with an explicit port that is not Phoenix
+   Core's own and no credentials. Anything else is dropped silently.
+2. The host records the URL (at most 4 pending, 120 s), shows the chrome window and emits `browser://open-request`.
+3. **Nothing opens yet.** The chrome page shows its own confirmation panel; only its confirmation calls
+   `open_tab { intent: "port_radar" }`, which succeeds once, for exactly the recorded URL, and is refused as
+   `not_requested` otherwise.
+4. The new tab may stay on that one origin (host and port) as a typed, listed private host without an https upgrade; every
+   other private target stays refused, and Core's port is blocked for all pages by the content rule list.
+
+**Web side:** `PortRadar.tsx` shows an "Open in Phoenix browser" button next to the plain link (macOS scans only; never for
+Core's own port). It builds the link from the port number (`phoenixBrowserLink` in `core/ports.ts`) and hands it to a
+`PhoenixLinkShell` (default: `location.assign`, delivered by the operating system as `RunEvent::Opened`). Tests use a fake shell and
+check the link parses the way `radar_link` does; nothing ran on a display, and a Windows or Linux handler does not exist.
+
+### Gateway, audit, Fawkes
+
+Side effects the browser can cause (download, form submit, opening a private-network site, granting a permission) are NOT
+routed through the permission/tool gateway or audit log from the Rust host: the download dialog and the radar
+confirmation are the Phoenix-side decisions. `BrowserAuditSink` is still only the shape of a record. Page text is
+untrusted data: nothing a page says changes a policy. The "Fawkes in the corner of every tab" task is not started.
 
 ## Exit criteria
 
-| Criterion                                    | State                                                                        |
-| -------------------------------------------- | ---------------------------------------------------------------------------- |
-| Browsing works on macOS; blocking measured   | **Unmet.** No webview, no measurement.                                       |
-| Browser data separate from the main browser  | **Unmet.** `webviewSettings` states the contract; nothing creates a webview. |
-| Tested navigation/permission/blocking policy | Done as a reference implementation (unit tests, simulated inputs)            |
+| Criterion                                    | State                                                                                                                      |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Browsing works on macOS; blocking measured   | **Unmet.** The host is built; no webview was ever shown, no page loaded, no blocking measured.                             |
+| Browser data separate from the main browser  | **Unmet.** Built as `incognito(true)` with no data directory; whether the engine writes nothing was never checked.         |
+| Tested navigation/permission/blocking policy | Done as a reference implementation (TypeScript) and as a Rust port against the same vectors (unit tests, simulated inputs) |

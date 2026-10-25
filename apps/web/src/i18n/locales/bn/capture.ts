@@ -13,6 +13,8 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.audio.emergencyStop": "জরুরি বন্ধ চালু আছে।",
   "capture.audio.recognizerAvailable": "বাক্ শনাক্তকারী: পাওয়া যাচ্ছে। {detail}",
   "capture.audio.recognizerUnavailable": "বাক্ শনাক্তকারী: পাওয়া যাচ্ছে না। {detail}",
+  "capture.audio.onDisk":
+    "ডিস্কে অডিও: এই ইঞ্জিন শনাক্ত করার সময় অডিও একটি ব্যক্তিগত অস্থায়ী ফাইলে লেখে এবং সঙ্গে সঙ্গে মুছে দেয়।",
   "capture.mic.unsupported": "এই ব্রাউজার মাইক্রোফোন ব্যবহার করতে পারে না",
   "capture.mic.sampleRate": "এই ডিভাইস 16 kHz মাইক্রোফোন অডিও দিতে পারে না",
   "capture.notetaker.settings.title": "নোটটেকার",

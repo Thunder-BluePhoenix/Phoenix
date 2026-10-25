@@ -15,11 +15,15 @@ import { claudeStatusLine } from "./statusline-hook";
 import { hookCommands, type HookCommands, type HookCommandOptions } from "./commands";
 import {
   removeHooks,
+  removeNamed,
   staleEvents,
+  staleNamed,
   upsertHooks,
+  upsertNamed,
   type HookShape,
   type HookSpec,
   type JsonObject,
+  type NamedLayout,
 } from "./config-json";
 
 export interface AdapterContext {
@@ -75,6 +79,12 @@ export interface JsonAdapter extends AdapterBase {
   shape: HookShape;
   spec(ctx: AdapterContext): HookSpec;
   statusLine?: StatusLineHook;
+  /**
+   * Google Antigravity's layout: the file maps hook NAMES to event lists and has no top-level
+   * `hooks` object. When set, merge/remove/health work on that named entry; `spec(ctx).events` are
+   * still the entries Phoenix wants per event.
+   */
+  named?: NamedLayout;
   merge(before: JsonObject, ctx: AdapterContext): { after: JsonObject; changed: boolean };
   remove(after: JsonObject): { before: JsonObject; changed: boolean };
   /** Events whose Phoenix hooks are missing from `doc`. */
@@ -134,18 +144,22 @@ function jsonAdapter(
     support: "supported",
     merge(before, ctx) {
       const after = structuredClone(before);
-      const hooks = upsertHooks(after, base.spec(ctx));
+      const hooks = base.named
+        ? upsertNamed(after, base.named, base.spec(ctx).events)
+        : upsertHooks(after, base.spec(ctx));
       const line = base.statusLine?.apply(after, ctx) ?? false;
       return { after, changed: hooks || line };
     },
     remove(after) {
       const before = structuredClone(after);
-      const hooks = removeHooks(before, base.shape);
+      const hooks = base.named ? removeNamed(before, base.named) : removeHooks(before, base.shape);
       const line = base.statusLine?.remove(before) ?? false;
       return { before, changed: hooks || line };
     },
     health(doc, ctx) {
-      const stale = staleEvents(doc, base.spec(ctx));
+      const stale = base.named
+        ? staleNamed(doc, base.named, base.spec(ctx).events)
+        : staleEvents(doc, base.spec(ctx));
       return base.statusLine?.stale(doc, ctx) ? [...stale, STATUSLINE_MISSING] : stale;
     },
   };
@@ -255,6 +269,39 @@ const museSpec = (ctx: AdapterContext): HookSpec => {
     Notification: hook("Notification"),
     SessionEnd: hook("SessionEnd"),
   });
+};
+
+/** The hook name Phoenix owns inside Antigravity's `hooks.json` (a map of hook names to events). */
+export const ANTIGRAVITY_HOOK_NAME = "phoenix-agent";
+const ANTIGRAVITY_SHAPES: Readonly<Record<string, HookShape>> = {
+  SessionStart: "flat",
+  PreInvocation: "flat",
+  PostToolUse: "grouped",
+  Stop: "flat",
+};
+
+/**
+ * https://antigravity.google/docs/hooks: handlers of `SessionStart`, `PreInvocation` and `Stop` are
+ * listed directly under the event, `PostToolUse` takes `{matcher, hooks:[...]}` groups, `timeout` is in
+ * seconds. Phoenix only observes: it never installs `PreToolUse` (whose output REQUIRES a `decision`).
+ * `Stop` REQUIRES a `decision` and anything but "continue" lets the agent stop, so its handler prints
+ * the fixed `antigravity-stop` reply; the other events print `{}` (their outputs are all optional).
+ */
+const antigravitySpec = (ctx: AdapterContext): HookSpec => {
+  const handler = (event: string, reply?: string) => ({
+    type: "command",
+    command: ctx.commands.generic("antigravity", event, reply),
+    timeout: 5,
+  });
+  return {
+    shape: "grouped",
+    events: {
+      SessionStart: [handler("SessionStart")],
+      PreInvocation: [handler("PreInvocation")],
+      PostToolUse: [{ matcher: "*", hooks: [handler("PostToolUse")] }],
+      Stop: [handler("Stop", "antigravity-stop")],
+    },
+  };
 };
 
 const OPENCODE_STATES = JSON.stringify({
@@ -419,20 +466,21 @@ export const AGENT_ADAPTERS: readonly AgentAdapter[] = [
     configDir: (c) => join(c.home, ".hermes"),
     settingsPath: (c) => join(c.home, ".hermes", "plugins", "phoenix", "plugin.yaml"),
     reason:
-      "unsupported: plugins work only after their name is added to plugins.enabled in ~/.hermes/config.yaml (YAML Phoenix will not rewrite); gateway hooks do not run for CLI sessions",
+      "unsupported: a Hermes plugin loads only after `hermes plugins enable <name>` (or plugins.enabled in ~/.hermes/config.yaml, YAML Phoenix will not rewrite) and its documented hook callbacks carry no workspace directory; the one no-YAML integration point, a gateway hook directory (~/.hermes/hooks/<name>/HOOK.yaml + handler.py), is documented as never loaded by CLI, TUI or Desktop sessions and its events carry no workspace either, and shell hooks that do receive cwd are declared in config.yaml",
   },
-  {
-    kind: "unsupported",
-    support: "unsupported",
+  jsonAdapter({
     id: "antigravity",
     label: "Google Antigravity",
     bin: "agy",
     doc_url: "https://antigravity.google/docs/hooks",
     configDir: (c) => join(c.home, ".gemini", "antigravity-cli"),
     settingsPath: (c) => join(c.home, ".gemini", "config", "hooks.json"),
-    reason:
-      "unsupported: format unconfirmed (the docs do not say what a hook may print or how exit codes are treated, and PreToolUse/Stop require a decision)",
-  },
+    skeleton: {},
+    shape: "grouped",
+    spec: antigravitySpec,
+    named: { key: ANTIGRAVITY_HOOK_NAME, shapes: ANTIGRAVITY_SHAPES },
+    note: "State only. The file is ~/.gemini/config/hooks.json (global level, shared by the Antigravity App, CLI and IDE); Phoenix owns one hook named phoenix-agent and keeps your others. The docs do not document hook exit codes, so Phoenix's hooks always exit 0. No permission-wait hook is documented (PreToolUse only returns allow/ask/deny and Phoenix never answers it), so waiting is not reported.",
+  }),
   {
     kind: "unsupported",
     support: "unsupported",
@@ -444,6 +492,6 @@ export const AGENT_ADAPTERS: readonly AgentAdapter[] = [
     settingsPath: (c) =>
       join(c.home, "Library", "Application Support", "Claude", "claude_desktop_config.json"),
     reason:
-      "unsupported: format unconfirmed (no documented user-writable hooks location for Chat; the Code tab uses Claude Code's settings, so install Claude Code above)",
+      "unsupported: no user-writable hooks location for Chat is documented (Chat hooks come from plugins added to your claude.ai account or, on Claude Desktop 3P, from the admin-owned org-plugins directory; the plugin support page marks hooks as ignored in Chat); the Code tab uses Claude Code's settings, so install Claude Code above",
   },
 ];

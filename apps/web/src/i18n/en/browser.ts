@@ -49,4 +49,15 @@ export const browser = {
   "browser.radar.open": "Open it",
   "browser.radar.cancel": "Cancel",
   "browser.error.action": "The browser could not do that.",
+  "browser.profile.label": "New tabs open in",
+  "browser.profile.private": "Private (nothing is saved)",
+  "browser.tab.profile": "Profile: {name}",
+  "browser.deny.profile_invalid": "That profile is not valid, so nothing was opened.",
+  "browser.deny.profile_unsupported":
+    "Saved profiles are not available in this build of the browser.",
+  "browser.deny.profile_busy": "That profile is being deleted or is busy. Try again in a moment.",
+  "browser.deny.profile_failed": "The profile's web storage could not be opened.",
+  "browser.purge.running": "Deleting the saved web data of a removed profile…",
+  "browser.purge.failed":
+    "Saved web data of a removed profile could not be deleted yet. Phoenix will try again.",
 } as const;

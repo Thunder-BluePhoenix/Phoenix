@@ -51,4 +51,16 @@ export const browser: Record<keyof typeof enBrowser, string> = {
   "browser.radar.open": "Abrir",
   "browser.radar.cancel": "Cancelar",
   "browser.error.action": "El navegador no pudo hacer eso.",
+  "browser.profile.label": "Las pestañas nuevas se abren en",
+  "browser.profile.private": "Privado (no se guarda nada)",
+  "browser.tab.profile": "Perfil: {name}",
+  "browser.deny.profile_invalid": "Ese perfil no es válido, así que no se abrió nada.",
+  "browser.deny.profile_unsupported":
+    "Los perfiles guardados no están disponibles en esta versión del navegador.",
+  "browser.deny.profile_busy":
+    "Ese perfil se está eliminando o está ocupado. Inténtalo de nuevo en un momento.",
+  "browser.deny.profile_failed": "No se pudo abrir el almacenamiento web del perfil.",
+  "browser.purge.running": "Borrando los datos web guardados de un perfil eliminado…",
+  "browser.purge.failed":
+    "Aún no se pudieron borrar los datos web guardados de un perfil eliminado. Phoenix lo intentará de nuevo.",
 };

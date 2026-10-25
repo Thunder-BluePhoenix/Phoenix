@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { describe, expect, it } from "vitest";
+import vectorsJson from "./fixtures/browser-policy-vectors.json";
 import {
   RequestBlocker,
   STARTER_RULES,
@@ -665,5 +666,67 @@ describe("browser guard", () => {
       reason: "site_denied",
     });
     expect(guard.navigate("t", "http://192.168.1.1/", "link")).toMatchObject({ allow: false });
+  });
+});
+
+// The Rust enforcement port (apps/desktop/src-tauri/src/browser_policy.rs) reads this same file.
+describe("shared policy vectors (also run by the Rust port)", () => {
+  type Expectation =
+    | { allow: true; url: string; upgraded: boolean }
+    | { allow: false; reason: string; privateReason?: string };
+  const vectors = vectorsJson as unknown as {
+    classify: { private: string[]; public: string[]; reasons: Record<string, string> };
+    navigation: {
+      input: string;
+      intent?: NavigationIntent;
+      policy?: Partial<NavigationPolicy>;
+      expect: Expectation;
+    }[];
+    permissions: {
+      name: string;
+      grants: { origin: string; kind: string; gesture: boolean }[];
+      ask: { kind: string; top: string; frame: string };
+      expect: { verdict: string; reason: string };
+    }[];
+    registrable: [string, string][];
+  };
+
+  it("classifies hosts", () => {
+    for (const host of vectors.classify.private) {
+      expect(classifyHost(host).kind, host).toBe("private");
+    }
+    for (const host of vectors.classify.public) {
+      expect(classifyHost(host).kind, host).toBe("public");
+    }
+    for (const [host, reason] of Object.entries(vectors.classify.reasons)) {
+      expect(classifyHost(host), host).toEqual({ kind: "private", reason });
+    }
+  });
+
+  it("decides navigation", () => {
+    for (const v of vectors.navigation) {
+      const decision = decideNavigation(
+        v.input,
+        { ...DEFAULT_NAVIGATION_POLICY, ...v.policy },
+        v.intent ?? "link",
+      );
+      expect(decision, v.input).toEqual(v.expect);
+    }
+  });
+
+  it("decides permissions", () => {
+    for (const v of vectors.permissions) {
+      const p = new SitePermissions();
+      for (const g of v.grants) p.grant(g.origin, g.kind, g.gesture);
+      expect(
+        p.decide({ kind: v.ask.kind, topOrigin: v.ask.top, frameOrigin: v.ask.frame }),
+        v.name,
+      ).toEqual(v.expect);
+    }
+  });
+
+  it("finds registrable domains", () => {
+    for (const [host, site] of vectors.registrable)
+      expect(registrableDomain(host), host).toBe(site);
   });
 });

@@ -8,6 +8,11 @@
 //! page only talks to it through the commands below (ADR-0013).
 
 mod awake_tray;
+pub mod browser;
+pub mod browser_core;
+mod browser_native;
+pub mod browser_policy;
+pub mod browser_rules;
 mod connection;
 mod core_status;
 mod deeplink;
@@ -35,6 +40,9 @@ mod position;
 pub mod quit_veto;
 mod settings;
 pub mod shortcuts;
+mod system_audio;
+#[cfg(target_os = "macos")]
+mod system_audio_macos;
 pub mod terminal_jump;
 
 use connection::{connection, locate, phoenix_url, CoreConnection, Locator};
@@ -89,6 +97,9 @@ pub struct ShellOptions {
     /// Tests only: the mock runtime has no real native window, so styling it (macOS window
     /// level, Windows extended style, GTK hints) would dereference a fake handle.
     pub skip_native_window_styling: bool,
+    /// Phase 93: DNS, the download-folder dialog and Core's shields for the browser host. Default:
+    /// the system's own (`browser::Hooks::system`). Tests inject fakes.
+    pub browser_hooks: Option<browser::Hooks>,
 }
 
 struct Shell<R: Runtime> {
@@ -150,6 +161,16 @@ impl<R: Runtime> Shell<R> {
     fn flush(&self) {
         let _ = settings::save(&self.settings_path, &self.settings.lock());
     }
+}
+
+/// The port Core listens on, from its base URL (`http://127.0.0.1:<port>`).
+fn locator_port(locator: &Locator) -> u16 {
+    locator
+        .base_url
+        .rsplit(':')
+        .next()
+        .and_then(|p| p.trim_end_matches('/').parse().ok())
+        .unwrap_or(connection::DEFAULT_PORT)
 }
 
 /// Connected monitors. `available_monitors()` can be empty while the app is still
@@ -771,6 +792,15 @@ fn open_route<R: Runtime>(app: &AppHandle<R>, route: &str) {
 pub fn open_links<R: Runtime, S: AsRef<str>>(app: &AppHandle<R>, urls: &[S]) {
     if let Some(route) = deeplink::route_for(urls) {
         open_route(app, route);
+        return;
+    }
+    // Phase 80: `phoenix://browser/open?url=<loopback dev server>` from the port radar. It only
+    // asks; the Phoenix browser shows its own confirmation before anything opens.
+    if let Some(url) = urls
+        .first()
+        .and_then(|u| browser_core::radar_link(u.as_ref()))
+    {
+        let _ = browser::request_open_from_port_radar(app, &url);
     }
 }
 
@@ -1309,7 +1339,18 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
             shortcuts_reset,
             shortcuts_set_enabled,
             shortcuts_set_muted,
-            read_dropped_file
+            read_dropped_file,
+            browser::open_tab,
+            browser::close_tab,
+            browser::activate_tab,
+            browser::navigate,
+            browser::back,
+            browser::forward,
+            browser::reload,
+            browser::zoom,
+            browser::set_chrome_height,
+            browser::set_site_shields,
+            browser::shields_status
         ])
         .setup(move |app| {
             let handle = app.handle();
@@ -1322,6 +1363,7 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
                 env,
                 confirm_quit,
                 skip_native_window_styling,
+                browser_hooks,
             } = options;
             let settings_dir = match settings_dir {
                 Some(dir) => dir,
@@ -1355,6 +1397,13 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
                 })
             });
 
+            // Phase 93: the browser host. Real DNS, the native folder dialog and Core's shields
+            // under the real runtime; the mock runtime (lifecycle tests) injects its own.
+            app.manage(browser::Host::new(
+                browser_hooks.unwrap_or_else(|| browser::Hooks::system(locator.clone())),
+                !skip_native_window_styling,
+                locator_port(&locator),
+            ));
             let platform = island::Platform::detect();
             let items = build_menu(handle, &settings, platform.display_choice())?;
             build_tray(handle, &items.menu)?;
@@ -1435,6 +1484,7 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
                     file_drop::Drag::from(drag),
                 );
             }
+            browser::window_event(window, event);
             if window.label() == pill::LABEL && matches!(event, WindowEvent::Destroyed) {
                 if let Some(shell) = window.app_handle().try_state::<Shell<R>>() {
                     shell.dictation.unload();

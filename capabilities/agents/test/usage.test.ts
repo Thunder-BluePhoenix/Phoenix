@@ -104,6 +104,67 @@ describe("Codex usage", () => {
   });
 });
 
+describe("Codex usage: the official example", () => {
+  // The `account/rateLimits/read` example of https://developers.openai.com/codex/app-server (also
+  // the shape of openai/codex .../schema/json/v2/GetAccountRateLimitsResponse.json), copied as is.
+  // Nothing here ran against a real Codex: `codex` is not installed on the machine this was written on.
+  const OFFICIAL = {
+    rateLimits: {
+      limitId: "codex",
+      limitName: null,
+      primary: { usedPercent: 25, windowDurationMins: 15, resetsAt: 1730947200 },
+      secondary: null,
+      rateLimitReachedType: null,
+    },
+    rateLimitsByLimitId: {
+      codex: {
+        limitId: "codex",
+        limitName: null,
+        primary: { usedPercent: 25, windowDurationMins: 15, resetsAt: 1730947200 },
+        secondary: null,
+        rateLimitReachedType: null,
+      },
+      codex_other: {
+        limitId: "codex_other",
+        limitName: "codex_other",
+        primary: { usedPercent: 42, windowDurationMins: 60, resetsAt: 1730950800 },
+        secondary: null,
+        rateLimitReachedType: null,
+      },
+    },
+    rateLimitResetCredits: {
+      availableCount: 2,
+      credits: [
+        {
+          id: "RateLimitResetCredit_1",
+          resetType: "codexRateLimits",
+          status: "available",
+          grantedAt: 1781654400,
+          expiresAt: 1784246400,
+        },
+      ],
+    },
+  };
+  const now = 1730947200 * 1000 - 3_600_000;
+
+  it("maps to no plan sample: the example's 15-minute window is neither the 5h nor the weekly one", () => {
+    expect(mapCodexRateLimits(OFFICIAL, now)).toEqual([]);
+  });
+
+  it("reads the same document with real plan windows, credits count taken from availableCount only", () => {
+    const real = structuredClone(OFFICIAL);
+    real.rateLimits.primary.windowDurationMins = 300;
+    const samples = mapCodexRateLimits(real, now);
+    expect(samples).toMatchObject([
+      { agent: "codex", window: "5h", used_pct: 25, reset_credits: 2 },
+    ]);
+    expect(samples[0]!.resets_at).toBe(new Date(1730947200 * 1000).toISOString());
+    // nothing from the credit rows, bucket names or ids is copied
+    expect(JSON.stringify(samples)).not.toContain("RateLimitResetCredit_1");
+    expect(JSON.stringify(samples)).not.toContain("codex_other");
+  });
+});
+
 describe("validateUsage", () => {
   const sample = { window: "5h", used_pct: 50, resets_at: new Date(RESETS * 1000).toISOString() };
 

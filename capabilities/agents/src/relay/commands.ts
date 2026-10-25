@@ -34,8 +34,8 @@ export interface HookCommands {
   approval(agent: string, timeoutMs: number): string;
   /** `guard-hook.ts --agent <agent> --timeout-ms <ms>` (Phase 79 secret guard). */
   guard(agent: string, timeoutMs: number): string;
-  /** `agent-hook.ts --agent <agent> [--event <name>]`. */
-  generic(agent: string, event?: string): string;
+  /** `agent-hook.ts --agent <agent> [--event <name>] [--reply <name>]` (`reply`: a name in HOOK_REPLIES). */
+  generic(agent: string, event?: string, reply?: string): string;
   /** `statusline.ts [--then <previous statusLine command>]` (Phase 58). POSIX only: see statusline-hook.ts. */
   statusline(previous?: string): string;
 }
@@ -63,7 +63,12 @@ export function hookCommands(options: HookCommandOptions = {}): HookCommands {
     guard: (agent, timeoutMs) =>
       script("guard-hook.ts", ["--agent", agent, "--timeout-ms", String(timeoutMs)]),
     statusline: (previous) => script("statusline.ts", previous ? ["--then", quote(previous)] : []),
-    generic: (agent, event) =>
-      script("agent-hook.ts", ["--agent", agent, ...(event ? ["--event", event] : [])]),
+    generic: (agent, event, reply) =>
+      script("agent-hook.ts", [
+        "--agent",
+        agent,
+        ...(event ? ["--event", event] : []),
+        ...(reply ? ["--reply", reply] : []),
+      ]),
   };
 }

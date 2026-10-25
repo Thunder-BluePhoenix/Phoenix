@@ -33,8 +33,15 @@ export interface DictationSettings {
 export interface DictationStatus {
   enabled: boolean;
   kill_switch_engaged: boolean;
-  recognizer: { available: boolean; detail: string; engine?: string };
-  audio_on_disk: false;
+  recognizer: {
+    available: boolean;
+    detail: string;
+    engine?: string;
+    /** The engines the owner opted in to, in order, and which one runs the next session. */
+    engines?: { id: string; available: boolean; active: boolean; detail: string }[];
+  };
+  /** True only while an owner-chosen engine (Parakeet) is the active one: it writes a private temporary WAV file for the recognition and erases it straight after. */
+  audio_on_disk: boolean;
   cleanup: { available: boolean; detail: string; locality: "local" };
   active: { id: string; phase: "listening" | "recognising" } | null;
   limits: { max_seconds: number; max_bytes: number; max_frame_bytes: number };

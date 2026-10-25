@@ -8,4 +8,6 @@ export * from "./settings";
 export * from "./stats";
 export * from "./recognizer";
 export * from "./whisper-stdin";
+export * from "./parakeet-sherpa";
+export * from "./speech-engines";
 export * from "./sessions";

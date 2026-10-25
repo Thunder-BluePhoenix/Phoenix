@@ -13,6 +13,8 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.audio.emergencyStop": "Включена аварийная остановка.",
   "capture.audio.recognizerAvailable": "Распознавание речи: доступно. {detail}",
   "capture.audio.recognizerUnavailable": "Распознавание речи: недоступно. {detail}",
+  "capture.audio.onDisk":
+    "Звук на диске: этот движок записывает звук во временный личный файл на время распознавания и сразу стирает его.",
   "capture.mic.unsupported": "Этот браузер не поддерживает микрофон",
   "capture.mic.sampleRate": "Это устройство не может предоставить звук с микрофона 16 kHz",
   "capture.notetaker.settings.title": "Заметки по звонку",

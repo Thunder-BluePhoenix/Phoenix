@@ -10,9 +10,12 @@
 //    first API response, and each window may be absent. Nothing else in that JSON is read.
 //  - Codex: the app-server method `account/rateLimits/read` documents `primary`/`secondary`
 //    `{usedPercent, windowDurationMins, resetsAt (Unix seconds)}` plus `rateLimitResetCredits
-//    .availableCount`. `mapCodexRateLimits` understands that shape, but no hook or status channel
-//    delivers it to Phoenix, and obtaining it means launching `codex app-server`, which Phoenix
-//    does not do. Codex is therefore listed as unsupported (CODEX_UNSUPPORTED).
+//    .availableCount` (schema: openai/codex codex-rs/app-server-protocol/schema/json/v2/
+//    GetAccountRateLimitsResponse.json). `mapCodexRateLimits` understands that shape, but no hook or
+//    status channel delivers it to Phoenix, and obtaining it means launching `codex app-server`,
+//    which the Codex documentation itself calls experimental and unsupported for production
+//    workloads (https://developers.openai.com/codex/app-server) and which Phoenix does not do.
+//    Codex is therefore listed as unsupported (CODEX_UNSUPPORTED).
 //
 // Warnings fire BEFORE the limit, once per window per threshold (`UsageTracker`).
 import { isRecord } from "./guards";
@@ -37,7 +40,7 @@ const MAX_FUTURE_MS = 60 * 86_400_000;
 export const CODEX_UNSUPPORTED = {
   agent: "codex",
   reason:
-    "unsupported: Codex documents rate limits only through its app-server (account/rateLimits/read), which Phoenix does not launch; no hook or status line delivers them",
+    "unsupported: Codex documents rate limits only through its app-server (account/rateLimits/read), whose command the Codex docs call experimental and unsupported for production workloads; Phoenix never launches it in the background, no hook or status line delivers them, and only an explicit `phoenix-agent codex-usage` run reads them (unverified: no real Codex was run)",
 } as const;
 
 export interface UsageSample {

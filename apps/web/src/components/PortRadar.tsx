@@ -7,10 +7,13 @@ import { useAction, useCommandAction } from "../core/hooks";
 import {
   ageParts,
   localhostUrl,
+  phoenixBrowserLink,
   readPortsSnapshot,
   readRestartResult,
   readStopResult,
   usePortsAvailability,
+  windowLinkShell,
+  type PhoenixLinkShell,
   type PortView,
   type PortsSnapshotView,
   type RestartResultView,
@@ -53,11 +56,13 @@ interface Pending {
  * change announcement when the user turned background refresh on); stopping goes through Core's
  * approval prompt every time, and "force stop" is a second, separate request.
  */
-export function PortRadar() {
+export function PortRadar({ linkShell }: { linkShell?: PhoenixLinkShell } = {}) {
   const t = useT();
   const { locale } = useLocale();
   const client = useClient();
   const ids = useId();
+  const [fallbackShell] = useState<PhoenixLinkShell>(() => windowLinkShell());
+  const shell = linkShell ?? fallbackShell;
   const { availability, watching, config } = usePortsAvailability();
   const scan = useCommandAction("ports", "list");
   const stop = useCommandAction("ports", "stop_process");
@@ -251,6 +256,11 @@ export function PortRadar() {
                     {rows.map((row) => {
                       const age = ageParts(row.age_seconds);
                       const url = localhostUrl(row.port, row.reachable);
+                      // Only macOS hands `phoenix://` links to the desktop app (RunEvent::Opened).
+                      const phoenixLink =
+                        snapshot?.platform === "darwin"
+                          ? phoenixBrowserLink(row.port, row.reachable, row.is_core)
+                          : null;
                       return (
                         <tr key={`${row.pid}:${row.port}`}>
                           <td>
@@ -310,6 +320,19 @@ export function PortRadar() {
                                 >
                                   {t("ports.open")}
                                 </a>
+                              )}
+                              {phoenixLink && (
+                                <button
+                                  type="button"
+                                  className="btn"
+                                  aria-label={t("ports.openPhoenix.label", {
+                                    name: row.name,
+                                    port: row.port,
+                                  })}
+                                  onClick={() => shell.open(phoenixLink)}
+                                >
+                                  {t("ports.openPhoenix")}
+                                </button>
                               )}
                               {row.stoppable ? (
                                 <>

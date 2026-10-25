@@ -14,6 +14,8 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.audio.emergencyStop": "Penghentian darurat sedang aktif.",
   "capture.audio.recognizerAvailable": "Pengenal ucapan: tersedia. {detail}",
   "capture.audio.recognizerUnavailable": "Pengenal ucapan: tidak tersedia. {detail}",
+  "capture.audio.onDisk":
+    "Audio di disk: mesin ini menulis audio ke berkas sementara pribadi selama pengenalan dan menghapusnya segera sesudahnya.",
   "capture.mic.unsupported": "Browser ini tidak dapat menggunakan mikrofon",
   "capture.mic.sampleRate": "Perangkat ini tidak dapat menyediakan audio mikrofon 16 kHz",
   "capture.notetaker.settings.title": "Pencatat rapat",

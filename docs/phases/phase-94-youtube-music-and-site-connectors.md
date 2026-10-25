@@ -16,7 +16,7 @@
 ## Tasks
 
 - [ ] YouTube connector: search, play, pause, next, queue through YouTube's official embedded player. Search builds a URL and selects nothing. **No embedded player exists.**
-- [ ] Mini player beside Fawkes, always visible and at least 200 × 200 (YouTube terms); audio never separated from video. The policy requires a 200 × 200 minimum visible viewport, pauses before hiding, and forces a pause if playing while hidden. Simulated. Unticked: no player.
+- [ ] Mini player beside Fawkes, always visible and at least 200 × 200 (YouTube terms); audio never separated from video. The policy requires a 200 × 200 minimum visible viewport, pauses before hiding, and forces a pause if playing while hidden. Simulated. **The player model now exists** (`apps/web/src/core/youtube-player.ts`, tested against a fake IFrame API: id validation, gesture-gated play, size rule, hide-after-pause), but **nothing hosts the iframe**: see the decision in [youtube-music.md](../youtube-music.md#hosting-the-embed-why-it-is-not-wired-decision). Unticked: no player on screen.
 - [ ] Now playing in Fawkes and the media capability (Phase 68); Fawkes dances while it plays. Not built.
 - [ ] Ask by text or voice (Phase 66). Not built.
 - [ ] More connectors: SoundCloud, Bandcamp, Spotify Web. **Policy and search URL only;** no player.
@@ -26,7 +26,8 @@
 
 - `capabilities/youtube-music` (`@phoenix/capability-youtube-music`): visible-player policy, exact-host opt-in connectors, search URL building. Built, 22 tests, simulated evidence only. See [youtube-music.md](../youtube-music.md).
 - `core/runtime/src/music-connectors/service.ts` (`MusicConnectorsService`) and routes `GET /api/music/connectors`, `PUT /api/music/connectors/:site` (`{enabled}`, audited `music_connectors.changed`), `POST /api/music/connectors/:site/search` (`{query}` → `{url}` only for an allowed site, 403 otherwise). Enabled sites are in settings key `music-connectors.enabled` (privacy row `music_connectors`). `core/runtime/package.json` gained the workspace edge `@phoenix/capability-youtube-music`. Test: `core/runtime/test/music-connectors-wiring.test.ts` (5). Settings UI in progress (`MusicSitesSettings.tsx` does not exist yet).
-- Not built: an embedded player and a connector framework with real playback; the `YouTubeMusicConnector` playback side still needs the Phase 93 host.
+- `apps/web/src/core/youtube-player.ts` (`MiniPlayer`, `embedUrl`, `pickResult`, `UserGesture`, `nowPlayingOf`) and `apps/web/test/youtube-player.test.ts` (31, fake IFrame API). The capability now exports `isVideoId` and `MIN_PLAYER_EDGE`. Simulated evidence only.
+- Not built: hosting the iframe (a decision row: remote script and frame cannot go in a Core-served page with the session token, nor in the chrome with its capability, nor under the shell's single global CSP, without weakening isolation or enabling `unstable`), the now-playing event and dance for a webview-hosted player; the `YouTubeMusicConnector` playback side still needs the Phase 93 host.
 
 ## Exit criteria
 

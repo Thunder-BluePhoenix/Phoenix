@@ -5,12 +5,17 @@
 // navigation policy the real shell must (decideNavigation). No webview, window or network exists.
 import { DEFAULT_NAVIGATION_POLICY, decideNavigation } from "../core/browser/navigation";
 import {
+  PurgeError,
   ZOOM_MAX,
   ZOOM_MIN,
   type BrowserIntent,
   type BrowserShell,
   type OpenRequest,
   type OpenResult,
+  type PageActionRequest,
+  type PageActionResult,
+  type PageSnapshotResult,
+  type PurgeResult,
   type TabInfo,
 } from "./shell";
 
@@ -26,6 +31,16 @@ export interface FakeBrowserShell extends BrowserShell {
   emitOpenRequest(url: string): void;
   /** Makes the next call to `command` reject, like an internal shell error. */
   failNext(command: string): void;
+  /** What `purge_profile_data` does for a profile: a result, or `{ error: code }` for a rejection. */
+  purgeOutcome: (profileId: string) => PurgeResult | { error: string };
+  /** While set, purges wait for it (to test that two purge loops never overlap). */
+  purgeGate: Promise<void> | null;
+  /** The most purge calls that were ever in flight at once. */
+  maxConcurrentPurges: number;
+  /** What `page_snapshot` answers (set it per test). */
+  snapshotOutcome: () => PageSnapshotResult | Promise<PageSnapshotResult>;
+  /** What `page_action` answers (set it per test). */
+  actionOutcome: (req: PageActionRequest) => PageActionResult | Promise<PageActionResult>;
 }
 
 export function createFakeBrowserShell(): FakeBrowserShell {
@@ -34,6 +49,7 @@ export function createFakeBrowserShell(): FakeBrowserShell {
   const openListeners = new Set<(request: OpenRequest) => void>();
   const failing = new Set<string>();
   let counter = 0;
+  let inFlight = 0;
 
   const guard = (command: string) => {
     if (failing.delete(command)) throw new Error(`${command} failed`);
@@ -69,8 +85,10 @@ export function createFakeBrowserShell(): FakeBrowserShell {
     calls: [],
     chromeHeights: [],
     siteShields: [],
-    async openTab(url, intent): Promise<OpenResult> {
-      shell.calls.push(["open_tab", url, intent]);
+    async openTab(url, intent, profileId): Promise<OpenResult> {
+      shell.calls.push(
+        profileId === undefined ? ["open_tab", url, intent] : ["open_tab", url, intent, profileId],
+      );
       guard("open_tab");
       const decision = decide(url, intent);
       if (!decision.allow) return { ok: false, reason: decision.reason };
@@ -83,6 +101,7 @@ export function createFakeBrowserShell(): FakeBrowserShell {
         canGoForward: false,
         zoom: 1,
         blocked: 0,
+        profileId: profileId ?? null,
       };
       load(tab, decision.url);
       tab.canGoBack = false;
@@ -144,6 +163,32 @@ export function createFakeBrowserShell(): FakeBrowserShell {
       shell.calls.push(["set_chrome_height", height]);
       shell.chromeHeights.push(height);
     },
+    async pageSnapshot() {
+      shell.calls.push(["page_snapshot"]);
+      guard("page_snapshot");
+      return shell.snapshotOutcome();
+    },
+    async pageAction(req) {
+      shell.calls.push(["page_action", req]);
+      guard("page_action");
+      return shell.actionOutcome(req);
+    },
+    async purgeProfileData(profileId) {
+      shell.calls.push(["purge_profile_data", profileId]);
+      guard("purge_profile_data");
+      inFlight += 1;
+      shell.maxConcurrentPurges = Math.max(shell.maxConcurrentPurges, inFlight);
+      try {
+        if (shell.purgeGate) await shell.purgeGate;
+        const outcome = shell.purgeOutcome(profileId);
+        if ("error" in outcome) throw new PurgeError(outcome.error);
+        for (const tab of shell.tabs.filter((t) => t.profileId === profileId))
+          shell.emitClosed(tab.tabId);
+        return outcome;
+      } finally {
+        inFlight -= 1;
+      }
+    },
     async onTab(listener) {
       tabListeners.add(listener);
       return () => void tabListeners.delete(listener);
@@ -171,6 +216,18 @@ export function createFakeBrowserShell(): FakeBrowserShell {
     failNext(command) {
       failing.add(command);
     },
+    purgeOutcome: () => ({ closedTabs: 0, dataRemoved: true }),
+    purgeGate: null,
+    maxConcurrentPurges: 0,
+    snapshotOutcome: () => ({
+      ok: true,
+      tabId: "t1",
+      url: "https://example.com/",
+      title: "Example",
+      html: "<html></html>",
+      truncated: false,
+    }),
+    actionOutcome: () => ({ ok: true, url: "https://example.com/" }),
   };
   return shell;
 }

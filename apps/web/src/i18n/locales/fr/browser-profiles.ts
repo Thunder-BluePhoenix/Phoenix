@@ -30,7 +30,9 @@ export const browserProfiles: Record<keyof typeof enBrowserProfiles, string> = {
   "browserProfiles.remove.ask":
     "Supprimer « {name} » ? Cela efface ses favoris, son historique, ses extensions et ses identifiants enregistrés, et ne peut pas être annulé.",
   "browserProfiles.remove.done":
-    "Profil supprimé. Ses favoris, son historique, ses extensions et ses identifiants enregistrés ont été effacés. Phoenix Core ne peut pas encore effacer le stockage web isolé nommé {partition}.",
+    "Profil supprimé. Ses favoris, son historique, ses extensions et ses identifiants enregistrés ont été effacés. Ses données web enregistrées (cookies et stockage des sites) sont effacées lorsque la fenêtre du navigateur Phoenix est ouverte, car seule cette fenêtre peut le demander au shell de bureau.",
+  "browserProfiles.purge.pending":
+    "Les données web enregistrées de {count, plural, one {# profil supprimé attendent} other {# profils supprimés attendent}} d’être effacées. Ouvrez le navigateur Phoenix pour terminer.",
   "browserProfiles.devices.heading": "Autres appareils",
   "browserProfiles.devices.check": "Rechercher les profils de mes autres appareils",
   "browserProfiles.devices.none": "Aucun nouveau profil de vos autres appareils.",

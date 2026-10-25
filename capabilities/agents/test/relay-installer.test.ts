@@ -274,7 +274,7 @@ describe("unsupported agents", () => {
   it("are listed with the reason and doc URL and refuse every action", () => {
     const r = rig("claude-code", null);
     const list = r.installer.list();
-    for (const id of ["hermes", "antigravity", "claude-desktop"]) {
+    for (const id of ["hermes", "claude-desktop"]) {
       const entry = list.find((a) => a.id === id)!;
       expect(entry).toMatchObject({ support: "unsupported", state: "unsupported" });
       expect(entry.reason).toMatch(/^unsupported:/);

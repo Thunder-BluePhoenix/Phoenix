@@ -11,6 +11,10 @@
 //   * Audio is never written to disk by Core: PCM lives in Core's memory for the length of one
 //     session, is handed to the speech recogniser in memory, and is zeroed when the session ends
 //     for ANY reason. The recogniser is on this device; there is no cloud speech path.
+//     ONE exception, only when the owner opts in to Parakeet (PHOENIX_SPEECH_ENGINES lists it and
+//     PHOENIX_PARAKEET_MODEL_DIR is set): sherpa-onnx-offline reads only WAV files, so that engine
+//     writes a private (0700 directory, 0600 file) temporary file for the recognition and erases it on
+//     every path. `audio_on_disk` is true exactly while that engine is the active one.
 //   * Optional AI clean-up is local-only by construction (privacy "sensitive", a purpose that is not
 //     in SENSITIVE_CLOUD_PURPOSES) and falls back to the text as recognised.
 //   * Core stores only aggregate counts (day, app id, words, speech ms, sessions). Never text or audio.
@@ -73,9 +77,15 @@ export interface DictationSettingsView {
 export interface DictationStatusView {
   enabled: boolean;
   kill_switch_engaged: boolean;
-  recognizer: { available: boolean; detail: string; engine?: string };
-  /** Always false: audio is held in memory only. */
-  audio_on_disk: false;
+  recognizer: {
+    available: boolean;
+    detail: string;
+    engine?: string;
+    /** The engines the owner opted in to, in order, and which one runs the next session. */
+    engines?: { id: string; available: boolean; active: boolean; detail: string }[];
+  };
+  /** True only while an owner-chosen engine (Parakeet) is the active one: it writes a private temporary WAV file for the recognition and erases it straight after. */
+  audio_on_disk: boolean;
   /** Whether AI clean-up can run now. It is always local-only. */
   cleanup: { available: boolean; detail: string; locality: "local" };
   active: { id: string; phase: "listening" | "recognising" } | null;

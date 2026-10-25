@@ -177,6 +177,7 @@ export function VoiceSettingsSection({
           { detail: status.recognizer.detail },
         )}
       </p>
+      {status.audio_on_disk && <p className="small">{t("capture.audio.onDisk")}</p>}
       {status.kill_switch_engaged && <p role="status">{t("capture.voice.settings.killSwitch")}</p>}
       {status.enabled && !listening && !blocked && (
         <p className="small">

@@ -128,6 +128,7 @@ export function NotetakerSettingsSection() {
           { detail: status.recognizer.detail },
         )}
       </p>
+      {status.audio_on_disk && <p className="small">{t("capture.audio.onDisk")}</p>}
       <p className="muted small">{status.summary.detail}</p>
       {status.kill_switch_engaged && (
         <p role="status">{t("capture.notetaker.settings.killSwitch")}</p>

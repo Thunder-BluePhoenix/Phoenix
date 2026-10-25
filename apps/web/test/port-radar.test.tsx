@@ -9,9 +9,11 @@ import { CoreProvider } from "../src/core/context";
 import {
   ageParts,
   localhostUrl,
+  phoenixBrowserLink,
   readPortsSnapshot,
   readRestartResult,
   readStopResult,
+  type PhoenixLinkShell,
 } from "../src/core/ports";
 import { I18nProvider } from "../src/i18n";
 import { resetActive } from "../src/i18n/store";
@@ -70,6 +72,7 @@ function mount(
     enabled?: boolean;
     over?: Record<string, unknown>;
     routes?: Parameters<typeof fakeApi>[0];
+    linkShell?: PhoenixLinkShell;
   } = {},
 ): Mounted {
   const api = fakeApi({
@@ -94,7 +97,7 @@ function mount(
   render(
     <CoreProvider client={client}>
       <I18nProvider forceLocale="en">
-        <PortRadar />
+        <PortRadar {...(opts.linkShell ? { linkShell: opts.linkShell } : {})} />
       </I18nProvider>
     </CoreProvider>,
   );
@@ -177,7 +180,53 @@ describe("the open link rule", () => {
     const table = await scanNow();
     const links = within(table).getAllByRole("link");
     expect(links.map((l) => l.getAttribute("href"))).toEqual(["http://127.0.0.1:5001/"]);
-    expect(screen.getByText(/does not have a browser of its own yet/)).toBeTruthy();
+    expect(within(table).getAllByRole("button", { name: /in the Phoenix browser/ })).toHaveLength(
+      1,
+    );
+    expect(
+      screen.getByText(/hands the same loopback address to the Phoenix desktop app/),
+    ).toBeTruthy();
+  });
+
+  it("hands a phoenix://browser/open link to the shell, exactly as the Rust parser reads it", async () => {
+    const opened: string[] = [];
+    mount([port({ port: 3000 })], { linkShell: { open: (l) => void opened.push(l) } });
+    const table = await scanNow();
+    fireEvent.click(
+      within(table).getByRole("button", { name: /Open node on port 3000 in the Phoenix browser/ }),
+    );
+    expect(opened).toEqual(["phoenix://browser/open?url=http%3A%2F%2F127.0.0.1%3A3000%2F"]);
+    // Same shape browser_core::radar_link accepts: one `url` parameter, host `browser`, path `/open`.
+    const parsed = new URL(opened[0]!);
+    expect(parsed.host).toBe("browser");
+    expect(parsed.pathname).toBe("/open");
+    expect(parsed.hash).toBe("");
+    expect([...parsed.searchParams.keys()]).toEqual(["url"]);
+    expect(parsed.searchParams.get("url")).toBe("http://127.0.0.1:3000/");
+    // The plain loopback link stays next to it as the fallback.
+    expect(within(table).getByRole("link").getAttribute("href")).toBe("http://127.0.0.1:3000/");
+  });
+
+  it("offers no Phoenix browser button for Core itself, unreachable sockets or non-macOS scans", async () => {
+    mount([port({ port: 4870, pid: 1, is_core: true }), port({ port: 5000, pid: 2, url: null })]);
+    const table = await scanNow();
+    expect(within(table).queryAllByRole("button", { name: /Phoenix browser/ })).toHaveLength(0);
+    cleanup();
+    mount([port()], { over: { platform: "linux" } });
+    const linux = await scanNow();
+    expect(within(linux).queryAllByRole("button", { name: /Phoenix browser/ })).toHaveLength(0);
+    expect(within(linux).getAllByRole("link")).toHaveLength(1);
+  });
+
+  it("builds the link from the port number alone", () => {
+    expect(phoenixBrowserLink(3000, true, false)).toBe(
+      "phoenix://browser/open?url=http%3A%2F%2F127.0.0.1%3A3000%2F",
+    );
+    expect(phoenixBrowserLink(3000, true, true)).toBeNull();
+    expect(phoenixBrowserLink(3000, false, false)).toBeNull();
+    expect(phoenixBrowserLink(0, true, false)).toBeNull();
+    expect(phoenixBrowserLink(65536, true, false)).toBeNull();
+    expect(phoenixBrowserLink(3000.5, true, false)).toBeNull();
   });
 });
 

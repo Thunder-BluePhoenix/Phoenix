@@ -1,0 +1,400 @@
+{
+  "_comment": "Shared by apps/web/test/browser-policy.test.ts (TypeScript policy) and apps/desktop/src-tauri/src/browser_policy.rs (Rust enforcement port). Change a vector here and BOTH suites must still pass.",
+  "classify": {
+    "private": [
+      "127.0.0.1",
+      "127.1",
+      "2130706433",
+      "0x7f.0.0.1",
+      "0177.0.0.1",
+      "10.0.0.5",
+      "172.16.0.1",
+      "172.31.255.255",
+      "192.168.1.1",
+      "169.254.169.254",
+      "100.64.0.1",
+      "0.0.0.0",
+      "[::1]",
+      "[::]",
+      "[::ffff:127.0.0.1]",
+      "[::ffff:7f00:1]",
+      "[fe80::1]",
+      "[fd00::1]",
+      "[64:ff9b::a00:1]",
+      "[2002:c0a8:101::]",
+      "localhost",
+      "foo.localhost",
+      "printer.local",
+      "router",
+      "nas.lan",
+      "localhost.",
+      "1.2.3.4.5",
+      "[1:2:3]",
+      "224.0.0.1",
+      "255.255.255.255",
+      "198.18.0.1",
+      "[ff02::1]",
+      "[2001:db8::1]",
+      "x.internal",
+      "a.b.home.arpa",
+      "0x7f000001",
+      "017700000001",
+      "0300.0250.0.1"
+    ],
+    "public": [
+      "example.com",
+      "8.8.8.8",
+      "172.32.0.1",
+      "172.15.0.1",
+      "100.128.0.1",
+      "[2606:4700::1111]",
+      "a.b.example.org",
+      "1.1.1.1",
+      "localhost.example.com"
+    ],
+    "reasons": {
+      "127.0.0.1": "loopback",
+      "[::1]": "loopback",
+      "10.1.2.3": "private_range",
+      "169.254.169.254": "link_local",
+      "100.64.0.1": "shared_address",
+      "0.0.0.0": "unspecified",
+      "224.0.0.1": "multicast",
+      "240.0.0.1": "reserved",
+      "router": "local_name",
+      "[fe80::1]": "link_local",
+      "[fd00::1]": "private_range",
+      "1.2.3.4.5": "reserved",
+      "[::ffff:7f00:1]": "loopback",
+      "[2002:c0a8:101::]": "private_range"
+    }
+  },
+  "navigation": [
+    {
+      "input": "https://example.com/a?b=1",
+      "expect": { "allow": true, "url": "https://example.com/a?b=1", "upgraded": false }
+    },
+    {
+      "input": "http://example.com:80/x",
+      "expect": { "allow": true, "url": "https://example.com/x", "upgraded": true }
+    },
+    {
+      "input": "http://example.com:8080/x",
+      "expect": { "allow": true, "url": "https://example.com:8080/x", "upgraded": true }
+    },
+    {
+      "input": "http://example.com/",
+      "policy": { "upgradeHttp": false },
+      "expect": { "allow": false, "reason": "insecure_blocked" }
+    },
+    {
+      "input": "http://example.com/",
+      "policy": { "upgradeHttp": false, "allowedSchemes": ["https", "http"] },
+      "expect": { "allow": true, "url": "http://example.com/", "upgraded": false }
+    },
+    {
+      "input": "http://dev.example.org/",
+      "policy": { "insecureAllowedSites": ["example.org"] },
+      "expect": { "allow": true, "url": "http://dev.example.org/", "upgraded": false }
+    },
+    { "input": "file:///etc/passwd", "expect": { "allow": false, "reason": "file_blocked" } },
+    {
+      "input": "FILE:///C:/Windows/win.ini",
+      "expect": { "allow": false, "reason": "file_blocked" }
+    },
+    { "input": "file://server/share/x", "expect": { "allow": false, "reason": "file_blocked" } },
+    {
+      "input": "file:///etc/passwd",
+      "policy": { "allowedSchemes": ["https", "file"] },
+      "expect": { "allow": false, "reason": "file_blocked" }
+    },
+    {
+      "input": "javascript:alert(1)",
+      "policy": { "allowedSchemes": ["https", "javascript"] },
+      "expect": { "allow": false, "reason": "dangerous_scheme" }
+    },
+    {
+      "input": "data:text/html,x",
+      "policy": { "allowedSchemes": ["https", "data"] },
+      "expect": { "allow": false, "reason": "dangerous_scheme" }
+    },
+    {
+      "input": "blob:https://example.com/x",
+      "expect": { "allow": false, "reason": "dangerous_scheme" }
+    },
+    { "input": "tauri://localhost/", "expect": { "allow": false, "reason": "dangerous_scheme" } },
+    { "input": "ipc://localhost/x", "expect": { "allow": false, "reason": "dangerous_scheme" } },
+    { "input": "asset://localhost/x", "expect": { "allow": false, "reason": "dangerous_scheme" } },
+    { "input": "about:blank", "expect": { "allow": false, "reason": "dangerous_scheme" } },
+    {
+      "input": "view-source:https://example.com/",
+      "expect": { "allow": false, "reason": "dangerous_scheme" }
+    },
+    {
+      "input": "  JavaScript:alert(1)",
+      "expect": { "allow": false, "reason": "dangerous_scheme" }
+    },
+    { "input": "ftp://example.com/", "expect": { "allow": false, "reason": "scheme_not_allowed" } },
+    { "input": "mailto:a@b.co", "expect": { "allow": false, "reason": "scheme_not_allowed" } },
+    { "input": "ws://example.com/", "expect": { "allow": false, "reason": "scheme_not_allowed" } },
+    { "input": "chrome://settings", "expect": { "allow": false, "reason": "scheme_not_allowed" } },
+    {
+      "input": "https://user:pass@example.com/",
+      "expect": { "allow": false, "reason": "credentials_in_url" }
+    },
+    {
+      "input": "https://user@example.com/",
+      "expect": { "allow": false, "reason": "credentials_in_url" }
+    },
+    {
+      "input": "https://:pass@example.com/",
+      "expect": { "allow": false, "reason": "credentials_in_url" }
+    },
+    {
+      "input": "https://example.com@evil.test/",
+      "expect": { "allow": false, "reason": "credentials_in_url" }
+    },
+    {
+      "input": "https://%75ser:%70ass@example.com/",
+      "expect": { "allow": false, "reason": "credentials_in_url" }
+    },
+    {
+      "input": "https://example.com/user@evil.test",
+      "expect": { "allow": true, "url": "https://example.com/user@evil.test", "upgraded": false }
+    },
+    {
+      "input": "phoenix-app://u:p@x/",
+      "policy": { "allowedSchemes": ["https", "phoenix-app"] },
+      "expect": { "allow": false, "reason": "credentials_in_url" }
+    },
+    {
+      "input": "phoenix-app://x/",
+      "policy": { "allowedSchemes": ["https", "phoenix-app"] },
+      "expect": { "allow": true, "url": "phoenix-app://x/", "upgraded": false }
+    },
+    { "input": "", "expect": { "allow": false, "reason": "unparseable" } },
+    { "input": "not a url", "expect": { "allow": false, "reason": "unparseable" } },
+    { "input": "https://", "expect": { "allow": false, "reason": "unparseable" } },
+    { "input": "//example.com", "expect": { "allow": false, "reason": "unparseable" } },
+    {
+      "input": "http://localhost:4870/",
+      "intent": "link",
+      "expect": { "allow": false, "reason": "private_network", "privateReason": "local_name" }
+    },
+    {
+      "input": "https://127.0.0.1/",
+      "intent": "redirect",
+      "expect": { "allow": false, "reason": "private_network", "privateReason": "loopback" }
+    },
+    {
+      "input": "http://192.168.0.1/",
+      "intent": "subresource",
+      "expect": { "allow": false, "reason": "private_network", "privateReason": "private_range" }
+    },
+    {
+      "input": "http://[::1]/",
+      "intent": "new_window",
+      "expect": { "allow": false, "reason": "private_network", "privateReason": "loopback" }
+    },
+    {
+      "input": "http://2130706433/",
+      "intent": "link",
+      "expect": { "allow": false, "reason": "private_network", "privateReason": "loopback" }
+    },
+    {
+      "input": "http://0x7f000001/",
+      "intent": "link",
+      "expect": { "allow": false, "reason": "private_network", "privateReason": "loopback" }
+    },
+    {
+      "input": "http://169.254.169.254/latest/meta-data/",
+      "intent": "link",
+      "expect": { "allow": false, "reason": "private_network", "privateReason": "link_local" }
+    },
+    {
+      "input": "https://printer.local/",
+      "intent": "link",
+      "expect": { "allow": false, "reason": "private_network", "privateReason": "local_name" }
+    },
+    {
+      "input": "http://localhost:3000/",
+      "intent": "typed",
+      "expect": { "allow": false, "reason": "private_network", "privateReason": "local_name" }
+    },
+    {
+      "input": "http://localhost:3000/",
+      "intent": "typed",
+      "policy": { "privateNetworkAllowedSites": ["localhost"] },
+      "expect": { "allow": true, "url": "http://localhost:3000/", "upgraded": false }
+    },
+    {
+      "input": "http://localhost:3000/",
+      "intent": "link",
+      "policy": { "privateNetworkAllowedSites": ["localhost"] },
+      "expect": { "allow": false, "reason": "private_network", "privateReason": "local_name" }
+    },
+    {
+      "input": "http://192.168.1.1/",
+      "intent": "typed",
+      "policy": { "privateNetworkAllowedSites": ["localhost"] },
+      "expect": { "allow": false, "reason": "private_network", "privateReason": "private_range" }
+    },
+    {
+      "input": "http://10.1.2.3/",
+      "expect": { "allow": false, "reason": "private_network", "privateReason": "private_range" }
+    },
+    { "input": "https://example.com:22/", "expect": { "allow": false, "reason": "bad_port" } },
+    { "input": "https://example.com:6667/", "expect": { "allow": false, "reason": "bad_port" } },
+    {
+      "input": "https://example.com:8443/",
+      "expect": { "allow": true, "url": "https://example.com:8443/", "upgraded": false }
+    },
+    {
+      "input": "https://evil.test/",
+      "policy": { "deniedSites": ["evil.test"] },
+      "expect": { "allow": false, "reason": "site_denied" }
+    },
+    {
+      "input": "https://a.b.evil.test/",
+      "policy": { "deniedSites": ["evil.test"] },
+      "expect": { "allow": false, "reason": "site_denied" }
+    },
+    {
+      "input": "https://notevil.test/",
+      "policy": { "deniedSites": ["evil.test"] },
+      "expect": { "allow": true, "url": "https://notevil.test/", "upgraded": false }
+    },
+    {
+      "input": "https://evil.test.example.com/",
+      "policy": { "deniedSites": ["evil.test"] },
+      "expect": { "allow": true, "url": "https://evil.test.example.com/", "upgraded": false }
+    }
+  ],
+  "permissions": [
+    {
+      "name": "default deny",
+      "grants": [],
+      "ask": { "kind": "microphone", "top": "https://example.com", "frame": "https://example.com" },
+      "expect": { "verdict": "deny", "reason": "default_deny" }
+    },
+    {
+      "name": "unknown kind",
+      "grants": [],
+      "ask": { "kind": "teleport", "top": "https://example.com", "frame": "https://example.com" },
+      "expect": { "verdict": "deny", "reason": "unknown_kind" }
+    },
+    {
+      "name": "grant without gesture is ignored",
+      "grants": [{ "origin": "https://example.com", "kind": "camera", "gesture": false }],
+      "ask": { "kind": "camera", "top": "https://example.com", "frame": "https://example.com" },
+      "expect": { "verdict": "deny", "reason": "default_deny" }
+    },
+    {
+      "name": "granted pair",
+      "grants": [{ "origin": "https://example.com", "kind": "microphone", "gesture": true }],
+      "ask": { "kind": "microphone", "top": "https://example.com", "frame": "https://example.com" },
+      "expect": { "verdict": "allow", "reason": "granted" }
+    },
+    {
+      "name": "other kind stays denied",
+      "grants": [{ "origin": "https://example.com", "kind": "microphone", "gesture": true }],
+      "ask": { "kind": "camera", "top": "https://example.com", "frame": "https://example.com" },
+      "expect": { "verdict": "deny", "reason": "default_deny" }
+    },
+    {
+      "name": "subdomain does not inherit",
+      "grants": [{ "origin": "https://example.com", "kind": "microphone", "gesture": true }],
+      "ask": {
+        "kind": "microphone",
+        "top": "https://www.example.com",
+        "frame": "https://www.example.com"
+      },
+      "expect": { "verdict": "deny", "reason": "default_deny" }
+    },
+    {
+      "name": "third-party frame never inherits",
+      "grants": [{ "origin": "https://example.com", "kind": "microphone", "gesture": true }],
+      "ask": { "kind": "microphone", "top": "https://example.com", "frame": "https://ads.test" },
+      "expect": { "verdict": "deny", "reason": "cross_origin_frame" }
+    },
+    {
+      "name": "display-capture never",
+      "grants": [{ "origin": "https://example.com", "kind": "display-capture", "gesture": true }],
+      "ask": {
+        "kind": "display-capture",
+        "top": "https://example.com",
+        "frame": "https://example.com"
+      },
+      "expect": { "verdict": "deny", "reason": "never_grantable" }
+    },
+    {
+      "name": "file-system-access never",
+      "grants": [
+        { "origin": "https://example.com", "kind": "file-system-access", "gesture": true }
+      ],
+      "ask": {
+        "kind": "file-system-access",
+        "top": "https://example.com",
+        "frame": "https://example.com"
+      },
+      "expect": { "verdict": "deny", "reason": "never_grantable" }
+    },
+    {
+      "name": "clipboard-read never",
+      "grants": [{ "origin": "https://example.com", "kind": "clipboard-read", "gesture": true }],
+      "ask": {
+        "kind": "clipboard-read",
+        "top": "https://example.com",
+        "frame": "https://example.com"
+      },
+      "expect": { "verdict": "deny", "reason": "never_grantable" }
+    },
+    {
+      "name": "automatic-downloads never",
+      "grants": [
+        { "origin": "https://example.com", "kind": "automatic-downloads", "gesture": true }
+      ],
+      "ask": {
+        "kind": "automatic-downloads",
+        "top": "https://example.com",
+        "frame": "https://example.com"
+      },
+      "expect": { "verdict": "deny", "reason": "never_grantable" }
+    },
+    {
+      "name": "insecure origin",
+      "grants": [{ "origin": "http://example.com", "kind": "camera", "gesture": true }],
+      "ask": { "kind": "camera", "top": "http://example.com", "frame": "http://example.com" },
+      "expect": { "verdict": "deny", "reason": "insecure_origin" }
+    },
+    {
+      "name": "private origin",
+      "grants": [{ "origin": "https://localhost", "kind": "camera", "gesture": true }],
+      "ask": { "kind": "camera", "top": "https://localhost", "frame": "https://localhost" },
+      "expect": { "verdict": "deny", "reason": "private_origin" }
+    },
+    {
+      "name": "private ip origin",
+      "grants": [{ "origin": "https://192.168.0.2", "kind": "camera", "gesture": true }],
+      "ask": { "kind": "camera", "top": "https://192.168.0.2", "frame": "https://192.168.0.2" },
+      "expect": { "verdict": "deny", "reason": "private_origin" }
+    },
+    {
+      "name": "garbage origin",
+      "grants": [],
+      "ask": { "kind": "camera", "top": "garbage", "frame": "garbage" },
+      "expect": { "verdict": "deny", "reason": "insecure_origin" }
+    }
+  ],
+  "registrable": [
+    ["example.com", "example.com"],
+    ["www.example.com", "example.com"],
+    ["a.b.example.co.uk", "example.co.uk"],
+    ["foo.github.io", "foo.github.io"],
+    ["x.foo.github.io", "foo.github.io"],
+    ["127.0.0.1", "127.0.0.1"],
+    ["[::1]", "[::1]"],
+    ["router", "router"],
+    ["EXAMPLE.com.", "example.com"]
+  ]
+}

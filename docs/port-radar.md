@@ -170,8 +170,12 @@ spawner (plus two real-seam tests that start nothing).
 
 `PortRadar` shows **Open in browser** only for a socket that a connection to `127.0.0.1` reaches: a wildcard bind (`*`, `0.0.0.0`, `::`) or exactly `127.0.0.1` (not `127.0.0.2` or another `127.x` address, not `::1`-only, not a single LAN address). The link is built in the web code from the port **number** alone: `http://127.0.0.1:<port>/`, `target=_blank`
 with `rel=noopener noreferrer`. Nothing a process, project name or Core says can change the address. It is a plain link the browser
-or Tauri shell opens in the system default browser (no new desktop open-url path was added). **Phoenix has no browser of its own
-yet (Phase 93)**, and the UI says so.
+or Tauri shell opens in the system default browser. **Open in Phoenix browser** (macOS scans only, not for Core's own port) is a second button: it navigates the page to
+`phoenix://browser/open?url=<percent-encoded http://127.0.0.1:<port>/>`, which the desktop shell's URL handler
+(`lib::open_links`, `browser_core::radar_link`) turns into a confirmation panel in the Phoenix browser (see
+[mini-browser.md](mini-browser.md#phase-80-opening-a-radar-server-in-the-phoenix-browser)). There is no Tauri command for it. It was
+tested against a fake link shell only; whether the operating system routes the link to the running app was never seen. The
+plain link stays as the fallback (and the only link in a browser or on Windows and Linux).
 
 ## Polling
 

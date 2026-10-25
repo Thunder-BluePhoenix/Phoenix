@@ -41,6 +41,9 @@ const trustedKeyFile = process.env.PHOENIX_REGISTRY_TRUSTED_KEY_FILE;
 const indexFile = process.env.PHOENIX_REGISTRY_INDEX_FILE;
 const artifactDirectory = process.env.PHOENIX_REGISTRY_ARTIFACT_DIR;
 const whisperModelPath = process.env.PHOENIX_WHISPER_MODEL_PATH;
+// Owner opt-in speech engines. Parakeet's model location comes from the environment only.
+const parakeetModelDir = process.env.PHOENIX_PARAKEET_MODEL_DIR;
+const speechEngines = process.env.PHOENIX_SPEECH_ENGINES;
 const visionModel = process.env.PHOENIX_VISION_MODEL;
 if (
   ![trustedKeyFile, indexFile, artifactDirectory].every(Boolean) &&
@@ -86,6 +89,8 @@ try {
       : {}),
     ...(extensionSignerRegistry ? { extensionSignerRegistry } : {}),
     ...(whisperModelPath ? { whisperModelPath } : {}),
+    ...(parakeetModelDir ? { parakeetModelDir } : {}),
+    ...(speechEngines ? { speechEngines } : {}),
     ...(visionModel ? { visionModel } : {}),
     capabilities: builtinCapabilities(
       config.env,

@@ -13,6 +13,8 @@
 // totals. It NEVER fails the agent: it always
 // exits 0 within about 2 seconds, even when Core is down. Stdout is the single line `{}`: valid,
 // empty JSON for every agent whose docs say hook stdout is parsed as JSON (it means "no decision").
+// The one exception is `--reply <name>`, a fixed table (HOOK_REPLIES) for an event whose documentation
+// REQUIRES a field in the output; it never carries anything from the payload.
 import { parseArgs } from "node:util";
 import { APPROVAL_AGENT_PATTERN } from "./approval-map";
 import { isRecord } from "./guards";
@@ -21,6 +23,22 @@ import { sendLive } from "./live-send";
 import { sendReport } from "./send";
 
 export const HOOK_DEADLINE_MS = 2_000;
+
+/**
+ * Fixed stdout lines for events whose docs require a field. Google Antigravity's `Stop` hook lists
+ * `decision` as REQUIRED and says only `"continue"` keeps the agent running, "any other value allows
+ * the stop" (https://antigravity.google/docs/hooks), so Phoenix prints a value that is not `"continue"`.
+ */
+export const HOOK_REPLIES: Readonly<Record<string, string>> = {
+  "antigravity-stop": '{"decision":"stop"}',
+};
+
+/** The stdout line for the arguments: a named reply from the table, otherwise `{}`. */
+export function hookReply(argv: readonly string[]): string {
+  const at = argv.indexOf("--reply");
+  const name = at >= 0 ? argv[at + 1] : undefined;
+  return name !== undefined && Object.hasOwn(HOOK_REPLIES, name) ? HOOK_REPLIES[name]! : "{}";
+}
 const MAX_STDIN = 1_000_000;
 
 async function readStdin(): Promise<string> {
@@ -45,7 +63,7 @@ export async function runAgentHook(
   try {
     const { values } = parseArgs({
       args: [...argv],
-      options: { agent: { type: "string" }, event: { type: "string" } },
+      options: { agent: { type: "string" }, event: { type: "string" }, reply: { type: "string" } },
     });
     let payload: unknown = null;
     try {
@@ -95,6 +113,6 @@ if (
     .catch(() => {})
     .finally(() => {
       clearTimeout(deadline);
-      process.stdout.write("{}\n", () => process.exit(0));
+      process.stdout.write(hookReply(process.argv.slice(2)) + "\n", () => process.exit(0));
     });
 }

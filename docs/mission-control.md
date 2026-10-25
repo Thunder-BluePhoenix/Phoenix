@@ -73,8 +73,8 @@ field, any value that fails the validation below, or a missing session id sends 
 agent slug comes from `--agent`, the project is the folder name of `cwd`, the request carries the
 session token to a loopback Core only, and no prompt or other payload text is copied. **Not
 observed:** Codex's own hook payload shape for tokens or cost is not established anywhere in the
-repository, so none of it is read; Codex reports usage only if a wrapper puts `phoenix_usage` into
-the hook input. Tested with a fake Core (`capabilities/agents/test/usage-hook.test.ts`); no real
+repository, so none of it is read; Codex reports usage through the hook only if a wrapper puts `phoenix_usage` into
+the hook input. Separately, `phoenix-agent codex-usage` (Phase 58, `codex-usage.ts`) reads the plan windows (not tokens or cost) once from `codex app-server`'s documented `account/rateLimits/read`; never run against a real Codex. Tested with a fake Core (`capabilities/agents/test/usage-hook.test.ts`); no real
 Codex was run.
 
 All numbers are **running totals for the session**, not increments. Core stores the difference since

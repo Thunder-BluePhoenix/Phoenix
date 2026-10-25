@@ -50,4 +50,15 @@ export const browser: Record<keyof typeof enBrowser, string> = {
   "browser.radar.open": "খুলুন",
   "browser.radar.cancel": "বাতিল",
   "browser.error.action": "ব্রাউজার এটি করতে পারেনি।",
+  "browser.profile.label": "নতুন ট্যাব খুলবে",
+  "browser.profile.private": "ব্যক্তিগত (কিছুই সংরক্ষিত হয় না)",
+  "browser.tab.profile": "প্রোফাইল: {name}",
+  "browser.deny.profile_invalid": "এই প্রোফাইলটি বৈধ নয়, তাই কিছু খোলা হয়নি।",
+  "browser.deny.profile_unsupported": "ব্রাউজারের এই সংস্করণে সংরক্ষিত প্রোফাইল পাওয়া যায় না।",
+  "browser.deny.profile_busy":
+    "এই প্রোফাইল মুছে ফেলা হচ্ছে বা ব্যস্ত আছে। একটু পরে আবার চেষ্টা করুন।",
+  "browser.deny.profile_failed": "প্রোফাইলের ওয়েব স্টোরেজ খোলা যায়নি।",
+  "browser.purge.running": "সরানো একটি প্রোফাইলের সংরক্ষিত ওয়েব ডেটা মুছে ফেলা হচ্ছে…",
+  "browser.purge.failed":
+    "সরানো একটি প্রোফাইলের সংরক্ষিত ওয়েব ডেটা এখনও মোছা যায়নি। Phoenix আবার চেষ্টা করবে।",
 };

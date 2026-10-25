@@ -9,6 +9,8 @@ import { useClient } from "./context";
 
 export const PROFILES_PATH = "/api/browser/profiles";
 export const PULL_PATH = "/api/browser/sync/pull";
+/** Removed profiles whose saved web data the Phoenix browser window has not deleted yet. */
+export const PURGES_PATH = "/api/browser/profile-purges";
 export const MUSIC_PATH = "/api/music/connectors";
 
 export interface BrowserProfile {

@@ -77,7 +77,9 @@ const bodies = (api: FakeApi, method: string, path: string) =>
 
 function profileRoutes(over: Routes = {}): Routes {
   let profiles = [{ ...WORK }];
+  let pending: string[] = [];
   return {
+    "GET /api/browser/profile-purges": () => ({ pending }),
     "GET /api/browser/profiles": () => ({ profiles }),
     "POST /api/browser/profiles": (body) => {
       const created = { ...WORK, id: "prof_new", name: String(field(body, "name")) };
@@ -90,7 +92,12 @@ function profileRoutes(over: Routes = {}): Routes {
     },
     "DELETE /api/browser/profiles/prof_work": () => {
       profiles = [];
-      return { removed: true, purge_partition: "persist:phoenix-work" };
+      pending = ["prof_work"];
+      return {
+        removed: true,
+        purge_partition: "persist:phoenix-work",
+        purge: { profile_id: "prof_work", status: "pending" },
+      };
     },
     "GET /api/browser/profiles/prof_work/extensions": () => ({ extensions: [EXTENSION] }),
     ...over,
@@ -128,7 +135,7 @@ describe("browser profiles card", () => {
     expect(box.checked).toBe(true);
   });
 
-  it("removes only after a confirm step, then says the web storage was not cleared", async () => {
+  it("removes only after a confirm step, then says the web data is deleted when the browser window opens", async () => {
     const api = await mount(<BrowserProfilesSection />, profileRoutes());
     await click(card("Work").getByRole("button", { name: "Remove profile" }));
     expect(api.calls.some((c) => c.method === "DELETE")).toBe(false);
@@ -141,8 +148,35 @@ describe("browser profiles card", () => {
     await click(card("Work").getByRole("button", { name: "Confirm" }));
     expect(api.calls.filter((c) => c.method === "DELETE")).toHaveLength(1);
     expect(screen.queryByRole("heading", { name: "Work" })).toBeNull();
-    const note = screen.getByRole("status", { name: "" }).textContent ?? "";
-    expect(note).toContain("persist:phoenix-work cannot be cleared by Phoenix Core yet");
+    const note = screen.getByText(/Profile removed\./).textContent ?? "";
+    expect(note).toContain("deleted when the Phoenix browser window is open");
+    expect(note).not.toContain("persist:phoenix-work");
+    expect(note).not.toContain("cannot be cleared by Phoenix Core yet");
+    // Honest and persistent: the saved web data is still waiting for the browser window.
+    expect(
+      screen.getByText(/Saved web data of 1 removed profile is waiting/).textContent,
+    ).toContain("Open the Phoenix browser to finish.");
+  });
+
+  it("shows a persistent pending line from Core on load, and nothing extra when Core has none or cannot answer", async () => {
+    await mount(
+      <BrowserProfilesSection />,
+      profileRoutes({ "GET /api/browser/profile-purges": () => ({ pending: ["a", "b"] }) }),
+    );
+    expect(screen.getByText(/Saved web data of 2 removed profiles are waiting/)).toBeTruthy();
+    cleanup();
+    await mount(
+      <BrowserProfilesSection />,
+      profileRoutes({ "GET /api/browser/profile-purges": () => ({ pending: [] }) }),
+    );
+    expect(screen.queryByText(/waiting to be deleted/)).toBeNull();
+    cleanup();
+    await mount(
+      <BrowserProfilesSection />,
+      profileRoutes({ "GET /api/browser/profile-purges": unavailable }),
+    );
+    expect(screen.queryByText(/waiting to be deleted/)).toBeNull();
+    expect(screen.getByRole("heading", { name: "Work" })).toBeTruthy();
   });
 
   it("imports exactly { html } and shows the counts", async () => {

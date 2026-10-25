@@ -206,7 +206,7 @@ export class DictationRuntime implements DictationApi {
       enabled: this.load().enabled,
       kill_switch_engaged: killSwitchEngaged,
       recognizer,
-      audio_on_disk: false,
+      audio_on_disk: recognizer.audio_on_disk === true,
       cleanup: {
         available: ai && !killSwitchEngaged,
         locality: "local",

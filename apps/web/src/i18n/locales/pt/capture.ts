@@ -14,6 +14,8 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.audio.emergencyStop": "A parada de emergência está ativada.",
   "capture.audio.recognizerAvailable": "Reconhecedor de fala: disponível. {detail}",
   "capture.audio.recognizerUnavailable": "Reconhecedor de fala: indisponível. {detail}",
+  "capture.audio.onDisk":
+    "Áudio no disco: este motor grava o áudio num ficheiro temporário privado durante o reconhecimento e apaga-o logo a seguir.",
   "capture.mic.unsupported": "Este navegador não pode usar um microfone",
   "capture.mic.sampleRate": "Este dispositivo não consegue fornecer áudio de microfone a 16 kHz",
   "capture.notetaker.settings.title": "Anotador",

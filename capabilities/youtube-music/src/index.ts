@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 
+/** YouTube's rule: the visible video viewport is never smaller than this on either edge (CSS px). */
+export const MIN_PLAYER_EDGE = 200;
+
+/** An 11-character YouTube video id. The only thing Phoenix ever puts in an embed address. */
+export const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
+
+export function isVideoId(value: unknown): value is string {
+  return typeof value === "string" && VIDEO_ID_PATTERN.test(value);
+}
+
 /** The browser owns all webviews, navigation, playback and network access. This module never fetches. */
 export type Site = "youtube" | "soundcloud" | "bandcamp" | "spotify-web";
 
@@ -227,7 +237,7 @@ export class YouTubeMusicConnector {
 
   private isVisible(): boolean {
     const view = this.host.viewport();
-    return view.visible && view.width >= 200 && view.height >= 200;
+    return view.visible && view.width >= MIN_PLAYER_EDGE && view.height >= MIN_PLAYER_EDGE;
   }
 
   private requireVisible(): void {
@@ -237,7 +247,7 @@ export class YouTubeMusicConnector {
 }
 
 function validateSelection(selection: MediaSelection): void {
-  if (!/^[A-Za-z0-9_-]{11}$/.test(selection.videoId)) throw new Error("Invalid YouTube video ID");
+  if (!isVideoId(selection.videoId)) throw new Error("Invalid YouTube video ID");
   if (selection.title !== undefined && (selection.title.length > 300 || !selection.title.trim()))
     throw new Error("Invalid title");
   if (selection.artist !== undefined && (selection.artist.length > 300 || !selection.artist.trim()))

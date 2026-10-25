@@ -31,7 +31,9 @@ export const browserProfiles: Record<keyof typeof enBrowserProfiles, string> = {
   "browserProfiles.remove.ask":
     "¿Eliminar «{name}»? Se borrarán sus marcadores, historial, extensiones y credenciales guardadas, y no se puede deshacer.",
   "browserProfiles.remove.done":
-    "Perfil eliminado. Se borraron sus marcadores, historial, extensiones y credenciales guardadas. Phoenix Core aún no puede borrar el almacenamiento web aislado llamado {partition}.",
+    "Perfil eliminado. Se borraron sus marcadores, historial, extensiones y credenciales guardadas. Sus datos web guardados (cookies y almacenamiento de sitios) se borran cuando la ventana del navegador de Phoenix está abierta, porque solo esa ventana puede pedírselo al shell de escritorio.",
+  "browserProfiles.purge.pending":
+    "Los datos web guardados de {count, plural, one {# perfil eliminado están} other {# perfiles eliminados están}} pendientes de borrar. Abre el navegador de Phoenix para terminar.",
   "browserProfiles.devices.heading": "Otros dispositivos",
   "browserProfiles.devices.check": "Buscar perfiles de mis otros dispositivos",
   "browserProfiles.devices.none": "No hay perfiles nuevos de tus otros dispositivos.",

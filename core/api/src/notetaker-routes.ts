@@ -59,7 +59,13 @@ import type { CoreServices } from "./services";
 export interface NotetakerStatusView {
   enabled: boolean;
   kill_switch_engaged: boolean;
-  recognizer: { available: boolean; detail: string; engine?: string };
+  recognizer: {
+    available: boolean;
+    detail: string;
+    engine?: string;
+    /** The engines the owner opted in to, in order, and which one runs the next session. */
+    engines?: { id: string; available: boolean; active: boolean; detail: string }[];
+  };
   /**
    * Whether a person-bound confirmation surface exists. Without one every start is refused with
    * 403 CONSENT_CHANNEL_UNAVAILABLE: the session token (all a browser or script has) proves no one
@@ -67,8 +73,8 @@ export interface NotetakerStatusView {
    */
   consent_channel:
     { available: true; detail: string } | { available: false; code: string; detail: string };
-  /** Always false: audio is held in memory only. */
-  audio_on_disk: false;
+  /** True only while an owner-chosen engine (Parakeet) is the active one: it writes a private temporary WAV file for the recognition and erases it straight after. */
+  audio_on_disk: boolean;
   /** Summaries use a model on this device only. */
   summary: { available: boolean; locality: "local"; detail: string };
   /** Which audio the sources of this build capture. */

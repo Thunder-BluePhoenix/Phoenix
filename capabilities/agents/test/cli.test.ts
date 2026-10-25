@@ -112,7 +112,7 @@ describe("claude-hook.ts against a real Core", () => {
     await vi.waitFor(() => expect(c.state()).toMatchObject({ state: "ERROR", source: "agents" }));
     expect(agentEvents(c)).toContain("agent.failed");
     const text = JSON.stringify(c.runtime.events.recent({ limit: 50 }));
-    expect(text).not.toMatch(/rate_limit|Rate limit|429/);
+    expect(text).not.toMatch(/rate_limit|Rate limit|Too Many Requests|API Error/);
   });
 
   it("the full session: started → working → waiting → working → completed → ended", async () => {

@@ -5,7 +5,7 @@
 | Stage | Stage 15 — Phoenix browser |
 | Release target | Post-v2.0 track |
 | Priority | High |
-| Status | 🟨 Only a TypeScript policy engine exists (80 tests). **No browser exists:** no webview, tabs, address bar or `MiniBrowser.tsx`, and no Rust or Tauri change. It was reviewed again after the Phases 86-96 wiring and not wired: a policy running in page JavaScript would protect nothing, so enforcement must be in Rust. Neither exit criterion is met |
+| Status | 🟨 Built, exit criteria not met. A Rust browser host exists (chrome window, one content window per tab, policy port, DNS check, downloads, permissions, macOS content rule list) and is unit-tested against the same vectors as the TypeScript policy; **nothing was ever run on a real display or webview**. Neither exit criterion is met |
 | Depends on | [Phase 14 — Floating Desktop Fawkes](phase-14-floating-desktop-fawkes.md) |
 | Unblocks | [Phase 94 — YouTube Music & Site Connectors](phase-94-youtube-music-and-site-connectors.md), [Phase 95 — Fawkes Browsing Assistant](phase-95-fawkes-browsing-assistant.md), [Phase 96 — Browser Profiles, Sync & Extensions](phase-96-browser-profiles-sync-extensions.md) |
 
@@ -15,47 +15,50 @@ A small, private browser that belongs to Fawkes.
 
 ## Tasks
 
-- [ ] Window in apps/desktop on the system webview (WKWebView / WebView2 / WebKitGTK): tabs, address bar, back/forward, reload, find, zoom. **Not built.** No webview, tabs, address bar or `MiniBrowser.tsx`.
-- [ ] Separate profile, never the user's main browser cookies; private windows. Only an in-memory profile model exists in the policy engine. No browser uses it.
-- [ ] Ad and tracker blocking from EasyList/EasyPrivacy (WebKit content rules on macOS, request filtering elsewhere), per-site toggle, blocked count. An adblock-syntax subset matcher with a **small starter list (not EasyList)** is built, and so are the user-triggered filter-list updater in Core (EasyList and EasyPrivacy, off until downloaded and switched on), a per-site off-list, a global switch, a per-site blocked counter and a Settings card ([filter-lists.md](../filter-lists.md)). None of it blocks anything in a real page: there is no browser window, so the blocked count is always 0 outside tests, and cosmetic rules are ignored.
-- [ ] HTTPS upgrade, third-party cookies off, no telemetry. The http → https upgrade is in the navigation policy; permissions are default-deny. Nothing enforces this in a real browser.
-- [ ] Downloads ask first and go to a chosen folder. Not built.
+- [ ] Window in apps/desktop on the system webview (WKWebView / WebView2 / WebKitGTK): tabs, address bar, back/forward, reload, find, zoom. **Built, never seen.** `src-tauri/src/browser.rs` creates the chrome window (`phoenix-browser`) and one content window per tab (`phoenix-browser-tab-N`) and has the commands open/close/activate/navigate/back/forward/reload/zoom; the chrome page (`apps/web/src/browser/`) is another agent's. **Find in page is not built.** Two aligned windows were chosen over `add_child` (which needs tauri's `unstable` feature); alignment, child-window behaviour per OS and focus were never observed.
+- [ ] Separate profile, never the user's main browser cookies; private windows. Content webviews are `incognito(true)` with no data directory and no initialization script. Whether the engine leaves nothing on disk was never checked; on Linux the incognito behaviour of WebKitGTK was not examined.
+- [ ] Ad and tracker blocking from EasyList/EasyPrivacy (WebKit content rules on macOS, request filtering elsewhere), per-site toggle, blocked count. **macOS:** the enabled lists Core stores are translated to a WKContentRuleList (150,000-rule limit handled by a deterministic, reported truncation) and attached before the first page loads; WebKit was never asked to compile the real lists, and nothing was measured on a page. **Windows and Linux: not built** (tabs open without request blocking and `shields_status` says so). **The blocked count is always 0**: no webview reports it. Cosmetic filtering is not implemented.
+- [ ] HTTPS upgrade, third-party cookies off, no telemetry. The HTTPS upgrade is built as cancel plus navigate (tested at the verdict level only). **Third-party cookies off is unmet** (no Tauri setting). Permissions are default-deny and answer `Deny`, never `Default`.
+- [ ] Downloads ask first and go to a chosen folder. Built: a download is refused unless the URL passes the policy and the person picks a folder in a native dialog (macOS `NSOpenPanel`, Windows `SHBrowseForFolderW`, GTK `FileChooserDialog`); never shown.
 - [ ] Fawkes in the corner of every tab (state, approvals). Not built.
-- [ ] Document what fingerprinting protection each webview can and cannot do. Not done.
+- [ ] Document what fingerprinting protection each webview can and cannot do. Partly: [mini-browser.md](../mini-browser.md) records the API surface; Phoenix adds none and nothing was measured.
 
 ## Deliverables
 
-- `apps/web/src/core/browser`: navigation policy, adblock matcher with a starter list, default-deny permissions, in-memory profile. Built as TypeScript only; simulated evidence. See [mini-browser.md](../mini-browser.md), which lists the Rust, Cargo and capability changes still to be made.
-- `core/runtime/src/filter-lists/`, `apps/web/src/core/browser/shields.ts`, `apps/web/src/components/ShieldsSettings.tsx`: the filter-list updater (one GET per press of Update, pinned hosts), stored lists, shields settings and counts. Tests never contact easylist.to. See [filter-lists.md](../filter-lists.md).
-- Not built: the browser window, applying a list to any real page, cosmetic filtering, scheduled list refresh.
-- `apps/web/src/browser/`, `apps/web/browser.html` (Vite entry `browser`), `apps/web/test/browser-chrome.test.tsx`: the browser **chrome page** (tab strip, address bar with `classifyAddress`, back/forward/reload, zoom, per-site Shields toggle and blocked count, confirmation panel before a port-radar loopback open) behind one typed bridge, `shell.ts`, with a fake shell for tests. 25 tests against the fake shell; **nothing ran in a real window or webview**, and the content webviews and enforcement are the Rust side's job. See [mini-browser.md](../mini-browser.md#chrome-ui-appswebsrcbrowser-vite-entry-browser).
+- `apps/web/src/core/browser`: navigation policy, adblock matcher with a starter list, default-deny permissions, in-memory profile (TypeScript; the specification). `apps/web/test/fixtures/browser-policy-vectors.json` is read by both `browser-policy.test.ts` and the Rust tests.
+- `apps/desktop/src-tauri/src/browser_policy.rs`, `browser_rules.rs`, `browser_core.rs`, `browser_native.rs`, `browser.rs`, `capabilities/browser.json`, the `permissions/autogenerated/*` entries and `build.rs` command list: the Rust host. See [mini-browser.md](../mini-browser.md) for exactly what each does.
+- `core/runtime/src/filter-lists/`, `apps/web/src/core/browser/shields.ts`, `apps/web/src/components/ShieldsSettings.tsx`: the filter-list updater, stored lists, shields settings. Tests never contact easylist.to. See [filter-lists.md](../filter-lists.md).
+- Cargo: `url` (already in the lockfile, now a direct dependency); on macOS `objc2-web-kit` and `block2` direct (both already in the lockfile) and more `objc2-app-kit`/`objc2-foundation` features; on Windows the `Win32_UI_Shell`, `Win32_UI_Shell_Common` and `Win32_System_Com` features of `windows`. No new crate entered the lockfile; `THIRD_PARTY_NOTICES.md --check` passes.
+- Not built: Windows and Linux request blocking, find in page, third-party cookie blocking, a permission prompt (so no permission is ever granted), the blocked count, Fawkes in the tab corner, a Public Suffix List, audit-log or gateway routing of browser side effects.
 
 ## Exit criteria
 
-- [ ] Browsing works on macOS; blocking measured on a test page. **Unmet.** There is no browser.
-- [ ] Browser data is separate from the main browser. **Unmet.** No browser stores any data; only an in-memory profile model exists.
+- [ ] Browsing works on macOS; blocking measured on a test page. **Unmet.** The host is built and unit-tested; no tab was ever shown and nothing was measured.
+- [ ] Browser data is separate from the main browser. **Unmet.** Built as incognito with no data directory; never checked on a real webview.
 
 ## Implementation notes
 
 ### What was built
 
-- **Navigation policy:** `file:` and internal schemes refused; credentials in a URL refused; private-network targets refused, including obfuscated IPv4 and IPv4-in-IPv6, except a typed URL to an explicitly listed site; bad ports refused; http upgraded to https.
-- **Adblock matcher:** a subset of adblock syntax with a small starter list (not EasyList), now regex-free and capped so a hostile list cannot make it slow.
-- **Filter-list updater, shields, blocked count:** built as Core routes, settings and pure TypeScript; honest simulation with a loopback fake list server in tests. Nothing is downloaded automatically and nothing is blocked in a real page.
-- **Permissions:** default-deny. **Profile:** in memory only.
-- 80 tests. Documentation: [mini-browser.md](../mini-browser.md).
+- **Rust port of the policy** (`decide_navigation`, `classify_host`, `registrable_domain`, `SitePermissions`) tested against the SAME JSON vectors as the TypeScript. Differences: `dns_private`/`dns_failed` denials, and a resolved-address classifier.
+- **DNS on the resolved address** for every allowed navigation to a name (every answer must be public; fail closed). The connect-time gap (the webview resolves again) is documented, not closed.
+- **Hooks:** `on_navigation` (HTTPS upgrade by cancel plus navigate), `on_new_window` (always Deny, permitted targets reopened as rate-limited tabs), `on_download` (refused until a Phoenix dialog picks a folder), `on_permission_request` (Allow only for a granted pair, otherwise Deny).
+- **Commands**, every one refusing any window but `phoenix-browser`, and `capabilities/browser.json` granting only that window; a test reads the capability files, `tauri.conf.json` and `lib.rs`.
+- **macOS content rules** and the 150,000-rule truncation with its report; fixed rules that block private-network subresources and Phoenix Core's port for every page.
+- **Phase 80:** `phoenix://browser/open?url=…` records a request and asks the chrome page to confirm; only that confirmation opens a tab, once ([mini-browser.md](../mini-browser.md#phase-80-opening-a-radar-server-in-the-phoenix-browser)). Port Radar's page does not emit the link yet.
+- Tests: 84 TypeScript policy tests (4 over the shared fixture); in `src-tauri`, `browser_policy` 8, `browser_rules` 13, `browser_core` 8, `browser` 17 (host logic and capability files), and two new lifecycle tests (23 in all) that drive every command through the mock runtime.
 
 ### Deviations
 
-- The phase asked for a browser window; only the policy engine exists. EasyList/EasyPrivacy are not bundled: they can be downloaded by the user through the updater, and no browser window applies them. Cosmetic filtering is not implemented.
+- Two top-level windows rather than one window with several webviews (no `unstable` feature). Linux and Windows get no request blocking. No Public Suffix List. `TabInfo.blocked` is a constant 0. Nothing grants a permission yet.
 
 ### What was not built
 
-The webview, tabs, address bar, `MiniBrowser.tsx`, any Rust or Tauri change, downloads, native blocking. **DNS rebinding cannot be handled in TypeScript** and needs Rust enforcement. The blocked count is always 0 outside tests; the filter-list updater downloads lists but nothing applies them to a page.
+Windows and Linux request blocking, find in page, third-party cookie blocking, permission prompts, the blocked count, Fawkes in the tab corner, gateway/audit routing, closing the DNS time-of-check gap.
 
 ### What was not run
 
-Any browsing. [mini-browser.md](../mini-browser.md) lists the Rust, Cargo and capability changes that must be made. Open items are in the [gap register](../gaps.md).
+Everything that needs a display: any window, webview, dialog or page; WebKit compiling the rule list; a real remote page trying to invoke a command; Windows and Linux builds of the new files (the Windows folder dialog was type-checked in a scratch crate; the GTK one and the Windows/Linux cfg paths of `browser.rs` were only reasoned). Open items are in the [gap register](../gaps.md).
 
 ## Notes & risks
 

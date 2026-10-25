@@ -52,4 +52,16 @@ export const browser: Record<keyof typeof enBrowser, string> = {
   "browser.radar.open": "L'ouvrir",
   "browser.radar.cancel": "Annuler",
   "browser.error.action": "Le navigateur n'a pas pu effectuer cette action.",
+  "browser.profile.label": "Les nouveaux onglets s’ouvrent dans",
+  "browser.profile.private": "Privé (rien n’est enregistré)",
+  "browser.tab.profile": "Profil : {name}",
+  "browser.deny.profile_invalid": "Ce profil n’est pas valide, rien n’a donc été ouvert.",
+  "browser.deny.profile_unsupported":
+    "Les profils enregistrés ne sont pas disponibles dans cette version du navigateur.",
+  "browser.deny.profile_busy":
+    "Ce profil est en cours de suppression ou occupé. Réessayez dans un instant.",
+  "browser.deny.profile_failed": "Le stockage web du profil n’a pas pu être ouvert.",
+  "browser.purge.running": "Suppression des données web enregistrées d’un profil supprimé…",
+  "browser.purge.failed":
+    "Les données web enregistrées d’un profil supprimé n’ont pas encore pu être effacées. Phoenix réessaiera.",
 };

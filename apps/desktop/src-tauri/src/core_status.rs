@@ -193,6 +193,19 @@ pub fn call(
     path: &str,
     read_timeout: Duration,
 ) -> Result<(u16, String), CallError> {
+    call_capped(base_url, token, method, path, read_timeout, MAX_RESPONSE)
+}
+
+/// [`call`] with a caller-chosen response cap, for the one route whose answer is large (a stored
+/// filter list is up to 8 MiB of text; see `browser_shields`).
+pub fn call_capped(
+    base_url: &str,
+    token: Option<&str>,
+    method: Method,
+    path: &str,
+    read_timeout: Duration,
+    max_response: u64,
+) -> Result<(u16, String), CallError> {
     let token = token.ok_or(CallError::NoToken)?;
     let addr = base_url
         .strip_prefix("http://")
@@ -212,7 +225,7 @@ pub fn call(
         .write_all(request.as_bytes())
         .map_err(|_| CallError::Unanswered)?;
     let mut raw = Vec::new();
-    if stream.take(MAX_RESPONSE).read_to_end(&mut raw).is_err() && raw.is_empty() {
+    if stream.take(max_response).read_to_end(&mut raw).is_err() && raw.is_empty() {
         return Err(CallError::Unanswered);
     }
     parse_response(&raw).ok_or(CallError::Unanswered)

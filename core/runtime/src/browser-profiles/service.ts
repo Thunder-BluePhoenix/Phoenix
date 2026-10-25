@@ -4,11 +4,12 @@
 // Core's owner of Phase 96 browser profiles. It binds the manager to what Core already has: the
 // settings store, the OS secret store, the Phase 45 encrypted sync, and the permission gateway.
 //
-// What this does not do: there is no browser engine in this build, so nothing here opens a page,
-// holds cookies or runs an extension. `partition` is only a name the future webview must use,
-// and removing a profile can delete Phoenix's own record of it but cannot clear a webview store
-// that does not exist yet (the reply says so). Extension code is stored as data and never runs.
-// Credentials are write-only through the API: nothing returns a stored value.
+// What this does not do: Core itself opens no page, holds no cookies and runs no extension.
+// `partition` is only a name the host webview may use; the Rust shell keys its per-profile web
+// store by profile id. Removing a profile deletes Phoenix's own record and queues the profile id
+// for the browser window to purge (see `remove`); Core cannot clear a webview store itself.
+// Extension code is stored as data and Core never runs it. It is only handed (after `authorize`)
+// to the host that runs it. Credentials are write-only through the API: nothing returns a stored value.
 import type { AuditLog, PermissionGateway } from "@phoenix/permissions";
 import type { SecretStore, SettingsStore } from "@phoenix/persistence";
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
@@ -17,11 +18,13 @@ import {
   BrowserProfileManager,
   ProfileError,
   type BrowserProfile,
+  type ContentScriptGrant,
   type EncryptedProfileSync,
   type ExtensionPermission,
   type ExtensionView,
   type SyncItemView,
 } from "./index";
+import { ProfilePurgeQueue, validPurgeId } from "./purges";
 import {
   MAX_SIGNER_REGISTRY_BYTES,
   pinnedSigners,
@@ -78,6 +81,15 @@ function summary(profile: BrowserProfile, extensions: number): ProfileSummary {
   };
 }
 
+/**
+ * The list, install and approval replies never carry a script's text: it is data that only
+ * `contentScriptsFor` may hand to the host, after `authorize`.
+ */
+function withoutScript(extension: ExtensionView): ExtensionView {
+  const { contentScript: _script, ...manifest } = extension.manifest;
+  return { ...extension, manifest };
+}
+
 /** Maps the manager's refusals onto API errors; anything unexpected stays a fault. */
 function translated<T>(run: () => T): T {
   try {
@@ -99,8 +111,10 @@ function rethrow(error: unknown): never {
 export class BrowserProfilesService {
   private readonly manager: BrowserProfileManager | undefined;
   private readonly signerRegistry: SignerRegistry | undefined;
+  private readonly purges: ProfilePurgeQueue;
 
   constructor(private readonly d: BrowserProfilesDependencies) {
+    this.purges = new ProfilePurgeQueue(d.settings);
     // Credentials need the OS secret store; without one the whole feature stays out of reach
     // rather than falling back to storing them anywhere else.
     this.signerRegistry = d.signerRegistry
@@ -190,7 +204,18 @@ export class BrowserProfilesService {
     return summary(profile, 0);
   }
 
-  async remove(id: string): Promise<{ removed: true; purge_partition: string }> {
+  /**
+   * Removing a profile deletes Phoenix's record of it. Its saved web data lives in the host's
+   * webview store, which Core cannot reach and the Settings page cannot ask for, so the id goes on
+   * the durable pending-purge queue. The Phoenix browser window reads it, asks the shell to delete
+   * that profile's web data, and acknowledges. Until then the status is `pending`, and it stays
+   * pending if that window is never opened.
+   */
+  async remove(id: string): Promise<{
+    removed: true;
+    purge_partition: string;
+    purge: { profile_id: string; status: "pending" };
+  }> {
     const manager = this.need();
     const partition = this.get(id).partition;
     try {
@@ -198,9 +223,25 @@ export class BrowserProfilesService {
     } catch (error) {
       rethrow(error);
     }
+    this.purges.add(id);
     this.note("remove", { profile: id });
-    // The webview that would hold this partition does not exist yet; the caller must purge it.
-    return { removed: true, purge_partition: partition };
+    return {
+      removed: true,
+      purge_partition: partition,
+      purge: { profile_id: id, status: "pending" },
+    };
+  }
+
+  /** Removed profiles whose web data the browser window has not yet confirmed deleted. */
+  pendingPurges(): string[] {
+    return this.purges.list();
+  }
+
+  /** The browser window's acknowledgement. Idempotent; an invalid id is a bad request. */
+  purgeDone(id: string): string[] {
+    if (!validPurgeId(id)) throw new PhoenixError(ErrorCode.INVALID_REQUEST, "Not a profile id");
+    this.purges.done(id);
+    return this.purges.list();
   }
 
   setSync(id: string, input: unknown): ProfileSummary {
@@ -281,6 +322,10 @@ export class BrowserProfilesService {
   }
 
   adopt(id: string, input: unknown): ProfileSummary {
+    // A profile id whose saved web data is still waiting to be deleted must not come back, or the
+    // new profile would inherit (and the pending purge would later destroy) that data.
+    if (this.purges.has(id))
+      throw new PhoenixError(ErrorCode.INVALID_REQUEST, "Profile web data is still being deleted");
     const revision = field(input, "revision");
     const profile = translated(() => this.need().adopt(id, revision as string));
     this.note("adopt", { profile: id });
@@ -290,13 +335,13 @@ export class BrowserProfilesService {
   // ── Extensions ────────────────────────────────────────────────────────────
 
   extensions(id: string): ExtensionView[] {
-    return translated(() => this.need().extensions(id));
+    return translated(() => this.need().extensions(id)).map(withoutScript);
   }
 
   install(id: string, input: unknown): ExtensionView {
     const installed = translated(() => this.need().install(id, input as never));
     this.note("extension_install", { profile: id, extension: installed.manifest.id });
-    return installed;
+    return withoutScript(installed);
   }
 
   /**
@@ -325,13 +370,13 @@ export class BrowserProfilesService {
       translated(() => manager.approve(id, extensionId, false));
       this.note("extension_unapproved", { profile: id, extension: extensionId });
     }
-    return manager.extensions(id);
+    return manager.extensions(id).map(withoutScript);
   }
 
   uninstall(id: string, extensionId: string): ExtensionView[] {
     translated(() => this.need().uninstall(id, extensionId));
     this.note("extension_uninstall", { profile: id, extension: extensionId });
-    return this.need().extensions(id);
+    return this.need().extensions(id).map(withoutScript);
   }
 
   /**
@@ -345,6 +390,23 @@ export class BrowserProfilesService {
     origin: string,
   ): Promise<boolean> {
     return this.need().authorize(id, extensionId, permission, origin);
+  }
+
+  /**
+   * What the host shell may inject into one page of one profile: the approved extensions' content
+   * scripts for exactly this https origin, each only after `authorize` said yes (which asks the
+   * permission gateway and so audits). Any failure rejects the whole call; there is no partial
+   * list. At most eight scripts. Script text is never logged or audited here.
+   */
+  async contentScriptsFor(
+    profileId: string,
+    origin: string,
+  ): Promise<{ scripts: ContentScriptGrant[] }> {
+    try {
+      return { scripts: await this.need().contentScripts(profileId, origin) };
+    } catch (error) {
+      return rethrow(error);
+    }
   }
 
   /** The gateway decides every extension operation, and its audit row is the record of it. */

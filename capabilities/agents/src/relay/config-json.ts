@@ -225,3 +225,81 @@ export function removeHooks(doc: JsonObject, shape: HookShape): boolean {
 export function isSkeleton(doc: JsonObject, skeleton: JsonObject): boolean {
   return sameJson(doc, skeleton);
 }
+
+/**
+ * The "named" layout (Google Antigravity, https://antigravity.google/docs/hooks): `hooks.json` maps a
+ * hook NAME to `{enabled?, <Event>: [...]}`, there is no top-level `hooks` object. Phoenix owns one
+ * name; its events are merged with the same rules as above (the user's own handlers inside that name,
+ * and every other name, are kept in place). Some events list handlers directly (`flat`) and some list
+ * `{matcher, hooks}` groups (`grouped`), so each event has its own shape.
+ */
+export interface NamedLayout {
+  /** The hook name Phoenix owns. */
+  key: string;
+  shapes: Readonly<Record<string, HookShape>>;
+}
+
+function namedEntry(doc: JsonObject, key: string, create: boolean): JsonObject | null {
+  const entry = doc[key];
+  if (entry === undefined) {
+    if (!create) return null;
+    const made: JsonObject = {};
+    doc[key] = made;
+    return made;
+  }
+  if (!isRecord(entry)) {
+    throw new InstallError("invalid_file", `The "${key}" hook is not an object.`);
+  }
+  return entry;
+}
+
+/** Event names Phoenix's named hook is missing or has changed (what repair would write). */
+export function staleNamed(
+  doc: JsonObject,
+  layout: NamedLayout,
+  events: Readonly<Record<string, readonly unknown[]>>,
+): string[] {
+  const entry = isRecord(doc[layout.key]) ? (doc[layout.key] as JsonObject) : {};
+  return Object.entries(events)
+    .filter(([event, desired]) => {
+      const list = Array.isArray(entry[event]) ? (entry[event] as unknown[]) : null;
+      return list === null || !sameJson(wantedList(list, desired, layout.shapes[event]!), list);
+    })
+    .map(([event]) => event);
+}
+
+/** Adds or refreshes Phoenix's events under its own hook name. Returns whether anything changed. */
+export function upsertNamed(
+  doc: JsonObject,
+  layout: NamedLayout,
+  events: Readonly<Record<string, readonly unknown[]>>,
+): boolean {
+  let changed = false;
+  for (const [event, desired] of Object.entries(events)) {
+    const entry = namedEntry(doc, layout.key, true)!;
+    const current = eventList(entry, event);
+    const next = wantedList(current, desired, layout.shapes[event]!);
+    if (current === null || !sameJson(next, current)) {
+      entry[event] = next;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+/** Removes only Phoenix's handlers; the name goes when nothing but `enabled` is left of it. */
+export function removeNamed(doc: JsonObject, layout: NamedLayout): boolean {
+  const entry = namedEntry(doc, layout.key, false);
+  if (!entry) return false;
+  let changed = false;
+  for (const [event, shape] of Object.entries(layout.shapes)) {
+    const list = eventList(entry, event);
+    if (!list || !list.some((e) => hasPhoenix(e, shape))) continue;
+    const kept = list.map((e) => stripPhoenix(e, shape)).filter((e) => e !== null);
+    changed = true;
+    if (kept.length === 0) delete entry[event];
+    else entry[event] = kept;
+  }
+  if (changed && Object.keys(entry).every((k) => k === "enabled")) delete doc[layout.key];
+  return changed;
+}

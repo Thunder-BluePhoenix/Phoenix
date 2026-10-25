@@ -27,7 +27,9 @@ export const browserProfiles: Record<keyof typeof enBrowserProfiles, string> = {
   "browserProfiles.remove.ask":
     "删除“{name}”？这将删除其书签、历史记录、扩展和已保存的凭据，且无法撤销。",
   "browserProfiles.remove.done":
-    "配置文件已删除。其书签、历史记录、扩展和已保存的凭据已被删除。名为 {partition} 的独立网页存储目前无法由 Phoenix Core 清除。",
+    "配置文件已删除。其书签、历史记录、扩展和已保存的凭据已被删除。其已保存的网页数据（Cookie 和网站存储）会在 Phoenix 浏览器窗口打开时删除，因为只有该窗口可以请求桌面外壳删除它们。",
+  "browserProfiles.purge.pending":
+    "已移除的 {count} 个配置文件的已保存网页数据正等待删除。请打开 Phoenix 浏览器以完成。",
   "browserProfiles.devices.heading": "其他设备",
   "browserProfiles.devices.check": "检查来自我其他设备的配置文件",
   "browserProfiles.devices.none": "没有来自你其他设备的新配置文件。",

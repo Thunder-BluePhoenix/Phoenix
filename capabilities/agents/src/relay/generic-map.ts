@@ -26,6 +26,8 @@ export const EVENT_STATES: Readonly<Record<string, AgentState>> = {
   UserPromptSubmit: "working",
   userPromptSubmitted: "working",
   BeforeAgent: "working",
+  // Google Antigravity (https://antigravity.google/docs/hooks): `PreInvocation` fires before each model call.
+  PreInvocation: "working",
   PostToolUse: "working",
   postToolUse: "working",
   afterShellExecution: "working",
@@ -70,12 +72,25 @@ function workspace(
   cwd: string,
 ): string {
   const roots = Array.isArray(p.workspace_roots) ? p.workspace_roots : [];
-  return text(p.cwd) ?? text(roots[0]) ?? text(env.PHOENIX_AGENT_WORKSPACE) ?? cwd;
+  // Antigravity sends `workspacePaths` (array of absolute paths); Cursor `workspace_roots`.
+  const paths = Array.isArray(p.workspacePaths) ? p.workspacePaths : [];
+  return (
+    text(p.cwd) ?? text(roots[0]) ?? text(paths[0]) ?? text(env.PHOENIX_AGENT_WORKSPACE) ?? cwd
+  );
 }
 
-/** A failed or aborted end of turn is "failed"; the agents say so in `status`/`stop_reason`. */
+/**
+ * A failed or aborted end of turn is "failed"; the agents say so in `status`/`stop_reason`. Antigravity's
+ * `Stop` says `terminationReason` ("model_stop", "max_steps_exceeded", "error") and `fullyIdle`: `false`
+ * means background work is still running, so the agent is not finished yet.
+ */
 function finishedState(p: Record<string, unknown>, state: AgentState): AgentState {
   if (state !== "completed") return state;
+  if (typeof p.terminationReason === "string") {
+    if (p.terminationReason === "error" || text(p.error)) return "failed";
+    if (p.fullyIdle === false) return "working";
+    return state;
+  }
   return p.status === "error" || p.stopReason === "error" || p.stop_reason === "error"
     ? "failed"
     : state;

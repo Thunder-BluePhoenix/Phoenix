@@ -6,6 +6,7 @@
 //                        [--task <title>] [--reason permission|input|idle]
 //   phoenix-agent claude-hooks [--task-from-prompt] [--no-approvals] [--no-guard] [--approval-timeout-ms <ms>]
 //   phoenix-agent codex-hooks [--no-guard] [--approval-timeout-ms <ms>]
+//   phoenix-agent codex-usage                                         (Phase 58; launches `codex app-server` once, see codex-usage.ts)
 //   phoenix-agent status | install|repair|uninstall <agent> [--yes] | self-test   (Phase 57, relay-cli.ts)
 //
 // `report` tells Phoenix what a coding agent is doing, for tools without a
@@ -17,6 +18,8 @@ import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { CODEX_AGENT, codexHooksConfig } from "./approval-codex";
+import { codexUsageBody, readCodexRateLimits, type AppServerLauncher } from "./codex-usage";
+import { sendLive } from "./live-send";
 import { APPROVAL_TIMEOUT, isApprovalTimeout } from "./approval-map";
 import { CLAUDE_AGENT, claudeHooksConfig } from "./claude";
 import { AGENT_STATES, WAIT_REASONS, validateReport } from "./report";
@@ -30,13 +33,44 @@ const USAGE = `Usage:
                        print the hooks for ~/.claude/settings.json (observe-only + approvals + secret guard)
   phoenix-agent codex-hooks [--no-guard] [--approval-timeout-ms <ms>]
                        print the PermissionRequest and secret guard hooks for ~/.codex/hooks.json
+  phoenix-agent codex-usage
+                       ask \`codex app-server\` once (read-only account/rateLimits/read) and send the plan windows to Phoenix
 ${RELAY_USAGE}`;
 
 const ROOT = resolve(import.meta.dirname, "../../..");
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 
-export async function run(argv: string[]): Promise<number> {
+export async function run(
+  argv: string[],
+  seams: { codexAppServer?: AppServerLauncher } = {},
+): Promise<number> {
   const [sub, ...rest] = argv;
+  if (sub === "codex-usage") {
+    if (rest.length > 0) {
+      process.stderr.write(`phoenix-agent codex-usage takes no arguments\n${USAGE}\n`);
+      return 2;
+    }
+    const read = await readCodexRateLimits(seams.codexAppServer);
+    if (!read.ok) {
+      process.stderr.write(`phoenix-agent codex-usage: ${read.message}\n`);
+      return 1;
+    }
+    if (read.samples.length === 0) {
+      process.stderr.write(
+        "phoenix-agent codex-usage: Codex reported no 5-hour or weekly plan window (nothing sent)\n",
+      );
+      return 1;
+    }
+    const sent = await sendLive("usage", codexUsageBody(read.samples));
+    if (!sent.ok) {
+      process.stderr.write(`phoenix-agent codex-usage: not reported (${sent.message})\n`);
+      return 1;
+    }
+    process.stdout.write(
+      read.samples.map((x) => `${x.window}: ${x.used_pct}% used, resets ${x.resets_at}\n`).join(""),
+    );
+    return 0;
+  }
   if (sub !== undefined && (RELAY_COMMANDS as readonly string[]).includes(sub)) {
     return runRelayCommand(sub, rest, {
       out: (text) => void process.stdout.write(text),

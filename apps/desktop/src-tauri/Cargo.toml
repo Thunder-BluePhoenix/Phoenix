@@ -19,14 +19,29 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 parking_lot = "0.12"
+# Phase 93: the browser policy port parses URLs with the same WHATWG parser tauri/wry use (already in the lockfile).
+url = "2"
 
 # Island window styling on macOS: window level above the menu bar, all Spaces, and notch
 # detection through NSScreen (safe-area inset + auxiliary areas). Same versions tauri/tao
 # already pull in, so no new crate enters the lockfile.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSScreen", "NSWindow", "NSResponder", "NSPasteboard", "NSAlert", "NSApplication", "NSButton"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSString", "NSArray"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSScreen", "NSWindow", "NSResponder", "NSPasteboard", "NSAlert", "NSApplication", "NSButton", "NSOpenPanel", "NSSavePanel", "NSPanel", "NSWindow"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSString", "NSArray", "NSURL", "NSError", "NSObject", "NSProcessInfo"] }
+# Phase 93: WKContentRuleList (ad/tracker blocking) on the content webviews. Same versions wry
+# already pulls in; only the features below are added.
+objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "block2", "WKContentRuleList", "WKContentRuleListStore", "WKUserContentController", "WKWebView", "WKWebViewConfiguration"] }
+block2 = "0.6"
+# Phase 65: system-audio capture adapter (ScreenCaptureKit, audio only). Five new lockfile entries
+# (objc2-screen-capture-kit, objc2-core-media, objc2-core-audio-types and, pulled in by core-media's
+# own defaults, objc2-core-audio and objc2-core-video), all from the objc2 0.3 family tauri/wry
+# already use, all Zlib OR Apache-2.0 OR MIT. Justification: docs/phases/phase-65-botless-notetaker.md.
+objc2-screen-capture-kit = { version = "0.3", default-features = false, features = ["std", "SCStream", "SCShareableContent", "block2", "dispatch2", "objc2-core-media"] }
+objc2-core-media = { version = "0.3", default-features = false, features = ["std", "CMSampleBuffer", "CMFormatDescription", "CMBlockBuffer", "CMTime", "objc2-core-audio-types"] }
+objc2-core-audio-types = { version = "0.3", default-features = false, features = ["std", "CoreAudioBaseTypes"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std"] }
+dispatch2 = { version = "0.3", default-features = false, features = ["std", "objc2"] }
 core-graphics = "0.25"
 core-foundation = "0.10"
 
@@ -40,7 +55,7 @@ x11-dl = "2.21"
 
 # Island window on Windows: extended window styles (no activation, tool window, topmost).
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_Threading", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_UI_Input_KeyboardAndMouse"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_Threading", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_System_Com"] }
 
 [dev-dependencies]
 tempfile = "3"

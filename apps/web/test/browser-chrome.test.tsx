@@ -30,9 +30,37 @@ async function flush(): Promise<void> {
   for (let i = 0; i < 10; i++) await act(async () => Promise.resolve());
 }
 
-async function mount(shell: FakeBrowserShell | null, initialOpen: string | null = null) {
+/** A manual stand-in for the purge interval: nothing runs until `fire()`. */
+class Ticker {
+  intervals: number[] = [];
+  stopped = 0;
+  private readonly runs: (() => void)[] = [];
+
+  schedule = (run: () => void, ms: number) => {
+    this.runs.push(run);
+    this.intervals.push(ms);
+    return () => {
+      this.stopped += 1;
+      this.runs.splice(this.runs.indexOf(run), 1);
+    };
+  };
+
+  /** Runs the scheduled purge check once, like the interval firing. */
+  async fire(): Promise<void> {
+    this.runs.forEach((run) => run());
+    await flush();
+  }
+}
+
+async function mount(
+  shell: FakeBrowserShell | null,
+  initialOpen: string | null = null,
+  routes: Parameters<typeof fakeApi>[0] = {},
+  clock = new Ticker(),
+) {
   const api = fakeApi({
     "GET /api/browser/shields": () => ({ shields: { enabled: true, offSites: [] } }),
+    ...routes,
   });
   const client = new PhoenixClient({
     token: "tok",
@@ -40,13 +68,13 @@ async function mount(shell: FakeBrowserShell | null, initialOpen: string | null 
     WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
     fetchImpl: api.fetchImpl,
   });
-  render(
+  const view = render(
     <CoreProvider client={client}>
-      <BrowserApp shell={shell} initialOpen={initialOpen} />
+      <BrowserApp shell={shell} initialOpen={initialOpen} schedule={clock.schedule} />
     </CoreProvider>,
   );
   await flush();
-  return api;
+  return Object.assign(api, { clock, unmount: view.unmount });
 }
 
 const address = () => screen.getByLabelText("Address or search") as HTMLInputElement;
@@ -71,6 +99,7 @@ const tab = (over: Partial<TabInfo> = {}): TabInfo => ({
   canGoForward: false,
   zoom: 1,
   blocked: 0,
+  profileId: null,
   ...over,
 });
 
@@ -242,6 +271,54 @@ describe("shell payloads", () => {
       ["set_chrome_height", { height: 220 }],
     ]);
     expect(tauriBrowserShell({} as Window)).toBeNull();
+  });
+
+  it("accepts a missing or null profileId as a private tab and rejects any other non-string", () => {
+    const { profileId: _drop, ...without } = tab();
+    expect(parseTab(without)!.profileId).toBeNull();
+    expect(parseTab({ ...tab(), profileId: null })!.profileId).toBeNull();
+    expect(parseTab({ ...tab(), profileId: "prof_work" })!.profileId).toBe("prof_work");
+    for (const bad of [5, true, {}, [], "x".repeat(81)])
+      expect(parseTab({ ...tab(), profileId: bad })).toBeNull();
+  });
+
+  it("sends profileId to open_tab only when set, and parses purge_profile_data strictly", async () => {
+    const calls: [string, Record<string, unknown> | undefined][] = [];
+    let purge: unknown = { closedTabs: 2, dataRemoved: true };
+    const invoke = async (command: string, args?: Record<string, unknown>) => {
+      calls.push([command, args]);
+      if (command === "open_tab") return { ok: true, tab: tab({ profileId: "prof_work" }) };
+      if (command === "purge_profile_data") {
+        if (purge instanceof Error) throw purge;
+        return purge;
+      }
+      return undefined;
+    };
+    const win = {
+      __TAURI__: { core: { invoke }, event: { listen: async () => () => {} } },
+    } as unknown as Window;
+    const shell = tauriBrowserShell(win)!;
+    await shell.openTab("https://example.com/", "typed");
+    await shell.openTab("https://example.com/", "typed", "prof_work");
+    expect(calls).toStrictEqual([
+      ["open_tab", { url: "https://example.com/", intent: "typed" }],
+      ["open_tab", { url: "https://example.com/", intent: "typed", profileId: "prof_work" }],
+    ]);
+    expect(await shell.purgeProfileData("prof_work")).toEqual({ closedTabs: 2, dataRemoved: true });
+    expect(calls.at(-1)).toEqual(["purge_profile_data", { profileId: "prof_work" }]);
+    for (const bad of [null, "ok", { closedTabs: -1, dataRemoved: true }, { closedTabs: 1 }]) {
+      purge = bad;
+      await expect(shell.purgeProfileData("prof_work")).rejects.toMatchObject({
+        code: "purge_failed",
+      });
+    }
+    // A rejection carries the shell's closed code through; anything without one is purge_failed.
+    purge = Object.assign(new Error("a tab is loading"), { code: "busy" });
+    await expect(shell.purgeProfileData("prof_work")).rejects.toMatchObject({ code: "busy" });
+    purge = new Error("boom");
+    await expect(shell.purgeProfileData("prof_work")).rejects.toMatchObject({
+      code: "purge_failed",
+    });
   });
 });
 
@@ -452,5 +529,170 @@ describe("BrowserApp", () => {
     await mount(null);
     expect(address().disabled).toBe(true);
     expect(screen.getByText(/only works inside the Phoenix desktop app/)).toBeTruthy();
+  });
+});
+
+const PROFILES = {
+  "GET /api/browser/profiles": () => ({
+    profiles: [
+      { id: "prof_work", name: "Work <b>bold</b>" },
+      { id: "private", name: "Impostor" },
+    ],
+  }),
+};
+const picker = () => screen.getByLabelText("New tabs open in") as HTMLSelectElement;
+
+describe("BrowserApp profile picker", () => {
+  it("defaults to private, opens with no profile id, and shows only private if Core has no list", async () => {
+    const shell = createFakeBrowserShell();
+    await mount(shell, null, PROFILES);
+    expect(picker().value).toBe("private");
+    expect(
+      within(picker())
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual([
+      "Private (nothing is saved)",
+      "Work <b>bold</b>", // the reserved id "private" from Core is never offered as a profile
+    ]);
+    await type("example.com");
+    expect(shell.calls[0]).toEqual(["open_tab", "https://example.com/", "typed"]);
+    expect(shell.tabs[0]!.profileId).toBeNull();
+    cleanup();
+
+    const offline = createFakeBrowserShell();
+    await mount(offline, null, { "GET /api/browser/profiles": unreachable });
+    expect(within(picker()).getAllByRole("option")).toHaveLength(1);
+    await type("example.com");
+    expect(offline.calls[0]).toEqual(["open_tab", "https://example.com/", "typed"]);
+  });
+
+  it("opens a new tab with the chosen profile id and labels that tab with the name as text", async () => {
+    const shell = createFakeBrowserShell();
+    await mount(shell, null, PROFILES);
+    fireEvent.change(picker(), { target: { value: "prof_work" } });
+    await type("example.com");
+    expect(shell.calls[0]).toEqual(["open_tab", "https://example.com/", "typed", "prof_work"]);
+    const label = within(screen.getByRole("tablist")).getByText("Profile: Work <b>bold</b>");
+    expect(label.querySelector("b")).toBeNull();
+    // A private tab opened afterwards carries no label.
+    await click(screen.getByRole("button", { name: "New tab" }));
+    fireEvent.change(picker(), { target: { value: "private" } });
+    await type("example.org");
+    expect(shell.calls[1]).toEqual(["open_tab", "https://example.org/", "typed"]);
+    expect(within(screen.getByRole("tablist")).getAllByText(/^Profile: /)).toHaveLength(1);
+  });
+
+  it("shows the shell's profile refusals as text", async () => {
+    const messages: Record<string, string> = {
+      profile_invalid: "That profile is not valid, so nothing was opened.",
+      profile_unsupported: "Saved profiles are not available in this build of the browser.",
+      profile_busy: "That profile is being deleted or is busy. Try again in a moment.",
+      profile_failed: "The profile's web storage could not be opened.",
+    };
+    for (const [reason, text] of Object.entries(messages)) {
+      const shell = createFakeBrowserShell();
+      shell.openTab = async () => ({ ok: false, reason });
+      await mount(shell, null, PROFILES);
+      fireEvent.change(picker(), { target: { value: "prof_work" } });
+      await type("example.com");
+      expect(screen.getByRole("alert").textContent).toContain(text);
+      cleanup();
+    }
+  });
+});
+
+const unreachable = () => new Response("{}", { status: 500 });
+const pendingRoutes = (pending: string[]) => ({
+  "GET /api/browser/profile-purges": () => ({ pending }),
+});
+
+describe("BrowserApp web-data purge loop", () => {
+  it("purges each pending profile serially, acknowledges it, and does not call the shell again", async () => {
+    const shell = createFakeBrowserShell();
+    const api = await mount(shell, null, {
+      ...pendingRoutes(["gone_a", "gone_b"]),
+      "POST /api/browser/profile-purges/gone_a/done": () => ({ pending: ["gone_b"] }),
+      "POST /api/browser/profile-purges/gone_b/done": () => ({ pending: [] }),
+    });
+    expect(api.clock.intervals).toEqual([5000]);
+    expect(shell.calls.filter((c) => c[0] === "purge_profile_data")).toEqual([
+      ["purge_profile_data", "gone_a"],
+      ["purge_profile_data", "gone_b"],
+    ]);
+    expect(api.posts("/api/browser/profile-purges/gone_a/done")).toHaveLength(1);
+    expect(api.posts("/api/browser/profile-purges/gone_b/done")).toHaveLength(1);
+    expect(shell.maxConcurrentPurges).toBe(1);
+    expect(screen.queryByText(/Deleting the saved web data/)).toBeNull();
+  });
+
+  it("closes the removed profile's tabs through the shell's own tab-closed event", async () => {
+    const shell = createFakeBrowserShell();
+    await mount(shell, null, PROFILES);
+    fireEvent.change(picker(), { target: { value: "prof_work" } });
+    await type("example.com");
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    const api = await mount(shell, null, pendingRoutes(["prof_work"]));
+    expect(api.posts("/api/browser/profile-purges/prof_work/done")).toHaveLength(1);
+    expect(shell.tabs).toHaveLength(0);
+  });
+
+  it("leaves a busy or failed purge pending, shows a status, and retries on the next tick only", async () => {
+    const shell = createFakeBrowserShell();
+    shell.purgeOutcome = () => ({ error: "busy" });
+    const api = await mount(shell, null, pendingRoutes(["gone_a"]));
+    expect(api.posts("/api/browser/profile-purges/gone_a/done")).toHaveLength(0);
+    expect(shell.calls.filter((c) => c[0] === "purge_profile_data")).toHaveLength(1);
+    expect(screen.getByText(/could not be deleted yet/).getAttribute("role")).toBe("status");
+
+    await flush(); // no tight loop: time passing without a tick does not call the shell again
+    expect(shell.calls.filter((c) => c[0] === "purge_profile_data")).toHaveLength(1);
+
+    await api.clock.fire();
+    expect(shell.calls.filter((c) => c[0] === "purge_profile_data")).toHaveLength(2);
+    expect(api.posts("/api/browser/profile-purges/gone_a/done")).toHaveLength(0);
+
+    shell.purgeOutcome = () => ({ closedTabs: 0, dataRemoved: true });
+    await api.clock.fire();
+    expect(api.posts("/api/browser/profile-purges/gone_a/done")).toHaveLength(1);
+    expect(screen.queryByText(/could not be deleted yet/)).toBeNull();
+  });
+
+  it("does not acknowledge a purge the shell failed with purge_failed", async () => {
+    const shell = createFakeBrowserShell();
+    shell.purgeOutcome = () => ({ error: "purge_failed" });
+    const api = await mount(shell, null, pendingRoutes(["gone_a"]));
+    expect(api.posts("/api/browser/profile-purges/gone_a/done")).toHaveLength(0);
+  });
+
+  it("never runs two purge loops at once, and stops when unmounted", async () => {
+    const shell = createFakeBrowserShell();
+    const gate = Promise.withResolvers<void>();
+    shell.purgeGate = gate.promise;
+    const api = await mount(shell, null, pendingRoutes(["gone_a"]));
+    expect(screen.getByText(/Deleting the saved web data/).getAttribute("role")).toBe("status");
+    await api.clock.fire(); // a tick while the first purge is still waiting
+    await api.clock.fire();
+    expect(shell.calls.filter((c) => c[0] === "purge_profile_data")).toHaveLength(1);
+    expect(shell.maxConcurrentPurges).toBe(1);
+
+    gate.resolve();
+    await flush();
+    expect(api.posts("/api/browser/profile-purges/gone_a/done")).toHaveLength(1);
+
+    api.unmount();
+    expect(api.clock.stopped).toBe(1);
+    const before = api.calls.length;
+    await api.clock.fire();
+    expect(api.calls.length).toBe(before);
+  });
+
+  it("does nothing when Core cannot be reached, and without a shell", async () => {
+    const shell = createFakeBrowserShell();
+    await mount(shell, null, { "GET /api/browser/profile-purges": unreachable });
+    expect(shell.calls).toEqual([]);
+    cleanup();
+    const api = await mount(null, null, pendingRoutes(["gone_a"]));
+    expect(api.calls.some((c) => c.path === "/api/browser/profile-purges")).toBe(false);
   });
 });

@@ -13,6 +13,8 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.audio.emergencyStop": "आपातकालीन स्टॉप चालू है।",
   "capture.audio.recognizerAvailable": "वाक् पहचान: उपलब्ध। {detail}",
   "capture.audio.recognizerUnavailable": "वाक् पहचान: अनुपलब्ध। {detail}",
+  "capture.audio.onDisk":
+    "डिस्क पर ऑडियो: यह इंजन पहचान के दौरान ऑडियो को एक निजी अस्थायी फ़ाइल में लिखता है और तुरंत मिटा देता है।",
   "capture.mic.unsupported": "यह ब्राउज़र माइक्रोफ़ोन का उपयोग नहीं कर सकता",
   "capture.mic.sampleRate": "यह डिवाइस 16 kHz माइक्रोफ़ोन ऑडियो नहीं दे सकता",
   "capture.notetaker.settings.title": "नोटटेकर",

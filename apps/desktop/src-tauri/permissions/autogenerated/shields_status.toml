@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-shields-status"
+description = "Enables the shields_status command without any pre-configured scope."
+commands.allow = ["shields_status"]
+
+[[permission]]
+identifier = "deny-shields-status"
+description = "Denies the shields_status command without any pre-configured scope."
+commands.deny = ["shields_status"]

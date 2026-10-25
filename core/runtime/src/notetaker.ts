@@ -318,7 +318,7 @@ export class NotetakerRuntime implements NotetakerApi {
             code: ErrorCode.CONSENT_CHANNEL_UNAVAILABLE,
             detail: CONSENT_UNAVAILABLE_DETAIL,
           },
-      audio_on_disk: false,
+      audio_on_disk: recognizer.audio_on_disk === true,
       summary: {
         available: ai && !killSwitchEngaged,
         locality: "local",

@@ -71,6 +71,16 @@ body {
   padding: 5px 8px;
   text-align: left;
 }
+.browser-tab-profile {
+  margin-inline-start: 6px;
+  font-size: 0.75em;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+.browser-profile-picker select {
+  font: inherit;
+  max-width: 14em;
+}
 .browser-tab-text {
   overflow: hidden;
   text-overflow: ellipsis;

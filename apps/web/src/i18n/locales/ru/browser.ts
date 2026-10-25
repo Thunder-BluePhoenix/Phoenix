@@ -50,4 +50,14 @@ export const browser: Record<keyof typeof enBrowser, string> = {
   "browser.radar.open": "Открыть",
   "browser.radar.cancel": "Отмена",
   "browser.error.action": "Браузер не смог это выполнить.",
+  "browser.profile.label": "Новые вкладки открываются в",
+  "browser.profile.private": "Приватно (ничего не сохраняется)",
+  "browser.tab.profile": "Профиль: {name}",
+  "browser.deny.profile_invalid": "Этот профиль недопустим, поэтому ничего не открыто.",
+  "browser.deny.profile_unsupported": "Сохранённые профили недоступны в этой сборке браузера.",
+  "browser.deny.profile_busy": "Этот профиль удаляется или занят. Повторите попытку чуть позже.",
+  "browser.deny.profile_failed": "Не удалось открыть веб-хранилище профиля.",
+  "browser.purge.running": "Удаляются сохранённые веб-данные удалённого профиля…",
+  "browser.purge.failed":
+    "Сохранённые веб-данные удалённого профиля пока не удалось удалить. Phoenix повторит попытку.",
 };

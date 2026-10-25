@@ -22,7 +22,10 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-export const jsonAdapters = AGENT_ADAPTERS.filter((a): a is JsonAdapter => a.kind === "json");
+/** JSON adapters with a top-level `hooks` object; the named layout (Antigravity) has its own suite. */
+export const jsonAdapters = AGENT_ADAPTERS.filter(
+  (a): a is JsonAdapter => a.kind === "json" && a.named === undefined,
+);
 export const pluginAdapters = AGENT_ADAPTERS.filter((a): a is PluginAdapter => a.kind === "plugin");
 
 export const adapterById = (id: string): AgentAdapter => AGENT_ADAPTERS.find((a) => a.id === id)!;

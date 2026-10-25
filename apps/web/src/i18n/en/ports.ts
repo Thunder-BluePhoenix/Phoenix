@@ -41,8 +41,11 @@ export const ports = {
     "Heavy: CPU of {cpu}% or more, or memory of {mb} MB or more, as reported by ps (an average, not a live reading).",
   "ports.open": "Open in browser",
   "ports.open.label": "Open {name} on port {port} in your default browser",
+  "ports.openPhoenix": "Open in Phoenix browser",
+  "ports.openPhoenix.label":
+    "Open {name} on port {port} in the Phoenix browser (asks you to confirm first)",
   "ports.openNote":
-    "Links open http://127.0.0.1 in your default browser. Phoenix does not have a browser of its own yet.",
+    "Open in browser opens http://127.0.0.1 in your default browser. Open in Phoenix browser hands the same loopback address to the Phoenix desktop app (macOS only), whose browser asks you to confirm before it opens anything. If the desktop app is not installed, use the plain link.",
   "ports.stop": "Stop…",
   "ports.stop.label": "Stop {name} on port {port}",
   "ports.refusal.self": "This is Phoenix itself, which never stops itself.",

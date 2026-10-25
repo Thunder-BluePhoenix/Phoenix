@@ -5,6 +5,7 @@ import { Shields, type ShieldsSettings } from "../core/browser/shields";
 import { hostOf } from "../core/browser/site";
 import { useClient } from "../core/context";
 import { SHIELDS_PATH } from "../core/filter-lists";
+import { PROFILES_PATH, PURGES_PATH } from "../core/browser-profiles";
 import { useT, type MessageKey } from "../i18n";
 import { classifyAddress, classifyPortRadarUrl, type SearchProvider } from "./address";
 import {
@@ -26,6 +27,10 @@ export function nextZoom(current: number, direction: 1 | -1): number {
 }
 
 const DENIAL_TEXT: Readonly<Record<string, MessageKey>> = {
+  profile_invalid: "browser.deny.profile_invalid",
+  profile_unsupported: "browser.deny.profile_unsupported",
+  profile_busy: "browser.deny.profile_busy",
+  profile_failed: "browser.deny.profile_failed",
   unparseable: "browser.deny.unparseable",
   scheme_not_allowed: "browser.deny.scheme_not_allowed",
   dangerous_scheme: "browser.deny.dangerous_scheme",
@@ -46,7 +51,24 @@ export interface BrowserAppProps {
   /** A loopback address to confirm at start (the `?open=` query of the page). */
   initialOpen?: string | null;
   provider?: SearchProvider;
+  /**
+   * Starts the periodic check for removed profiles whose web data must be deleted; returns a stop
+   * function. Defaults to `setInterval`; tests pass a manual one.
+   */
+  schedule?: (run: () => void, ms: number) => () => void;
 }
+
+/** How often the chrome asks Core whether a removed profile's web data is waiting to be deleted. */
+export const PURGE_INTERVAL_MS = 5000;
+
+const PRIVATE = "private";
+
+const everyInterval = (run: () => void, ms: number) => {
+  const timer = setInterval(run, ms);
+  return () => clearInterval(timer);
+};
+
+type PurgeStatus = "idle" | "running" | "failed";
 
 /**
  * Phase 93: the chrome of the Phoenix browser. It draws tabs, the address bar, the navigation and
@@ -54,13 +76,21 @@ export interface BrowserAppProps {
  * content webviews owned by the shell, and everything this component shows about one (title,
  * address) is rendered as text.
  */
-export function BrowserApp({ shell, initialOpen = null, provider }: BrowserAppProps) {
+export function BrowserApp({
+  shell,
+  initialOpen = null,
+  provider,
+  schedule = everyInterval,
+}: BrowserAppProps) {
   const t = useT();
   const client = useClient();
   const [state, dispatch] = useReducer(reduce, INITIAL_STATE);
   const [shields, setShields] = useState(() => new Shields());
   const [, bump] = useState(0);
   const [shieldNote, setShieldNote] = useState<string | null>(null);
+  const [profiles, setProfiles] = useState<{ id: string; name: string }[]>([]);
+  const [profileChoice, setProfileChoice] = useState(PRIVATE);
+  const [purgeStatus, setPurgeStatus] = useState<PurgeStatus>("idle");
   const addressId = useId();
   const panelId = useId();
   const stateRef = useRef(state);
@@ -79,6 +109,80 @@ export function BrowserApp({ shell, initialOpen = null, provider }: BrowserAppPr
       alive = false;
     };
   }, [client]);
+
+  // The profiles Core knows, for the new-tab picker. If Core cannot answer, only private remains.
+  // The picker is a convenience, not a boundary: the shell validates the id again.
+  const loadProfiles = useCallback(async () => {
+    try {
+      const answer = await client.request<{ profiles?: unknown }>("GET", PROFILES_PATH);
+      const list = Array.isArray(answer.profiles) ? answer.profiles : [];
+      return list.flatMap((p: unknown) => {
+        const id = Reflect.get(Object(p), "id");
+        const name = Reflect.get(Object(p), "name");
+        return typeof id === "string" && id !== PRIVATE && typeof name === "string"
+          ? [{ id, name }]
+          : [];
+      });
+    } catch {
+      return [];
+    }
+  }, [client]);
+
+  useEffect(() => {
+    let alive = true;
+    void loadProfiles().then((list) => alive && setProfiles(list));
+    return () => {
+      alive = false;
+    };
+  }, [loadProfiles]);
+
+  // Removed profiles: Core queues the id, this window (the only one that may ask the shell) deletes
+  // the web data and acknowledges. `running` keeps two loops from overlapping; a failure leaves the
+  // id pending and the next tick tries again.
+  useEffect(() => {
+    if (!shell) return;
+    let alive = true;
+    let running = false;
+    const tick = async () => {
+      if (running) return;
+      running = true;
+      try {
+        let pending: unknown;
+        try {
+          pending = (await client.request<{ pending?: unknown }>("GET", PURGES_PATH)).pending;
+        } catch {
+          return;
+        }
+        const ids = Array.isArray(pending)
+          ? pending.filter((id): id is string => typeof id === "string")
+          : [];
+        let failed = false;
+        for (const id of ids) {
+          if (!alive) return;
+          setPurgeStatus("running");
+          try {
+            await shell.purgeProfileData(id);
+            await client.request("POST", `${PURGES_PATH}/${encodeURIComponent(id)}/done`);
+            if (alive) setProfileChoice((now) => (now === id ? PRIVATE : now));
+          } catch {
+            failed = true;
+          }
+        }
+        if (alive) {
+          setPurgeStatus(failed ? "failed" : "idle");
+          if (ids.length > 0) setProfiles(await loadProfiles());
+        }
+      } finally {
+        running = false;
+      }
+    };
+    void tick();
+    const stop = schedule(() => void tick(), PURGE_INTERVAL_MS);
+    return () => {
+      alive = false;
+      stop();
+    };
+  }, [client, shell, schedule, loadProfiles]);
 
   const fail = useCallback((text: string) => {
     dispatch({ type: "refused", error: { reason: "action_failed", text } });
@@ -142,7 +246,11 @@ export function BrowserApp({ shell, initialOpen = null, provider }: BrowserAppPr
       settle(
         target
           ? await shell.navigate(target.tabId, verdict.url)
-          : await shell.openTab(verdict.url, "typed"),
+          : await shell.openTab(
+              verdict.url,
+              "typed",
+              profiles.some((p) => p.id === profileChoice) ? profileChoice : undefined,
+            ),
         typed,
       );
     } catch {
@@ -240,6 +348,13 @@ export function BrowserApp({ shell, initialOpen = null, provider }: BrowserAppPr
                 <span className="browser-spinner" aria-label={t("browser.tab.loading")} />
               )}
               <span className="browser-tab-text">{title(info)}</span>
+              {info.profileId !== null && (
+                <span className="browser-tab-profile">
+                  {t("browser.tab.profile", {
+                    name: profiles.find((p) => p.id === info.profileId)?.name ?? info.profileId,
+                  })}
+                </span>
+              )}
             </button>
             <button
               type="button"
@@ -343,6 +458,26 @@ export function BrowserApp({ shell, initialOpen = null, provider }: BrowserAppPr
       </form>
 
       <div className="browser-status">
+        <label className="browser-profile-picker">
+          {t("browser.profile.label")}{" "}
+          <select
+            value={profiles.some((p) => p.id === profileChoice) ? profileChoice : PRIVATE}
+            disabled={!shell}
+            onChange={(e) => setProfileChoice(e.target.value)}
+          >
+            <option value={PRIVATE}>{t("browser.profile.private")}</option>
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {purgeStatus !== "idle" && (
+          <span className="browser-purge" role="status">
+            {t(purgeStatus === "running" ? "browser.purge.running" : "browser.purge.failed")}
+          </span>
+        )}
         {tab && site !== null && (
           <label className="browser-shields">
             <input
