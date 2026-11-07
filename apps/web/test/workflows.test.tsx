@@ -218,7 +218,7 @@ describe("Workflows list", () => {
       "page",
     );
     const list = await screen.findByRole("list", { name: "Workflows" });
-    const items = within(list).getAllByRole("listitem");
+    const items = await within(list).findAllByRole("listitem");
     expect(items).toHaveLength(3);
     expect(items[0]!.textContent).toContain("Enabled");
     expect(items[0]!.textContent).toContain("PRODUCTION (changes live systems)");

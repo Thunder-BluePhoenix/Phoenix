@@ -221,13 +221,14 @@ export class AgentStore {
 
   /** Newest first. `state` filters on the task's latest run. */
   list(query: { state?: AgentRunState; limit: number }): { task: AgentTask; run: StoredRun }[] {
+    // Named bindings also work on Node 22, whose SQLite binding rejects positional ?1 values.
     const rows = this.db
       .prepare(
         `SELECT r.id AS run_id FROM agent_runs r JOIN agent_tasks t ON t.id = r.task_id
-         WHERE (?1 IS NULL OR r.state = ?1)
-         ORDER BY t.created_at DESC, t.rowid DESC LIMIT ?2`,
+         WHERE (:state IS NULL OR r.state = :state)
+         ORDER BY t.created_at DESC, t.rowid DESC LIMIT :limit`,
       )
-      .all(query.state ?? null, query.limit) as unknown as RunIdRow[];
+      .all({ state: query.state ?? null, limit: query.limit }) as unknown as RunIdRow[];
     const out: { task: AgentTask; run: StoredRun }[] = [];
     for (const { run_id } of rows) {
       const run = this.run(run_id);

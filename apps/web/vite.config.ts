@@ -3,16 +3,18 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
 const CORE = process.env.PHOENIX_CORE_URL ?? "http://127.0.0.1:4870";
+const WEB_ROOT = fileURLToPath(new URL(".", import.meta.url));
 
 /** Where a dev core writes its session token (config/dev.json: .phoenix/dev, else ~/.phoenix/dev). */
 function tokenFile(): string | undefined {
   const candidates = [
     process.env.PHOENIX_DATA_DIR && join(process.env.PHOENIX_DATA_DIR, "session.token"),
-    resolve(__dirname, "../../.phoenix/dev/session.token"),
+    resolve(WEB_ROOT, "../../.phoenix/dev/session.token"),
     join(homedir(), ".phoenix/dev/session.token"),
   ].filter(Boolean) as string[];
   return candidates.find((f) => existsSync(f));
@@ -52,12 +54,12 @@ export default defineConfig({
     // Six pages: the main app, the transparent floating Fawkes, the island, the pill, the voice window and the browser chrome (apps/desktop).
     rolldownOptions: {
       input: {
-        index: resolve(__dirname, "index.html"),
-        floating: resolve(__dirname, "floating.html"),
-        island: resolve(__dirname, "island.html"),
-        pill: resolve(__dirname, "pill.html"),
-        voice: resolve(__dirname, "voice.html"),
-        browser: resolve(__dirname, "browser.html"),
+        index: resolve(WEB_ROOT, "index.html"),
+        floating: resolve(WEB_ROOT, "floating.html"),
+        island: resolve(WEB_ROOT, "island.html"),
+        pill: resolve(WEB_ROOT, "pill.html"),
+        voice: resolve(WEB_ROOT, "voice.html"),
+        browser: resolve(WEB_ROOT, "browser.html"),
       },
     },
   },

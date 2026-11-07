@@ -245,22 +245,25 @@ export class EvaluationStore {
   }
 
   results(q: ResultQuery = {}): EvalResultRow[] {
+    // Use named bindings for repeated parameters on every supported Node version (including 22).
     const rows = this.db
       .prepare(
         `SELECT * FROM eval_results
-         WHERE (?1 IS NULL OR eval_run_id = ?1) AND (?2 IS NULL OR scenario_id = ?2)
-           AND (?3 IS NULL OR agent_run_id = ?3) AND (?4 IS NULL OR created_at >= ?4)
-           AND (?5 IS NULL OR created_at < ?5)
-         ORDER BY created_at DESC, id DESC LIMIT ?6`,
+         WHERE (:evalRunId IS NULL OR eval_run_id = :evalRunId)
+           AND (:scenarioId IS NULL OR scenario_id = :scenarioId)
+           AND (:agentRunId IS NULL OR agent_run_id = :agentRunId)
+           AND (:since IS NULL OR created_at >= :since)
+           AND (:before IS NULL OR created_at < :before)
+         ORDER BY created_at DESC, id DESC LIMIT :limit`,
       )
-      .all(
-        q.evalRunId ?? null,
-        q.scenarioId ?? null,
-        q.agentRunId ?? null,
-        q.since ?? null,
-        q.before ?? null,
-        Math.min(Math.max(q.limit ?? 100, 1), 1000),
-      ) as unknown as ResultRecord[];
+      .all({
+        evalRunId: q.evalRunId ?? null,
+        scenarioId: q.scenarioId ?? null,
+        agentRunId: q.agentRunId ?? null,
+        since: q.since ?? null,
+        before: q.before ?? null,
+        limit: Math.min(Math.max(q.limit ?? 100, 1), 1000),
+      }) as unknown as ResultRecord[];
     return rows.map(toResult);
   }
 

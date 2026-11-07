@@ -1,29 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { detectPlatform } from "./commands/keys";
 import { buildBindings, COMMANDS, type CommandContext } from "./commands/registry";
 import { tauriShortcuts } from "./commands/shortcuts-shell";
 import { useShortcuts } from "./commands/useShortcuts";
-import { AgentSessionDetail, AgentSessionsPage } from "./components/AgentSessions";
 import { CommandPalette } from "./components/CommandPalette";
 import { useOptionalDemo } from "./components/Demo";
 import type { FawkesAvatarHandle } from "./components/FawkesAvatar";
 import { MeetingDetail, MeetingsPage } from "./components/Meetings";
+import { PlanPage } from "./components/Plans";
 import { Navbar } from "./components/Navbar";
 import { VoiceBanner } from "./components/Voice";
-import { PlanPage } from "./components/Plans";
-import { ProvenanceNode, ProvenancePage } from "./components/Provenance";
-import { RecapPage } from "./components/Recap";
-import { MissionPage } from "./components/MissionControl";
-import {
-  DailyDigestCommitPage,
-  DailyDigestEventPage,
-  DailyDigestPage,
-} from "./components/DailyDigest";
-import { CalendarPrepPage } from "./components/CalendarPrep";
 import { SettingsPage } from "./components/Settings";
-import { WorkflowDetailPage, WorkflowRunPage, WorkflowsPage } from "./components/Workflows";
 import { isTabId, PetPanel, type TabId } from "./components/PetPanel";
 import { useClient, useConnection, useDisplayedState, useTasks } from "./core/context";
 import { useHashRoute } from "./core/hooks";
@@ -31,6 +20,45 @@ import { useMute } from "./core/mute";
 import { useSoundHost } from "./core/sounds";
 import { switchPillsCommand, usePillSwitcher } from "./core/pill-switch";
 import { useT } from "./i18n";
+
+// Load secondary screens when visited. The navbar and approval panel stay immediately available.
+const AgentSessionDetail = lazy(() =>
+  import("./components/AgentSessions").then((m) => ({ default: m.AgentSessionDetail })),
+);
+const AgentSessionsPage = lazy(() =>
+  import("./components/AgentSessions").then((m) => ({ default: m.AgentSessionsPage })),
+);
+const ProvenanceNode = lazy(() =>
+  import("./components/Provenance").then((m) => ({ default: m.ProvenanceNode })),
+);
+const ProvenancePage = lazy(() =>
+  import("./components/Provenance").then((m) => ({ default: m.ProvenancePage })),
+);
+const RecapPage = lazy(() => import("./components/Recap").then((m) => ({ default: m.RecapPage })));
+const MissionPage = lazy(() =>
+  import("./components/MissionControl").then((m) => ({ default: m.MissionPage })),
+);
+const DailyDigestPage = lazy(() =>
+  import("./components/DailyDigest").then((m) => ({ default: m.DailyDigestPage })),
+);
+const DailyDigestEventPage = lazy(() =>
+  import("./components/DailyDigest").then((m) => ({ default: m.DailyDigestEventPage })),
+);
+const DailyDigestCommitPage = lazy(() =>
+  import("./components/DailyDigest").then((m) => ({ default: m.DailyDigestCommitPage })),
+);
+const CalendarPrepPage = lazy(() =>
+  import("./components/CalendarPrep").then((m) => ({ default: m.CalendarPrepPage })),
+);
+const WorkflowsPage = lazy(() =>
+  import("./components/Workflows").then((m) => ({ default: m.WorkflowsPage })),
+);
+const WorkflowDetailPage = lazy(() =>
+  import("./components/Workflows").then((m) => ({ default: m.WorkflowDetailPage })),
+);
+const WorkflowRunPage = lazy(() =>
+  import("./components/Workflows").then((m) => ({ default: m.WorkflowRunPage })),
+);
 
 /** AppShell: navbar with Fawkes, Pet Panel, and the main content area. */
 export function App() {
@@ -159,47 +187,51 @@ export function App() {
       )}
       <main id="main" ref={main} tabIndex={-1} className="content">
         <VoiceBanner />
-        {connection !== "unauthenticated" && route === "/settings" ? (
-          <SettingsPage state={state} />
-        ) : connection !== "unauthenticated" && route === "/meetings" ? (
-          <MeetingsPage state={state} />
-        ) : connection !== "unauthenticated" && meetingId ? (
-          <MeetingDetail key={meetingId} id={decodeURIComponent(meetingId)} state={state} />
-        ) : connection !== "unauthenticated" && route === "/workflows" ? (
-          <WorkflowsPage />
-        ) : connection !== "unauthenticated" && runMatch ? (
-          <WorkflowRunPage
-            key={runMatch[2]}
-            workflowId={decodeURIComponent(runMatch[1] ?? "")}
-            runId={decodeURIComponent(runMatch[2] ?? "")}
-          />
-        ) : connection !== "unauthenticated" && workflowId ? (
-          <WorkflowDetailPage key={workflowId} workflowId={decodeURIComponent(workflowId)} />
-        ) : connection !== "unauthenticated" && planId ? (
-          <PlanPage key={planId} planId={decodeURIComponent(planId)} />
-        ) : connection !== "unauthenticated" && route === "/provenance" ? (
-          <ProvenancePage />
-        ) : connection !== "unauthenticated" && provenanceId ? (
-          <ProvenanceNode key={provenanceId} nodeId={decodeURIComponent(provenanceId)} />
-        ) : connection !== "unauthenticated" && route === "/agents" ? (
-          <AgentSessionsPage />
-        ) : connection !== "unauthenticated" && agentId ? (
-          <AgentSessionDetail key={agentId} sessionId={decodeURIComponent(agentId)} />
-        ) : connection !== "unauthenticated" && route === "/recap" ? (
-          <RecapPage />
-        ) : connection !== "unauthenticated" && route === "/mission" ? (
-          <MissionPage />
-        ) : connection !== "unauthenticated" && route === "/calendar" ? (
-          <CalendarPrepPage />
-        ) : connection !== "unauthenticated" && route === "/digest" ? (
-          <DailyDigestPage />
-        ) : connection !== "unauthenticated" && route.startsWith("/digest/event/") ? (
-          <DailyDigestEventPage id={decodeURIComponent(route.slice("/digest/event/".length))} />
-        ) : connection !== "unauthenticated" && route.startsWith("/digest/commit/") ? (
-          <DailyDigestCommitPage sha={decodeURIComponent(route.slice("/digest/commit/".length))} />
-        ) : (
-          <Home connection={connection} />
-        )}
+        <Suspense fallback={<p role="status">{t("common.status.loading")}</p>}>
+          {connection !== "unauthenticated" && route === "/settings" ? (
+            <SettingsPage state={state} />
+          ) : connection !== "unauthenticated" && route === "/meetings" ? (
+            <MeetingsPage state={state} />
+          ) : connection !== "unauthenticated" && meetingId ? (
+            <MeetingDetail key={meetingId} id={decodeURIComponent(meetingId)} state={state} />
+          ) : connection !== "unauthenticated" && route === "/workflows" ? (
+            <WorkflowsPage />
+          ) : connection !== "unauthenticated" && runMatch ? (
+            <WorkflowRunPage
+              key={runMatch[2]}
+              workflowId={decodeURIComponent(runMatch[1] ?? "")}
+              runId={decodeURIComponent(runMatch[2] ?? "")}
+            />
+          ) : connection !== "unauthenticated" && workflowId ? (
+            <WorkflowDetailPage key={workflowId} workflowId={decodeURIComponent(workflowId)} />
+          ) : connection !== "unauthenticated" && planId ? (
+            <PlanPage key={planId} planId={decodeURIComponent(planId)} />
+          ) : connection !== "unauthenticated" && route === "/provenance" ? (
+            <ProvenancePage />
+          ) : connection !== "unauthenticated" && provenanceId ? (
+            <ProvenanceNode key={provenanceId} nodeId={decodeURIComponent(provenanceId)} />
+          ) : connection !== "unauthenticated" && route === "/agents" ? (
+            <AgentSessionsPage />
+          ) : connection !== "unauthenticated" && agentId ? (
+            <AgentSessionDetail key={agentId} sessionId={decodeURIComponent(agentId)} />
+          ) : connection !== "unauthenticated" && route === "/recap" ? (
+            <RecapPage />
+          ) : connection !== "unauthenticated" && route === "/mission" ? (
+            <MissionPage />
+          ) : connection !== "unauthenticated" && route === "/calendar" ? (
+            <CalendarPrepPage />
+          ) : connection !== "unauthenticated" && route === "/digest" ? (
+            <DailyDigestPage />
+          ) : connection !== "unauthenticated" && route.startsWith("/digest/event/") ? (
+            <DailyDigestEventPage id={decodeURIComponent(route.slice("/digest/event/".length))} />
+          ) : connection !== "unauthenticated" && route.startsWith("/digest/commit/") ? (
+            <DailyDigestCommitPage
+              sha={decodeURIComponent(route.slice("/digest/commit/".length))}
+            />
+          ) : (
+            <Home connection={connection} />
+          )}
+        </Suspense>
       </main>
       <CommandPalette
         open={paletteOpen}

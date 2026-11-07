@@ -78,9 +78,9 @@ At the same time, a meeting tracker asks Kage for the transcript and summary and
 | `sdk/`          | Toolkit for building a new capability                                           |
 | `pet/`          | Fawkes: states, animations, art                                                 |
 | `apps/web/`     | The screen you look at                                                          |
-| `apps/desktop/` | Floating Fawkes on your desktop (not built yet)                                 |
+| `apps/desktop/` | Tauri shell: floating Fawkes, island, voice controls and browser                |
 
-`core/runtime` is the piece that starts everything and connects the parts together.
+`core/runtime` starts the services and connects them. `runtime.ts` owns their assembly and lifecycle; `inventory.ts` reads their privacy and diagnostic inventory, and `shutdown.ts` runs cleanup in dependency order, retaining failures while still releasing later resources. The browser uses a separate React chrome page and Rust webview host; see [mini browser](mini-browser.md) for its verification limits.
 
 **Memory and AI.** Core remembers git commits, the markdown files you list and (only if you allow it) meeting summaries, in the same SQLite file as everything else, with a lexical index. You can browse, search, forget and delete it, and set how long each kind is kept. AI is off until you turn it on; it then uses Ollama on this device. Nothing goes to a cloud provider unless you grant external processing and opt in for that kind of data, and sensitive data has its own separate opt-in (`docs/security-review.md`). The runtime builds one tool gateway (`runtime.toolGateway`); no route exposes it or the policy rules. **Agents (Phase 31).** `runtime.agents` runs tasks through the orchestrator (`ai/orchestrator`): classify, retrieve context, plan, policy check, execute, verify, respond, audit, with the trace kept in SQLite. An agent holds only the tool gateway, so every action has a policy decision and an audit record, and anything above low risk waits in the same `/api/confirmations` flow as everything else. Automation is off until you turn it on (`POST /api/agent/settings`). The first agent (`ai/agents`) explains a failed CI run from GitHub job data, recent commits and memory; it only advises, because no write capability for CI exists.
 

@@ -82,6 +82,20 @@ describe("skip link", () => {
   });
 });
 
+describe("secondary routes", () => {
+  it("loads a deferred screen while keeping navbar Fawkes available", async () => {
+    window.location.hash = "#/recap";
+    try {
+      setup();
+      expect(screen.getByRole("banner").contains(fawkes())).toBe(true);
+      expect(await screen.findByRole("heading", { name: "Weekly recap" })).toBeTruthy();
+      expect(screen.getByRole("banner").contains(fawkes())).toBe(true);
+    } finally {
+      window.location.hash = "";
+    }
+  });
+});
+
 describe("Pet Panel", () => {
   it("opens from Fawkes, shows state and tasks, closes with Escape and returns focus", () => {
     const { ws } = setup();

@@ -7,7 +7,7 @@ import { defaults } from "@phoenix/config";
 import { silentLogger } from "@phoenix/logging";
 import { MIGRATIONS } from "@phoenix/persistence";
 import { createEvent, PROTOCOL_VERSION } from "@phoenix/protocol";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PhoenixRuntime, SESSION_TOKEN_FILE } from "../src";
 import { startCore, TOKEN } from "./helpers";
 
@@ -72,6 +72,26 @@ describe("PhoenixRuntime", () => {
   it("stop is graceful and idempotent", async () => {
     const core = await startCore();
     await Promise.all([core.runtime.stop(), core.runtime.stop()]);
+  });
+
+  it("removes the token and releases the database lock when a service fails to close", async () => {
+    const core = await startCore({}, { writeTokenFile: true });
+    const closeRecap = core.runtime.recap.close.bind(core.runtime.recap);
+    vi.spyOn(core.runtime.recap, "close").mockImplementation(() => {
+      closeRecap();
+      throw new Error("recap close failed");
+    });
+    const stopping = core.runtime.stop();
+    expect(core.runtime.stop()).toBe(stopping);
+    await expect(stopping).rejects.toBeInstanceOf(AggregateError);
+    expect(existsSync(join(core.dataDir, SESSION_TOKEN_FILE))).toBe(false);
+    const replacement = new PhoenixRuntime({
+      config: { ...defaults("dev"), port: 0, dataDir: core.dataDir },
+      logger: silentLogger,
+      capabilities: [],
+      writeTokenFile: false,
+    });
+    await replacement.stop();
   });
 
   it("refuses to start a second Core on the same data directory, and does not touch the first", async () => {
