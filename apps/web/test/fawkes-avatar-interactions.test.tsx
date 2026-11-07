@@ -3,7 +3,7 @@
 // @vitest-environment happy-dom
 import type { InteractionTimers, SoundPlayer } from "@phoenix/pet-runtime";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { FawkesAvatar } from "../src/components/FawkesAvatar";
 import type { PetState } from "../src/core/types";
 
@@ -52,6 +52,24 @@ afterEach(cleanup);
 const button = () => screen.getByRole("button", { name: /^Fawkes/ });
 
 describe("FawkesAvatar interactions", () => {
+  it("clears a pending single-click action when the avatar unmounts", () => {
+    vi.useFakeTimers();
+    try {
+      const single = vi.fn();
+      const double = vi.fn();
+      const view = render(
+        <FawkesAvatar state={pet()} onActivate={single} onDoubleActivate={double} />,
+      );
+      fireEvent.click(button(), { detail: 1 });
+      view.unmount();
+      act(() => vi.advanceTimersByTime(500));
+      expect(single).not.toHaveBeenCalled();
+      expect(double).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("greets on launch, pokes on click and goes dizzy on three quick clicks", () => {
     const { timers, advance } = fakeTimers();
     render(<FawkesAvatar state={pet()} interactionOptions={{ timers }} reducedMotion="off" />);

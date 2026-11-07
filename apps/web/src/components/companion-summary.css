@@ -1,0 +1,68 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+.companion-summary {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 0;
+  overflow: auto;
+  color: var(--bubble-text, var(--island-text, #f1f3f5));
+  background: var(--bubble-bg, var(--island-bg, #101114));
+  border: 1px solid var(--bubble-border, var(--island-muted, #adb5bd));
+  border-radius: 12px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.companion-summary-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.companion-summary-text,
+.companion-summary-count {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+.companion-summary-tasks {
+  margin: 4px 0;
+  padding-left: 16px;
+}
+.companion-summary-tasks li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.companion-summary button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.companion-summary-close {
+  border: 0;
+  min-width: 24px;
+  min-height: 24px;
+  font-size: 18px;
+}
+.companion-summary-open {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 4px 10px;
+  margin-top: 4px;
+}
+.companion-summary button:focus-visible {
+  outline: 2px solid var(--focus, #91a7ff);
+  outline-offset: 2px;
+}
+.floating-root .bubble-slot:has(.companion-summary) {
+  align-self: stretch;
+  overflow: hidden;
+}
+.floating-root .companion-summary {
+  max-height: 100%;
+}
+.island-body > .companion-summary {
+  flex: 1 1 auto;
+}

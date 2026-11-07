@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 // @vitest-environment happy-dom
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PhoenixClient } from "../src/core/client";
 import { CoreProvider } from "../src/core/context";
@@ -132,23 +132,60 @@ describe("floating Fawkes", () => {
     expect(calls).toEqual([["moveBy", 10, 4], ["moveBy", 5, 0], ["dragEnded"]]);
   });
 
-  it("a drag does not open Phoenix, a plain click does", () => {
+  it("a drag does not open the summary, a single click does without opening the browser", () => {
     const { calls } = setup();
     pointer("pointerdown", 100, 100);
     pointer("pointermove", 130, 100);
     pointer("pointerup", 130, 100);
     act(() => fawkes().click());
     expect(calls.some(([name]) => name === "openInPhoenix")).toBe(false);
+    expect(screen.queryByRole("region", { name: "Fawkes summary" })).toBeNull();
 
     act(() => fawkes().click());
-    expect(calls.filter(([name]) => name === "openInPhoenix")).toEqual([["openInPhoenix", "/"]]);
+    expect(screen.getByRole("region", { name: "Fawkes summary" })).toBeTruthy();
+    expect(calls.filter(([name]) => name === "openInPhoenix")).toEqual([]);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("region", { name: "Fawkes summary" })).toBeNull();
   });
 
-  it("opens the meetings page when Kage is recording", () => {
+  it("double-click opens the meetings page when Kage is recording", () => {
     const { state, calls } = setup();
     state({ state: "RECORDING", explanation: "Recording meeting", recording: true });
-    act(() => fawkes().click());
+    fireEvent.click(fawkes(), { detail: 1 });
+    fireEvent.click(fawkes(), { detail: 2 });
+    fireEvent.doubleClick(fawkes());
+    act(() => vi.advanceTimersByTime(500));
+    expect(screen.queryByRole("region", { name: "Fawkes summary" })).toBeNull();
     expect(calls.at(-1)).toEqual(["openInPhoenix", "/meetings"]);
+  });
+
+  it("a pointer single click waits for double-click then shows a live summary", () => {
+    const { state, calls, ws } = setup();
+    state({ state: "IDLE", explanation: "All quiet" });
+    fireEvent.click(fawkes(), { detail: 1 });
+    expect(screen.queryByRole("region", { name: "Fawkes summary" })).toBeNull();
+    act(() => vi.advanceTimersByTime(400));
+    expect(screen.getByText("All quiet")).toBeTruthy();
+    act(() =>
+      ws.message("task.updated", {
+        tasks: [
+          {
+            key: "build",
+            state: "WORKING",
+            title: "Compile Phoenix",
+            source: "terminal",
+            since: "",
+            updatedAt: "",
+          },
+        ],
+      }),
+    );
+    expect(screen.getByText("Compile Phoenix")).toBeTruthy();
+    expect(screen.getByText("1 active task")).toBeTruthy();
+    state({ state: "ERROR", explanation: "Build failed" });
+    expect(screen.getByText("Build failed")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open in Phoenix" }));
+    expect(calls.at(-1)).toEqual(["openInPhoenix", "/"]);
   });
 
   it("works without a desktop shell (plain browser)", () => {

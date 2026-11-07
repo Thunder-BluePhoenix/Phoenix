@@ -18,6 +18,8 @@ export interface FawkesAvatarProps {
   expanded?: boolean;
   controls?: string;
   onActivate?: () => void;
+  /** Desktop companions: a double-click opens the full app instead of the single-click preview. */
+  onDoubleActivate?: () => void;
   /** Suffix for the accessible name (default "Open Pet Panel"). */
   actionHint?: string;
   /** Lets the pointer drag Fawkes (floating desktop pet); reports movement through onDrag. */
@@ -54,6 +56,7 @@ export const FawkesAvatar = forwardRef<FawkesAvatarHandle, FawkesAvatarProps>(fu
     expanded,
     controls,
     onActivate,
+    onDoubleActivate,
     draggable,
     onDrag,
     actionHint,
@@ -70,6 +73,13 @@ export const FawkesAvatar = forwardRef<FawkesAvatarHandle, FawkesAvatarProps>(fu
   const pet = useRef<FawkesController | null>(null);
   const activate = useRef(onActivate);
   activate.current = onActivate;
+  const doubleActivate = useRef(onDoubleActivate);
+  doubleActivate.current = onDoubleActivate;
+  const pendingClick = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelClick = () => {
+    if (pendingClick.current !== null) clearTimeout(pendingClick.current);
+    pendingClick.current = null;
+  };
   const drag = useRef(onDrag);
   drag.current = onDrag;
   const soundPlayer = useRef(sounds);
@@ -119,16 +129,42 @@ export const FawkesAvatar = forwardRef<FawkesAvatarHandle, FawkesAvatarProps>(fu
         : {}),
     });
     controller.update(initial.current);
-    const off = controller.on("activate", () => activate.current?.());
-    const offDrag = controller.on("drag", (e) => drag.current?.(e));
+    const off = controller.on("activate", ({ clickCount }) => {
+      cancelClick();
+      if (!doubleActivate.current || clickCount === 0) {
+        activate.current?.();
+      } else if (clickCount === 1) {
+        // Let the native double-click arrive before changing the window's layout.
+        pendingClick.current = setTimeout(() => {
+          pendingClick.current = null;
+          activate.current?.();
+        }, 400);
+      }
+    });
+    const onDoubleClick = () => {
+      cancelClick();
+      doubleActivate.current?.();
+    };
+    controller.element.addEventListener("dblclick", onDoubleClick);
+    const offDrag = controller.on("drag", (e) => {
+      if (e.phase === "start") cancelClick();
+      drag.current?.(e);
+    });
     pet.current = controller;
     return () => {
       off();
       offDrag();
+      cancelClick();
+      controller.element.removeEventListener("dblclick", onDoubleClick);
       controller.destroy();
       pet.current = null;
     };
-  }, [size, draggable, actionHint, interactive, t]);
+  }, [draggable, actionHint, interactive, t]);
+
+  // Expanding the island resizes the same animated pet instead of restarting its renderer.
+  useEffect(() => {
+    pet.current?.element.style.setProperty("--fawkes-size", `${size}px`);
+  }, [size]);
 
   useEffect(() => {
     pet.current?.update(state);

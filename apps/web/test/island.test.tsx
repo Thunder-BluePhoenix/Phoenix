@@ -153,6 +153,38 @@ describe("Fawkes island page", () => {
     expect(shell.sent.at(-1)).toEqual({ kind: "collapse" });
   });
 
+  it("double-click opens the full context without toggling the summary", async () => {
+    const shell = fakeShell(frame("small"));
+    const { state } = await setup(shell);
+    state({ state: "WAITING", explanation: "Review the build" });
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(fawkes()!, { detail: 1 });
+      fireEvent.click(fawkes()!, { detail: 2 });
+      fireEvent.doubleClick(fawkes()!);
+      act(() => vi.advanceTimersByTime(500));
+      expect(shell.opened).toEqual(["/panel/overview"]);
+      expect(shell.sent.filter((e) => e.kind === "toggle")).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the same animated avatar when the notch expands", async () => {
+    const shell = fakeShell(frame("small"));
+    const { state } = await setup(shell);
+    state({ state: "IDLE", explanation: "All quiet" });
+    const avatar = fawkes()!;
+    expect(avatar.getAttribute("data-animation")).toBe("breathe");
+    expect(avatar.style.getPropertyValue("--fawkes-size")).toBe("32px");
+    act(() => shell.emit(frame("expanded")));
+    expect(fawkes()).toBe(avatar);
+    expect(avatar.style.getPropertyValue("--fawkes-size")).toBe("48px");
+    expect(screen.getByRole("region", { name: "Fawkes summary" }).textContent).toContain(
+      "All quiet",
+    );
+  });
+
   it("expanded shows what Fawkes is saying and opens the right page in Phoenix", async () => {
     const shell = fakeShell(frame("expanded"));
     const { state } = await setup(shell);
@@ -177,7 +209,7 @@ describe("Fawkes island page", () => {
     const { state } = await setup(shell);
     const activity = () => shell.sent.filter((e) => e.kind === "activity").at(-1);
     state({ state: "IDLE", explanation: "All quiet" });
-    expect(activity()).toEqual({ kind: "activity", active: false, urgent: false });
+    expect(activity()).toEqual({ kind: "activity", active: true, urgent: false });
     state({ state: "WORKING", explanation: "Build running" });
     expect(activity()).toEqual({ kind: "activity", active: true, urgent: false });
     state({ state: "WAITING", explanation: "Approve?" });
@@ -205,8 +237,9 @@ describe("Fawkes island page", () => {
 
 describe("activityOf", () => {
   const base = { explanation: "", since: "", sleeping: false, recording: false };
-  it("treats idle, sleeping and offline as not active", () => {
-    for (const state of ["IDLE", "SLEEPING", "OFFLINE"]) {
+  it("keeps idle visible and lets sleeping and offline settle", () => {
+    expect(activityOf({ ...base, state: "IDLE" })).toEqual({ active: true, urgent: false });
+    for (const state of ["SLEEPING", "OFFLINE"]) {
       expect(activityOf({ ...base, state })).toEqual({ active: false, urgent: false });
     }
   });

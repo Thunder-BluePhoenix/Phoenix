@@ -72,7 +72,7 @@ export interface EmoteEvent {
 }
 
 export interface FawkesEvents {
-  activate: void;
+  activate: { clickCount: number };
   drag: DragEvent;
   /** A transient interaction emote started/ended. This is not a state change. */
   emote: EmoteEvent;
@@ -148,11 +148,11 @@ export function mountFawkes(container: HTMLElement, options: MountOptions = {}):
   };
 
   const drag = options.draggable ? attachDrag(el, (e) => emit("drag", e)) : null;
-  const onClick = () => {
+  const onClick = (event: MouseEvent) => {
     if (drag?.consumeClick()) return;
     engine?.click();
     schedule();
-    emit("activate", undefined);
+    emit("activate", { clickCount: event.detail });
   };
   el.addEventListener("click", onClick);
 

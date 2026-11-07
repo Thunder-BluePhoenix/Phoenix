@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 import type { DragEvent, SoundPlayer } from "@phoenix/pet-runtime";
 import { visualFor } from "@phoenix/pet-states";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { tauriFileDrop, type FileDropShell } from "../commands/file-drop-shell";
 import { tauriShortcuts, type ShortcutsShell } from "../commands/shortcuts-shell";
 import { AgentApprovals } from "../components/AgentApprovals";
@@ -10,6 +10,7 @@ import { NativeDropStatus } from "../components/NativeDropStatus";
 import { RebirthAvatar } from "../components/RebirthAvatar";
 import { AwakeCountdown } from "../components/Awake";
 import { SourcePills } from "../components/SourcePills";
+import { CompanionSummary } from "../components/CompanionSummary";
 import { useWornOutfit } from "../core/appearance";
 import { useDisplayedState } from "../core/context";
 import { useMute } from "../core/mute";
@@ -83,6 +84,21 @@ export function FloatingApp({
   followTimers?: FollowTimers;
 }) {
   const t = useT();
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const summaryId = useId();
+  useEffect(() => {
+    if (!summaryOpen) return;
+    const close = () => setSummaryOpen(false);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("blur", close);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("blur", close);
+    };
+  }, [summaryOpen]);
   // Looked up once: a new shell object on every render would resubscribe to the mute event.
   const [own] = useState(() => tauriShortcuts());
   const shortcutsShell = shortcuts === undefined ? own : shortcuts;
@@ -108,7 +124,7 @@ export function FloatingApp({
   const driving = useFollowCursor({
     follow: followShell,
     moveBy,
-    enabled: settings.follow_cursor === true,
+    enabled: settings.follow_cursor === true && !summaryOpen,
     reducedMotion: reduced,
     alert: state.state !== "OFFLINE" && visualFor(state.state).urgent,
     killSwitch,
@@ -118,8 +134,10 @@ export function FloatingApp({
 
   const onDrag = useCallback(
     (e: DragEvent) => {
-      if (e.phase === "start") driving.dragStarted();
-      else if (e.phase === "move") shell?.moveBy(e.dx, e.dy);
+      if (e.phase === "start") {
+        setSummaryOpen(false);
+        driving.dragStarted();
+      } else if (e.phase === "move") shell?.moveBy(e.dx, e.dy);
       else if (e.phase === "end") {
         shell?.dragEnded();
         driving.dragEnded();
@@ -138,11 +156,21 @@ export function FloatingApp({
       }}
     >
       <div className="bubble-slot">
-        {bubble && !mute.muted && (
-          // Fawkes' own accessible name already carries this text; don't announce it twice.
-          <p className="bubble" data-tone={visualFor(state.state).tone} aria-hidden="true">
-            {bubble}
-          </p>
+        {summaryOpen ? (
+          <CompanionSummary
+            id={summaryId}
+            state={state}
+            onClose={() => setSummaryOpen(false)}
+            onOpen={() => shell?.openInPhoenix(routeFor(state))}
+          />
+        ) : (
+          bubble &&
+          !mute.muted && (
+            // Fawkes' own accessible name already carries this text; don't announce it twice.
+            <p className="bubble" data-tone={visualFor(state.state).tone} aria-hidden="true">
+              {bubble}
+            </p>
+          )
         )}
       </div>
       <NativeDropStatus drop={nativeDrop} className="drop-status" />
@@ -154,9 +182,15 @@ export function FloatingApp({
         reducedMotion={settings.reduced_motion}
         outfit={outfit}
         {...(mute.sounds ? { sounds: mute.sounds } : {})}
-        actionHint={t("pet.desktop.openInPhoenix")}
+        actionHint={t("pet.summary.hint")}
+        expanded={summaryOpen}
+        controls={summaryId}
         onDrag={onDrag}
-        onActivate={() => shell?.openInPhoenix(routeFor(state))}
+        onActivate={() => setSummaryOpen((open) => !open)}
+        onDoubleActivate={() => {
+          setSummaryOpen(false);
+          shell?.openInPhoenix(routeFor(state));
+        }}
       />
       <SourcePills pills={pills} selected={selected} />
       <AwakeCountdown />

@@ -440,9 +440,19 @@ describe("a file dropped on the Fawkes island", () => {
     expect(body).toContain("dir: a folder cannot be dropped here");
   });
 
-  it("keeps the island awake while a drag, a read or a result is on screen", async () => {
+  it("keeps even a sleeping island visible while a drag, a read or a result is on screen", async () => {
     const shell = fakeFileDrop();
     const { island } = await mountIsland(shell);
+    // Idle now stays visible; sleeping still settles when no drop is being shown.
+    act(() =>
+      FakeWebSocket.last.message("state.changed", {
+        state: "SLEEPING",
+        explanation: "Paused",
+        sleeping: true,
+        recording: false,
+        since: "",
+      }),
+    );
     const lastActivity = () =>
       [...island.sent].reverse().find((e) => e.kind === "activity") as
         Extract<PageEvent, { kind: "activity" }> | undefined;

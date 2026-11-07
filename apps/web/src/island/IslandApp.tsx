@@ -2,13 +2,14 @@
 // Copyright (C) 2026 Phoenix contributors
 import type { SoundPlayer } from "@phoenix/pet-runtime";
 import { visualFor } from "@phoenix/pet-states";
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useId, useState, type CSSProperties } from "react";
 import { tauriFileDrop, type FileDropShell } from "../commands/file-drop-shell";
 import { tauriShortcuts, type ShortcutsShell } from "../commands/shortcuts-shell";
 import { AgentApprovals } from "../components/AgentApprovals";
 import { RebirthAvatar } from "../components/RebirthAvatar";
 import { AwakeCountdown } from "../components/Awake";
 import { SourcePills } from "../components/SourcePills";
+import { CompanionSummary } from "../components/CompanionSummary";
 import { useWornOutfit } from "../core/appearance";
 import { useDisplayedState } from "../core/context";
 import { useMute } from "../core/mute";
@@ -18,17 +19,18 @@ import { usePillSwitcher, useSwitchPillsShortcut } from "../core/pill-switch";
 import { usePetSettings } from "../core/hooks";
 import type { PetState } from "../core/types";
 import { isMessageKey, useT } from "../i18n";
-import { routeFor, useBubble } from "../floating/FloatingApp";
+import { routeFor } from "../floating/FloatingApp";
 import type { IslandFrame, IslandShell } from "./shell";
 
-export const ISLAND_AVATAR_SIZE = 24;
+export const ISLAND_AVATAR_SIZE = 32;
 export const EXPANDED_AVATAR_SIZE = 48;
 
-const QUIET_STATES = ["IDLE", "SLEEPING", "OFFLINE"];
+// Keep the idle companion visible and breathing, just like the navbar Fawkes.
+const QUIET_STATES = ["SLEEPING", "OFFLINE"];
 
 /**
- * What the shell needs to know to decide whether the island may go back to hidden: is Fawkes
- * doing something (`active`), and does it need the user (`urgent`: an approval, an error,
+ * What the shell needs to know to decide whether the island may go back to hidden: should
+ * Fawkes stay visible (`active`, including idle), and does it need the user (`urgent`: an approval, an error,
  * recording). Urgent always keeps the island visible (island_state.rs).
  */
 export function activityOf(state: PetState): { active: boolean; urgent: boolean } {
@@ -87,6 +89,8 @@ export function IslandApp({
   sounds?: SoundPlayer;
 }) {
   const t = useT();
+  const summaryId = useId();
+  const [previewExpanded, setPreviewExpanded] = useState(false);
   // Looked up once: a new shell object on every render would resubscribe to the mute event.
   const [own] = useState(() => tauriShortcuts());
   const shortcutsShell = shortcuts === undefined ? own : shortcuts;
@@ -103,7 +107,6 @@ export function IslandApp({
   useSwitchPillsShortcut(shortcutsShell, (route) => shell?.openInPhoenix(route));
   const state = useDisplayedState();
   const { data: settings } = usePetSettings();
-  const bubble = useBubble(state);
   const outfit = useWornOutfit();
   const frame = useFrame(shell);
   const petActivity = activityOf(state);
@@ -118,7 +121,10 @@ export function IslandApp({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") shell?.send({ kind: "collapse" });
+      if (e.key === "Escape") {
+        setPreviewExpanded(false);
+        shell?.send({ kind: "collapse" });
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -127,14 +133,20 @@ export function IslandApp({
   const visual = visualFor(state.state);
   const stateKey = `common.petState.${state.state}`;
   const stateText = isMessageKey(stateKey) ? t(stateKey) : visual.label;
-  const expanded = frame.state === "expanded";
+  const expanded = shell ? frame.state === "expanded" : previewExpanded;
+  const toggle = () =>
+    shell ? shell.send({ kind: "toggle" }) : setPreviewExpanded((open) => !open);
+  const collapse = () => {
+    setPreviewExpanded(false);
+    shell?.send({ kind: "collapse" });
+  };
   const hidden = frame.state === "hidden";
   const style = { "--notch-width": `${frame.layout.notch_width}px` } as CSSProperties;
 
   return (
     <div
       className="island-root"
-      data-state={frame.state}
+      data-state={expanded ? "expanded" : frame.state}
       data-notch={frame.layout.has_notch ? "true" : "false"}
       data-tone={visual.tone}
       data-drop-over={nativeDrop.over ? "true" : "false"}
@@ -154,11 +166,16 @@ export function IslandApp({
                 state={state}
                 size={expanded ? EXPANDED_AVATAR_SIZE : ISLAND_AVATAR_SIZE}
                 expanded={expanded}
+                controls={summaryId}
                 reducedMotion={settings.reduced_motion}
                 outfit={outfit}
                 {...(mute.sounds ? { sounds: mute.sounds } : {})}
-                actionHint={expanded ? t("pet.island.collapse") : t("pet.island.expand")}
-                onActivate={() => shell?.send({ kind: "toggle" })}
+                actionHint={t("pet.summary.hint")}
+                onActivate={toggle}
+                onDoubleActivate={() => {
+                  collapse();
+                  shell?.openInPhoenix(routeFor(state));
+                }}
               />
             </div>
             {frame.layout.has_notch && <div className="island-notch" aria-hidden="true" />}
@@ -190,11 +207,12 @@ export function IslandApp({
                   {dropText}
                 </p>
               )}
-              {state.explanation && (
-                <p className="island-text" data-tone={visual.tone}>
-                  {bubble ?? state.explanation}
-                </p>
-              )}
+              <CompanionSummary
+                id={summaryId}
+                state={state}
+                onClose={collapse}
+                onOpen={() => shell?.openInPhoenix(routeFor(state))}
+              />
               <AgentApprovals compact />
               <SourcePills pills={pills} selected={selected} />
               <AwakeCountdown />
@@ -203,13 +221,6 @@ export function IslandApp({
                   <span className="rec-dot" aria-hidden="true" /> {t("common.petState.RECORDING")}
                 </span>
               )}
-              <button
-                type="button"
-                className="island-open"
-                onClick={() => shell?.openInPhoenix(routeFor(state))}
-              >
-                {t("pet.desktop.openInPhoenix")}
-              </button>
             </div>
           )}
         </>
