@@ -13,10 +13,14 @@
 // channel kind; no names, no text).
 //
 // SECURITY: the session token proves possession, not a person's agreement. So the two flags are
-// necessary but NEVER sufficient: Core also needs a consent channel injected by the embedding
-// process (desktop shell dialog) that a token client cannot drive. Without it (the default, and the
-// browser) POST /api/notetaker/sessions answers 403 CONSENT_CHANNEL_UNAVAILABLE and nothing records:
-// no recogniser is probed, no meeting record opens, no `notetaker.recording` is published.
+// necessary but NEVER sufficient: Core also needs a consent channel that a token client cannot
+// drive. Either an embedder-injected one (code only), or managed mode: the desktop shell started
+// Core and passed a per-launch secret over stdin; only that secret (never the token) reads and
+// answers the pending consent via GET /api/notetaker/consent/pending and POST
+// /api/notetaker/consent/answer {nonce, decision}. Without a live channel (the default, `pnpm
+// dev:core`, and the browser) POST /api/notetaker/sessions answers 403 CONSENT_CHANNEL_UNAVAILABLE
+// and nothing records: no recogniser is probed, no meeting record opens, no `notetaker.recording`
+// is published.
 //
 // Privacy contract:
 //   * Audio is NEVER written to disk by Core. PCM is buffered per channel in memory, transcribed in
@@ -102,6 +106,28 @@ export interface NotetakerStreamHandle {
   closed(): void;
 }
 
+/** A recording consent waiting for the person at the desktop shell's dialog. */
+export interface PendingConsentView {
+  nonce: string;
+  what: string;
+  requested_by: string;
+  /** Cleaned, at most 80 characters, or null. Shown as text only. */
+  title: string | null;
+  expires_at: string;
+}
+
+/**
+ * The consent channel as the two shell-only routes see it. Authenticated by the per-launch
+ * secret ALONE (the session token is not accepted and not looked at). Errors are PhoenixErrors.
+ */
+export interface NotetakerConsentApi {
+  list(secret: string | undefined): PendingConsentView[];
+  answer(secret: string | undefined, nonce: unknown, decision: unknown): "granted" | "denied";
+}
+
+/** Request header that carries the per-launch consent secret (never `Authorization`). */
+export const CONSENT_SECRET_HEADER = ["x", "phoenix", "consent", "secret"].join("-");
+
 /** The notetaker as the API sees it. Errors are PhoenixErrors. */
 export interface NotetakerApi {
   status(): Promise<NotetakerStatusView>;
@@ -116,6 +142,53 @@ export interface NotetakerApi {
   /** True when the session exists, takes audio and no stream was opened for it yet. */
   streamAvailable(id: string): boolean;
   openStream(id: string, onEnded: (reason: string) => void): NotetakerStreamHandle;
+}
+
+/**
+ * The shell-only consent routes. They are `public` in the router's sense (the session-token check
+ * is skipped) because the session token must NOT be able to answer; the handler authenticates the
+ * per-launch secret instead. A request that carries an `Origin` or a cookie came from a web page
+ * and is refused before the secret is even looked at.
+ */
+export function notetakerConsentRoutes(s: CoreServices): Route[] {
+  const channel = () => {
+    if (!s.notetakerConsent)
+      throw new PhoenixError(
+        ErrorCode.CONSENT_CHANNEL_UNAVAILABLE,
+        "This Core was not started by the desktop app, so it has no consent channel",
+      );
+    return s.notetakerConsent;
+  };
+  const secretOf = (req: { headers: Record<string, string | string[] | undefined> }) => {
+    if (req.headers.origin !== undefined || req.headers.cookie !== undefined)
+      throw new PhoenixError(ErrorCode.SECURITY_POLICY_BLOCKED, "Not available to web pages");
+    const raw = req.headers[CONSENT_SECRET_HEADER];
+    return typeof raw === "string" ? raw : undefined;
+  };
+  return [
+    route(
+      "GET",
+      "/api/notetaker/consent/pending",
+      ({ req }) => ({ pending: channel().list(secretOf(req)) }),
+      true,
+    ),
+    route(
+      "POST",
+      "/api/notetaker/consent/answer",
+      async ({ req, body }) => {
+        const secret = secretOf(req);
+        const input = expectObject(await body());
+        for (const key of Object.keys(input))
+          if (key !== "nonce" && key !== "decision")
+            throw new PhoenixError(
+              ErrorCode.INVALID_REQUEST,
+              "Only `nonce` and `decision` are accepted",
+            );
+        return { decision: channel().answer(secret, input.nonce, input.decision) };
+      },
+      true,
+    ),
+  ];
 }
 
 export function notetakerRoutes(s: CoreServices): Route[] {

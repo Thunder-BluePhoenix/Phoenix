@@ -60,6 +60,12 @@ export interface NotetakerConsentChannel {
   readonly kind: string;
   /** Asks the person about THIS recording. Resolves true only when they said yes now. */
   confirm(info: { title: string | null }): Promise<boolean>;
+  /**
+   * Whether the surface can be reached right now (the managed desktop shell's link is live). Absent
+   * means always. When it says false, status reports the channel unavailable and a start is refused
+   * before anything runs.
+   */
+  available?(): boolean;
 }
 
 const CONSENT_UNAVAILABLE_DETAIL =
@@ -308,7 +314,7 @@ export class NotetakerRuntime implements NotetakerApi {
       enabled: this.enabled(),
       kill_switch_engaged: killSwitchEngaged,
       recognizer,
-      consent_channel: this.d.consent
+      consent_channel: this.channelLive()
         ? {
             available: true,
             detail: "A person confirms each recording on their own screen",
@@ -362,9 +368,14 @@ export class NotetakerRuntime implements NotetakerApi {
   }
 
   /** Asks the person (never the caller) about this recording. */
+  private channelLive(): boolean {
+    const channel = this.d.consent;
+    return channel !== null && (channel.available ? channel.available() : true);
+  }
+
   private async confirmWithPerson(info: { title: string | null }): Promise<boolean> {
     const channel = this.d.consent;
-    if (!channel) {
+    if (!channel || !this.channelLive()) {
       throw new PhoenixError(ErrorCode.CONSENT_CHANNEL_UNAVAILABLE, CONSENT_UNAVAILABLE_DETAIL);
     }
     try {
@@ -382,7 +393,7 @@ export class NotetakerRuntime implements NotetakerApi {
   }): Promise<NotetakerStartedView> {
     // Fail closed first: without a person-bound channel nothing below may run (no recogniser
     // probe, no buffer, no meeting record, no RECORDING event). The request flags are claims.
-    if (!this.d.consent) {
+    if (!this.channelLive()) {
       throw new PhoenixError(ErrorCode.CONSENT_CHANNEL_UNAVAILABLE, CONSENT_UNAVAILABLE_DETAIL);
     }
     try {

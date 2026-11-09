@@ -8,6 +8,7 @@ import { BrowserRelay } from "@phoenix/capability-browser";
 import { builtinCapabilities } from "./builtins";
 import { settingsReminderStore } from "./calendar";
 import { dockerIdleFrom } from "./docker-idle";
+import { MANAGED_ENV, MANAGED_ENV_VALUE, readConsentSecret } from "./consent-channel";
 import { PhoenixRuntime } from "./runtime";
 import { explainStartupError } from "./startup-errors";
 import { statusLightsHost } from "./status-lights/host";
@@ -79,6 +80,18 @@ if (signerRootKeyFile && signerRegistryFile) {
     fail(new Error("PHOENIX_EXTENSION_SIGNER_ROOT_KEY_FILE could not be read"));
   }
 }
+// Managed mode (Phase 65): only the desktop shell announces it, and it passes the per-launch consent
+// secret on stdin (never argv, never the environment, never a file). `pnpm dev:core` does not
+// announce it, never reads stdin, and so keeps refusing every token-only recording start.
+let consentSecret: string | undefined;
+let sentinel: NodeJS.ReadStream | undefined;
+if (process.env[MANAGED_ENV] === MANAGED_ENV_VALUE) {
+  const read = await readConsentSecret(process.stdin);
+  if (!read)
+    fail(new Error("managed mode was announced but no valid consent secret arrived on stdin"));
+  consentSecret = read;
+  sentinel = process.stdin;
+}
 const browserRelay = new BrowserRelay();
 let runtime: PhoenixRuntime;
 try {
@@ -87,6 +100,7 @@ try {
     logger,
     browserRelay,
     ...(secrets ? { secrets } : {}),
+    ...(consentSecret ? { consentSecret } : {}),
     ...(trustedKeyFile && indexFile && artifactDirectory
       ? { registry: { trustedKeyFile, indexFile, artifactDirectory } }
       : {}),
@@ -131,6 +145,16 @@ const shutdown = (signal: string) => {
     },
   );
 };
+// Managed Core lives and dies with its shell: stdin closing means the shell is gone. The consent
+// link is dead from that moment and Core stops, so nothing keeps recording unattended.
+if (sentinel) {
+  sentinel.on("end", () => {
+    runtime.notetakerConsent?.shellGone();
+    shutdown("shell exited");
+  });
+  sentinel.on("error", () => sentinel.emit("end"));
+  sentinel.resume();
+}
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 

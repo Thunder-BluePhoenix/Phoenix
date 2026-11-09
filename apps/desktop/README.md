@@ -47,7 +47,7 @@ The pill runs as an explicitly scoped loopback webview with a narrowly scoped Ta
 
 ## Run
 
-Needs Rust ≥ 1.90 and a running core (`pnpm dev:core` in another terminal):
+Needs Rust ≥ 1.90 and a running core (`pnpm dev:core` in another terminal; this stays the default and never records a call, because Core refuses token-only recording starts):
 
 ```sh
 pnpm --filter @phoenix/desktop dev      # hot reload against the Vite dev server
@@ -56,6 +56,10 @@ pnpm --filter @phoenix/desktop test:rust   # unit tests + window/tray lifecycle 
 ```
 
 The lifecycle tests (`src-tauri/tests/lifecycle.rs`) run on Tauri's mock runtime on the main thread (`harness = false`, because macOS only builds menus and tray icons there). They never open a browser, write login items or touch your settings.
+
+## Managed Core and recording consent (Phase 65, opt-in, never run on a real display)
+
+Set `PHOENIX_MANAGED_CORE=1` and `PHOENIX_MANAGED_CORE_ARGV` (a JSON array, for example `["node","--import","tsx","/path/to/Phoenix/core/runtime/src/main.ts"]`; optional `PHOENIX_MANAGED_CORE_CWD`, the repository root for `config/dev.json`) before starting the shell and it starts Core as its child instead of expecting `pnpm dev:core`. It runs the argv directly (no shell), with a cleaned environment, captures a bounded tail of its output, kills it when the shell exits and restarts it at most 3 times in 10 minutes. It refuses to adopt a Core that is already running on the port: stop that one first. A per-launch secret from the OS random generator goes to Core over the child's stdin pipe (never argv, environment, a file or a log) and lets only the shell answer recording consents: when a call recording is requested the shell shows a native "Record this call?" dialog (Cancel is the default) and tells Core the answer; the session token, the web page and agents cannot. Without the opt-in nothing here runs and recording stays refused. Details, tests and residual risks (for example Linux `/proc/<pid>/fd/0` is readable by the same user): [Phase 65](../../docs/phases/phase-65-botless-notetaker.md#consent-channel-managed-mode-owner-decision-1-built-never-run-on-a-real-display). System-audio capture start is still not wired.
 
 ## Status
 

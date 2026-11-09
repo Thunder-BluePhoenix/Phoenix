@@ -24,4 +24,6 @@ Recorded on 2026-11-08 for the local working changes: the full suite on Node 22.
 - [ ] Run a real coding-agent lifecycle through Fawkes, including an approval and denial, using a disposable repository. Verify events, state changes, cancellation and emergency stop. Sending a prompt may consume account quota; record the selected provider and consent before doing so.
 - [ ] Verify configured integrations one at a time against an account or device chosen for testing. Begin with reads. Before testing external writes or paid cloud processing, record the exact intended effect, target and permission. Use the component's documented checks and update its gap row with evidence.
 
+The concrete, ordered steps for the items above (web search, the browser, blocking, the port radar, the voice window, the second recogniser, capture, restart recipes, and what needs a second device) are in the [real-run checklist](../real-run-checklist.md). Use that one to do the runs, and this one to record the results.
+
 Unchecked items remain unverified. This checklist does not certify a release; use the existing [release gates](../release-gates.md) and version-specific verification plans for release decisions.

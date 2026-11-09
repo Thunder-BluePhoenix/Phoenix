@@ -79,6 +79,7 @@ import { MultimodalRuntime } from "./multimodal";
 import { DictationRuntime } from "./dictation";
 import { VoiceRuntime, type VoiceRuntimeDeps } from "./voice";
 import { NotetakerRuntime, type NotetakerConsentChannel } from "./notetaker";
+import { ConsentChannel } from "./consent-channel";
 import { AttachmentRuntime } from "./attachments";
 import type { WindowExec } from "./window-capture";
 import { syncMeetings } from "./meetings";
@@ -233,6 +234,22 @@ export interface RuntimeOptions {
    * Code-only: no HTTP route, setting or event can set it. Absent = recording is refused.
    */
   notetakerConsent?: NotetakerConsentChannel;
+  /**
+   * Managed mode (Phase 65): the per-launch secret the desktop shell passed over Core's stdin
+   * (64 hex characters, read by `readConsentSecret`). It enables the shell-only consent routes and
+   * the `consent_channel: available` status while the shell link is live. Code-only; ignored when
+   * `notetakerConsent` is also given. The clock and nonce are test seams.
+   */
+  consentSecret?: string;
+  consentTiming?: {
+    now?: () => number;
+    ttlMs?: number;
+    linkTtlMs?: number;
+    maxFailures?: number;
+    maxCalls?: number;
+    windowMs?: number;
+    nonce?: () => string;
+  };
   /** Clock for attachment expiry (tests inject one). */
   attachmentClock?: () => number;
   /** Delimiter nonce for attachment questions (tests inject a known one to prove a forged delimiter fails). */
@@ -312,6 +329,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly voice: VoiceRuntime;
   /** Botless notetaker (Phase 65): off by default, consent every time, audio in memory only. */
   readonly notetaker: NotetakerRuntime;
+  /** The shell-only consent channel; present only in managed mode (see `RuntimeOptions.consentSecret`). */
+  readonly notetakerConsent: ConsentChannel | undefined;
   /** Files, images, folders and windows given to Fawkes as context (Phase 62): memory only, local-only ask. */
   readonly attachments: AttachmentRuntime;
   /** Governed improvement history; no trusted task reader/baseline/apply configured by default. */
@@ -580,6 +599,20 @@ export class PhoenixRuntime implements CoreServices {
       recognizer: options.dictationRecognizer ?? buildSpeechRecognizer(speechEngineConfig(options)),
       logger: this.logger.child("dictation"),
     });
+    this.notetakerConsent =
+      options.consentSecret && !options.notetakerConsent
+        ? new ConsentChannel({
+            secret: options.consentSecret,
+            ...options.consentTiming,
+            audit: (action, decision, details) =>
+              void this.permissions.audit.record({
+                actor: "desktop-shell",
+                action,
+                decision,
+                details,
+              }),
+          })
+        : undefined;
     this.notetaker = new NotetakerRuntime({
       settings: this.settings,
       bus: this.bus,
@@ -593,7 +626,7 @@ export class PhoenixRuntime implements CoreServices {
         options.dictationRecognizer ??
         buildSpeechRecognizer(speechEngineConfig(options)),
       logger: this.logger.child("notetaker"),
-      consent: options.notetakerConsent ?? null,
+      consent: options.notetakerConsent ?? this.notetakerConsent ?? null,
       ...(options.notetakerWindowSamples ? { windowSamples: options.notetakerWindowSamples } : {}),
     });
     this.attachments = new AttachmentRuntime({
@@ -1396,6 +1429,7 @@ export class PhoenixRuntime implements CoreServices {
         { name: "mission", close: () => this.mission.close() },
         { name: "agent safety", close: () => this.agentSafety.close() },
         { name: "handoff", close: () => this.handoff.close() },
+        { name: "notetaker consent", close: () => this.notetakerConsent?.close() },
         { name: "notetaker", close: () => this.notetaker.close() },
         { name: "attachments", close: () => this.attachments.close() },
         { name: "agent approvals", close: () => this.agentApprovals.close() },

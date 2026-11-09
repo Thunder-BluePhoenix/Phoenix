@@ -3,7 +3,7 @@
 import type { DailyDigestSlackService } from "./digest-routes";
 import type { AgentApprovalsApi } from "./agent-approval-routes";
 import type { DictationApi } from "./dictation-routes";
-import type { NotetakerApi } from "./notetaker-routes";
+import type { NotetakerApi, NotetakerConsentApi } from "./notetaker-routes";
 import type { AttachmentsApi } from "./attachment-routes";
 import type { AgentLiveApi } from "./agent-live-routes";
 import type { AppearanceApi } from "./appearance-routes";
@@ -1295,6 +1295,8 @@ export interface CoreServices {
   dictation?: DictationApi;
   voice?: VoiceApi;
   notetaker?: NotetakerApi;
+  /** Present only in a Core started by the desktop shell (managed mode). */
+  notetakerConsent?: NotetakerConsentApi;
   agentApprovals?: AgentApprovalsApi;
   agentRelay?: AgentRelayApi;
   agentLive?: AgentLiveApi;

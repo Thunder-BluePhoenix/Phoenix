@@ -17,6 +17,7 @@ pub mod browser_policy;
 pub mod browser_profiles;
 pub mod browser_rules;
 mod connection;
+mod consent_dialog;
 mod core_status;
 mod deeplink;
 mod dictation_hotkey;
@@ -36,6 +37,7 @@ mod island_state;
 #[cfg(windows)]
 mod island_windows;
 mod mailto;
+mod managed_core;
 mod native_dialog;
 mod pill;
 mod pill_geometry;
@@ -127,6 +129,9 @@ struct Shell<R: Runtime> {
     /// Phase 73: holds every exit while Core is asked whether a change still needs undoing.
     quit: quit_veto::Gate,
     confirm_quit: QuitAsk,
+    /// Phase 65: the opt-in managed Core (a child process holding the consent secret). `None` unless
+    /// `PHOENIX_MANAGED_CORE=1`. Killed on exit.
+    managed_core: Option<managed_core::Supervisor>,
     /// False under the mock runtime: no operating-system hotkey is ever registered there.
     native_shortcuts: bool,
 }
@@ -934,6 +939,46 @@ pub fn quit_requested<R: Runtime>(app: &AppHandle<R>) -> bool {
     }
 }
 
+/// Starts the managed Core supervisor (Phase 65). The dialog runs on the main thread; every answer
+/// (including "could not be shown" and "timed out") is a denial. A granted answer mints the one
+/// `ConsentGrant` this build can mint. Nothing turns it into a running capture yet, so it is dropped.
+fn start_managed_core<R: Runtime>(
+    app: &AppHandle<R>,
+    spec: managed_core::SpawnSpec,
+    locator: &Locator,
+) -> Option<managed_core::Supervisor> {
+    let addr: std::net::SocketAddr = locator.base_url.strip_prefix("http://")?.parse().ok()?;
+    let ui = app.clone();
+    let ask: consent_dialog::Ask = std::sync::Arc::new(move |prompt| {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let prompt = prompt.clone();
+        ui.run_on_main_thread(move || {
+            let _ = tx.send(native_dialog::confirm_consent(&prompt));
+        })
+        .ok()?;
+        // Longer than Core's 60 s expiry: a stale dialog answers a nonce that no longer exists.
+        rx.recv_timeout(std::time::Duration::from_secs(90))
+            .ok()
+            .flatten()
+    });
+    let runner = managed_core::Runner::new(
+        spec,
+        std::sync::Arc::new(managed_core::SystemSpawner),
+        Box::new(consent_dialog::HttpApi {
+            base_url: locator.base_url.clone(),
+        }),
+        ask,
+        Box::new(move || managed_core::port_is_busy(addr)),
+    );
+    Some(managed_core::Supervisor::start(runner, |step| {
+        if let consent_dialog::Step::Granted(granted) = step {
+            // The only place a ConsentGrant is minted. Capture start is not wired (documented in
+            // docs/phases/phase-65-botless-notetaker.md), so the grant is consumed here unused.
+            let _grant = system_audio::ConsentGrant::from_granted(granted);
+        }
+    }))
+}
+
 /// Remembers the mute flag, tells the desktop pages (`shortcuts://mute`) and ticks the menu.
 /// The shell never plays sounds itself; the pages and the web app honour the flag.
 fn set_muted<R: Runtime>(app: &AppHandle<R>, muted: bool) {
@@ -1407,7 +1452,21 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
             let settings_path = settings_dir.join(SETTINGS_FILE);
             let settings = settings::load(&settings_path);
             let env = env.unwrap_or_else(|| Box::new(|k| std::env::var(k).ok()));
+            // Phase 65: opt-in managed Core. Never under the mock runtime (no process is spawned there).
+            let managed_spec = if skip_native_window_styling {
+                Err(managed_core::SpecError::NotRequested)
+            } else {
+                managed_core::spec_from_env(&env)
+            };
             let locator = locate(env, handle.path().home_dir().ok(), repo_dev_data_dir());
+            let managed = match managed_spec {
+                Ok(spec) => start_managed_core(handle, spec, &locator),
+                Err(managed_core::SpecError::NotRequested) => None,
+                Err(why) => {
+                    eprintln!("Phoenix: managed Core not started: {}", why.message());
+                    None
+                }
+            };
             // Core chooses its loopback port at run time. Grant Tauri IPC to *that exact*
             // pill URL (not other Core routes, wildcard ports, or arbitrary remote pages).
             // This capability is in addition to the static default one for the pet windows.
@@ -1463,6 +1522,7 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
                 terminal_jump: terminal_jump::Guard::default(),
                 quit: quit_veto::Gate::default(),
                 confirm_quit: confirm_quit.unwrap_or_else(|| Box::new(native_dialog::confirm)),
+                managed_core: managed,
                 // The mock runtime (lifecycle tests) has no hotkey manager; never touch the OS there.
                 native_shortcuts: !skip_native_window_styling,
             });
@@ -1575,6 +1635,14 @@ pub fn run() {
             if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
                 if let Some(shell) = app.try_state::<Shell<tauri::Wry>>() {
                     shell.flush();
+                }
+            }
+            // The managed Core (Phase 65) never outlives the shell.
+            if matches!(event, RunEvent::Exit) {
+                if let Some(shell) = app.try_state::<Shell<tauri::Wry>>() {
+                    if let Some(core) = &shell.managed_core {
+                        core.stop();
+                    }
                 }
             }
         });

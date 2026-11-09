@@ -3,13 +3,14 @@
 
 //! System-audio capture adapter for the botless notetaker (Phase 65), shell side.
 //!
-//! **Nothing in the app can start this today, on purpose.** [`CaptureSession::start`] needs a
-//! [`ConsentGrant`], and no code outside the tests can make one: Core refuses every token-only
-//! recording start (403 `CONSENT_CHANNEL_UNAVAILABLE`) because no person-bound consent channel
-//! exists, and the shell does not own Core (see the Phase 65 decision in `docs/gaps.md`). There is
-//! no Tauri command, no menu item and no web-reachable path to this module. When the owner picks
-//! a consent mechanism, only the code that implements it may construct a [`ConsentGrant`], one
-//! per recording and consumed by `start`.
+//! **Nothing in the app starts this yet, on purpose.** [`CaptureSession::start`] needs a
+//! [`ConsentGrant`]. The only production constructor is [`ConsentGrant::from_granted`], which needs
+//! a `consent_dialog::Granted`: proof that a person chose **Record** in the shell's native dialog
+//! for a managed Core and that Core, authenticating the per-launch secret, confirmed it (Phase 65,
+//! owner decision (1); `managed_core.rs`). The grant is minted in the managed-Core supervisor and
+//! dropped there: no code path yet turns it into a running capture, so capture start is still not
+//! reachable. There is no Tauri command, no menu item and no web-reachable path to this module.
+//! A grant is one per recording and consumed by `start`.
 //!
 //! What it does once started: capture what the computer is playing (macOS: ScreenCaptureKit,
 //! audio only, see `system_audio_macos.rs`), turn it into 16 kHz mono 16-bit little-endian PCM
@@ -74,8 +75,14 @@ pub struct ConsentGrant {
 }
 
 impl ConsentGrant {
-    /// Tests only. The real constructor belongs to whatever resolves the Phase 65 consent
-    /// decision; there is none yet.
+    /// The only production constructor: it needs a [`Granted`], which only
+    /// `consent_dialog::step` makes, and only after a person chose **Record** in the shell's native
+    /// dialog AND Core (which authenticates the per-launch secret) confirmed that answer.
+    pub(crate) fn from_granted(_granted: crate::consent_dialog::Granted) -> Self {
+        Self { _private: () }
+    }
+
+    /// Tests only.
     #[cfg(test)]
     pub(crate) fn for_test() -> Self {
         Self { _private: () }

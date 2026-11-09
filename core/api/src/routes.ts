@@ -19,7 +19,7 @@ import { proactiveRoutes } from "./proactive-routes";
 import { syncRoutes } from "./sync-routes";
 import { registryRoutes } from "./registry-routes";
 import { dictationRoutes } from "./dictation-routes";
-import { notetakerRoutes } from "./notetaker-routes";
+import { notetakerConsentRoutes, notetakerRoutes } from "./notetaker-routes";
 import { digestRoutes } from "./digest-routes";
 import { calendarRoutes } from "./calendar-routes";
 import { teamStatusRoutes, teamWebhookRoutes } from "./team-webhook-routes";
@@ -414,6 +414,7 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...dictationRoutes(s),
     ...voiceRoutes(s),
     ...notetakerRoutes(s),
+    ...notetakerConsentRoutes(s),
     ...improvementRoutes(s),
     ...appearanceRoutes(s),
     ...uiRoutes(s),
