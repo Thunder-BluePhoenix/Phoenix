@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 
 /**
- * unsupported = not Linux; missing_tool = `playerctl` is not installed; not_running = no (such)
+ * unsupported = not Linux or Windows (or, on Windows, a command the session API lacks); missing_tool = `playerctl` is not installed; not_running = no (such)
  * MPRIS player is on the session bus (Phoenix never starts one); invalid = input refused;
  * too_large = the answer was bigger than the caller allowed; player = anything else (an error exit,
  * a timeout, an answer of the wrong shape).

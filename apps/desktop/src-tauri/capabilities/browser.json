@@ -19,6 +19,8 @@
     "allow-shields-status",
     "allow-page-snapshot",
     "allow-page-action",
+    "allow-find-in-page",
+    "allow-answer-permission",
     "allow-purge-profile-data"
   ]
 }

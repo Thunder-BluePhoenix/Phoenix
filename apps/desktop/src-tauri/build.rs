@@ -39,6 +39,8 @@ fn main() {
             "shields_status",
             "page_snapshot",
             "page_action",
+            "find_in_page",
+            "answer_permission",
             "purge_profile_data",
         ]),
     ))

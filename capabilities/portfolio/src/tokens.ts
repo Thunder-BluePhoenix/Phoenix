@@ -224,6 +224,154 @@ export const cosmosDenoms: TokenSupport = {
   },
 };
 
+const DECIMAL_TEXT = /^(0|[1-9]\d{0,40})(?:\.(\d{1,40}))?$/;
+
+/**
+ * A plain decimal string ("12.5", no sign, no exponent) as an integer count of the smallest unit
+ * for `decimals` places. More fractional digits than `decimals` (zeros at the end aside) is
+ * undefined: nothing is rounded silently. Also undefined past 78 digits or 2^256.
+ */
+export function decimalUnits(value: unknown, decimals: number): bigint | undefined {
+  if (typeof value !== "string") return undefined;
+  const m = DECIMAL_TEXT.exec(value);
+  if (!m) return undefined;
+  const fraction = (m[2] ?? "").replace(/0+$/, "");
+  if (fraction.length > decimals) return undefined;
+  const digits = `${m[1]}${fraction.padEnd(decimals, "0")}`.replace(/^0+(?=\d)/, "");
+  return unitsOf(digits);
+}
+
+/** The XRP Ledger's own Base58 alphabet (a different letter sequence from Bitcoin's). */
+const XRPL_ALPHABET = "rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz";
+
+/** An XRP Ledger classic address with a correct checksum (version byte 0, double SHA-256). */
+function validXrplAddress(value: string): string | undefined {
+  if (!new RegExp(`^r${BASE58}{24,34}$`).test(value)) return undefined;
+  let n = 0n;
+  for (const ch of value) n = n * 58n + BigInt(XRPL_ALPHABET.indexOf(ch));
+  const hex = n.toString(16);
+  if (hex.length > 50) return undefined;
+  const bytes = Buffer.from(hex.padStart(50, "0"), "hex");
+  if (bytes[0] !== 0) return undefined;
+  const sha = (b: Uint8Array) => createHash("sha256").update(b).digest();
+  const expected = sha(sha(bytes.subarray(0, 21))).subarray(0, 4);
+  return expected.equals(bytes.subarray(21)) ? value : undefined;
+}
+
+const XRPL_CURRENCY = /^(?:[A-Za-z0-9]{3}|[0-9A-Fa-f]{40})$/;
+
+/** `CURRENCY:ISSUER`, the currency in its standard 3-character or 40-hex form (hex upper-cased). */
+function xrplIdentifier(currency: string, issuer: string): string | undefined {
+  if (!XRPL_CURRENCY.test(currency) || currency.toUpperCase() === "XRP") return undefined;
+  const code = currency.length === 40 ? currency.toUpperCase() : currency;
+  return validXrplAddress(issuer) ? `${code}:${issuer}` : undefined;
+}
+
+/**
+ * XRP Ledger issued currencies (trust lines), `CURRENCY:ISSUER`, from XRPSCAN's keyless
+ * `GET /api/v1/account/{account}/trustlines2` (a rippled `account_lines` answer).
+ * Sources read on 2026-11-09:
+ * - https://docs.xrpscan.com/api-documentation/account/trustlines (request, curl without a key,
+ *   response `lines[]` with `account` = issuer, `currency`, `balance` as a decimal string)
+ * - https://docs.xrpscan.com/api-documentation/introduction (public endpoints; CC BY-NC-SA 4.0)
+ * - https://docs.xrpscan.com/api-documentation/pricing (free tier 10,000 requests per day)
+ * The XRPL Data API v2 (data.ripple.com) is deprecated and is not used:
+ * https://xrpl.org/docs/references/data-api . Same host as the native XRP balance: no new host.
+ * Balances have no fixed scale, so the owner's decimals apply and a balance with more fractional
+ * digits is refused rather than rounded.
+ */
+export const xrplTokens: TokenSupport = {
+  contract: new RegExp(`^(?:[A-Za-z0-9]{3}|[0-9A-Fa-f]{40}):r${BASE58}{24,34}$`),
+  normalise(contract) {
+    const at = contract.indexOf(":");
+    return at < 0 ? undefined : xrplIdentifier(contract.slice(0, at), contract.slice(at + 1));
+  },
+  path: (a) => `/api/v1/account/${seg(a)}/trustlines2`,
+  parse(body, wanted) {
+    const found = new Map<string, bigint>();
+    const o = expectObject(body);
+    // A paged answer could hide a watched line on the next page: fail rather than undercount.
+    if (o.marker !== undefined && o.marker !== null && o.marker !== "") unusable();
+    for (const row of expectArray(o.lines)) {
+      if (!isObject(row) || typeof row.currency !== "string" || typeof row.account !== "string") {
+        continue;
+      }
+      const contract = xrplIdentifier(row.currency, row.account);
+      const decimals = contract === undefined ? undefined : wanted.get(contract);
+      if (contract === undefined || decimals === undefined) continue;
+      // A negative balance (the account is the issuer side) or an exponent form is not a holding.
+      const units = decimalUnits(row.balance, decimals) ?? unusable();
+      if (found.has(contract)) unusable();
+      found.set(contract, units);
+    }
+    return found;
+  },
+};
+
+function crc16Xmodem(bytes: Uint8Array): number {
+  let crc = 0;
+  for (const byte of bytes) {
+    crc ^= byte << 8;
+    for (let i = 0; i < 8; i++)
+      crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+  }
+  return crc;
+}
+
+const TON_RAW = /^(0|-1):[0-9a-fA-F]{64}$/;
+const TON_FRIENDLY = /^[A-Za-z0-9_+/-]{48}$/;
+
+/**
+ * A TON address as lower-case raw form `0:<64 hex>` / `-1:<64 hex>`. Accepts the raw form and the
+ * 48-character user-friendly form (mainnet tags 0x11 and 0x51 only, CRC-16/XMODEM checked).
+ */
+function tonRaw(value: string): string | undefined {
+  if (TON_RAW.test(value)) return value.toLowerCase();
+  if (!TON_FRIENDLY.test(value)) return undefined;
+  const bytes = Buffer.from(value, "base64");
+  if (bytes.length !== 36) return undefined;
+  if (bytes[0] !== 0x11 && bytes[0] !== 0x51) return undefined;
+  if (bytes[1] !== 0x00 && bytes[1] !== 0xff) return undefined;
+  if (crc16Xmodem(bytes.subarray(0, 34)) !== bytes.readUInt16BE(34)) return undefined;
+  return `${bytes[1] === 0xff ? "-1" : "0"}:${bytes.subarray(2, 34).toString("hex")}`;
+}
+
+/** The most wallets one answer may hold; a full page could continue, so it fails instead. */
+const TON_PAGE = 1000;
+
+/**
+ * TON jettons by master contract address, from TON Center API v3 `GET /api/v3/jetton/wallets`
+ * (filter `owner_address`). Keyless: requests without an API key are limited to 1 request per
+ * second (the collector spaces requests to this host, see `minIntervalMs`).
+ * Sources read on 2026-11-09:
+ * - https://docs.ton.org/api/v3/jettons/get-jetton-wallets (query parameters and response
+ *   `jetton_wallets[]` with `jetton` master, `balance` string, `owner`)
+ * - https://docs.ton.org/api/v3/authentication (API key optional; none = 1 RPS)
+ * - https://docs.ton.org/api/rate-limit (without any API key the limit is 1 request per second)
+ * Same host as the native balance: no new host. Jetton decimals live in off-chain metadata that
+ * is not trusted here: the owner's decimals are used as given.
+ */
+export const tonJettons: TokenSupport = {
+  contract: /^(?:(?:0|-1):[0-9a-fA-F]{64}|[A-Za-z0-9_+/-]{48})$/,
+  normalise: tonRaw,
+  path: (a) =>
+    `/api/v3/jetton/wallets?owner_address=${encodeURIComponent(a)}&exclude_zero_balance=true&limit=${TON_PAGE}&offset=0`,
+  parse(body, wanted) {
+    const found = new Map<string, bigint>();
+    const rows = expectArray(expectObject(body).jetton_wallets);
+    if (rows.length >= TON_PAGE) unusable();
+    for (const row of rows) {
+      if (!isObject(row) || typeof row.jetton !== "string") continue;
+      const master = tonRaw(row.jetton);
+      if (master === undefined || !wanted.has(master)) continue;
+      const units = unitsOf(row.balance) ?? unusable();
+      if (found.has(master)) unusable();
+      found.set(master, units);
+    }
+    return found;
+  },
+};
+
 function watchEntry(support: TokenSupport, item: unknown): TokenWatch | undefined {
   if (!isObject(item)) return undefined;
   const { contract: raw, symbol, decimals: given } = item;

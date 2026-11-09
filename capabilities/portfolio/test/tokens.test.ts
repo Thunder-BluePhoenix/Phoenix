@@ -66,10 +66,15 @@ class Clock {
   }
 }
 
+/** Waits the TON Center pacing asks for, recorded and not slept. */
+const paced: number[] = [];
+const pace = async (ms: number): Promise<void> => void paced.push(ms);
+
 let h: Harness | undefined;
 let mock: MockPortfolio | undefined;
 
 afterEach(async () => {
+  paced.length = 0;
   await h?.close();
   await mock?.close();
   h = mock = undefined;
@@ -92,6 +97,7 @@ async function ready(setup: Setup) {
       createPortfolioCapability({
         now: () => clock.now,
         sleep: clock.sleep,
+        pace,
         exchangeUrls: Object.fromEntries(EXCHANGES.map((e) => [e.id, m.endpoint(e.id)])),
       }),
     ],
@@ -605,8 +611,10 @@ describe("disclosure", () => {
         "gnosis",
         "optimism",
         "polygon",
+        "ton",
         "trx",
         "xlm",
+        "xrp",
       ].sort(),
     );
   });

@@ -335,7 +335,10 @@ interface FocusPlan {
  * `compact` is the same cards, hook and decision handling for the small floating window and the
  * island: no intro text, no "nothing waiting" panel, and the outcome is spoken rather than drawn.
  */
-export function AgentApprovals({ compact = false }: { compact?: boolean } = {}) {
+export function AgentApprovals({
+  compact = false,
+  filter,
+}: { compact?: boolean; filter?: (approval: AgentApproval) => boolean } = {}) {
   const t = useT();
   const { data, error, reload } = useAgentApprovals();
   const [gone, setGone] = useState<string[]>([]);
@@ -346,7 +349,7 @@ export function AgentApprovals({ compact = false }: { compact?: boolean } = {}) 
   const plan = useRef<FocusPlan | null>(null);
   const expiredSeen = useRef<string[]>([]);
 
-  const live = data.filter((a) => !gone.includes(a.id));
+  const live = data.filter((a) => !gone.includes(a.id) && (!filter || filter(a)));
   const pending = live.filter((a) => !(Date.parse(a.expires_at) <= now));
 
   useEffect(() => {

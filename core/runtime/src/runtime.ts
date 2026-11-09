@@ -141,6 +141,11 @@ export interface PetSettings {
    * alert. Opt-in: off until the user turns it on. Only the desktop shell's floating window acts on it.
    */
   follow_cursor: boolean;
+  /**
+   * Phase 93: show the small Fawkes in the corner of the Phoenix browser's chrome window. On
+   * unless the user turned it off; only the browser chrome page acts on it.
+   */
+  browser_corner: boolean;
 }
 
 /** Published after a change so every open Fawkes window re-reads the pet settings. */
@@ -1349,13 +1354,19 @@ export class PhoenixRuntime implements CoreServices {
       ...stored,
       // Anything but a stored `true` is off: following the pointer is opt-in.
       follow_cursor: stored.follow_cursor === true,
+      // Anything but a stored `false` is on: the corner Fawkes is the browser's own status light.
+      browser_corner: stored.browser_corner !== false,
     };
   }
 
   setPetSettings(input: unknown): PetSettings {
-    const change = (input ?? {}) as { reduced_motion?: unknown; follow_cursor?: unknown };
-    const { reduced_motion: motion, follow_cursor: follow } = change;
-    if (motion === undefined && follow === undefined) {
+    const change = (input ?? {}) as {
+      reduced_motion?: unknown;
+      follow_cursor?: unknown;
+      browser_corner?: unknown;
+    };
+    const { reduced_motion: motion, follow_cursor: follow, browser_corner: corner } = change;
+    if (motion === undefined && follow === undefined && corner === undefined) {
       throw new PhoenixError(
         ErrorCode.INVALID_REQUEST,
         '"reduced_motion" must be "auto", "on" or "off"',
@@ -1370,11 +1381,15 @@ export class PhoenixRuntime implements CoreServices {
     if (follow !== undefined && typeof follow !== "boolean") {
       throw new PhoenixError(ErrorCode.INVALID_REQUEST, '"follow_cursor" must be true or false');
     }
+    if (corner !== undefined && typeof corner !== "boolean") {
+      throw new PhoenixError(ErrorCode.INVALID_REQUEST, '"browser_corner" must be true or false');
+    }
     const current = this.petSettings();
     const next: PetSettings = {
       ...current,
       ...(motion !== undefined ? { reduced_motion: motion } : {}),
       ...(follow !== undefined ? { follow_cursor: follow } : {}),
+      ...(corner !== undefined ? { browser_corner: corner } : {}),
     };
     this.settings.set("pet.settings", next);
     // Every open Fawkes window (the web page, the floating pet) follows the change.

@@ -6,15 +6,23 @@ import { hostOf } from "../core/browser/site";
 import { useClient } from "../core/context";
 import { SHIELDS_PATH } from "../core/filter-lists";
 import { PROFILES_PATH, PURGES_PATH } from "../core/browser-profiles";
+import { usePetSettings } from "../core/hooks";
 import { useT, type MessageKey } from "../i18n";
 import { classifyAddress, classifyPortRadarUrl, type SearchProvider } from "./address";
 import {
   BROWSER_CHROME_HEIGHT,
+  BROWSER_CHROME_FIND_EXTRA,
   BROWSER_CHROME_PANEL_HEIGHT,
   type BrowserShell,
   type OpenResult,
   type TabInfo,
 } from "./shell";
+import { CornerFawkes } from "./CornerFawkes";
+import { cornerView } from "./corner";
+import { FindBar } from "./FindBar";
+import { useFindInPage } from "./find";
+import { PermissionPanel } from "./PermissionPanel";
+import { SYSTEM_CLOCK, usePermissionPrompts, type PermissionClock } from "./permissions";
 import { useBrowserRelay } from "./relay";
 import { INITIAL_STATE, activeTab, addressText, clampZoom, reduce } from "./state";
 
@@ -57,6 +65,8 @@ export interface BrowserAppProps {
    * function. Defaults to `setInterval`; tests pass a manual one.
    */
   schedule?: (run: () => void, ms: number) => () => void;
+  /** Time source for the permission prompt's countdown; tests pass a manual one. */
+  permissionClock?: PermissionClock;
 }
 
 /** How often the chrome asks Core whether a removed profile's web data is waiting to be deleted. */
@@ -82,6 +92,7 @@ export function BrowserApp({
   initialOpen = null,
   provider,
   schedule = everyInterval,
+  permissionClock = SYSTEM_CLOCK,
 }: BrowserAppProps) {
   const t = useT();
   const client = useClient();
@@ -100,6 +111,42 @@ export function BrowserApp({
   stateRef.current = state;
 
   const tab = activeTab(state);
+  const { data: petSettings } = usePetSettings();
+  const find = useFindInPage(shell, tab?.tabId ?? null);
+  const [findFocus, setFindFocus] = useState(0);
+  const permissions = usePermissionPrompts(shell, permissionClock, () => fail(""));
+  const hasTab = tab !== null;
+  const showFind = find.show;
+
+  // Ctrl/Cmd+F opens the find bar for the active tab (this chrome window only: a key pressed while
+  // the page has focus goes to the page, which the chrome never sees).
+  useEffect(() => {
+    if (!shell || !hasTab) return;
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        showFind();
+        setFindFocus((n) => n + 1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shell, hasTab, showFind]);
+
+  // How far down the content webview starts: base, taller for the find bar, tallest while a panel
+  // (port radar confirmation or a permission request) needs room.
+  const wantedHeight =
+    state.pending !== null || permissions.queue.length > 0
+      ? BROWSER_CHROME_PANEL_HEIGHT
+      : find.open && hasTab
+        ? BROWSER_CHROME_HEIGHT + BROWSER_CHROME_FIND_EXTRA
+        : BROWSER_CHROME_HEIGHT;
+  const sentHeight = useRef<number>(BROWSER_CHROME_HEIGHT);
+  useEffect(() => {
+    if (!shell || sentHeight.current === wantedHeight) return;
+    sentHeight.current = wantedHeight;
+    void shell.setChromeHeight(wantedHeight).catch(() => {});
+  }, [shell, wantedHeight]);
 
   // Shields choices are Core's (the Settings card writes the same ones); the chrome only reads them.
   useEffect(() => {
@@ -191,21 +238,17 @@ export function BrowserApp({
     dispatch({ type: "refused", error: { reason: "action_failed", text } });
   }, []);
 
-  const requestOpen = useCallback(
-    (raw: string) => {
-      const verdict = classifyPortRadarUrl(raw);
-      if (!verdict.ok) {
-        dispatch({
-          type: "refused",
-          error: { reason: "port_radar_invalid", text: raw.slice(0, 200) },
-        });
-        return;
-      }
-      dispatch({ type: "requestOpen", pending: { url: verdict.url, port: verdict.port } });
-      void shell?.setChromeHeight(BROWSER_CHROME_PANEL_HEIGHT).catch(() => {});
-    },
-    [shell],
-  );
+  const requestOpen = useCallback((raw: string) => {
+    const verdict = classifyPortRadarUrl(raw);
+    if (!verdict.ok) {
+      dispatch({
+        type: "refused",
+        error: { reason: "port_radar_invalid", text: raw.slice(0, 200) },
+      });
+      return;
+    }
+    dispatch({ type: "requestOpen", pending: { url: verdict.url, port: verdict.port } });
+  }, []);
 
   useEffect(() => {
     if (!shell) return;
@@ -295,7 +338,6 @@ export function BrowserApp({
     const pending = state.pending;
     if (!shell || !pending) return;
     dispatch({ type: "endOpen" });
-    void shell.setChromeHeight(BROWSER_CHROME_HEIGHT).catch(() => {});
     try {
       settle(await shell.openTab(pending.url, "port_radar"), pending.url);
     } catch {
@@ -305,7 +347,6 @@ export function BrowserApp({
 
   const cancelOpen = () => {
     dispatch({ type: "endOpen" });
-    void shell?.setChromeHeight(BROWSER_CHROME_HEIGHT).catch(() => {});
   };
 
   const site = tab ? shields.siteOf(tab.url) : null;
@@ -331,6 +372,25 @@ export function BrowserApp({
       setShieldNote(t("browser.shields.saveFailed"));
     }
   };
+
+  const shieldsOffSite =
+    tab && site !== null && (exemption === "shields_off" || exemption === "site_off") ? site : null;
+  const refusal: MessageKey | null = state.error
+    ? Object.hasOwn(DENIAL_TEXT, state.error.reason)
+      ? DENIAL_TEXT[state.error.reason]!
+      : "browser.deny.unknown"
+    : null;
+  const corner = cornerView({
+    connected: shell !== null,
+    hasTab,
+    loading: tab?.loading ?? false,
+    permissionWaiting: permissions.queue.length > 0,
+    refusal,
+    finding: find.open && find.result.searching,
+    findFound: find.open ? find.result.found : null,
+    shieldsOffSite,
+    blocked: tab?.blocked ?? 0,
+  });
 
   const title = (info: TabInfo) => info.title || hostOf(info.url) || t("browser.tab.untitled");
 
@@ -378,6 +438,9 @@ export function BrowserApp({
         >
           +
         </button>
+        {petSettings.browser_corner !== false && (
+          <CornerFawkes view={corner} reducedMotion={petSettings.reduced_motion} />
+        )}
       </div>
 
       <form className="browser-toolbar" onSubmit={(e) => void submit(e)}>
@@ -429,6 +492,19 @@ export function BrowserApp({
         <button type="submit" className="browser-button" disabled={!shell}>
           {t("browser.address.go")}
         </button>
+        <button
+          type="button"
+          className="browser-button"
+          aria-label={t("browser.find.open")}
+          aria-keyshortcuts="Control+F Meta+F"
+          disabled={!tab}
+          onClick={() => {
+            find.show();
+            setFindFocus((n) => n + 1);
+          }}
+        >
+          ⌕
+        </button>
         <div className="browser-zoom" role="group" aria-label={t("browser.zoom.label")}>
           <button
             type="button"
@@ -459,6 +535,8 @@ export function BrowserApp({
           </button>
         </div>
       </form>
+
+      {find.open && tab && <FindBar find={find} focusToken={findFocus} />}
 
       <div className="browser-status">
         <label className="browser-profile-picker">
@@ -519,6 +597,8 @@ export function BrowserApp({
           <span className="browser-hint">{shell ? t("browser.empty") : t("browser.noShell")}</span>
         )}
       </div>
+
+      <PermissionPanel prompts={permissions} />
 
       {state.pending && (
         <section className="browser-panel" role="dialog" aria-labelledby={panelId}>

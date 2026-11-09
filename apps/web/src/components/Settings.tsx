@@ -125,6 +125,9 @@ function FawkesSettings() {
   const setFollow = async (follow_cursor: boolean) => {
     if (await run("POST", "/api/pet/settings", { follow_cursor })) announcePetSettings();
   };
+  const setCorner = async (browser_corner: boolean) => {
+    if (await run("POST", "/api/pet/settings", { browser_corner })) announcePetSettings();
+  };
   const options: [PetSettings["reduced_motion"], string][] = [
     ["auto", t("settings.fawkes.motionAuto")],
     ["on", t("settings.fawkes.motionOn")],
@@ -159,6 +162,15 @@ function FawkesSettings() {
         {t("follow.label")}
       </label>
       <p className="muted small">{t("follow.hint")}</p>
+      <label className="choice">
+        <input
+          type="checkbox"
+          checked={data.browser_corner !== false}
+          onChange={(event) => void setCorner(event.target.checked)}
+        />
+        {t("browser.corner.setting")}
+      </label>
+      <p className="muted small">{t("browser.corner.settingHint")}</p>
       <Feedback error={error} />
     </section>
   );

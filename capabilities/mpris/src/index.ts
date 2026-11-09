@@ -8,6 +8,7 @@
 // word, a whole number, or a player name that matched an allow-list pattern (so it can never look
 // like an option); player text is cleaned and clipped; output is size-capped and every call has a
 // timeout; a missing player is reported, never started. Every control asks for confirmation.
+// Windows (windows.ts, NEVER RUN ON WINDOWS): one constant PowerShell script, no input interpolated.
 import { defineCapability, type CapabilityContext, type HealthResult } from "@phoenix/sdk";
 import { realSleep, startPolling, type Sleep } from "@phoenix/service-kit";
 import { PlayerError } from "./errors";
@@ -15,12 +16,19 @@ import { diffPlayback, NOTHING_OBSERVED, type Observed } from "./events";
 import type { NowPlaying } from "./parse";
 import { PLAYER_NAME_PATTERN, readNowPlaying, runControl } from "./player";
 import { playerctlRunner, type PlayerctlRunner } from "./playerctl";
+import {
+  readWindowsNowPlaying,
+  runWindowsControl,
+  windowsRunner,
+  type WindowsRunner,
+} from "./windows";
 
 export * from "./errors";
 export * from "./events";
 export * from "./parse";
 export * from "./player";
 export * from "./playerctl";
+export * from "./windows";
 
 export const DEFAULT_POLL_MS = 5_000;
 export const MIN_POLL_MS = 2_000;
@@ -29,6 +37,8 @@ const FAILURE_POLL_MS = 30_000;
 export interface MprisCapabilityOptions {
   /** Runs `playerctl`; tests pass a fake so no real player is touched. */
   run?: PlayerctlRunner;
+  /** Runs the fixed Windows PowerShell script (win32 only); tests pass a fake. */
+  runWindows?: WindowsRunner;
   /** `process.platform` by default. */
   platform?: NodeJS.Platform;
   sleep?: Sleep;
@@ -66,7 +76,9 @@ const optionalPlayer = {
 /** A fresh capability instance (its own observation state); Phoenix Core uses one per runtime. */
 export function createMprisCapability(options: MprisCapabilityOptions = {}) {
   const run = options.run ?? playerctlRunner;
+  const runWindows = options.runWindows ?? windowsRunner;
   const platform = options.platform ?? process.platform;
+  const supported = platform === "linux" || platform === "win32";
   const sleep = options.sleep ?? realSleep;
 
   let observed: Observed = NOTHING_OBSERVED;
@@ -75,7 +87,10 @@ export function createMprisCapability(options: MprisCapabilityOptions = {}) {
 
   async function observe(player: string | undefined): Promise<NowPlaying> {
     try {
-      const now = await readNowPlaying(run, platform, player);
+      const now =
+        platform === "win32"
+          ? await readWindowsNowPlaying(runWindows, player)
+          : await readNowPlaying(run, platform, player);
       failure = undefined;
       last = now;
       return now;
@@ -94,7 +109,10 @@ export function createMprisCapability(options: MprisCapabilityOptions = {}) {
   }
 
   const control = (name: string, input: unknown, ctx: CapabilityContext) =>
-    runControl(run, platform, name, input, configuredPlayer(ctx)).then(() => ({ ok: true }));
+    (platform === "win32"
+      ? runWindowsControl(runWindows, name, input, configuredPlayer(ctx))
+      : runControl(run, platform, name, input, configuredPlayer(ctx))
+    ).then(() => ({ ok: true }));
 
   return defineCapability({
     manifest: {
@@ -102,7 +120,7 @@ export function createMprisCapability(options: MprisCapabilityOptions = {}) {
       name: "Linux media players (MPRIS)",
       version: "0.1.0",
       description:
-        "What an MPRIS media player (Spotify, VLC, mpv, a browser and others) is playing, and play/pause, next, previous, seek, volume, shuffle and repeat, on Linux through playerctl. Controls local players only (no account or token). Never starts a player. Every control asks for your confirmation. Windows is not supported.",
+        "What an MPRIS media player (Spotify, VLC, mpv, a browser and others) is playing, and play/pause, next, previous, seek, volume, shuffle and repeat, on Linux through playerctl, and on Windows (built from documentation, never run on Windows) the current media session through one fixed PowerShell script, without volume or player choice. Controls local players only (no account or token). Never starts a player. Every control asks for your confirmation.",
       license: "GPL-3.0-or-later",
       homepage: "https://github.com/Thunder-BluePhoenix/Phoenix",
       events: ["mpris.track.*"],
@@ -221,8 +239,8 @@ export function createMprisCapability(options: MprisCapabilityOptions = {}) {
       observed = NOTHING_OBSERVED;
       last = undefined;
       failure = undefined;
-      // Nothing to poll where playerctl does not apply; health says why.
-      if (platform !== "linux") return;
+      // Nothing to poll where neither playerctl nor the Windows script applies; health says why.
+      if (!supported) return;
       startPolling(
         ctx,
         async () => {
@@ -250,11 +268,11 @@ export function createMprisCapability(options: MprisCapabilityOptions = {}) {
       set_repeat: (input, ctx) => control("set_repeat", input, ctx),
     },
     health(): HealthResult {
-      if (platform !== "linux") {
+      if (!supported) {
         return {
           status: "degraded",
           message:
-            "Unsupported: MPRIS control needs Linux (macOS uses Spotify and Apple Music; Windows is not implemented)",
+            "Unsupported: media control here needs Linux (MPRIS) or Windows (macOS uses Spotify and Apple Music)",
         };
       }
       if (failure) return { status: "degraded", message: failure.message };

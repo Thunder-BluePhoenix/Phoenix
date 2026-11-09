@@ -74,9 +74,37 @@ by Core (HMAC-SHA256 under `teams_link_key`, bound to source, id, request hash a
 (`openTeamsLink`) verifies the signature, expiry, that the request is still pending, switched on and
 unchanged, then **shows** it. The decision is made inside Phoenix by the existing desktop path under the
 person's own actor. The webhook URL is a credential and must be https on a Microsoft webhook host.
-The desktop shell now registers and handles `phoenix://approvals/…` (see
-[The `phoenix://` handler](#the-phoenix-handler)); the shell does **not** call `openTeamsLink` (it holds no
-Core secret), so a Teams link's signature is not checked by the shell, only the link's shape.
+The desktop shell registers and handles `phoenix://approvals/…` (see
+[The `phoenix://` handler](#the-phoenix-handler)). The shell holds no Core secret, so it never decides
+whether a Teams link is genuine: the web page sends the link's query to Core
+(`POST /api/chat-approvals/teams/verify-link`) and shows nothing unless Core says it is valid.
+
+### Teams link verification route
+
+`POST /api/chat-approvals/teams/verify-link` (session token required, **not** public) takes
+`{ "query": "s=…&i=…&h=…&e=…&m=…" }` (a leading `?` is allowed; printable ASCII, at most 600 characters,
+else 400) and answers `{ "valid": boolean, "approval_id": string | null }` and nothing else. Core runs
+`openTeamsLink`: HMAC-SHA256 over source, id, request hash and expiry under `teams_link_key` with a
+constant-time compare, the expiry (never later than the request's own), and that the request is still
+pending, unchanged and switched on for chat. The same bare `{valid:false, approval_id:null}` answers a
+tampered field, a wrong key, an expired link, a missing key, an unknown or already decided request, a
+project switched off, a disabled capability and an engaged kill switch, so the answer cannot be used to
+tell those apart or to probe ids. The key is never returned or logged.
+
+**No single use.** The link format has no nonce (the MAC covers source, id, hash and expiry only), so a
+link verifies again and again until the request is decided or the link expires. That is deliberate and
+harmless: a valid answer only names an approval the session-token list already shows, and decides
+nothing. A nonce would need server-side state per link and would not stop anyone who can already read
+the approval list. A test pins this ("can be opened again while pending, but never once decided").
+
+### Teams inbound approval stays not built
+
+Teams outgoing webhooks and bots work by Microsoft calling a **public HTTPS endpoint** that must verify
+Microsoft's HMAC (outgoing webhook) or bearer JWT against Microsoft's published keys (bot). Phoenix has
+no hosted public endpoint (Core listens on loopback) and no existing authenticated inbound path for
+Teams, so building one would mean an unauthenticated public door or an unverified callback, i.e. a
+forged approval. Teams therefore stays notify-only: no Allow/Deny button, the link only shows the
+request.
 
 ## Notifications and digests (opt-in)
 
@@ -114,14 +142,22 @@ recipient and no new credential.
 macOS: `Info.plist` declares `CFBundleURLTypes` for the scheme `phoenix` and Tauri delivers an opened URL
 as `RunEvent::Opened` (no plugin, no new crate; the official deep-link plugin is not in `Cargo.lock`).
 `apps/desktop/src-tauri/src/deeplink.rs` accepts only `phoenix://approvals/<id>` (`[A-Za-z0-9_-]{1,64}`)
-and the Teams form `phoenix://approvals/open?…` (query never read), lowercase scheme and host, no userinfo,
-port, fragment, escapes, extra segments or non-ASCII. The id is dropped and the shell opens the **fixed**
-route `/panel/overview` (where pending approvals are listed) in the browser through the same
-`open_in_phoenix` seam. Nothing from the URL is executed, fetched or forwarded and the link decides nothing.
-Only the first URL of an event is considered. Windows and Linux have no handler (they would need the
-deep-link plugin or single-instance argv handling). It was **not** tried with a real macOS URL open or an
-installed bundle: the tests are a pure parser test, a check that `Info.plist` declares the scheme, and a
-lifecycle test with Tauri's mock runtime calling `open_links`.
+and the Teams form `phoenix://approvals/open?s&i&h&e&m` with exactly those five keys once each, `s` one of
+`agent`/`confirmation`, `i` an id, `h` and `m` 64 lowercase hex characters, `e` 1 to 16 digits; lowercase
+scheme and host, no userinfo, port, fragment, escapes, extra segments, extra or repeated keys or
+non-ASCII. **The shell does not trust the id.** It opens the browser at
+`<core>/#/approvals?id=<id>` (or `#/approvals?s=…&i=…&h=…&e=…&m=…`) through the same `open_in_phoenix`
+seam; every character after the base URL comes from the validated sets above, so nothing can add a host,
+a path or another parameter. The web page `ApprovalLink` repeats the shape check, then asks Core with the
+session token: for a Teams link it first calls `verify-link` and uses **Core's** `approval_id`, not the
+one written in the link; it then fetches `GET /api/confirmations` and `GET /api/agent-approvals` and
+shows only that approval's ordinary card if it is listed and not expired. An unknown, expired, decided,
+malformed or refused link all show the same plain text "Approval request not found."; a failing Core
+shows "could not be reached". The link decides nothing; the person decides on the card. Only the first
+URL of an event is considered. Windows and Linux have no handler (they would need the deep-link plugin or
+single-instance argv handling). It was **not** tried with a real macOS URL open, an installed bundle or a
+real webview: the tests are a pure parser test, a check that `Info.plist` declares the scheme, a
+lifecycle test with Tauri's mock runtime calling `open_links`, and web tests against a fake Core.
 
 ## Configuration
 

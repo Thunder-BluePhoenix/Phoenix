@@ -112,6 +112,7 @@ describe("pet settings", () => {
     expect((await api("GET", "/api/pet/settings")).json).toEqual({
       reduced_motion: "auto",
       follow_cursor: false,
+      browser_corner: true,
     });
     expect((await api("POST", "/api/pet/settings", { reduced_motion: "sometimes" })).status).toBe(
       400,
@@ -119,6 +120,7 @@ describe("pet settings", () => {
     expect((await api("POST", "/api/pet/settings", { reduced_motion: "on" })).json).toEqual({
       reduced_motion: "on",
       follow_cursor: false,
+      browser_corner: true,
     });
     expect((await api("GET", "/api/pet/settings")).json.reduced_motion).toBe("on");
   });
@@ -136,14 +138,17 @@ describe("pet settings", () => {
     expect((await api("POST", "/api/pet/settings", { follow_cursor: true })).json).toEqual({
       reduced_motion: "on",
       follow_cursor: true,
+      browser_corner: true,
     });
     expect((await api("POST", "/api/pet/settings", { reduced_motion: "off" })).json).toEqual({
       reduced_motion: "off",
       follow_cursor: true,
+      browser_corner: true,
     });
     expect((await api("POST", "/api/pet/settings", { follow_cursor: false })).json).toEqual({
       reduced_motion: "off",
       follow_cursor: false,
+      browser_corner: true,
     });
   });
 
@@ -154,8 +159,22 @@ describe("pet settings", () => {
     await core.api("POST", "/api/pet/settings", { follow_cursor: "yes" });
     expect(seen).toEqual([]);
     await core.api("POST", "/api/pet/settings", { follow_cursor: true });
-    expect(seen).toEqual([{ reduced_motion: "auto", follow_cursor: true }]);
+    expect(seen).toEqual([{ reduced_motion: "auto", follow_cursor: true, browser_corner: true }]);
     await core.runtime.stop();
+  });
+
+  it("keeps the browser corner Fawkes on until the user turns it off (Phase 93)", async () => {
+    const { api } = await setup();
+    expect((await api("GET", "/api/pet/settings")).json.browser_corner).toBe(true);
+    for (const bad of [{ browser_corner: "no" }, { browser_corner: 0 }]) {
+      expect((await api("POST", "/api/pet/settings", bad)).status).toBe(400);
+    }
+    expect((await api("POST", "/api/pet/settings", { browser_corner: false })).json).toEqual({
+      reduced_motion: "auto",
+      follow_cursor: false,
+      browser_corner: false,
+    });
+    expect((await api("GET", "/api/pet/settings")).json.browser_corner).toBe(false);
   });
 });
 

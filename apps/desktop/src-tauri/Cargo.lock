@@ -2704,6 +2704,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tempfile",
  "url",
+ "webkit2gtk",
  "windows",
  "x11-dl",
 ]

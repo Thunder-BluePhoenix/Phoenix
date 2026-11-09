@@ -10,6 +10,8 @@
 export const BROWSER_CHROME_HEIGHT = 80;
 /** The height while the open-from-port-radar confirmation panel is shown. */
 export const BROWSER_CHROME_PANEL_HEIGHT = 220;
+/** Extra chrome height while the find bar is open. */
+export const BROWSER_CHROME_FIND_EXTRA = 36;
 export const ZOOM_MIN = 0.5;
 export const ZOOM_MAX = 3;
 
@@ -80,6 +82,44 @@ export interface PageActionRequest {
 
 export type PageActionResult = { ok: true; url: string } | { ok: false; reason: string };
 
+/** The most characters a find-in-page query may have (the shell refuses more with `bad_query`). */
+export const FIND_MAX_QUERY = 200;
+
+/** `found` is whether the page has a match; a refusal is a resolved value with a closed `reason`. */
+export type FindResult = { ok: true; found: boolean } | { ok: false; reason: string };
+
+/** Every permission id the shell may ask about (`PERMISSION_KINDS` in browser_policy.rs). */
+export const PERMISSION_KINDS = [
+  "microphone",
+  "camera",
+  "geolocation",
+  "notifications",
+  "clipboard-read",
+  "display-capture",
+  "midi",
+  "sensors",
+  "media-key-system-access",
+  "local-fonts",
+  "window-management",
+  "pointer-lock",
+  "automatic-downloads",
+  "file-system-access",
+  "autoplay",
+  "other",
+] as const;
+export type PermissionKind = (typeof PERMISSION_KINDS)[number];
+
+/** How long the shell waits for an answer before it denies (it is the authority on this). */
+export const PERMISSION_TIMEOUT_MS = 30_000;
+
+/** A page asked for a permission. `origin` is untrusted page data: render it as text only. */
+export interface PermissionRequest {
+  requestId: string;
+  tabId: string;
+  origin: string;
+  permission: PermissionKind;
+}
+
 export interface BrowserShell {
   /** `profileId` omitted = a private tab; the shell re-validates it (the picker is not a boundary). */
   openTab(url: string, intent: BrowserIntent, profileId?: string): Promise<OpenResult>;
@@ -104,6 +144,13 @@ export interface BrowserShell {
   pageAction(req: PageActionRequest): Promise<PageActionResult>;
   /** Chrome window only: deletes a removed profile's saved web data and closes its tabs. */
   purgeProfileData(profileId: string): Promise<PurgeResult>;
+  /** Chrome window only: find `query` in the tab's page (empty clears the highlight). */
+  findInPage(tabId: string, query: string, forward: boolean): Promise<FindResult>;
+  /** Chrome window only: answers a permission prompt. Allow is once only; a late answer is a no-op. */
+  answerPermission(requestId: string, allow: boolean): Promise<void>;
+  onPermissionRequest(listener: (request: PermissionRequest) => void): Promise<() => void>;
+  /** The shell settled a request itself (timeout, tab closed): the prompt is dropped. */
+  onPermissionResolved(listener: (requestId: string) => void): Promise<() => void>;
 }
 
 type Invoke = <T = void>(command: string, args?: Record<string, unknown>) => Promise<T>;
@@ -118,6 +165,8 @@ interface TauriGlobal {
 export const TAB_EVENT = "browser://tab";
 export const TAB_CLOSED_EVENT = "browser://tab-closed";
 export const OPEN_REQUEST_EVENT = "browser://open-request";
+export const PERMISSION_REQUEST_EVENT = "browser://permission-request";
+export const PERMISSION_RESOLVED_EVENT = "browser://permission-resolved";
 
 /** One property of an untrusted value, `undefined` when it is not an object. */
 function field(value: unknown, key: string): unknown {
@@ -229,6 +278,35 @@ function parseOpenRequest(value: unknown): OpenRequest | null {
   return { url: url.slice(0, 2048), source: "port_radar" };
 }
 
+/** Accepts only a well-formed permission request; an unknown permission id becomes `other`. */
+export function parsePermissionRequest(value: unknown): PermissionRequest | null {
+  const requestId = field(value, "requestId");
+  const tabId = field(value, "tabId");
+  const origin = field(value, "origin");
+  const permission = field(value, "permission");
+  if (
+    typeof requestId !== "string" ||
+    !/^[A-Za-z0-9_-]{1,64}$/.test(requestId) ||
+    typeof tabId !== "string" ||
+    typeof origin !== "string" ||
+    typeof permission !== "string"
+  )
+    return null;
+  const known = PERMISSION_KINDS.find((kind) => kind === permission);
+  return { requestId, tabId, origin: origin.slice(0, 2048), permission: known ?? "other" };
+}
+
+/** Accepts only a well-formed `find_in_page` answer; every other shape is `{ok:false, reason:'failed'}`. */
+export function parseFindResult(value: unknown): FindResult {
+  if (field(value, "ok") === true) {
+    const found = field(value, "found");
+    return typeof found === "boolean" ? { ok: true, found } : { ...FAILED };
+  }
+  return field(value, "ok") === false
+    ? { ok: false, reason: parseReason(field(value, "reason")) }
+    : { ...FAILED };
+}
+
 /** The shell inside the Tauri webview; null in an ordinary browser. */
 export function tauriBrowserShell(win: Window = window): BrowserShell | null {
   const tauri = (win as Window & { __TAURI__?: TauriGlobal }).__TAURI__;
@@ -293,6 +371,24 @@ export function tauriBrowserShell(win: Window = window): BrowserShell | null {
         return { ...FAILED };
       }
     },
+    findInPage: async (tabId, query, forward) => {
+      try {
+        return parseFindResult(await invoke<unknown>("find_in_page", { tabId, query, forward }));
+      } catch {
+        return { ...FAILED };
+      }
+    },
+    answerPermission: (requestId, allow) => invoke("answer_permission", { requestId, allow }),
+    onPermissionRequest: (listener) =>
+      listen<unknown>(PERMISSION_REQUEST_EVENT, (e) => {
+        const request = parsePermissionRequest(e.payload);
+        if (request) listener(request);
+      }),
+    onPermissionResolved: (listener) =>
+      listen<unknown>(PERMISSION_RESOLVED_EVENT, (e) => {
+        const requestId = field(e.payload, "requestId");
+        if (typeof requestId === "string") listener(requestId);
+      }),
     setChromeHeight: (height) => invoke("set_chrome_height", { height }),
     onTab: (listener) =>
       listen<unknown>(TAB_EVENT, (e) => {

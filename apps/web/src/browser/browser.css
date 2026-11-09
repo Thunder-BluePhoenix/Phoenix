@@ -184,3 +184,33 @@ body {
   outline: 2px solid var(--bc-focus);
   outline-offset: 1px;
 }
+/* Fawkes in the corner of the chrome (Phase 93): drawn here, never inside a page. */
+.browser-corner {
+  margin-inline-start: auto;
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding-inline: 4px;
+}
+.browser-find {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.browser-find-input {
+  max-width: 320px;
+}
+.browser-find-input[aria-invalid="true"] {
+  border-color: var(--bc-danger);
+}
+.browser-find-status {
+  color: var(--bc-muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.browser-hint {
+  color: var(--bc-muted);
+}
+.browser-find-input:focus-visible {
+  outline: 2px solid var(--bc-focus);
+}

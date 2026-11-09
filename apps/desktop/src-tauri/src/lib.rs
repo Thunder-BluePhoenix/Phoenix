@@ -806,11 +806,13 @@ fn open_route<R: Runtime>(app: &AppHandle<R>, route: &str) {
 }
 
 /// A `phoenix://approvals/…` link was opened (macOS `RunEvent::Opened`). Only an exactly matching
-/// first URL does anything, and what it does is open the fixed approvals route: nothing from the URL
-/// is run, fetched or passed on (see `deeplink`).
+/// first URL does anything: the shell opens the approvals page with the strictly shaped id (or the
+/// five Teams fields) as a parameter and decides nothing; the page asks Core whether it is real
+/// (see `deeplink`). Nothing from the URL is run or fetched here.
 pub fn open_links<R: Runtime, S: AsRef<str>>(app: &AppHandle<R>, urls: &[S]) {
-    if let Some(route) = deeplink::route_for(urls) {
-        open_route(app, route);
+    let shell = app.state::<Shell<R>>();
+    if let Some(url) = deeplink::url_for(&shell.locator.base_url, urls) {
+        (shell.open_url)(&url);
         return;
     }
     // Phase 80: `phoenix://browser/open?url=<loopback dev server>` from the port radar. It only
@@ -1457,6 +1459,8 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
             browser::shields_status,
             browser::page_snapshot,
             browser::page_action,
+            browser::find_in_page,
+            browser::answer_permission,
             browser::purge_profile_data
         ])
         .setup(move |app| {

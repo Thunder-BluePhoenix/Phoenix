@@ -547,6 +547,232 @@ pub fn parse_action(raw: &str) -> ActionReply {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Find in page (chrome window only): a fixed script, the query only as a JSON string literal
+// ---------------------------------------------------------------------------------------------
+
+/// Longest query `find_in_page` accepts, in characters.
+pub const MAX_FIND_CHARS: usize = 200;
+/// The match count stops here (the chrome shows "500+").
+pub const MAX_FIND_COUNT: u32 = 500;
+/// The count walks at most this many UTF-16 units of page text.
+pub const MAX_FIND_SCAN: u32 = 2_000_000;
+
+/// Bidirectional-control characters: they could make the query read differently from what it is.
+fn is_bidi(c: char) -> bool {
+    matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+}
+
+/// Whether `query` is acceptable: at most [`MAX_FIND_CHARS`] characters, no control character, no
+/// bidi control, no line or paragraph separator. The empty query is valid (it clears).
+pub fn find_query_ok(query: &str) -> bool {
+    query.chars().count() <= MAX_FIND_CHARS
+        && !query
+            .chars()
+            .any(|c| c.is_control() || is_bidi(c) || matches!(c, '\u{2028}' | '\u{2029}'))
+}
+
+/// Clears the highlight. No input.
+pub const FIND_CLEAR_SCRIPT: &str = r##"(function () {
+  try {
+    var s = window.getSelection();
+    if (s) { s.removeAllRanges(); }
+    return JSON.stringify({ ok: true, f: false, n: 0 });
+  } catch (e) {
+    return JSON.stringify({ ok: false, reason: "failed" });
+  }
+})()"##;
+
+/// The fixed text before the two values (Q, a string literal, and FWD, `true` or `false`).
+const FIND_HEAD: &str = "(function () {\n  \"use strict\";\n";
+
+/// Counts matches with a TreeWalker over text nodes (bounded) and moves the native highlight with
+/// `window.find` (case-insensitive, wraps). Never evaluates, never writes to the page.
+const FIND_BODY: &str = r##"  try {
+    var n = 0, scanned = 0, needle = Q.toLowerCase();
+    var root = document.body || document.documentElement;
+    var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    var node;
+    while (n < 500 && scanned < 2000000 && (node = w.nextNode())) {
+      var p = node.parentNode ? String(node.parentNode.nodeName).toLowerCase() : "";
+      if (p === "script" || p === "style" || p === "noscript") { continue; }
+      var text = String(node.nodeValue).toLowerCase();
+      scanned += text.length;
+      var at = text.indexOf(needle);
+      while (at !== -1 && n < 500) {
+        n++;
+        at = text.indexOf(needle, at + needle.length);
+      }
+    }
+    var f = n > 0;
+    if (typeof window.find === "function") {
+      f = window.find(Q, false, !FWD, true, false, false, false) === true;
+    }
+    return JSON.stringify({ ok: true, f: f, n: n });
+  } catch (e) {
+    return JSON.stringify({ ok: false, reason: "failed" });
+  }
+})()"##;
+
+/// The script for a non-empty, valid `query`: fixed head and body, the query as ONE JSON string
+/// literal, the direction as `true`/`false`. `None` for a refused query.
+pub fn find_script(query: &str, forward: bool) -> Option<String> {
+    if query.is_empty() || !find_query_ok(query) {
+        return None;
+    }
+    Some(format!(
+        "{FIND_HEAD}  var Q = {};\n  var FWD = {};\n{FIND_BODY}",
+        js_string_literal(query),
+        if forward { "true" } else { "false" }
+    ))
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum FindOutcome {
+    Found { ok: bool, found: bool, count: u32 },
+    Refused { ok: bool, reason: &'static str },
+}
+
+impl FindOutcome {
+    pub fn refused(reason: &'static str) -> Self {
+        FindOutcome::Refused { ok: false, reason }
+    }
+}
+
+/// A find reply: `found` and a count clamped to [`MAX_FIND_COUNT`], or `failed`.
+pub fn parse_find(raw: &str) -> FindOutcome {
+    if raw.len() > 4096 {
+        return FindOutcome::refused("failed");
+    }
+    let Some(map) = decode_reply(raw) else {
+        return FindOutcome::refused("failed");
+    };
+    match (map.get("ok"), map.get("f"), map.get("n")) {
+        (Some(Value::Bool(true)), Some(Value::Bool(found)), Some(Value::Number(n))) => {
+            let count = n.as_u64().unwrap_or(0).min(u64::from(MAX_FIND_COUNT)) as u32;
+            FindOutcome::Found {
+                ok: true,
+                found: *found,
+                count,
+            }
+        }
+        _ => FindOutcome::refused("failed"),
+    }
+}
+
+#[cfg(test)]
+mod find_tests {
+    use super::*;
+
+    #[test]
+    fn queries_are_bounded_and_free_of_control_and_bidi_characters() {
+        assert!(find_query_ok(""));
+        assert!(find_query_ok("hello wörld \u{1F525}"));
+        assert!(find_query_ok(&"a".repeat(MAX_FIND_CHARS)));
+        assert!(!find_query_ok(&"a".repeat(MAX_FIND_CHARS + 1)));
+        // 200 multi-byte characters are still 200 characters.
+        assert!(find_query_ok(&"é".repeat(MAX_FIND_CHARS)));
+        for bad in [
+            "a\nb",
+            "a\tb",
+            "a\u{0}b",
+            "a\u{7f}b",
+            "a\u{85}b",
+            "a\u{202E}b",
+            "a\u{2066}b",
+            "a\u{200F}b",
+            "a\u{061C}b",
+            "a\u{2028}b",
+            "a\u{2029}b",
+        ] {
+            assert!(!find_query_ok(bad), "{bad:?}");
+            assert!(find_script(bad, true).is_none(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_hostile_query_enters_the_script_only_as_one_json_string_literal() {
+        let hostile = "\"; alert(1); //\\ </script> ${x} `y`";
+        let script = find_script(hostile, false).unwrap();
+        let literal = js_string_literal(hostile);
+        assert!(script.contains(&format!("  var Q = {literal};\n  var FWD = false;\n")));
+        // Replacing the literal leaves exactly the fixed text.
+        let fixed = find_script("x", false).unwrap();
+        assert_eq!(
+            script.replace(&literal, "\"x\""),
+            fixed,
+            "the query changed something other than its own literal"
+        );
+        assert!(find_script("x", true).unwrap().contains("var FWD = true;"));
+        assert!(find_script("", true).is_none());
+    }
+
+    #[test]
+    fn the_fixed_find_text_uses_no_eval_html_or_selector_engine_and_has_no_slot() {
+        for script in [
+            FIND_HEAD.to_string() + FIND_BODY,
+            FIND_CLEAR_SCRIPT.to_string(),
+        ] {
+            for forbidden in [
+                "querySelector",
+                "eval(",
+                "Function(",
+                "innerHTML",
+                "outerHTML",
+                "document.write",
+                "__",
+                "fetch(",
+                "XMLHttpRequest",
+            ] {
+                assert!(!script.contains(forbidden), "{forbidden}");
+            }
+        }
+        // The script's own bounds match the Rust constants.
+        assert!(FIND_BODY.contains(&format!("n < {MAX_FIND_COUNT}")));
+        assert!(FIND_BODY.contains(&format!("scanned < {MAX_FIND_SCAN}")));
+    }
+
+    #[test]
+    fn the_reply_is_clamped_and_anything_else_is_failed() {
+        assert_eq!(
+            parse_find(r#"{"ok":true,"f":true,"n":3}"#),
+            FindOutcome::Found {
+                ok: true,
+                found: true,
+                count: 3
+            }
+        );
+        assert_eq!(
+            parse_find(r#""{\"ok\":true,\"f\":false,\"n\":99999}""#),
+            FindOutcome::Found {
+                ok: true,
+                found: false,
+                count: MAX_FIND_COUNT
+            }
+        );
+        // A negative count is not a count: it reads as 0.
+        assert_eq!(
+            parse_find(r#"{"ok":true,"f":true,"n":-1}"#),
+            FindOutcome::Found {
+                ok: true,
+                found: true,
+                count: 0
+            }
+        );
+        for bad in [
+            "null",
+            "7",
+            r#"{"ok":false,"reason":"evil"}"#,
+            r#"{"ok":true}"#,
+            r#"{"ok":true,"f":"yes","n":1}"#,
+            &" ".repeat(5000),
+        ] {
+            assert_eq!(parse_find(bad), FindOutcome::refused("failed"), "{bad}");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

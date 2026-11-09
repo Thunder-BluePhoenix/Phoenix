@@ -6,6 +6,7 @@ export * from "./agent-relay-routes";
 export * from "./appearance-routes";
 export * from "./ui-routes";
 export * from "./attachment-routes";
+export * from "./chat-approval-routes";
 export * from "./demo-routes";
 export * from "./dictation-routes";
 export * from "./focus-routes";

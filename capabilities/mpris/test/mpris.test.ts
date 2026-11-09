@@ -465,7 +465,7 @@ describe("input validation", () => {
 });
 
 describe("other platforms", () => {
-  it.each(["darwin", "win32", "freebsd"] as const)(
+  it.each(["darwin", "freebsd"] as const)(
     "is unsupported and degraded on %s, and never runs playerctl",
     async (platform) => {
       const player = fakePlayerctl();
@@ -480,13 +480,6 @@ describe("other platforms", () => {
       });
     },
   );
-
-  it("says plainly that Windows is not implemented", async () => {
-    await ready(fakePlayerctl(), "win32");
-    expect((await h!.manager.checkHealth("mpris")).health.message).toMatch(
-      /Windows is not implemented/,
-    );
-  });
 });
 
 describe("track events", () => {

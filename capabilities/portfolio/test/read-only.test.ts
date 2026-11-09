@@ -11,9 +11,15 @@ import { scan } from "./scan";
 
 const SRC = join(import.meta.dirname, "..", "src");
 
+/**
+ * The one file allowed to POST: the pinned getBalance client. It is NOT skipped silently: it must
+ * produce exactly the findings listed in solana.test.ts, and nothing else may mention it as a sender.
+ */
+const SOLANA_FILE = "solana.ts";
+
 function sources(): { name: string; text: string }[] {
   return readdirSync(SRC)
-    .filter((f) => f.endsWith(".ts"))
+    .filter((f) => f.endsWith(".ts") && f !== SOLANA_FILE)
     .map((f) => ({ name: f, text: readFileSync(join(SRC, f), "utf8") }));
 }
 

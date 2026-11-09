@@ -148,7 +148,25 @@ these tests.
   confirmation panel (the chrome strip grows through `set_chrome_height` while it is shown).
 - Page content is untrusted and is never rendered here: only `TabInfo` text (title, address) crosses, as text nodes.
 - The chrome's refusals are feedback; the Rust shell must validate every URL again.
-- Not built in the chrome: find in page, downloads prompt, the Fawkes corner, permission prompts, a search-provider picker, and
+- **Phase 93 follow-ups (chrome side; run only against the fake shell, never in a real window):**
+  - `find.ts` / `FindBar.tsx`: Ctrl/Cmd+F (or the toolbar button) opens a find bar for the active tab; typing searches (`find_in_page`
+    `{tabId, query, forward}`), Enter / Shift+Enter and the arrow buttons step, Escape closes and sends the empty query to clear the
+    highlight. A query is checked like the shell checks it (200 characters, no control character, no bidirectional-control
+    character) and an invalid one is never sent; the shell still refuses it with `bad_query`.
+  - `permissions.ts` / `PermissionPanel.tsx`: a `browser://permission-request` shows the site (`origin`, control and bidi characters
+    replaced, text node only) and the permission (the `PERMISSION_KINDS` id, in words) with Allow once and Deny only, oldest first,
+    at most eight queued, a 30 second countdown, and `answer_permission {requestId, allow}`. Rust is the authority on the timeout
+    (it denies by itself; the chrome also sends a deny at 30 s, harmless if late); `browser://permission-resolved` drops a prompt.
+    Allow is once: nothing is remembered by the chrome. Whether Rust grants anything on `allow: true` is Rust's.
+  - `corner.ts` / `CornerFawkes.tsx`: a small Fawkes in the corner of the chrome window (never injected into a page: pages are separate
+    content webviews). It is the existing `FawkesAvatar` showing existing display states only: WAITING (a permission is asked),
+    WARNING (the last address or action was refused), WORKING (the active tab is loading), THINKING (a find is running), IDLE
+    (found / not found / Shields off for this site / N requests blocked), SLEEPING (no tab), OFFLINE (no shell). The words are Phoenix's
+    own translated messages (page text never reaches it) and are the avatar's accessible name. Reduced motion follows
+    Settings > Fawkes; the checkbox "Show Fawkes in the corner of the Phoenix browser" (`browser_corner` in `/api/pet/settings`, on by
+    default) hides it. It has no click action and no interactions or sounds.
+  - The blocked count is still whatever `TabInfo.blocked` says; the shell's count is Rust's (see above).
+- Not built in the chrome: downloads prompt, a search-provider picker, and
   the port-radar button itself (the radar still opens loopback links in the system browser; the shell or Phoenix must send
   `browser://open-request` or open the window with `?open=`).
 - All strings are in the ten locales (`browser.*`); non-English text is machine-translated and unreviewed.
@@ -208,17 +226,17 @@ At most 12 tabs. Closing the chrome closes every tab and forgets grants, DNS ans
 
 ### What every content webview gets
 
-| Setting                                     | Value                                                                                                                                                                                                                          |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `incognito(true)`                           | macOS: `WKWebsiteDataStore.nonPersistentDataStore`. Windows: InPrivate (WebView2 101.0.1210.39 or newer; older does nothing). Linux: see below                                                                                 |
-| no `data_directory`                         | nothing is written under Phoenix's app data directory by the browser                                                                                                                                                           |
-| `devtools(false)`                           | and the tauri `devtools` feature is not enabled                                                                                                                                                                                |
-| no `initialization_script`                  | the page gets no Phoenix script; `withGlobalTauri` injects `window.__TAURI__` only for webviews with IPC access                                                                                                                |
-| `on_navigation`                             | `Host::judge`: the Rust `decideNavigation` (intent "link"), then DNS (below); `Upgrade` = return `false` and `navigate` to the https URL on a thread                                                                           |
-| `on_new_window`                             | always returns `Deny`; a permitted target (`decideNavigation` intent "new_window", https only, at most 3 per 10 s) is reopened as a tab                                                                                        |
-| `on_download`                               | refused unless the URL passes the policy and the person picks a folder in a native dialog (at most 3 dialogs per 10 s); the file name is sanitised, an existing file gets ` (2)`; a refusal emits `browser://download-refused` |
-| `on_permission_request`                     | `Allow` only for an origin and kind the person granted (`SitePermissions`), otherwise `Deny`. **Never `Default`**. Nothing grants yet (see limits)                                                                             |
-| `on_page_load`, `on_document_title_changed` | update the tab and emit `browser://tab`; title is stripped of control characters and cut to 300                                                                                                                                |
+| Setting                                     | Value                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `incognito(true)`                           | macOS: `WKWebsiteDataStore.nonPersistentDataStore`. Windows: InPrivate (WebView2 101.0.1210.39 or newer; older does nothing). Linux: see below                                                                                                                                                                                        |
+| no `data_directory`                         | nothing is written under Phoenix's app data directory by the browser                                                                                                                                                                                                                                                                  |
+| `devtools(false)`                           | and the tauri `devtools` feature is not enabled                                                                                                                                                                                                                                                                                       |
+| no `initialization_script`                  | the page gets no Phoenix script; `withGlobalTauri` injects `window.__TAURI__` only for webviews with IPC access                                                                                                                                                                                                                       |
+| `on_navigation`                             | `Host::judge`: the Rust `decideNavigation` (intent "link"), then DNS (below); `Upgrade` = return `false` and `navigate` to the https URL on a thread                                                                                                                                                                                  |
+| `on_new_window`                             | always returns `Deny`; a permitted target (`decideNavigation` intent "new_window", https only, at most 3 per 10 s) is reopened as a tab                                                                                                                                                                                               |
+| `on_download`                               | refused unless the URL passes the policy and the person picks a folder in a native dialog (at most 3 dialogs per 10 s); the file name is sanitised, an existing file gets ` (2)`; a refusal emits `browser://download-refused`                                                                                                        |
+| `on_permission_request`                     | `Allow` only for a session grant (`SitePermissions`, nothing makes one) or a live "allow once" the person gave in the Phoenix prompt for this exact (tab, origin, permission); otherwise `Deny` and, for a grantable request, a prompt in the chrome (see [Phase 93 follow-ups](#phase-93-follow-ups-rust-host)). **Never `Default`** |
+| `on_page_load`, `on_document_title_changed` | update the tab and emit `browser://tab`; title is stripped of control characters and cut to 300                                                                                                                                                                                                                                       |
 
 Only the top-level `https:` or loopback-radar navigation reaches the page. `about:blank` and `about:srcdoc` are the only
 `about:` URLs allowed (the webview creates them itself); every other `about:`, `file:`, `data:`, `blob:`, `javascript:`,
@@ -360,7 +378,7 @@ refusal reason is one of the fixed ids above.
 
 ### Capabilities
 
-`capabilities/browser.json` grants `core:default` and the `allow-*` permission of every browser command (13 as of Phase 95: the eleven above plus `page_snapshot` and `page_action`) to the window
+`capabilities/browser.json` grants `core:default` and the `allow-*` permission of every browser command (16 now: the eleven above plus `page_snapshot`, `page_action`, `find_in_page` and `answer_permission`, and `purge_profile_data`) to the window
 `phoenix-browser` only, as a **local** capability (the chrome is a page from the app bundle). The content windows have
 no capability file, no `remote` entry anywhere lists a web origin (the only remote entry in the repository is the exact
 loopback `pill.html` URL of Phoenix Core), and the one runtime `add_capability` call names only the pill window.
@@ -411,7 +429,7 @@ was dropped. `set_site_shields` also applies at once, keeping an in-memory overr
   blocking: `shields_status.platformBlocking` is `false`. A `WebResourceRequested` filter through
   `Webview::with_webview` was **not built**: it needs the `webview2-com` types and a request-pattern list, which could not
   be compiled or exercised here. The download dialog uses `SHBrowseForFolderW` (type-checked only).
-- **Linux:** the same as Windows; `UserContentFilterStore` was not built for the same reason (no GTK here). The download
+- **Linux:** the same as Windows; `UserContentFilterStore` was not built (see the follow-ups section; the safe bindings do not wrap it). The third-party cookie policy is the one Linux-only addition, reasoned only. The download
   dialog is `gtk::FileChooserDialog`, not compiled here. WebKitGTK has no in-private flag exposed by wry's `incognito`
   on every version: whether a Linux tab leaves cookies on disk was not checked.
 
@@ -420,19 +438,98 @@ CI compiles Windows and Linux; the cfg gates were written so no helper is dead t
 
 ### Other things tauri and wry do not give for free
 
-- **Third-party cookie blocking** has no Tauri setting; incognito stores are dropped with the webview, which limits what a
-  tracker can keep, but third-party cookies within one session are whatever the engine does. "Third-party cookies off" is
-  **unmet**.
+- **Third-party cookie blocking:** tauri 2.12.1 / wry 0.57.0 have no setting for it. Checked: `WebviewBuilder` has none;
+  wry's cookie API (`Webview::cookies`, `set_cookie`, `delete_cookie`) is a store reader/writer with no hook that says
+  which request or frame a cookie came from, so a sweep could only delete cookies by domain AFTER they were set and used
+  (and could not tell a first-party cookie of `a.example` from a third-party one without knowing which tab was framing it).
+  That is not honest blocking and is **not built**. macOS: `WKHTTPCookieStore` has only Allow/Disallow for ALL cookies
+  (`setCookiePolicy:`), which would break every login, so it is not used. Linux: `WebKitCookieManager` has a real
+  `ACCEPT_NO_THIRD_PARTY` policy and `limit_third_party_cookies` sets it per tab (`webkit2gtk` 2.0.2 from the lockfile,
+  `cfg(target_os = "linux")` only; **compiled on neither platform, reasoned only**). Windows: WebView2 has no
+  third-party-cookie switch in the locked `webview2-com-sys` 0.39.1 (only Edge's own Tracking Prevention, which is a
+  profile-level user setting). So: Linux reasoned, macOS and Windows **missing**.
 - **Fingerprinting protection** is whatever each webview ships; Phoenix adds none.
-- **Permission prompts:** no chrome UI grants a permission, so every request is denied (`SitePermissions::grant` is
-  reachable from Rust code and tests only). macOS has no backend for geolocation or notification prompts.
-- **Find in page** is not built. **Zoom, back, forward, reload** exist as commands.
+- **Permission prompts:** built, see [Phase 93 follow-ups](#phase-93-follow-ups-rust-host). macOS has no backend for
+  geolocation or notification prompts (wry only asks for camera and microphone there).
+- **Find in page:** built, see the same section. **Zoom, back, forward, reload** exist as commands.
 - **Frame awareness:** `on_navigation` does not say which frame navigated. The HTTPS upgrade-in-place is limited to the
   same registrable domain as the tab (or a tab with no page yet), so an iframe cannot steer the tab to another site; a
   third-party http link in a frame is simply refused.
 - **Public Suffix List:** `registrable_domain` uses the same small built-in list as `site.ts`, not the PSL (no PSL crate is
   in the lockfile).
-- **`TabInfo.blocked`:** always 0.
+- **`TabInfo.blocked`:** always 0, on purpose (see [the blocked counter](#the-blocked-counter-why-it-stays-0)).
+
+### Phase 93 follow-ups (Rust host)
+
+Rust only; the chrome side is `apps/web/src/browser/` (find bar, permission prompt). None of this ran on a real display or
+webview. The mock-runtime tests exercise the host state, the fixed scripts and the IPC layer, not WebKit.
+
+#### `find_in_page { tabId, query, forward }` (chrome window only)
+
+Resolves `{ok:true, found, count}` or `{ok:false, reason}`; reasons `bad_query`, `unknown_tab`, `no_page` (not an http/https
+page), `timeout`, `failed`. A refusal is a resolved value.
+
+- The query is at most 200 characters (code points), with no control character, no bidi control (U+061C, U+200E/F,
+  U+202A-E, U+2066-9) and no U+2028/9. Checked in Rust before any script exists (`find_query_ok`).
+- It runs ONE fixed script (`browser_page::FIND_HEAD` + `FIND_BODY`, or `FIND_CLEAR_SCRIPT` for the empty query). The query
+  enters only as one JSON string literal (`js_string_literal`, also escaping U+2028/9) and the direction as `true`/`false`; a
+  test replaces the literal and compares the rest to the fixed text. The script has no `eval`, no selector engine, no
+  `innerHTML`, writes nothing to the page and has no slot.
+- Counting is a TreeWalker over text nodes, skipping `script`/`style`/`noscript`, at most 500 matches and 2,000,000
+  UTF-16 units of text scanned (the chrome shows "500+"); the highlight is the engine's own `window.find` (case-insensitive,
+  wraps). Where `window.find` does not exist `found` is whether the count is above 0 and nothing is highlighted.
+- It works on any tab id, active or not. Closing a tab destroys the webview and the highlight with it; the host keeps no
+  find state. Whether `window.find` highlights inside a WKWebView/WebView2/WebKitGTK content window was not seen.
+- Not guarded against a page that overrides `String.prototype.toLowerCase` or `window.find`: the reply is decoded as data and
+  the count is clamped in Rust (500), so a hostile page can only lie about its own text.
+
+#### Permission prompt
+
+When a content page asks for a permission, `on_permission_request` calls the host, which answers at once (the callback runs
+on the UI thread and cannot wait) and, when the request is one policy would ever grant (known kind, `https`, public host,
+not a never-grantable kind), raises a Phoenix-owned prompt:
+
+1. Event `browser://permission-request` to the chrome: `{requestId, tabId, origin, permission}` (`permission` is a
+   `PERMISSION_KINDS` id; `origin` is the HOST's view of the tab's origin, capped at 256 characters). At most 4 prompts are
+   open at once and one per exact (tab, origin, permission); a request beyond that is denied unasked.
+2. **The page that asked is answered `Deny` now.** The prompt offers Allow once and Deny only; "always for this site" is not
+   offered and no command records a session grant.
+3. `answer_permission { requestId, allow }` (chrome only; any other window gets `forbidden`). Allow records ONE "allow
+   once" for that prompt's exact (tab, origin, permission), valid for 30 s: the page's NEXT request of that same triple is
+   answered `Allow` and consumes it. Another permission, another origin or another tab stays denied.
+4. No answer for 30 s: the prompt is dropped (default deny), `browser://permission-resolved {requestId}` tells the chrome, and
+   a late `answer_permission` is a no-op. Closing the tab or the chrome drops its prompts and allowances (the resolved event
+   fires for the tab case).
+
+Deviation worth knowing: because the engine callback cannot wait, an allowed permission takes effect on the page's retry (a
+page that asks once and gives up is simply denied). Making the first request wait would need an asynchronous permission API;
+wry 0.57's `permission_handler` is synchronous on every platform. The ask is attributed to the tab's top-level origin (the
+asking frame is not given).
+
+#### The blocked counter: why it stays 0
+
+`TabInfo.blocked` is 0 on every platform and that is deliberate. A `WKContentRuleList` blocks a request inside WebKit with no
+callback: wry 0.57 exposes no navigation-failure, resource-load or content-rule hook, and Phoenix adds no
+`WKNavigationDelegate` of its own. A navigation-level count was considered (count top-level loads that never reach
+`on_page_load`) and rejected: a blocked top-level load and a cancelled, failed or closed one are indistinguishable from the
+host, so the number would be a guess. The honest number that exists is how many rules are APPLIED, in
+`shields_status.report` (`keptBlocking`, `keptExceptions`, `truncated*`); it is not a count of blocked requests and the chrome
+must not present it as one.
+
+#### Request blocking on Windows and Linux
+
+Not built. Reasons, from reading the locked crates:
+
+- **Linux:** `webkit2gtk-sys` 2.0.2 has `webkit_user_content_filter_store_*` (feature `v2_24`), but the safe `webkit2gtk`
+  2.0.2 wraps neither `UserContentFilterStore` nor `UserContentManager::add_filter` (both are commented out as "Ignored"
+  in `auto/user_content_manager.rs`). Using it means raw FFI with GLib async callbacks and `GBytes` ownership, none of
+  which can be compiled or run here (no GTK); that is too much unverifiable unsafe code to ship. The content-rule JSON
+  itself is already shared with macOS.
+- **Windows:** `webview2-com` 0.39.1 has `add_WebResourceRequested` and `AddWebResourceRequestedFilter`, but a filter needs
+  a per-request matcher compiled in Rust (the WebKit JSON is not usable) plus COM event-handler plumbing and `Deferral`
+  handling. That could not be built or type-checked here (the Windows target needs `llvm-rc` for the build script).
+
+Tabs on those platforms open unfiltered and `shields_status.platformBlocking` says so.
 
 ### Phase 80: opening a radar server in the Phoenix browser
 
@@ -460,7 +557,7 @@ check the link parses the way `radar_link` does; nothing ran on a display, and a
 Side effects the browser can cause (download, form submit, opening a private-network site, granting a permission) are NOT
 routed through the permission/tool gateway or audit log from the Rust host: the download dialog and the radar
 confirmation are the Phoenix-side decisions. `BrowserAuditSink` is still only the shape of a record. Page text is
-untrusted data: nothing a page says changes a policy. The "Fawkes in the corner of every tab" task is not started.
+untrusted data: nothing a page says changes a policy. The Fawkes in the chrome corner is built on the chrome side (see above); it was never seen on a real display.
 
 ## Exit criteria
 

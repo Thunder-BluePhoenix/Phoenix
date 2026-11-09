@@ -4,16 +4,18 @@ A **read-only** view of crypto balances. **Display only. Phoenix never places or
 
 ## Read-only by construction
 
-- The only HTTP client used is service-kit's `ReadOnlyClient`, which has no method that sends a body.
-  `ServiceClient` (which can POST) is not imported; `fetch` is not called directly.
+- The only HTTP client used is service-kit's `ReadOnlyClient`, which has no method that sends a body,
+  except the one pinned Solana client in `src/solana.ts` (see "Solana"). `ServiceClient` (which can POST)
+  is not imported; `fetch` is called directly in that one file only.
 - Public addresses (config, not secrets) and read-only exchange keys only. Create exchange keys with the
   read permission only and every other permission off.
 - `test/read-only.test.ts` reads every file in `src/` and fails on any non-GET method, any use of
   `ServiceClient`, any raw `fetch`/`node:http`, and any identifier naming an order, transfer, withdrawal,
   deposit, trade, swap or broadcast. `test/read-only-scan.test.ts` checks the scanner itself.
 - A source that fails is listed with a fixed message; remote text is never shown or logged.
+- One deliberate exception to GET-only: the pinned Solana `getBalance` client (see "Solana").
 
-## Networks (16): public GET endpoints, native coin (tokens on 11, from your watch list), no key
+## Networks (16 GET + Solana): public GET endpoints, native coin (tokens on 13, from your watch list), no key
 
 | id                                                  | Network            | Endpoint (default)                                             |
 | --------------------------------------------------- | ------------------ | -------------------------------------------------------------- |
@@ -27,7 +29,7 @@ A **read-only** view of crypto balances. **Display only. Phoenix never places or
 | trx                                                 | TRON               | api.trongrid.io `/v1/accounts/{a}`                             |
 | atom                                                | Cosmos Hub         | cosmos-rest.publicnode.com `/cosmos/bank/v1beta1/balances/{a}` |
 
-Not included: **Solana** (its public interface is JSON-RPC over POST; the rule is GET only). Tokens are
+**Solana** is the 17th network and the one exception to "GET only": see "Solana" below. Tokens are
 read only on the networks listed under "Tokens" below. A network's default host can be replaced under
 `endpoints` (a self-hosted indexer); these requests carry no key or other credential (they are plain
 unauthenticated GETs of a public address), so the override moves nothing secret. `endpoints` has no entry
@@ -49,6 +51,8 @@ applied locally.
 | xlm                                                 | `horizon.stellar.org/accounts/{a}` (`balances`)               | `CODE:ISSUER`, always 7 decimals      |
 | algo                                                | `mainnet-api.algonode.cloud/v2/accounts/{a}` (`assets`)       | numeric asset id                      |
 | atom                                                | `cosmos-rest.publicnode.com/cosmos/bank/v1beta1/balances/{a}` | bank denom, e.g. `ibc/HASH`           |
+| xrp                                                 | `api.xrpscan.com/api/v1/account/{a}/trustlines2` (`lines`)    | `CURRENCY:ISSUER`, issuer checksummed |
+| ton                                                 | `toncenter.com/api/v3/jetton/wallets?owner_address={a}`       | jetton master, raw or friendly form   |
 
 - Own source `<id>:tokens` in `sources`: a token problem never marks the native coin unreadable.
 - Strict parsing: amounts are integer strings (a JSON number only for Algorand, refused unless a safe
@@ -62,16 +66,54 @@ applied locally.
   figure, even when its symbol equals a priced coin; it counts in `unpriced` and not in the total.
 - Contract check is format (plus Base58Check for TRON). The mixed-case EIP-55 checksum needs Keccak-256,
   which `node:crypto` does not provide, and no dependency was added, so it is not verified.
-- **Not supported (and why):** btc, ltc, doge (no token layer); xrp (issued currencies need `account_lines`,
-  a JSON-RPC POST; a keyless GET shape was not established); ton (jetton balances: the documented
-  keyless route could not be confirmed to be GET-only and unthrottled). They are skipped, not guessed.
+- **XRP Ledger issued currencies** (`xrplTokens`): XRPSCAN's keyless `GET /api/v1/account/{a}/trustlines2`, a
+  rippled `account_lines` answer. Only the watched `CURRENCY:ISSUER` pairs are read (3-character or 40-hex
+  currency, issuer verified with the XRPL Base58Check). The decimals are yours; a balance with more
+  fractional digits than yours, a negative or exponent balance, a duplicate line or a next-page `marker`
+  fails the source. The XRPL Data API v2 (data.ripple.com) is deprecated and is not used. Same host as the
+  native XRP balance. Sources: <https://docs.xrpscan.com/api-documentation/account/trustlines>,
+  <https://docs.xrpscan.com/api-documentation/pricing> (free tier 10,000 requests per day),
+  <https://xrpl.org/docs/references/data-api>. XRPSCAN's API is licensed CC BY-NC-SA 4.0: personal,
+  non-commercial use.
+- **TON jettons** (`tonJettons`): TON Center API v3 `GET /api/v3/jetton/wallets?owner_address=...`
+  (`exclude_zero_balance=true`, `limit=1000`). Documented as usable without an API key but limited to **1
+  request per second**, so the requests of this network (native balance, jettons, each address) are issued
+  one at a time at least 1.1 s apart (`minIntervalMs`). A full page of 1000 wallets fails the source rather
+  than undercount. A watched master may be given as `0:<64 hex>` or in the 48-character friendly form
+  (mainnet tags only, CRC-16 checked); it is matched as raw. Sources: <https://docs.ton.org/api/v3/jettons/get-jetton-wallets>,
+  <https://docs.ton.org/api/v3/authentication>, <https://docs.ton.org/api/rate-limit>.
+- **Not supported (and why):** btc, ltc, doge (no token layer). Solana tokens (SPL) are not read.
+
+## Solana (the one POST: `src/solana.ts`)
+
+**Decision taken by the implementer under a conservative reading, reversible by deleting `src/solana.ts`
+and its call sites (`index.ts`, `collect.ts`, `test/solana.test.ts`).** The owner had left open whether a
+POST-only read call may be allowed for one method. Solana's public interface is JSON-RPC over POST only.
+`SolanaBalanceClient` is a separate client, not `ReadOnlyClient` and not `ServiceClient`, that can send
+exactly one request:
+
+- Host pinned in code: `https://api.mainnet.solana.com/` (Solana Labs' public mainnet endpoint; its docs
+  say it is rate-limited, 100 requests per 10 s per IP, and "not intended for production applications").
+  There is no setting, argument or `endpoints` entry that changes it.
+- Body from a constant template: `{"jsonrpc":"2.0","id":1,"method":"getBalance","params":["<address>"]}`.
+  The one slot holds an address that decoded as exactly 32 base58 bytes (32-44 characters). No caller JSON is
+  serialised (`JSON.stringify` does not appear in the file), so no other method, parameter or path can be
+  expressed. The method is named once, the path is `/`.
+- No redirects, 15 s timeout, 64 KiB response cap, lamports parsed as `BigInt` from the response text
+  (above 2^53 a double loses digits) and range-checked to a u64, an `error` object or a mismatched `id`
+  refused, fixed secret-free messages. The Solana host sees your listed Solana addresses and your IP.
+- `test/solana.test.ts` proves address-injection attempts never produce a request, the body equals the
+  template, the file names one method, one POST, one `fetch` and one host, and the hostile responses fail.
+  `test/read-only.test.ts` skips this one file by name; `solana.test.ts` scans it instead and allows only the
+  POST and `fetch` findings.
+- Config: `networks.sol` (up to 10 addresses). SOL is priced like any native coin. No SPL tokens.
 
 ## Exchanges (6): documented balance endpoint is a GET with a read-only key
 
 binance (`/api/v3/account`), bybit (`/v5/account/wallet-balance`), okx (`/api/v5/account/balance`),
 kucoin (`/api/v1/accounts`), gate (`/api/v4/spot/accounts`): requests signed with HMAC from
 `node:crypto`. coinbase (Advanced Trade `GET /api/v3/brokerage/accounts?limit=250`): see below.
-**Excluded: Kraken** (private endpoints are POST-only). Spot/funding balances only.
+**Excluded: Kraken** (private endpoints are POST-only and need signed API keys: a different risk class from Solana's keyless `getBalance`). Spot/funding balances only.
 
 Secrets (named, stored in the OS secret store): `binance_key`, `binance_secret`, `bybit_key`,
 `bybit_secret`, `okx_key`, `okx_secret`, `okx_passphrase`, `kucoin_key`, `kucoin_secret`,
@@ -142,5 +184,7 @@ Phoenix's reading of Coinbase's documentation; real Coinbase and a real CDP key 
 Coinbase accepts the token, and whether the query string really stays out of `uri`, is unconfirmed),
 so a documentation misreading would pass here and
 fail live. Free public indexers rate-limit; 16 networks x several addresses may be throttled (shown as
-a failed source). `xrpscan` field naming (`xrpBalance`) and Blockscout's `coin_balance` are the shapes
+a failed source; TON Center allows 1 request per second without a key). The XRPSCAN `trustlines2`, TON
+Center `jetton/wallets` and Solana `getBalance` shapes were written from documentation and never run
+live. `xrpscan` field naming (`xrpBalance`) and Blockscout's `coin_balance` are the shapes
 most worth checking first.

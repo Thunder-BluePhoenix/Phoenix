@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+
+/** English text for the Phoenix browser's find bar, permission prompt and the Fawkes in its corner (Phase 93). */
+export const browserChrome = {
+  "browser.find.open": "Find in page",
+  "browser.find.label": "Find in page",
+  "browser.find.placeholder": "Find in page",
+  "browser.find.next": "Next match",
+  "browser.find.prev": "Previous match",
+  "browser.find.close": "Close find bar",
+  "browser.find.searching": "Searching…",
+  "browser.find.found": "Found on this page.",
+  "browser.find.notFound": "Not found on this page.",
+  "browser.find.tooLong": "Search text can be at most {max} characters.",
+  "browser.find.control": "Search text cannot contain control characters.",
+  "browser.find.bidi": "Search text cannot contain text-direction control characters.",
+  "browser.find.failed": "The search could not run on this page.",
+  "browser.find.bad_query": "The browser refused that search text.",
+  "browser.find.unknown_tab": "That tab no longer exists.",
+  "browser.find.no_page": "There is no page to search yet.",
+  "browser.permission.title": "A page is asking for permission",
+  "browser.permission.origin": "Site: {origin}",
+  "browser.permission.asks": "It wants to use: {permission}",
+  "browser.permission.allow": "Allow once",
+  "browser.permission.deny": "Deny",
+  "browser.permission.countdown":
+    "Denied automatically in {seconds, plural, one {# second} other {# seconds}}.",
+  "browser.permission.more":
+    "{count, plural, one {# more request is waiting} other {# more requests are waiting}}",
+  "browser.permission.kind.microphone": "your microphone",
+  "browser.permission.kind.camera": "your camera",
+  "browser.permission.kind.geolocation": "your location",
+  "browser.permission.kind.notifications": "notifications",
+  "browser.permission.kind.clipboard-read": "reading your clipboard",
+  "browser.permission.kind.display-capture": "your screen",
+  "browser.permission.kind.midi": "MIDI devices",
+  "browser.permission.kind.sensors": "motion and other sensors",
+  "browser.permission.kind.media-key-system-access": "protected (DRM) media",
+  "browser.permission.kind.local-fonts": "the fonts installed on this computer",
+  "browser.permission.kind.window-management": "your screens and windows",
+  "browser.permission.kind.pointer-lock": "your mouse pointer",
+  "browser.permission.kind.automatic-downloads": "several downloads at once",
+  "browser.permission.kind.file-system-access": "files on this computer",
+  "browser.permission.kind.autoplay": "playing sound automatically",
+  "browser.permission.kind.other": "something else",
+  "browser.corner.noShell": "Not connected to the Phoenix desktop app.",
+  "browser.corner.noTab": "No tab is open.",
+  "browser.corner.loading": "Loading the page.",
+  "browser.corner.idle": "The page is loaded.",
+  "browser.corner.permission": "A page is asking for permission. Please answer it.",
+  "browser.corner.shieldsOff": "Ad and tracker blocking is off on {site}.",
+  "browser.corner.blocked":
+    "{count, plural, one {# request was blocked on this page.} other {# requests were blocked on this page.}}",
+  "browser.corner.setting": "Show Fawkes in the corner of the Phoenix browser (desktop app only)",
+  "browser.corner.settingHint":
+    "On by default. A small Fawkes in the browser's own toolbar shows whether the page is loading, a permission is being asked, blocking is off or a search ran. It never appears inside a web page.",
+} as const;

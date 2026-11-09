@@ -5,19 +5,24 @@
 // navigation policy the real shell must (decideNavigation). No webview, window or network exists.
 import { DEFAULT_NAVIGATION_POLICY, decideNavigation } from "../core/browser/navigation";
 import {
+  FIND_MAX_QUERY,
   PurgeError,
   ZOOM_MAX,
   ZOOM_MIN,
   type BrowserIntent,
   type BrowserShell,
+  type FindResult,
   type OpenRequest,
   type OpenResult,
   type PageActionRequest,
   type PageActionResult,
   type PageSnapshotResult,
+  type PermissionKind,
+  type PermissionRequest,
   type PurgeResult,
   type TabInfo,
 } from "./shell";
+import { BIDI, CONTROL } from "./unsafe-text";
 
 export interface FakeBrowserShell extends BrowserShell {
   tabs: TabInfo[];
@@ -41,12 +46,24 @@ export interface FakeBrowserShell extends BrowserShell {
   snapshotOutcome: () => PageSnapshotResult | Promise<PageSnapshotResult>;
   /** What `page_action` answers (set it per test). */
   actionOutcome: (req: PageActionRequest) => PageActionResult | Promise<PageActionResult>;
+  /** What `find_in_page` answers when the query is valid (set it per test). */
+  findOutcome: (tabId: string, query: string, forward: boolean) => FindResult;
+  /** Every permission answer the chrome sent, in order. */
+  permissionAnswers: { requestId: string; allow: boolean }[];
+  /** Pushes a permission request as the shell does when a page asks. */
+  emitPermission(
+    request: Partial<PermissionRequest> & { requestId: string; permission?: PermissionKind },
+  ): void;
+  /** The shell settled a request itself (its own timeout, the tab closed). */
+  emitPermissionResolved(requestId: string): void;
 }
 
 export function createFakeBrowserShell(): FakeBrowserShell {
   const tabListeners = new Set<(tab: TabInfo) => void>();
   const closedListeners = new Set<(tabId: string) => void>();
   const openListeners = new Set<(request: OpenRequest) => void>();
+  const permissionListeners = new Set<(request: PermissionRequest) => void>();
+  const resolvedListeners = new Set<(requestId: string) => void>();
   const failing = new Set<string>();
   let counter = 0;
   let inFlight = 0;
@@ -173,6 +190,29 @@ export function createFakeBrowserShell(): FakeBrowserShell {
       guard("page_action");
       return shell.actionOutcome(req);
     },
+    async findInPage(tabId, query, forward) {
+      shell.calls.push(["find_in_page", tabId, query, forward]);
+      guard("find_in_page");
+      if (!shell.tabs.some((t) => t.tabId === tabId)) return { ok: false, reason: "unknown_tab" };
+      // The same refusals the real shell makes before it touches a page.
+      if ([...query].length > FIND_MAX_QUERY || CONTROL.test(query) || BIDI.test(query)) {
+        return { ok: false, reason: "bad_query" };
+      }
+      return shell.findOutcome(tabId, query, forward);
+    },
+    async answerPermission(requestId, allow) {
+      shell.calls.push(["answer_permission", requestId, allow]);
+      guard("answer_permission");
+      shell.permissionAnswers.push({ requestId, allow });
+    },
+    async onPermissionRequest(listener) {
+      permissionListeners.add(listener);
+      return () => void permissionListeners.delete(listener);
+    },
+    async onPermissionResolved(listener) {
+      resolvedListeners.add(listener);
+      return () => void resolvedListeners.delete(listener);
+    },
     async purgeProfileData(profileId) {
       shell.calls.push(["purge_profile_data", profileId]);
       guard("purge_profile_data");
@@ -213,9 +253,23 @@ export function createFakeBrowserShell(): FakeBrowserShell {
     emitOpenRequest(url) {
       openListeners.forEach((l) => l({ url, source: "port_radar" }));
     },
+    emitPermission(request) {
+      const full: PermissionRequest = {
+        tabId: "tab-1",
+        origin: "https://example.com",
+        permission: "camera",
+        ...request,
+      };
+      permissionListeners.forEach((l) => l(full));
+    },
+    emitPermissionResolved(requestId) {
+      resolvedListeners.forEach((l) => l(requestId));
+    },
     failNext(command) {
       failing.add(command);
     },
+    findOutcome: () => ({ ok: true, found: true }),
+    permissionAnswers: [],
     purgeOutcome: () => ({ closedTabs: 0, dataRemoved: true }),
     purgeGate: null,
     maxConcurrentPurges: 0,

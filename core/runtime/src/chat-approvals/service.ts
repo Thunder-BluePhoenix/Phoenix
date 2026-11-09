@@ -2,11 +2,13 @@
 // Copyright (C) 2026 Phoenix contributors
 import {
   createChatApprovals,
+  DEEP_LINK_BASE,
   type ChatApprovals,
   type ChatReply,
   type HttpTransport,
   type RawRequest,
 } from "@phoenix/capability-chat-approvals";
+import type { TeamsLinkVerdict } from "@phoenix/api";
 import type { CapabilityModule } from "@phoenix/capability-manager";
 import type { EventBus } from "@phoenix/event-bus";
 import type { AuditLog } from "@phoenix/permissions";
@@ -127,6 +129,21 @@ export class ChatApprovalsService {
   async handleCallback(provider: "slack" | "discord", request: RawRequest): Promise<ChatReply> {
     if (!this.d.enabled() || this.d.killSwitchEngaged()) return { status: 503 };
     return this.approvals.handleCallback(provider, request);
+  }
+
+  /**
+   * Whether a Teams link's query is a link this Core signed for a request that is still pending,
+   * unchanged and switched on, and not past its expiry. The signing key never leaves the capability
+   * and nothing about why a link failed is returned. The link is not single use (the format has no
+   * nonce; the same link may be opened again until the request is decided or expires): it decides
+   * nothing, it only names an approval the session-token list already shows.
+   */
+  async verifyTeamsLink(query: string): Promise<TeamsLinkVerdict> {
+    if (!this.d.enabled() || this.d.killSwitchEngaged()) return { valid: false, approval_id: null };
+    const result = await this.approvals.openTeamsLink(`${DEEP_LINK_BASE}?${query}`);
+    return result.kind === "show"
+      ? { valid: true, approval_id: result.id }
+      : { valid: false, approval_id: null };
   }
 
   /** Posts at most one batch at a time; a request raised meanwhile is picked up by the next one. */

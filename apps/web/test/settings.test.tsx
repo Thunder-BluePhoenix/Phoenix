@@ -109,6 +109,20 @@ describe("Settings (FR-014)", () => {
     await waitFor(() => expect(box.checked).toBe(true));
   });
 
+  it("the browser corner Fawkes is on until unticked, and only that field is sent (Phase 93)", async () => {
+    const api = setup();
+    const box = (await screen.findByLabelText(
+      /Show Fawkes in the corner of the Phoenix browser/,
+    )) as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    api.set("GET /api/pet/settings", () => ({ reduced_motion: "auto", browser_corner: false }));
+    fireEvent.click(box);
+    await waitFor(() =>
+      expect(api.posts("/api/pet/settings")[0]?.body).toEqual({ browser_corner: false }),
+    );
+    await waitFor(() => expect(box.checked).toBe(false));
+  });
+
   it("quiet mode and muting a capability update notification preferences", async () => {
     const api = setup();
     fireEvent.click(await screen.findByLabelText(/Quiet mode/));

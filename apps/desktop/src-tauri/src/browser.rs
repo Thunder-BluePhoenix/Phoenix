@@ -28,11 +28,12 @@ use crate::browser_core::{
 };
 use crate::browser_extensions::{self, ScriptSource};
 use crate::browser_page::{
-    self as page, ActionOutcome, ActionReply, ActionRequest, Plan, ScriptFail, SnapshotOutcome,
+    self as page, ActionOutcome, ActionReply, ActionRequest, FindOutcome, Plan, ScriptFail,
+    SnapshotOutcome,
 };
 use crate::browser_policy::{
     classify_host, classify_ip, decide_navigation, host_matches_site, registrable_domain, Decision,
-    Denial, HostClass, Intent, Policy, SitePermissions,
+    Denial, HostClass, Intent, PermissionReason, Policy, SitePermissions, PERMISSION_KINDS,
 };
 use crate::browser_profiles::{self, StoreError};
 use crate::browser_rules::{
@@ -63,6 +64,10 @@ pub const TAB_EVENT: &str = "browser://tab";
 pub const TAB_CLOSED_EVENT: &str = "browser://tab-closed";
 pub const OPEN_REQUEST_EVENT: &str = "browser://open-request";
 pub const DOWNLOAD_REFUSED_EVENT: &str = "browser://download-refused";
+/// A content page asked for a permission: `{requestId, tabId, origin, permission}`.
+pub const PERMISSION_REQUEST_EVENT: &str = "browser://permission-request";
+/// The shell settled a request itself (timeout, tab closed, answered): `{requestId}`.
+pub const PERMISSION_RESOLVED_EVENT: &str = "browser://permission-resolved";
 
 /// DNS answers are trusted this long (and no longer) before the next navigation asks again.
 const DNS_TTL: Duration = Duration::from_secs(60);
@@ -78,6 +83,11 @@ const SHIELDS_ATTACH_TIMEOUT: Duration = Duration::from_secs(20);
 /// Longest wait for a page to answer one script.
 const SCRIPT_TIMEOUT: Duration = Duration::from_secs(page::SCRIPT_TIMEOUT_SECS);
 const MAX_LIST_RESPONSE: u64 = 12 * 1024 * 1024;
+/// A permission prompt the person has not answered is denied after this long, and an "allow once"
+/// answer is good for the page's next request of that exact permission for this long.
+const PERMISSION_TTL: Duration = Duration::from_secs(30);
+/// Prompts waiting for an answer at most; a page asking for more is denied unasked.
+const MAX_PENDING_PERMISSIONS: usize = 4;
 
 // ---------------------------------------------------------------------------------------------
 // What differs between the real app and tests
@@ -304,12 +314,44 @@ struct ShieldsState {
     attach: Option<String>,
 }
 
+/// One permission prompt in the chrome.
+struct PendingPrompt {
+    id: String,
+    tab: u64,
+    origin: String,
+    kind: &'static str,
+    asked: Instant,
+}
+
+/// What the person allowed, once.
+struct OnceGrant {
+    tab: u64,
+    origin: String,
+    kind: &'static str,
+    until: Instant,
+}
+
+/// What the webview callback must do for one permission request.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PromptRequest {
+    pub id: String,
+    pub tab: u64,
+    pub origin: String,
+    pub kind: &'static str,
+}
+
 struct Inner {
     tabs: BTreeMap<u64, Tab>,
     next_id: u64,
     active: Option<u64>,
     chrome_height: f64,
     permissions: SitePermissions,
+    /// Prompts shown to the person and not yet answered.
+    prompts: Vec<PendingPrompt>,
+    /// "Allow once" answers: each lets ONE later request of the same (tab, origin, permission)
+    /// through, and only until it expires.
+    once: Vec<OnceGrant>,
+    next_prompt: u64,
     dns: HashMap<(String, bool), (Instant, Result<(), Denial>)>,
     pending_radar: Vec<(String, Instant)>,
     popups: RateLimit,
@@ -341,7 +383,10 @@ pub struct TabInfo {
     pub can_go_back: bool,
     pub can_go_forward: bool,
     pub zoom: f64,
-    /// Always 0: no supported webview reports how many requests a content rule list blocked.
+    /// Always 0, on purpose. WebKit blocks a request silently and wry exposes neither a
+    /// navigation-failure callback nor any per-request hook, so no honest count is reachable (a
+    /// guessed or estimated number would be a fake). How many rules are applied is in
+    /// `ShieldsStatus::report` (`keptBlocking`), which is a different number.
     pub blocked: u32,
     /// The stored profile the tab belongs to; `null` for a private tab.
     pub profile_id: Option<String>,
@@ -389,6 +434,9 @@ impl Host {
                 active: None,
                 chrome_height: DEFAULT_CHROME_HEIGHT,
                 permissions: SitePermissions::default(),
+                prompts: Vec::new(),
+                once: Vec::new(),
+                next_prompt: 1,
                 dns: HashMap::new(),
                 pending_radar: Vec::new(),
                 popups: RateLimit::new(3, Duration::from_secs(10)),
@@ -726,6 +774,7 @@ impl Host {
 
     /// Removes a tab; the next active tab (the previous one, else the next) when it was active.
     fn remove_tab(&self, id: u64) -> Option<Option<u64>> {
+        self.drop_prompts(id);
         let mut inner = self.inner.lock();
         inner.tabs.remove(&id)?;
         if inner.active == Some(id) {
@@ -780,27 +829,140 @@ impl Host {
         Some((tab.zoom, info(id, tab)))
     }
 
-    /// `Allow` only for a granted origin and kind (see `SitePermissions`), else `Deny`: never
-    /// `Default`, which on macOS and Windows continues into the system's own prompt. The asking
-    /// frame is not given by the webview API, so it is taken to be the top-level page; since no
-    /// command grants anything, in practice every request is denied.
+    /// [`Host::ask_permission`] without the prompt (a convenience for callers that only need the
+    /// verdict): `Allow` only for a granted pair or a live "allow once", else `Deny`.
     pub fn permission(&self, id: u64, kind: &str) -> PermissionResponse {
-        let inner = self.inner.lock();
+        self.ask_permission(id, kind, Instant::now()).0
+    }
+
+    /// The verdict for one permission request of tab `id`, and a prompt to show when the person
+    /// may still be asked. NEVER `Default` (which on macOS and Windows continues into the system's
+    /// own prompt). The asking frame is not given by the webview API, so it is taken to be the
+    /// top-level page.
+    ///
+    /// `Allow` only for (a) a session grant in `SitePermissions` (no command makes one), or (b) an
+    /// "allow once" the person gave in the Phoenix prompt for this exact (tab, origin, permission)
+    /// and not yet used or expired; (b) is consumed by this request. Otherwise `Deny`, and, when
+    /// the request is one the policy would grant (known kind, https, public host, not a
+    /// never-grantable kind), at most [`MAX_PENDING_PERMISSIONS`] prompts at a time, one per exact
+    /// triple. The webview callback cannot wait (it runs on the UI thread), so the page that asked
+    /// is denied this time; if the person allows, the page's next request of the same permission
+    /// within [`PERMISSION_TTL`] is the one that gets `Allow`.
+    pub fn ask_permission(
+        &self,
+        id: u64,
+        kind: &str,
+        now: Instant,
+    ) -> (PermissionResponse, Option<PromptRequest>) {
+        let mut inner = self.inner.lock();
         let Some(tab) = inner.tabs.get(&id) else {
-            return PermissionResponse::Deny;
+            return (PermissionResponse::Deny, None);
         };
         let origin = Url::parse(&tab.url)
             .ok()
             .map(|u| u.origin().ascii_serialization())
             .unwrap_or_default();
-        match inner.permissions.decide(kind, &origin, &origin) {
-            (true, _) => PermissionResponse::Allow,
-            (false, _) => PermissionResponse::Deny,
+        let (allowed, reason) = inner.permissions.decide(kind, &origin, &origin);
+        if allowed {
+            return (PermissionResponse::Allow, None);
         }
+        if reason != PermissionReason::DefaultDeny {
+            return (PermissionResponse::Deny, None);
+        }
+        // `decide` answered `DefaultDeny`, so `kind` is one of the known kinds.
+        let Some(kind) = PERMISSION_KINDS.iter().copied().find(|k| *k == kind) else {
+            return (PermissionResponse::Deny, None);
+        };
+        inner.once.retain(|g| g.until > now);
+        if let Some(at) = inner
+            .once
+            .iter()
+            .position(|g| g.tab == id && g.kind == kind && g.origin == origin)
+        {
+            inner.once.remove(at);
+            return (PermissionResponse::Allow, None);
+        }
+        inner
+            .prompts
+            .retain(|p| now.saturating_duration_since(p.asked) < PERMISSION_TTL);
+        let asked_already = inner
+            .prompts
+            .iter()
+            .any(|p| p.tab == id && p.kind == kind && p.origin == origin);
+        if asked_already || inner.prompts.len() >= MAX_PENDING_PERMISSIONS {
+            return (PermissionResponse::Deny, None);
+        }
+        let request = PromptRequest {
+            id: format!("perm-{}", inner.next_prompt),
+            tab: id,
+            origin,
+            kind,
+        };
+        inner.next_prompt += 1;
+        inner.prompts.push(PendingPrompt {
+            id: request.id.clone(),
+            tab: id,
+            origin: request.origin.clone(),
+            kind,
+            asked: now,
+        });
+        (PermissionResponse::Deny, Some(request))
     }
 
-    /// Records a grant the person made in a Phoenix prompt. No Tauri command calls this yet (the
-    /// chrome has no permission prompt), so grants are only possible from Rust code and tests.
+    /// The person's answer to prompt `request_id`. `true` when it settled a live prompt. Allow
+    /// records ONE "allow once" for that prompt's exact (tab, origin, permission); an unknown,
+    /// repeated or expired (older than [`PERMISSION_TTL`]) request changes nothing.
+    pub fn answer_permission(&self, request_id: &str, allow: bool, now: Instant) -> bool {
+        let mut inner = self.inner.lock();
+        let Some(at) = inner.prompts.iter().position(|p| p.id == request_id) else {
+            return false;
+        };
+        let prompt = inner.prompts.remove(at);
+        if now.saturating_duration_since(prompt.asked) >= PERMISSION_TTL {
+            return false;
+        }
+        if allow {
+            inner.once.push(OnceGrant {
+                tab: prompt.tab,
+                origin: prompt.origin,
+                kind: prompt.kind,
+                until: now + PERMISSION_TTL,
+            });
+        }
+        true
+    }
+
+    /// Drops every prompt older than [`PERMISSION_TTL`] (default deny); the ids, so the chrome can
+    /// remove them.
+    pub fn expire_prompts(&self, now: Instant) -> Vec<String> {
+        let mut inner = self.inner.lock();
+        let mut gone = Vec::new();
+        inner.prompts.retain(|p| {
+            let live = now.saturating_duration_since(p.asked) < PERMISSION_TTL;
+            if !live {
+                gone.push(p.id.clone());
+            }
+            live
+        });
+        gone
+    }
+
+    /// Forgets the prompts and "allow once" answers of a tab that is gone; the prompt ids.
+    fn drop_prompts(&self, id: u64) -> Vec<String> {
+        let mut inner = self.inner.lock();
+        inner.once.retain(|g| g.tab != id);
+        let mut gone = Vec::new();
+        inner.prompts.retain(|p| {
+            if p.tab == id {
+                gone.push(p.id.clone());
+            }
+            p.tab != id
+        });
+        gone
+    }
+
+    /// Records a session-long grant. No Tauri command calls this: the Phoenix prompt offers "allow
+    /// once" and "deny" only (see [`Host::answer_permission`]), so this is for Rust code and tests.
     pub fn grant_permission(&self, origin: &str, kind: &str) -> bool {
         self.inner.lock().permissions.grant(origin, kind, true).0
     }
@@ -883,6 +1045,8 @@ impl Host {
         inner.tabs.clear();
         inner.active = None;
         inner.permissions.clear();
+        inner.prompts.clear();
+        inner.once.clear();
         inner.dns.clear();
         inner.pending_radar.clear();
         inner.chrome_height = DEFAULT_CHROME_HEIGHT;
@@ -921,6 +1085,69 @@ fn emit_closed<R: Runtime>(app: &AppHandle<R>, id: u64) {
         TAB_CLOSED_EVENT,
         json!({ "tabId": id.to_string() }),
     );
+}
+
+fn emit_permission_resolved<R: Runtime>(app: &AppHandle<R>, request_id: &str) {
+    let _ = app.emit_to(
+        CHROME_LABEL,
+        PERMISSION_RESOLVED_EVENT,
+        json!({ "requestId": request_id }),
+    );
+}
+
+/// A content page asked for a permission: the verdict now (always `Deny`, or `Allow` for a live
+/// "allow once"), and, when the person may be asked, the Phoenix prompt in the chrome. The prompt
+/// is denied by default after [`PERMISSION_TTL`].
+fn permission_for_page<R: Runtime>(app: &AppHandle<R>, id: u64, kind: &str) -> PermissionResponse {
+    let Some(host) = app.try_state::<Host>() else {
+        return PermissionResponse::Deny;
+    };
+    // Nobody to ask: the chrome is the only place the prompt can be shown.
+    if app.get_webview_window(CHROME_LABEL).is_none() {
+        return PermissionResponse::Deny;
+    }
+    let (verdict, prompt) = host.ask_permission(id, kind, Instant::now());
+    if let Some(prompt) = prompt {
+        let _ = app.emit_to(
+            CHROME_LABEL,
+            PERMISSION_REQUEST_EVENT,
+            json!({
+                "requestId": prompt.id,
+                "tabId": prompt.tab.to_string(),
+                "origin": prompt.origin.chars().take(256).collect::<String>(),
+                "permission": prompt.kind,
+            }),
+        );
+        let app = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(PERMISSION_TTL);
+            if let Some(host) = app.try_state::<Host>() {
+                for gone in host.expire_prompts(Instant::now()) {
+                    emit_permission_resolved(&app, &gone);
+                }
+            }
+        });
+    }
+    verdict
+}
+
+/// The person's answer to a permission prompt (the chrome only). Allow is ONCE: it covers the
+/// page's next request of that exact permission from that exact origin in that tab, for at most
+/// 30 s. An answer to an unknown, answered or expired request is ignored.
+#[tauri::command]
+pub fn answer_permission<R: Runtime>(
+    window: WebviewWindow<R>,
+    request_id: String,
+    allow: bool,
+) -> Result<(), Refusal> {
+    chrome_only(&window)?;
+    if request_id.len() <= 64 {
+        window
+            .app_handle()
+            .state::<Host>()
+            .answer_permission(&request_id, allow, Instant::now());
+    }
+    Ok(())
 }
 
 /// Opens the chrome window, or brings it forward.
@@ -1053,6 +1280,9 @@ pub fn window_event<R: Runtime>(window: &tauri::Window<R>, event: &WindowEvent) 
 /// next active one and tell the chrome. Idempotent, so both paths can call it.
 fn tab_gone<R: Runtime>(app: &AppHandle<R>, id: u64) {
     if let Some(host) = app.try_state::<Host>() {
+        for request_id in host.drop_prompts(id) {
+            emit_permission_resolved(app, &request_id);
+        }
         if host.remove_tab(id).is_some() {
             emit_closed(app, id);
             apply_active(app);
@@ -1179,8 +1409,8 @@ fn build_tab_window<R: Runtime>(
             _ => true,
         })
         .on_permission_request(move |webview, kind| match perm.try_state::<Host>() {
-            Some(host) => match tab_of_label(webview.label()) {
-                Some(id) => host.permission(id, &kind.to_string()),
+            Some(_) => match tab_of_label(webview.label()) {
+                Some(id) => permission_for_page(&perm, id, &kind.to_string()),
                 None => PermissionResponse::Deny,
             },
             None => PermissionResponse::Deny,
@@ -1208,7 +1438,30 @@ fn build_tab_window<R: Runtime>(
                 }
             }
         });
-    builder.build()
+    let window = builder.build()?;
+    #[cfg(target_os = "linux")]
+    if native {
+        limit_third_party_cookies(&window);
+    }
+    Ok(window)
+}
+
+/// Linux: asks WebKitGTK to accept no third-party cookies in this tab's cookie store
+/// (`WEBKIT_COOKIE_POLICY_ACCEPT_NO_THIRD_PARTY`). Runs on the main thread right after the window
+/// exists; a failure leaves WebKitGTK's default policy. Compiled on neither platform, reasoned
+/// only (see `docs/mini-browser.md`).
+#[cfg(target_os = "linux")]
+fn limit_third_party_cookies<R: Runtime>(window: &WebviewWindow<R>) {
+    let _ = window.with_webview(|platform| {
+        use webkit2gtk::{CookieAcceptPolicy, CookieManagerExt, WebViewExt, WebsiteDataManagerExt};
+        if let Some(cookies) = platform
+            .inner()
+            .website_data_manager()
+            .and_then(|data| data.cookie_manager())
+        {
+            cookies.set_accept_policy(CookieAcceptPolicy::NoThirdParty);
+        }
+    });
 }
 
 impl Host {
@@ -1902,6 +2155,58 @@ pub async fn page_action<R: Runtime>(
     Ok(act_on_active(window.app_handle().clone(), request, SCRIPT_TIMEOUT).await)
 }
 
+/// The find-in-page work for one tab: validates, then runs ONE fixed script (the query only as a
+/// JSON string literal). Blocks (at most `timeout`): call off the main thread. The tab need not
+/// be the active one. Closing the tab destroys the webview and with it the highlight; the host
+/// keeps no find state.
+fn find_blocking<R: Runtime>(
+    app: &AppHandle<R>,
+    id: u64,
+    query: &str,
+    forward: bool,
+    timeout: Duration,
+) -> FindOutcome {
+    if !page::find_query_ok(query) {
+        return FindOutcome::refused("bad_query");
+    }
+    let Some(tab) = app.state::<Host>().tab_info(id) else {
+        return FindOutcome::refused("unknown_tab");
+    };
+    if !page::is_web_url(&tab.url) {
+        return FindOutcome::refused("no_page");
+    }
+    let script = match page::find_script(query, forward) {
+        Some(script) => script,
+        None => page::FIND_CLEAR_SCRIPT.to_string(),
+    };
+    match run_script(app, id, &script, timeout) {
+        Ok(raw) => page::parse_find(&raw),
+        Err(fail) => FindOutcome::refused(fail.reason()),
+    }
+}
+
+/// Finds `query` in tab `tab_id`'s page and highlights the next (or previous) match. The empty
+/// query clears the highlight. Resolves with `{ok:false, reason}` for every refusal
+/// (`bad_query`, `unknown_tab`, `no_page`, `timeout`, `failed`); the count is at most 500.
+#[tauri::command]
+pub async fn find_in_page<R: Runtime>(
+    window: WebviewWindow<R>,
+    tab_id: String,
+    query: String,
+    forward: bool,
+) -> Result<FindOutcome, Refusal> {
+    chrome_only(&window)?;
+    let app = window.app_handle().clone();
+    let Some(id) = parse_tab_id(&tab_id) else {
+        return Ok(FindOutcome::refused("unknown_tab"));
+    };
+    Ok(tauri::async_runtime::spawn_blocking(move || {
+        find_blocking(&app, id, &query, forward, SCRIPT_TIMEOUT)
+    })
+    .await
+    .unwrap_or(FindOutcome::refused("failed")))
+}
+
 /// Phase 80: the port radar asks the Phoenix browser to open a loopback dev server. It opens
 /// nothing: it records the request, shows the chrome window and tells the chrome page, which asks
 /// the person; only the chrome's confirmation (`open_tab` with `port_radar`) opens a tab, once.
@@ -2447,6 +2752,163 @@ mod tests {
         assert_eq!(h.permission(c, "camera"), PermissionResponse::Deny);
         h.reset();
         assert_eq!(h.permission(a, "microphone"), PermissionResponse::Deny);
+    }
+
+    #[test]
+    fn a_prompt_is_raised_once_and_allow_covers_exactly_one_later_request() {
+        let (h, _) = host();
+        let t0 = Instant::now();
+        let a = h.add_tab("https://example.com/page", None).unwrap();
+        let (verdict, prompt) = h.ask_permission(a, "microphone", t0);
+        // The page that asked is denied NOW: the callback cannot wait for the person.
+        assert_eq!(verdict, PermissionResponse::Deny);
+        let prompt = prompt.expect("a prompt for a grantable permission");
+        assert_eq!(prompt.origin, "https://example.com");
+        assert_eq!((prompt.tab, prompt.kind), (a, "microphone"));
+        // The same request again while the prompt is open: denied, not asked twice.
+        assert_eq!(
+            h.ask_permission(a, "microphone", t0),
+            (PermissionResponse::Deny, None)
+        );
+        // Nothing is allowed before the chrome answers, not even by asking again.
+        assert_eq!(h.permission(a, "microphone"), PermissionResponse::Deny);
+        assert!(h.answer_permission(&prompt.id, true, t0));
+        // Another permission, and another tab on the same origin, stay denied.
+        let (v, p) = h.ask_permission(a, "camera", t0);
+        assert_eq!(v, PermissionResponse::Deny);
+        assert!(p.is_some());
+        let b = h.add_tab("https://example.com/other", None).unwrap();
+        assert_eq!(
+            h.ask_permission(b, "microphone", t0).0,
+            PermissionResponse::Deny
+        );
+        // The exact request is allowed once, then asked about again.
+        assert_eq!(
+            h.ask_permission(a, "microphone", t0),
+            (PermissionResponse::Allow, None)
+        );
+        let (v, again) = h.ask_permission(a, "microphone", t0);
+        assert_eq!(v, PermissionResponse::Deny);
+        assert!(again.is_some());
+        // Allow once is not a session grant.
+        assert!(h.inner.lock().permissions.list().is_empty());
+    }
+
+    #[test]
+    fn a_denied_prompt_expired_prompt_and_replayed_answer_allow_nothing() {
+        let (h, _) = host();
+        let t0 = Instant::now();
+        let a = h.add_tab("https://example.com/", None).unwrap();
+        let prompt = h.ask_permission(a, "geolocation", t0).1.unwrap();
+        assert!(!h.answer_permission("perm-999", true, t0), "unknown id");
+        assert!(h.answer_permission(&prompt.id, false, t0));
+        assert!(
+            !h.answer_permission(&prompt.id, true, t0),
+            "already answered"
+        );
+        assert_eq!(
+            h.ask_permission(a, "geolocation", t0).0,
+            PermissionResponse::Deny
+        );
+        // An answer after 30 s is too late: default deny.
+        let late = t0 + PERMISSION_TTL;
+        let prompt = h.ask_permission(a, "camera", t0).1.unwrap();
+        assert!(!h.answer_permission(&prompt.id, true, late));
+        assert_eq!(
+            h.ask_permission(a, "camera", late).0,
+            PermissionResponse::Deny
+        );
+        // An "allow once" that was not used within 30 s expires.
+        let prompt = h.ask_permission(a, "midi", t0).1.unwrap();
+        assert!(h.answer_permission(&prompt.id, true, t0));
+        assert_eq!(
+            h.ask_permission(a, "midi", late).0,
+            PermissionResponse::Deny
+        );
+        // Unanswered prompts are dropped by the 30 s sweep, and only those.
+        let (h, _) = host();
+        let a = h.add_tab("https://example.com/", None).unwrap();
+        let old = h.ask_permission(a, "microphone", t0).1.unwrap();
+        let fresh = h
+            .ask_permission(a, "camera", t0 + Duration::from_secs(20))
+            .1
+            .unwrap();
+        assert_eq!(h.expire_prompts(t0 + PERMISSION_TTL), vec![old.id.clone()]);
+        assert!(!h.answer_permission(&old.id, true, t0 + PERMISSION_TTL));
+        assert!(h.answer_permission(&fresh.id, true, t0 + PERMISSION_TTL));
+    }
+
+    #[test]
+    fn nothing_is_asked_that_policy_would_never_grant_and_asks_are_bounded() {
+        let (h, _) = host();
+        let t0 = Instant::now();
+        let secure = h.add_tab("https://example.com/", None).unwrap();
+        for kind in [
+            "display-capture",
+            "file-system-access",
+            "automatic-downloads",
+            "clipboard-read",
+            "local-fonts",
+            "window-management",
+            "media-key-system-access",
+            "other",
+            "not-a-permission",
+        ] {
+            assert_eq!(
+                h.ask_permission(secure, kind, t0),
+                (PermissionResponse::Deny, None),
+                "{kind}"
+            );
+        }
+        for url in [
+            "http://example.com/",
+            "https://localhost/",
+            "https://192.168.0.7/",
+        ] {
+            let id = h.add_tab(url, None).unwrap();
+            assert_eq!(
+                h.ask_permission(id, "camera", t0),
+                (PermissionResponse::Deny, None),
+                "{url}"
+            );
+        }
+        assert_eq!(
+            h.ask_permission(999, "camera", t0),
+            (PermissionResponse::Deny, None)
+        );
+        // At most MAX_PENDING_PERMISSIONS open prompts; the rest are denied unasked.
+        let kinds = [
+            "microphone",
+            "camera",
+            "geolocation",
+            "notifications",
+            "midi",
+        ];
+        let asked = kinds
+            .iter()
+            .filter(|k| h.ask_permission(secure, k, t0).1.is_some())
+            .count();
+        assert_eq!(asked, MAX_PENDING_PERMISSIONS);
+    }
+
+    #[test]
+    fn a_closed_tab_takes_its_prompts_and_allowances_with_it() {
+        let (h, _) = host();
+        let t0 = Instant::now();
+        let a = h.add_tab("https://example.com/", None).unwrap();
+        let p1 = h.ask_permission(a, "microphone", t0).1.unwrap();
+        let p2 = h.ask_permission(a, "camera", t0).1.unwrap();
+        assert!(h.answer_permission(&p2.id, true, t0));
+        let mut gone = h.drop_prompts(a);
+        gone.sort();
+        assert_eq!(gone, vec![p1.id.clone()]);
+        assert!(!h.answer_permission(&p1.id, true, t0));
+        assert!(h.inner.lock().once.is_empty());
+        // Ending the session forgets everything.
+        let b = h.add_tab("https://example.com/", None).unwrap();
+        let p = h.ask_permission(b, "midi", t0).1.unwrap();
+        h.reset();
+        assert!(!h.answer_permission(&p.id, true, t0));
     }
 
     #[test]
@@ -3004,6 +3466,74 @@ mod page_tests {
     }
 
     #[test]
+    fn find_runs_one_fixed_script_with_the_query_as_a_literal_and_clears_on_empty() {
+        let rig = rig();
+        let id = rig.tab(PAGE);
+        rig.reply(r#"{"ok":true,"f":true,"n":4}"#);
+        let found = find_blocking(&rig.handle(), id, "needle \"x\"", true, SHORT);
+        assert_eq!(
+            found,
+            FindOutcome::Found {
+                ok: true,
+                found: true,
+                count: 4
+            }
+        );
+        let scripts = rig.scripts();
+        assert_eq!(scripts.len(), 1);
+        assert_eq!(scripts[0], page::find_script("needle \"x\"", true).unwrap());
+        assert!(scripts[0].contains(r#"var Q = "needle \"x\"";"#));
+        // Backwards is the same script with the other direction.
+        rig.reply(r#"{"ok":true,"f":false,"n":0}"#);
+        find_blocking(&rig.handle(), id, "a", false, SHORT);
+        assert!(rig.scripts()[1].contains("var FWD = false;"));
+        // The empty query runs the clear script (no input at all).
+        rig.reply(r#"{"ok":true,"f":false,"n":0}"#);
+        find_blocking(&rig.handle(), id, "", true, SHORT);
+        assert_eq!(rig.scripts()[2], page::FIND_CLEAR_SCRIPT);
+    }
+
+    #[test]
+    fn find_refuses_bad_queries_unknown_tabs_and_non_web_pages_before_any_script() {
+        let rig = rig();
+        let id = rig.tab(PAGE);
+        let app = rig.handle();
+        for bad in ["a\nb", "a\u{202E}b", "a\u{0}b", &"q".repeat(201)] {
+            assert_eq!(
+                find_blocking(&app, id, bad, true, SHORT),
+                FindOutcome::refused("bad_query"),
+                "{bad:?}"
+            );
+        }
+        assert_eq!(
+            find_blocking(&app, 99, "x", true, SHORT),
+            FindOutcome::refused("unknown_tab")
+        );
+        let blank = rig.tab("about:blank");
+        assert_eq!(
+            find_blocking(&app, blank, "x", true, SHORT),
+            FindOutcome::refused("no_page")
+        );
+        // A page that answers garbage or never answers is a failure or a timeout.
+        rig.reply("garbage");
+        assert_eq!(
+            find_blocking(&app, id, "x", true, SHORT),
+            FindOutcome::refused("failed")
+        );
+        assert_eq!(
+            rig.scripts().len(),
+            1,
+            "only the garbage-answered script ran"
+        );
+        rig.real_path();
+        let windowed = rig.window_tab(PAGE);
+        assert_eq!(
+            find_blocking(&app, windowed, "x", true, SHORT),
+            FindOutcome::refused("timeout")
+        );
+    }
+
+    #[test]
     fn each_scripted_action_runs_its_fixed_script_after_confirming_the_page() {
         let cases = [
             ("click", Some("button#go"), None, page::Kind::Click),
@@ -3255,7 +3785,7 @@ mod capability_tests {
         out
     }
 
-    const COMMANDS: [&str; 15] = [
+    const COMMANDS: [&str; 17] = [
         "open-tab",
         "close-tab",
         "activate-tab",
@@ -3270,6 +3800,8 @@ mod capability_tests {
         "open-in-phoenix-browser",
         "page-snapshot",
         "page-action",
+        "find-in-page",
+        "answer-permission",
         "purge-profile-data",
     ];
 
@@ -3394,7 +3926,7 @@ mod capability_tests {
             );
             seen.push(name);
         }
-        assert_eq!(seen.len(), 14, "{seen:?}");
+        assert_eq!(seen.len(), 16, "{seen:?}");
         // The commands registered in lib.rs are exactly these.
         let lib = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"))
             .unwrap();

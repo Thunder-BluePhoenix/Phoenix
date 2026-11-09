@@ -693,6 +693,8 @@ export interface PetSettings {
   reduced_motion: "auto" | "on" | "off";
   /** The floating Fawkes follows the pointer and flies home on an alert (desktop only; off by default). */
   follow_cursor?: boolean;
+  /** Phase 93: the small Fawkes in the corner of the browser chrome (on unless false). */
+  browser_corner?: boolean;
 }
 
 const petSettingsChanged = new EventTarget();

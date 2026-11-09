@@ -247,22 +247,25 @@ fn wardrobe_opens_the_pet_panel_wardrobe_tab() {
     assert!(!dir.path().join(SETTINGS_FILE).exists());
 }
 
-fn a_phoenix_approvals_link_opens_the_approvals_panel_and_nothing_else_does() {
+fn a_phoenix_approvals_link_opens_the_approvals_page_with_the_id_and_nothing_else_does() {
     let dir = tempfile::tempdir().unwrap();
     let s = start(dir.path());
+    let hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     open_links(
         s.app.handle(),
         &["phoenix://approvals/apr_0123456789abcdef01234567"],
     );
     open_links(
         s.app.handle(),
-        &["phoenix://approvals/open?s=agent&i=apr_1&h=ab&e=1&m=cd"],
+        &[format!(
+            "phoenix://approvals/open?s=agent&i=apr_1&h={hash}&e=1790000000000&m={hash}"
+        )],
     );
     assert_eq!(
         *s.opened.lock().unwrap(),
         [
-            "http://127.0.0.1:4999/#/panel/overview",
-            "http://127.0.0.1:4999/#/panel/overview"
+            "http://127.0.0.1:4999/#/approvals?id=apr_0123456789abcdef01234567".to_string(),
+            format!("http://127.0.0.1:4999/#/approvals?s=agent&i=apr_1&h={hash}&e=1790000000000&m={hash}"),
         ]
     );
     s.opened.lock().unwrap().clear();
@@ -1145,7 +1148,7 @@ fn browser_commands_run_for_the_chrome_window_only_and_validate_everything() {
     )
     .build()
     .expect("stranger");
-    let calls: [(&str, Value); 14] = [
+    let calls: [(&str, Value); 16] = [
         (
             "open_tab",
             serde_json::json!({"url": "https://example.com/", "intent": "typed"}),
@@ -1166,6 +1169,14 @@ fn browser_commands_run_for_the_chrome_window_only_and_validate_everything() {
             serde_json::json!({"site": "example.com", "blocking": true}),
         ),
         ("shields_status", serde_json::json!({})),
+        (
+            "find_in_page",
+            serde_json::json!({"tabId": "1", "query": "x", "forward": true}),
+        ),
+        (
+            "answer_permission",
+            serde_json::json!({"requestId": "perm-1", "allow": true}),
+        ),
         (
             "purge_profile_data",
             serde_json::json!({"profileId": "prof-1"}),
@@ -1676,8 +1687,8 @@ fn main() {
             wardrobe_opens_the_pet_panel_wardrobe_tab,
         ),
         (
-            "a phoenix://approvals link opens the approvals panel and nothing else does",
-            a_phoenix_approvals_link_opens_the_approvals_panel_and_nothing_else_does,
+            "a phoenix://approvals link opens the approvals page with the id and nothing else does",
+            a_phoenix_approvals_link_opens_the_approvals_page_with_the_id_and_nothing_else_does,
         ),
         (
             "shortcut registration failure never stops startup",

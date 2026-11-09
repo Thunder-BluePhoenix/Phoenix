@@ -3,11 +3,12 @@
 //
 // Reads balances: one GET per configured address on a network, one signed GET per exchange.
 // A source that fails is reported and skipped; it never fails the others.
-import { ServiceError } from "@phoenix/service-kit";
+import { ServiceError, realSleep, type Sleep } from "@phoenix/service-kit";
 import { readJson } from "./client";
 import { type Credentials, type ExchangeSpec } from "./exchanges";
 import type { NetworkSpec } from "./networks";
 import type { RawHolding, SourceStatus } from "./snapshot";
+import { SOLANA_ASSET, SOLANA_NAME, SOLANA_NETWORK_ID, type SolanaBalanceClient } from "./solana";
 import { decimalText, roundedAmount, type TokenWatch } from "./tokens";
 
 export interface Collected {
@@ -36,6 +37,30 @@ export interface CollectInput {
   credentials(exchange: ExchangeSpec): Promise<Credentials | undefined>;
   now(): number;
   signal: AbortSignal;
+  /**
+   * Solana addresses (already validated) and the one client allowed to read them. Separate from
+   * `networks` because that table is GET-only by construction; see solana.ts.
+   */
+  solana?: { addresses: readonly string[]; client: SolanaBalanceClient };
+  /** Waits between requests to a network with `minIntervalMs`; tests pass an instant one. */
+  pace?: Sleep;
+}
+
+/** Resolves when the caller may send its next request; callers are served one at a time, first come first served. */
+type Gate = () => Promise<void>;
+
+/** Spaces requests at least `minMs` apart (start to start), across every caller of the gate. */
+function makeGate(minMs: number, sleep: Sleep, signal: AbortSignal): Gate {
+  let last = Number.NEGATIVE_INFINITY;
+  let tail: Promise<void> = Promise.resolve();
+  return () => {
+    tail = tail.then(async () => {
+      const wait = last + minMs - Date.now();
+      if (wait > 0) await sleep(wait, signal);
+      last = Date.now();
+    });
+    return tail;
+  };
 }
 
 /** "bc1qxy…x4f9": enough to recognise an address, not all of it. */
@@ -61,12 +86,14 @@ async function networkHoldings(
   addresses: readonly string[],
   endpoints: Readonly<Record<string, string>>,
   signal: AbortSignal,
+  gate?: Gate,
 ): Promise<SourceRead> {
   const holdings: RawHolding[] = [];
   const status: SourceStatus = { id: spec.id, name: spec.name, kind: "network", ok: true };
   let failure: ServiceError | undefined;
   for (const address of addresses) {
     try {
+      await gate?.();
       const coins = await readJson(
         {
           service: spec.name,
@@ -107,6 +134,7 @@ async function tokenHoldings(
   list: { watch: readonly TokenWatch[]; ignored: number },
   endpoints: Readonly<Record<string, string>>,
   signal: AbortSignal,
+  gate?: Gate,
 ): Promise<SourceRead> {
   const support = spec.tokens;
   const name = `${spec.name} tokens`;
@@ -121,6 +149,7 @@ async function tokenHoldings(
   let failure: ServiceError | undefined;
   for (const address of addresses) {
     try {
+      await gate?.();
       const found = await readJson(
         {
           service: name,
@@ -145,6 +174,41 @@ async function tokenHoldings(
       }
     } catch (err) {
       if (err instanceof ServiceError && err.kind === "not_found" && spec.missingIsZero) continue;
+      const described = describeFailure(err);
+      status.ok = false;
+      status.error = described.message;
+      failure ??= described.error;
+    }
+  }
+  return { holdings, status, ...(failure ? { failure } : {}) };
+}
+
+/** Solana native balances, one `getBalance` per address through the dedicated client. */
+async function solanaHoldings(
+  addresses: readonly string[],
+  client: SolanaBalanceClient,
+): Promise<SourceRead> {
+  const holdings: RawHolding[] = [];
+  const status: SourceStatus = {
+    id: SOLANA_NETWORK_ID,
+    name: SOLANA_NAME,
+    kind: "network",
+    ok: true,
+  };
+  let failure: ServiceError | undefined;
+  for (const address of addresses) {
+    try {
+      const lamports = await client.balance(address);
+      if (lamports > 0n) {
+        holdings.push({
+          source: SOLANA_NETWORK_ID,
+          kind: "network",
+          label: `${SOLANA_NAME} ${shortAddress(address)}`,
+          asset: SOLANA_ASSET,
+          amount: roundedAmount(lamports, 9),
+        });
+      }
+    } catch (err) {
       const described = describeFailure(err);
       status.ok = false;
       status.error = described.message;
@@ -198,9 +262,15 @@ async function exchangeHoldings(spec: ExchangeSpec, input: CollectInput): Promis
 export async function collect(input: CollectInput): Promise<Collected> {
   const jobs: Promise<SourceRead>[] = [];
   for (const [spec, addresses] of input.networks) {
-    jobs.push(networkHoldings(spec, addresses, input.endpoints, input.signal));
+    const gate = spec.minIntervalMs
+      ? makeGate(spec.minIntervalMs, input.pace ?? realSleep, input.signal)
+      : undefined;
+    jobs.push(networkHoldings(spec, addresses, input.endpoints, input.signal, gate));
     const list = input.tokens.get(spec);
-    if (list) jobs.push(tokenHoldings(spec, addresses, list, input.endpoints, input.signal));
+    if (list) jobs.push(tokenHoldings(spec, addresses, list, input.endpoints, input.signal, gate));
+  }
+  if (input.solana?.addresses.length) {
+    jobs.push(solanaHoldings(input.solana.addresses, input.solana.client));
   }
   for (const spec of input.exchanges) jobs.push(exchangeHoldings(spec, input));
   const done = await Promise.all(jobs);

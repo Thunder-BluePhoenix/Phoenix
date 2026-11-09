@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 import type { Messages } from "../../en";
 import { agents } from "./agents";
+import { approvalLink } from "./approval-link";
 import { automation } from "./automation";
 import { calendar } from "./calendar";
 import { capture } from "./capture";
@@ -32,6 +33,7 @@ import { browserProfiles } from "./browser-profiles";
 import { shields } from "./shields";
 import { browser } from "./browser";
 import { browserApproval } from "./browser-approval";
+import { browserChrome } from "./browser-chrome";
 import { awakeSchedule } from "./awake-schedule";
 import { awakeSettings } from "./awake-settings";
 import { teamStatus } from "./team-status";
@@ -44,6 +46,7 @@ const messages: Messages = {
   ...common,
   ...shell,
   ...agents,
+  ...approvalLink,
   ...automation,
   ...capture,
   ...windowCapture,
@@ -68,6 +71,7 @@ const messages: Messages = {
   ...shields,
   ...browser,
   ...browserApproval,
+  ...browserChrome,
   ...awakeSchedule,
   ...awakeSettings,
   ...teamStatus,

@@ -2,12 +2,12 @@
 
 Shows what an **MPRIS media player** on this Linux machine is playing (Spotify, VLC, mpv, Rhythmbox,
 a browser tab and anything else that follows the freedesktop MPRIS D-Bus interface) and controls it
-through [`playerctl`](https://github.com/altdesktop/playerctl). Linux only, no account, no network, no
+through [`playerctl`](https://github.com/altdesktop/playerctl). Linux (and, never run, Windows: see below), no account, no network, no
 web API. No cover art: `now_playing` reports text and numbers only.
 
 **Nothing here was run on a real Linux machine.** It was written against `playerctl`'s README and
 source and tested only with a fake runner (`testing/fake-playerctl.ts`); no `playerctl` binary, no
-D-Bus session and no player was ever started. Windows is not implemented (see below).
+D-Bus session and no player was ever started. The Windows route has never run on Windows (see below).
 
 ## Safety
 
@@ -45,8 +45,8 @@ first player it finds.
 
 ## Platforms
 
-`process.platform` must be `linux`. Elsewhere every command fails with "works on Linux only", no
-`playerctl` is run, nothing is polled, and health is `degraded` ("Unsupported ..."). macOS keeps the
+`process.platform` must be `linux` (playerctl) or `win32` (the PowerShell route below). Elsewhere every command
+fails with "works on Linux only", nothing is run or polled, and health is `degraded` ("Unsupported ..."). macOS keeps the
 Spotify and Apple Music capabilities. If `playerctl` is not installed, calls fail with a message saying so.
 
 ## Events and Fawkes
@@ -54,12 +54,34 @@ Spotify and Apple Music capabilities. If `playerctl` is not installed, calls fai
 `mpris.track.playing` / `mpris.track.paused` (ephemeral). No `state_rules`: no existing Fawkes state
 means listening to music (see the Spotify README).
 
-## Windows: not implemented
+## Windows: built, NEVER RUN ON WINDOWS (`src/windows.ts`)
 
-A Windows media-session reader would need the WinRT `GlobalSystemMediaTransportControlsSessionManager`
-through PowerShell. Reading its results needs awaiting WinRT async operations from Windows PowerShell
-5.1 through reflection, which cannot be checked faithfully without a Windows machine, and nothing was
-run. Windows is left unsupported rather than shipping an untested script.
+On `win32` the same commands run one **fixed Windows PowerShell 5.1 script** (`WINDOWS_SCRIPT`, a constant)
+against the system's current media session (the WinRT `GlobalSystemMediaTransportControlsSessionManager`,
+Windows 10 1809+). It was written from Microsoft's
+[`GlobalSystemMediaTransportControlsSession` reference](https://learn.microsoft.com/en-us/uwp/api/windows.media.control.globalsystemmediatransportcontrolssession)
+and the PowerShell await recipe in [WindowsMediaController issue 8](https://github.com/DubyaDude/WindowsMediaController/issues/8),
+and tested only as a pure script string, an output parser and a fake runner (`test/windows.test.ts`) on a
+non-Windows machine. **No PowerShell, WinRT type or media session was ever involved.**
+
+- No input is interpolated into the script. A command word (a fixed list of seven) and one argument (digits,
+  `on`/`off` or `off`/`one`/`all`) travel in the child's environment (`PHOENIX_MEDIA_COMMAND`,
+  `PHOENIX_MEDIA_ARG`); the script's `switch` has exactly those arms and re-validates the argument. The
+  script reads no other environment variable. A test fails if it can start a process, evaluate text or reach a network.
+- `powershell.exe` is taken from `%SystemRoot%\System32\WindowsPowerShell\v1.0` (not PATH), with an argument
+  list and no shell: `-NoProfile -NonInteractive -EncodedCommand`, 5 s timeout, 16 KiB output cap; stderr and
+  the exit code are not forwarded.
+- WinRT `IAsyncOperation`s are awaited through `WindowsRuntimeSystemExtensions.AsTask` found by reflection,
+  with a 3 s bound. This is the part that cannot be trusted until it has run on Windows.
+- Only the **current session** is addressed: a `player` name (in a command or the settings) is refused, not
+  ignored. **No volume control**: the session API has none, so `set_volume` fails with a fixed message.
+  There is no cover art. Position is converted from 100-ns ticks to whole seconds.
+- Available: `now_playing`, `play_pause`, `next`, `previous`, `seek`, `set_shuffle`, `set_repeat`
+  (`off`/`one`/`all` = `None`/`Track`/`List`). Every control is a `write` that asks, as on Linux.
+- Unconfirmed until run on Windows: the reflection await, the property names (`PlaybackStatus`, `Title`,
+  `Artist`, `AlbumTitle`, `GetTimelineProperties()`, `IsShuffleActive`, `AutoRepeatMode`), the enum names,
+  `TryChangePlaybackPositionAsync` taking ticks, and the output format. A session that refuses a command
+  prints `refused` and the capability says so.
 
 ## Not built / not verified
 

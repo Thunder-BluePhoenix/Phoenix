@@ -34,6 +34,9 @@ const ProvenanceNode = lazy(() =>
 const ProvenancePage = lazy(() =>
   import("./components/Provenance").then((m) => ({ default: m.ProvenancePage })),
 );
+const ApprovalLinkPage = lazy(() =>
+  import("./components/ApprovalLink").then((m) => ({ default: m.ApprovalLinkPage })),
+);
 const RecapPage = lazy(() => import("./components/Recap").then((m) => ({ default: m.RecapPage })));
 const MissionPage = lazy(() =>
   import("./components/MissionControl").then((m) => ({ default: m.MissionPage })),
@@ -214,6 +217,8 @@ export function App() {
             <AgentSessionsPage />
           ) : connection !== "unauthenticated" && agentId ? (
             <AgentSessionDetail key={agentId} sessionId={decodeURIComponent(agentId)} />
+          ) : connection !== "unauthenticated" && /^\/approvals(\?|$)/.test(route) ? (
+            <ApprovalLinkPage key={route} route={route} />
           ) : connection !== "unauthenticated" && route === "/recap" ? (
             <RecapPage />
           ) : connection !== "unauthenticated" && route === "/mission" ? (

@@ -189,11 +189,13 @@ paths:
       responses:
         "200":
           description: >-
-            { reduced_motion: "auto" | "on" | "off", follow_cursor: boolean }. follow_cursor
-            (Phase 59) is off by default; only the desktop app's floating Fawkes acts on it.
+            { reduced_motion: "auto" | "on" | "off", follow_cursor: boolean, browser_corner: boolean }.
+            follow_cursor (Phase 59) is off by default; only the desktop app's floating Fawkes acts
+            on it. browser_corner (Phase 93) is on by default; only the Phoenix browser's chrome
+            window acts on it (the small Fawkes in its corner).
     post:
       summary: >-
-        Update Fawkes appearance settings (reduced_motion and/or follow_cursor; at least one);
+        Update Fawkes appearance settings (reduced_motion, follow_cursor and/or browser_corner; at least one);
         publishes pet.settings.changed
       requestBody:
         content:
@@ -208,6 +210,7 @@ paths:
                       {
                         reduced_motion: { enum: [auto, "on", "off"] },
                         follow_cursor: { type: boolean },
+                        browser_corner: { type: boolean },
                       },
                   },
               },

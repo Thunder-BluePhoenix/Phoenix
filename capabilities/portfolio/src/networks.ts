@@ -2,8 +2,9 @@
 // Copyright (C) 2026 Phoenix contributors
 //
 // The 16 supported networks. Each is one public explorer/indexer GET endpoint that answers for a
-// public address without a key. JSON-RPC style endpoints are not used: they need a request body.
-// Native coin only (no tokens). Response shapes come from each service's public documentation and
+// public address without a key. JSON-RPC style endpoints are not used here: they need a request body
+// (the one exception, Solana's getBalance, has its own tiny client in solana.ts). Native coin, plus
+// owner-listed tokens where `tokens` is set. Response shapes come from each service's public documentation and
 // were NOT checked against the live services (see README).
 import { expectObject, int, isObject, seg, str } from "@phoenix/service-kit";
 import { decimalString, scaledUnits } from "./amount";
@@ -12,7 +13,9 @@ import {
   cosmosDenoms,
   evmTokens,
   stellarTokens,
+  tonJettons,
   trc20,
+  xrplTokens,
   type TokenSupport,
 } from "./tokens";
 
@@ -35,6 +38,12 @@ export interface NetworkSpec {
    * each of those networks is missing).
    */
   tokens?: TokenSupport;
+  /**
+   * The service allows about one request per second to a keyless client, so the requests of this
+   * network (native balance and tokens, every address) are issued one at a time with at least this
+   * gap between them.
+   */
+  minIntervalMs?: number;
 }
 
 function unusable(): never {
@@ -129,6 +138,7 @@ export const NETWORKS: readonly NetworkSpec[] = [
       return amount(decimalString(o.xrpBalance ?? o.XRPBalance));
     },
     missingIsZero: true,
+    tokens: xrplTokens,
   },
   {
     id: "xlm",
@@ -168,6 +178,9 @@ export const NETWORKS: readonly NetworkSpec[] = [
       if (o.ok !== true) return unusable();
       return amount(scaledUnits(o.result, 9));
     },
+    tokens: tonJettons,
+    // https://docs.ton.org/api/rate-limit : without an API key, 1 request per second.
+    minIntervalMs: 1100,
   },
   {
     id: "trx",

@@ -39,7 +39,7 @@ export interface MockState {
   }[];
   /** Network id → address → raw response (status + body). */
   accounts: Record<string, Record<string, { status?: number; body: unknown }>>;
-  /** Network id → address → answer of the separate token-balances route (Blockscout). */
+  /** Network id → address → answer of the separate token-balances route (Blockscout, XRPSCAN trustlines2, TON Center jetton/wallets). */
   tokenAccounts: Record<string, Record<string, { status?: number; body: unknown }>>;
   /** Exchange id → balance rows in that exchange's own shape. */
   exchangeBodies: Record<string, unknown>;
@@ -125,13 +125,14 @@ export async function startMockPortfolio(
     if (parts[0] !== "x") return undefined;
     const exchange = exchangeReply(id, rest, req.headers, state);
     if (exchange) return exchange;
-    const tokenRoute = url.pathname.endsWith("/token-balances");
+    const tokenRoute = /\/(token-balances|trustlines2|jetton\/wallets)$/.test(url.pathname);
     const accounts = (tokenRoute ? state.tokenAccounts : state.accounts)[id];
     if (!accounts) return undefined;
     // The address is a path segment (or the `address` query value); the other segments are fixed.
     const candidates = [
       ...rest.split("?")[0]!.split("/").filter(Boolean),
       url.searchParams.get("address") ?? "",
+      url.searchParams.get("owner_address") ?? "",
     ];
     const known = candidates
       .map((c) => decodeURIComponent(c))

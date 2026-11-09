@@ -60,6 +60,9 @@ objc2-event-kit = { version = "0.3", default-features = false, features = ["std"
 gtk = "0.18"
 libloading = "0.7"
 x11-dl = "2.21"
+# Phase 93: the content webviews' cookie policy (`CookieAcceptPolicy::NoThirdParty`). The very crate
+# (=2.0.2, LGPL-2.1, Rust bindings to WebKitGTK) tauri and wry already pull in; no new lockfile entry.
+webkit2gtk = { version = "2", features = ["v2_16"] }
 
 # Island window on Windows: extended window styles (no activation, tool window, topmost).
 [target.'cfg(windows)'.dependencies]

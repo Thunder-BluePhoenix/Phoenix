@@ -12,6 +12,15 @@ import { collect } from "./collect";
 import { EXCHANGES, exchangeSecretNames, type Credentials, type ExchangeSpec } from "./exchanges";
 import { NETWORKS, networkById, type NetworkSpec } from "./networks";
 import { DEFAULT_PRICE_URL, PRICE_SOURCE_NAME, fetchQuotes, type Quote } from "./prices";
+import {
+  SOLANA_ADDRESS,
+  SOLANA_ASSET,
+  SOLANA_NAME,
+  SOLANA_NETWORK_ID,
+  SolanaBalanceClient,
+  validSolanaAddress,
+  type SolanaFetch,
+} from "./solana";
 import { coinId, priceHoldings, totals, type Snapshot } from "./snapshot";
 import {
   MAX_TOKENS_PER_NETWORK,
@@ -27,6 +36,7 @@ export * from "./exchanges";
 export * from "./networks";
 export * from "./prices";
 export * from "./snapshot";
+export * from "./solana";
 export * from "./tokens";
 
 export const DEFAULT_POLL_MS = 300_000;
@@ -42,17 +52,23 @@ export interface PortfolioCapabilityOptions {
   /** Epoch ms clock; tests pin it (also used to sign exchange requests). */
   now?: () => number;
   sleep?: Sleep;
+  /** Waits between requests to a rate-limited indexer (TON Center: 1 per second); tests pass an instant one. */
+  pace?: Sleep;
   /**
    * Replacement origins for exchanges, by exchange id. Code only, deliberately NOT a config
    * setting: signed requests carry the exchange key, which may only go to the exchange's own host.
    * Tests pass a loopback mock here.
    */
   exchangeUrls?: Readonly<Record<string, string>>;
+  /** Test seam for the Solana client's network; its URL is always the pinned one (solana.ts). */
+  solanaFetch?: SolanaFetch;
 }
 
 interface Settings {
   tokens: Map<NetworkSpec, { watch: TokenWatch[]; ignored: number }>;
   networks: Map<NetworkSpec, string[]>;
+  /** Solana addresses (config `networks.sol`), read by the dedicated client, not by `networks`. */
+  solana: string[];
   exchanges: ExchangeSpec[];
   endpoints: Record<string, string>;
   priceUrl: string;
@@ -68,6 +84,14 @@ function settings(ctx: CapabilityContext): Settings {
       if (!spec || !Array.isArray(list)) continue;
       const valid = list.filter((a): a is string => typeof a === "string" && spec.address.test(a));
       if (valid.length) chosen.set(spec, [...new Set(valid)].slice(0, MAX_ADDRESSES_PER_NETWORK));
+    }
+  }
+  const solana: string[] = [];
+  if (typeof networks === "object" && networks !== null) {
+    const list = (networks as Record<string, unknown>)[SOLANA_NETWORK_ID];
+    if (Array.isArray(list)) {
+      const valid = list.filter(validSolanaAddress);
+      solana.push(...[...new Set(valid)].slice(0, MAX_ADDRESSES_PER_NETWORK));
     }
   }
   const watched = new Map<NetworkSpec, { watch: TokenWatch[]; ignored: number }>();
@@ -87,6 +111,7 @@ function settings(ctx: CapabilityContext): Settings {
   }
   return {
     networks: chosen,
+    solana,
     tokens: watched,
     exchanges: EXCHANGES.filter((e) => wanted.has(e.id)),
     endpoints: urls,
@@ -141,6 +166,13 @@ export function createPortfolioCapability(options: PortfolioCapabilityOptions = 
     const cfg = settings(ctx);
     const gathered = await collect({
       networks: cfg.networks,
+      solana: {
+        addresses: cfg.solana,
+        client: new SolanaBalanceClient({
+          signal: ctx.signal,
+          ...(options.solanaFetch ? { fetchImpl: options.solanaFetch } : {}),
+        }),
+      },
       tokens: cfg.tokens,
       exchanges: cfg.exchanges,
       endpoints: cfg.endpoints,
@@ -148,6 +180,7 @@ export function createPortfolioCapability(options: PortfolioCapabilityOptions = 
       credentials: (spec) => credentialsFor(ctx, spec),
       now,
       signal: ctx.signal,
+      ...(options.pace ? { pace: options.pace } : {}),
     });
     let sources = gathered.sources;
     let quotes = new Map<string, Quote>();
@@ -218,7 +251,7 @@ export function createPortfolioCapability(options: PortfolioCapabilityOptions = 
       name: "Portfolio",
       version: "0.1.0",
       description:
-        "Read-only crypto portfolio: balances of public addresses on 16 networks and of 6 exchanges (read-only API keys), with 7-day sparklines and 24-hour change. Display only. It can only read: nothing in it can place, move or exchange funds. Prices are third-party estimates that Phoenix does not verify.",
+        "Read-only crypto portfolio: balances of public addresses on 17 networks (Solana through one fixed, pinned getBalance call) and of 6 exchanges (read-only API keys), with 7-day sparklines and 24-hour change. Display only. It can only read: nothing in it can place, move or exchange funds. Prices are third-party estimates that Phoenix does not verify.",
       license: "GPL-3.0-or-later",
       homepage: "https://github.com/Thunder-BluePhoenix/Phoenix",
       events: ["portfolio.snapshot.*"],
@@ -227,6 +260,8 @@ export function createPortfolioCapability(options: PortfolioCapabilityOptions = 
         "public wallet addresses",
         "balances and holdings",
         "token balances of the public addresses you list, for the token contracts you list",
+        "token kinds read: ERC-20, TRC-20, Stellar, Algorand, XRP Ledger issued currencies, TON jettons, Cosmos denominations",
+        "your listed Solana addresses, sent to the public Solana RPC host api.mainnet.solana.com (the only POST this capability makes, one fixed getBalance call)",
         "exchange account balances (read-only keys)",
       ],
       healthcheck: { interval_ms: 60_000 },
@@ -263,8 +298,8 @@ export function createPortfolioCapability(options: PortfolioCapabilityOptions = 
             additionalProperties: false,
             description:
               "Public addresses to watch, by network id. Addresses are public data, not secrets.",
-            properties: Object.fromEntries(
-              NETWORKS.map((n) => [
+            properties: Object.fromEntries([
+              ...NETWORKS.map((n) => [
                 n.id,
                 {
                   type: "array",
@@ -274,7 +309,17 @@ export function createPortfolioCapability(options: PortfolioCapabilityOptions = 
                   description: `${n.name} (${n.asset}) addresses`,
                 },
               ]),
-            ),
+              [
+                SOLANA_NETWORK_ID,
+                {
+                  type: "array",
+                  maxItems: MAX_ADDRESSES_PER_NETWORK,
+                  uniqueItems: true,
+                  items: { type: "string", pattern: SOLANA_ADDRESS.source },
+                  description: `${SOLANA_NAME} (${SOLANA_ASSET}) addresses, read with one fixed getBalance call to a pinned public RPC host (see the README)`,
+                },
+              ],
+            ]),
           },
           tokens: {
             type: "object",
@@ -369,7 +414,7 @@ export function createPortfolioCapability(options: PortfolioCapabilityOptions = 
     },
     health(ctx): HealthResult {
       const cfg = settings(ctx);
-      if (cfg.networks.size === 0 && cfg.exchanges.length === 0) {
+      if (cfg.networks.size === 0 && cfg.solana.length === 0 && cfg.exchanges.length === 0) {
         return { status: "degraded", message: "No addresses or exchanges configured" };
       }
       if (!polled) return { status: "healthy", message: "Reading balances…" };
@@ -378,7 +423,7 @@ export function createPortfolioCapability(options: PortfolioCapabilityOptions = 
         return { status: "degraded", message: `Cannot read: ${broken.join(", ")}` };
       return {
         status: "healthy",
-        message: `Watching ${cfg.networks.size} networks and ${cfg.exchanges.length} exchanges`,
+        message: `Watching ${cfg.networks.size + (cfg.solana.length ? 1 : 0)} networks and ${cfg.exchanges.length} exchanges`,
       };
     },
   });
