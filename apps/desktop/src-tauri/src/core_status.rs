@@ -89,6 +89,33 @@ pub enum Method {
 /// `path` must be an absolute path of plain URL characters (no space, CR, LF or query), so a
 /// caller can never split the request line either.
 pub fn request(method: Method, path: &str, port_host: &str, token: &str) -> Option<String> {
+    let (verb, framing) = match method {
+        Method::Get => ("GET", ""),
+        Method::Post => ("POST", "Content-Length: 0\r\n"),
+    };
+    build(verb, framing, "", path, port_host, token)
+}
+
+/// A `POST` with a JSON body (the calendar snapshot, `calendar_sync.rs`). Same validation as
+/// [`request`]; the body is sent verbatim after the headers and must be valid JSON text the caller
+/// built, so it is only counted here, never interpreted.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn request_json(path: &str, port_host: &str, token: &str, body: &str) -> Option<String> {
+    let framing = format!(
+        "Content-Type: application/json\r\nContent-Length: {}\r\n",
+        body.len()
+    );
+    build("POST", &framing, body, path, port_host, token)
+}
+
+fn build(
+    verb: &str,
+    framing: &str,
+    body: &str,
+    path: &str,
+    port_host: &str,
+    token: &str,
+) -> Option<String> {
     let clean_token = !token.is_empty()
         && token
             .bytes()
@@ -100,12 +127,8 @@ pub fn request(method: Method, path: &str, port_host: &str, token: &str) -> Opti
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"/_.:%-".contains(&b));
     (clean_token && clean_path).then(|| {
-        let (verb, framing) = match method {
-            Method::Get => ("GET", ""),
-            Method::Post => ("POST", "Content-Length: 0\r\n"),
-        };
         format!(
-            "{verb} {path} HTTP/1.1\r\nHost: {port_host}\r\nAuthorization: Bearer {token}\r\nAccept: application/json\r\n{framing}Connection: close\r\n\r\n"
+            "{verb} {path} HTTP/1.1\r\nHost: {port_host}\r\nAuthorization: Bearer {token}\r\nAccept: application/json\r\n{framing}Connection: close\r\n\r\n{body}"
         )
     })
 }
@@ -206,11 +229,46 @@ pub fn call_capped(
     read_timeout: Duration,
     max_response: u64,
 ) -> Result<(u16, String), CallError> {
+    exchange(
+        base_url,
+        token,
+        read_timeout,
+        max_response,
+        |addr, token| request(method, path, addr, token),
+    )
+}
+
+/// One authenticated `POST` with a JSON body, answered like [`call`]. Only the calendar snapshot
+/// uses it; the body is at most a few hundred KB and is built by the shell itself.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn post_json(
+    base_url: &str,
+    token: Option<&str>,
+    path: &str,
+    body: &str,
+    read_timeout: Duration,
+) -> Result<(u16, String), CallError> {
+    exchange(
+        base_url,
+        token,
+        read_timeout,
+        MAX_RESPONSE,
+        |addr, token| request_json(path, addr, token, body),
+    )
+}
+
+fn exchange(
+    base_url: &str,
+    token: Option<&str>,
+    read_timeout: Duration,
+    max_response: u64,
+    build_request: impl FnOnce(&str, &str) -> Option<String>,
+) -> Result<(u16, String), CallError> {
     let token = token.ok_or(CallError::NoToken)?;
     let addr = base_url
         .strip_prefix("http://")
         .ok_or(CallError::NotLocal)?;
-    let request = request(method, path, addr, token).ok_or(CallError::BadToken)?;
+    let request = build_request(addr, token).ok_or(CallError::BadToken)?;
     let socket = addr
         .parse::<SocketAddr>()
         .map_err(|_| CallError::BadAddress)?;
@@ -366,6 +424,61 @@ mod tests {
                 "{bad:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_json_post_declares_its_exact_length_and_carries_the_body() {
+        let body = r#"{"a":"é"}"#;
+        let text = request_json("/api/calendar/macos", "127.0.0.1:1", "tok", body).unwrap();
+        assert!(text.starts_with("POST /api/calendar/macos HTTP/1.1\r\n"));
+        assert!(text.contains("Content-Type: application/json\r\n"));
+        assert!(text.contains(&format!("Content-Length: {}\r\n", body.len())));
+        assert!(text.ends_with(&format!("\r\n\r\n{body}")));
+        assert_eq!(request_json("/a b", "h", "tok", body), None);
+        assert_eq!(request_json("/a", "h", "t k", body), None);
+    }
+
+    #[test]
+    fn a_json_post_reaches_a_loopback_server_with_token_and_whole_body() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut seen = Vec::new();
+            let mut buf = [0u8; 4096];
+            loop {
+                let n = stream.read(&mut buf).unwrap();
+                seen.extend_from_slice(&buf[..n]);
+                let text = String::from_utf8_lossy(&seen).into_owned();
+                if let Some((head, rest)) = text.split_once("\r\n\r\n") {
+                    let want = head
+                        .lines()
+                        .find_map(|l| l.strip_prefix("Content-Length: "))
+                        .unwrap()
+                        .parse::<usize>()
+                        .unwrap();
+                    if rest.len() >= want || n == 0 {
+                        break;
+                    }
+                }
+            }
+            stream.write_all(&ok(r#"{"accepted":true}"#)).unwrap();
+            String::from_utf8_lossy(&seen).into_owned()
+        });
+        let body = format!(r#"{{"pad":"{}"}}"#, "x".repeat(10_000));
+        let got = post_json(&base, Some("tok-1"), "/api/calendar/macos", &body, TIMEOUT);
+        assert_eq!(got, Ok((200, r#"{"accepted":true}"#.to_string())));
+        let seen = server.join().unwrap();
+        assert!(seen.contains("Authorization: Bearer tok-1\r\n"));
+        assert!(seen.ends_with(&body));
+        assert_eq!(
+            post_json("http://10.0.0.1:1", Some("t"), "/a", "{}", TIMEOUT),
+            Err(CallError::NotLocal)
+        );
+        assert_eq!(
+            post_json(&base, None, "/a", "{}", TIMEOUT),
+            Err(CallError::NoToken)
+        );
     }
 
     #[test]

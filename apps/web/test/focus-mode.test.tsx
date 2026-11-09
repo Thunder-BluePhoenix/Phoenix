@@ -86,4 +86,37 @@ describe("FocusMode", () => {
     expect(screen.getByRole("button", { name: "End focus" })).toBeTruthy();
     client.close();
   });
+
+  it("shows the OS Do Not Disturb reading Core reports, and the unavailable note only when unknown", async () => {
+    let osDnd: boolean | null = true;
+    const api = fakeApi({
+      "GET /api/focus": () => ({ ...inactive, osDnd, active: osDnd === true }),
+    });
+    const client = new PhoenixClient({
+      token: "tok",
+      baseUrl: "http://127.0.0.1:4870",
+      WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+      fetchImpl: api.fetchImpl,
+    });
+    const unavailable =
+      "System Do Not Disturb is unavailable; Focus mode only controls Phoenix notifications.";
+    render(
+      <CoreProvider client={client}>
+        <FocusMode />
+      </CoreProvider>,
+    );
+    expect(await screen.findByText("System Do Not Disturb is active")).toBeTruthy();
+    expect(screen.queryByText(unavailable)).toBeNull();
+    cleanup();
+    osDnd = false;
+    render(
+      <CoreProvider client={client}>
+        <FocusMode />
+      </CoreProvider>,
+    );
+    expect(await screen.findByText("Focus is off")).toBeTruthy();
+    expect(screen.queryByText("System Do Not Disturb is active")).toBeNull();
+    expect(screen.queryByText(unavailable)).toBeNull();
+    client.close();
+  });
 });

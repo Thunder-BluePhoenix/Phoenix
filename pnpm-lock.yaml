@@ -640,6 +640,9 @@ importers:
 
   capabilities/issues:
     dependencies:
+      '@phoenix/capability-screen-region':
+        specifier: workspace:*
+        version: link:../screen-region
       '@phoenix/logging':
         specifier: workspace:*
         version: link:../../core/logging

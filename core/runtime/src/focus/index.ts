@@ -17,7 +17,23 @@ export interface FocusClock {
 export interface FocusDndReader {
   /** null means the host cannot determine the OS status; never writes OS settings. */
   read(): Promise<boolean | null>;
+  /** True when no read can ever succeed on this machine; the poll then stops after one read. */
+  permanentlyUnavailable?(): boolean;
+  /** The latest reading with its platform and source named, for display. Never throws. */
+  reading?(): FocusDndReading | null;
 }
+
+/** What the OS reader last saw: `unknown` carries a fixed reason code, never program output. */
+export interface FocusDndReading {
+  state: "on" | "off" | "unknown";
+  platform: string;
+  source: string | null;
+  reason: string | null;
+}
+
+/** Bounds of the opt-in background DND poll (milliseconds). */
+export const DND_MIN_POLL_MS = 15_000;
+export const DND_MAX_POLL_MS = 5 * 60_000;
 
 export interface FocusSnapshot {
   manual: boolean;
@@ -25,6 +41,8 @@ export interface FocusSnapshot {
   active: boolean;
   remainingMs: number | null;
   held: number;
+  /** Present only when the reader names a platform and source (see `FocusDndReader.reading`). */
+  dnd?: FocusDndReading;
 }
 
 /** Settings key under which Core keeps the active session; absent when focus is off. */
@@ -88,6 +106,8 @@ export class FocusController<T extends FocusNotification> {
   private readonly heldIds = new Set<string>();
   private readonly listeners = new Set<() => void>();
   private dndRead = 0;
+  private dndPollTimer: unknown = null;
+  private dndPollMs = 0;
   private disposed = false;
 
   constructor(
@@ -104,7 +124,9 @@ export class FocusController<T extends FocusNotification> {
 
   snapshot(): FocusSnapshot {
     this.expire();
+    const dnd = this.dnd.reading?.();
     return {
+      ...(dnd ? { dnd } : {}),
       manual: this.manual,
       osDnd: this.osDnd,
       active: this.manual || this.dndBlocking(),
@@ -127,6 +149,33 @@ export class FocusController<T extends FocusNotification> {
     this.osDnd = value;
     this.flushIfInactive();
     this.notify();
+  }
+
+  /**
+   * Opt-in background read of the OS state, one read now and then one every `intervalMs` (clamped to
+   * 15 s - 5 min). Stops by itself once the reader says no read can ever succeed. Never started by
+   * default, so a Core without an OS reader makes no calls.
+   */
+  startDndPolling(intervalMs: number): void {
+    if (this.disposed || this.dndPollTimer !== null) return;
+    this.dndPollMs = Math.min(
+      DND_MAX_POLL_MS,
+      Math.max(DND_MIN_POLL_MS, Number.isFinite(intervalMs) ? intervalMs : DND_MAX_POLL_MS),
+    );
+    this.dndPollTimer = this.clock.setTimeout(() => void this.pollDnd(), 0);
+  }
+
+  stopDndPolling(): void {
+    if (this.dndPollTimer !== null) this.clock.clearTimeout(this.dndPollTimer);
+    this.dndPollTimer = null;
+  }
+
+  private async pollDnd(): Promise<void> {
+    this.dndPollTimer = null;
+    await this.refreshDnd();
+    if (this.disposed || this.dnd.permanentlyUnavailable?.() === true) return;
+    if (this.dndPollTimer !== null) return;
+    this.dndPollTimer = this.clock.setTimeout(() => void this.pollDnd(), this.dndPollMs);
   }
 
   start(minutes?: number): void {
@@ -204,6 +253,7 @@ export class FocusController<T extends FocusNotification> {
   dispose(): void {
     this.disposed = true;
     this.dndRead++;
+    this.stopDndPolling();
     this.cancelTimer();
     this.listeners.clear();
     this.held.length = 0;

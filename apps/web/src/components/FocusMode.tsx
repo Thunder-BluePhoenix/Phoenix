@@ -74,7 +74,8 @@ export function FocusMode() {
   return (
     <section className="card" aria-labelledby="focus-h">
       <h2 id="focus-h">{t("focus.title")}</h2>
-      <p>{t("focus.systemUnavailable")}</p>
+      {(snapshot === null || snapshot.osDnd === null) && <p>{t("focus.systemUnavailable")}</p>}
+      {snapshot?.osDnd === true && <p>{t("focus.osDnd")}</p>}
       {snapshot !== null && (
         <>
           <p role="status">{t(snapshot.active ? "focus.active" : "focus.inactive")}</p>

@@ -89,9 +89,9 @@ function caldavZone(value: unknown): string {
 
 /**
  * The production adapter for `name`, or a CalendarFeedError saying what is missing. `credential`
- * is the secret already read from the store. macOS has no reader in this build: Calendar's own
- * scripting interface does not expand recurring events, and the adapter never guesses occurrences,
- * so a host has to supply a real reader through `createCalendarCapability({ adapters: { macos } })`.
+ * is the secret already read from the store. macOS is not built here: Core gets it from the desktop
+ * shell's EventKit snapshots through `createCalendarCapability({ macosFeed })` (or a host-supplied
+ * `adapters.macos`); without either the feed is unavailable, never guessed.
  */
 export function buildAdapter(
   name: ProviderName,

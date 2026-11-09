@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Phoenix contributors
 //
 // `linear.issue.create` and `jira.issue.create` (Phase 85): the only commands of this capability
-// that WRITE to a tracker. Polling stays read-only. Text only: no image or file is ever sent.
+// that CREATE an issue. Polling stays read-only. Text only: no image or file is ever sent by these two (attachments are the separate commands in attach.ts).
 //
 // Safety properties, each pinned by a test in test/create.test.ts:
 //   * Both commands are declared `external` in the manifest, so Core asks the user for
@@ -70,12 +70,12 @@ const ISSUE_TYPE_RE = new RegExp(ISSUE_TYPE_PATTERN);
 const JIRA_CLOUD_SITE_RE = new RegExp(JIRA_CLOUD_SITE_PATTERN);
 const JIRA_CLOUD_HOST = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.atlassian\.net$/;
 const LINEAR_NODE_ID = /^[A-Za-z0-9-]{1,64}$/;
-const LINEAR_IDENTIFIER = /^[A-Za-z][A-Za-z0-9]{0,15}-\d{1,9}$/;
+export const LINEAR_IDENTIFIER = /^[A-Za-z][A-Za-z0-9]{0,15}-\d{1,9}$/;
 const LINEAR_WORKSPACE = /^[A-Za-z0-9_-]{1,64}$/;
 const JIRA_ISSUE_ID = /^\d{1,18}$/;
-const JIRA_ISSUE_KEY = /^[A-Z][A-Z0-9_]{0,49}-\d{1,9}$/;
-const SECRET_VALUE = /^[\x21-\x7e]{8,255}$/;
-const EMAIL = /^[^\s:@\u0000-\u001f\u007f]{1,64}@[^\s:@\u0000-\u001f\u007f]{1,190}$/;
+export const JIRA_ISSUE_KEY = /^[A-Z][A-Z0-9_]{0,49}-\d{1,9}$/;
+export const SECRET_VALUE = /^[\x21-\x7e]{8,255}$/;
+export const EMAIL = /^[^\s:@\u0000-\u001f\u007f]{1,64}@[^\s:@\u0000-\u001f\u007f]{1,190}$/;
 const HIDDEN_CHARS = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu;
 const HIDDEN_EXCEPT_NEWLINE_TAB = /(?![\n\t])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
 
@@ -113,10 +113,10 @@ export interface JiraCreateInput {
   issue_type?: string;
 }
 
-const invalid = (message: string) => new TrackerError("invalid", message);
+export const invalid = (message: string) => new TrackerError("invalid", message);
 
 /** Only these keys may be present; anything else is refused rather than ignored. */
-function onlyKeys(input: Record<string, unknown>, allowed: readonly string[]): void {
+export function onlyKeys(input: Record<string, unknown>, allowed: readonly string[]): void {
   for (const key of Object.keys(input)) {
     if (!allowed.includes(key)) throw invalid("Unknown input field");
   }
@@ -231,7 +231,7 @@ export function createSiteFromConfig(config: Readonly<Record<string, unknown>>):
   return isRecord(create) ? create.jira_site : undefined;
 }
 
-function checkSecret(value: string | undefined, name: string): string {
+export function checkSecret(value: string | undefined, name: string): string {
   if (value === undefined || value === "") {
     throw new TrackerError(
       "config",
@@ -241,7 +241,7 @@ function checkSecret(value: string | undefined, name: string): string {
   return value;
 }
 
-function unusable(name: string): TrackerError {
+export function unusable(name: string): TrackerError {
   return new TrackerError("config", `The ${name} is not a usable credential`);
 }
 

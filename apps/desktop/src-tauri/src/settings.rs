@@ -76,6 +76,9 @@ pub struct Settings {
     /// Phase 70: sounds and notification toasts are silenced. The shell only keeps and announces
     /// the flag (`shortcuts://mute`); the web app is what stays quiet.
     pub muted: bool,
+    /// Phase 83 (macOS): share Calendar events with Core once a minute. Off until the person turns
+    /// it on from the tray; turning it on is also what asks macOS for Calendar access.
+    pub calendar_share: bool,
 }
 
 /// One malformed shortcut entry must not reset the pet's position and every other preference
@@ -116,6 +119,7 @@ impl Default for Settings {
             shortcuts_enabled: false,
             shortcuts: BTreeMap::new(),
             muted: false,
+            calendar_share: false,
         }
     }
 }
@@ -283,6 +287,7 @@ mod tests {
             shortcuts_enabled: true,
             shortcuts: BTreeMap::from([("mute".to_string(), "Ctrl+Alt+Shift+9".to_string())]),
             muted: true,
+            calendar_share: true,
         };
         save(&path, &s).unwrap();
         assert_eq!(load(&path), s);

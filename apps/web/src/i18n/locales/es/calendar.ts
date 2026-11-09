@@ -20,7 +20,7 @@ export const calendar: Record<keyof typeof enCalendar, string> = {
   "calendar.busy": "Evento privado",
   "calendar.source": "De {meeting}",
   "calendar.unconfigured":
-    "No hay ningún proveedor de calendario conectado. Conecta Google, Microsoft o CalDAV para ver reuniones.",
+    "No hay ningún proveedor de calendario conectado. Conecta Google, Microsoft o CalDAV, o en un Mac activa el Calendario de macOS y elige «Share macOS Calendar with Phoenix» en el menú de la bandeja de la app de escritorio, para ver reuniones.",
   "calendar.unavailable":
     "El feed del calendario no está disponible. No se pueden mostrar las próximas reuniones ni los bloqueos de despliegue.",
   "calendar.stale":

@@ -15,6 +15,7 @@ import {
   type DeviceTransport,
 } from "@phoenix/capability-status-lights";
 import { isLocalUnicastIPv4 } from "./lan-address";
+import { createPacer } from "./pacer";
 
 /** How long a light has to acknowledge a command. */
 export const LIFX_ACK_TIMEOUT_MS = 2_000;
@@ -38,24 +39,6 @@ export interface LifxTransportOptions {
   minIntervalMs?: number;
 }
 
-function delay(ms: number, signal: AbortSignal): Promise<void> {
-  const { promise, resolve, reject } = Promise.withResolvers<void>();
-  if (signal.aborted) {
-    reject(signal.reason);
-    return promise;
-  }
-  const onAbort = () => {
-    clearTimeout(timer);
-    reject(signal.reason);
-  };
-  const timer = setTimeout(() => {
-    signal.removeEventListener("abort", onAbort);
-    resolve();
-  }, ms);
-  signal.addEventListener("abort", onAbort, { once: true });
-  return promise;
-}
-
 export function lifxTransport(
   target: LifxTarget,
   options: LifxTransportOptions = {},
@@ -70,15 +53,7 @@ export function lifxTransport(
   const ackTimeoutMs = options.ackTimeoutMs ?? LIFX_ACK_TIMEOUT_MS;
   const minIntervalMs = options.minIntervalMs ?? LIFX_MIN_INTERVAL_MS;
   let sequence = 0;
-  let nextSlot = 0;
-
-  /** Claims the next send slot synchronously, so concurrent callers queue instead of bursting. */
-  async function pace(signal: AbortSignal): Promise<void> {
-    const now = Date.now();
-    const at = Math.max(now, nextSlot);
-    nextSlot = at + minIntervalMs;
-    if (at > now) await delay(at - now, signal);
-  }
+  const pace = createPacer(minIntervalMs);
 
   function exchange(frame: Uint8Array, source: number, seq: number, signal: AbortSignal) {
     const { promise, resolve, reject } = Promise.withResolvers<void>();

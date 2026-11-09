@@ -4,6 +4,10 @@
 <dict>
   <key>NSMicrophoneUsageDescription</key>
   <string>Phoenix uses the microphone only while you choose to dictate and, if you switch it on in Settings, for the OK Fawkes voice assistant. The assistant listens for the wake phrase on this device: the audio is processed locally by Phoenix, nothing is sent anywhere until a command is understood, and the only thing that can leave this computer is the text of a web search you approve. Audio is never stored (an optional recogniser you choose may use a temporary file it erases at once). While the microphone is on, LISTENING shows in the voice window title and the tray tooltip, and Stop voice listening in the tray menu ends it.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>Phoenix reads your calendar events only after you choose Share macOS Calendar with Phoenix in the tray menu. Phoenix reads the next seven days (titles, times and attendee email addresses) once a minute and hands them to Phoenix Core on this computer for meeting reminders and prep notes. Nothing is written to or changed in Calendar, and notes, locations and attendee names are never read out of it. Turn the menu item off to stop.</string>
+  <key>NSCalendarsUsageDescription</key>
+  <string>Phoenix reads your calendar events only after you choose Share macOS Calendar with Phoenix in the tray menu, on this computer, for meeting reminders and prep notes. It never changes Calendar.</string>
   <key>CFBundleURLTypes</key>
   <array>
     <dict>

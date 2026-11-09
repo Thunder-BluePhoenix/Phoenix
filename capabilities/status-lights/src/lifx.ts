@@ -194,3 +194,65 @@ export function isLifxAcknowledgement(
     header.target === expected.target
   );
 }
+
+export const LIFX_GET_SERVICE = 2;
+export const LIFX_STATE_SERVICE = 3;
+/** `service` value of a StateService payload that means "UDP" (field-types: Services). */
+export const LIFX_SERVICE_UDP = 1;
+const STATE_SERVICE_BYTES = LIFX_HEADER_BYTES + 5;
+
+/**
+ * GetService (2), 36 bytes: the discovery broadcast. Per the docs it is `tagged` with an all-zero
+ * target so every device answers, and asks for no acknowledgement or state. The sequence ties the
+ * answers to this one discovery. Never a command: {@link lifxCommandHeader} refuses it.
+ */
+export function lifxGetService(sequence = 0): Uint8Array {
+  if (!Number.isInteger(sequence) || sequence < 0 || sequence > 255)
+    throw new Error("Invalid LIFX sequence");
+  const bytes = new Uint8Array(LIFX_HEADER_BYTES);
+  const view = new DataView(bytes.buffer);
+  view.setUint16(0, bytes.length, true);
+  view.setUint16(2, FRAME_WORD | TAGGED_BIT, true);
+  view.setUint32(4, LIFX_SOURCE, true);
+  bytes[23] = sequence;
+  view.setUint16(32, LIFX_GET_SERVICE, true);
+  return bytes;
+}
+
+/** A StateService answer in bytes (as a device sends it); used by fakes. */
+export function lifxStateService(mac: string, port: number, source: number, sequence: number) {
+  const bytes = frame(mac, LIFX_STATE_SERVICE, new Uint8Array(5), sequence, false);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(4, source, true);
+  bytes[LIFX_HEADER_BYTES] = LIFX_SERVICE_UDP;
+  view.setUint32(LIFX_HEADER_BYTES + 1, port, true);
+  return bytes;
+}
+
+export interface LifxServiceAnswer {
+  /** The device serial as 12 lower-case hex digits. */
+  mac: string;
+  /** The UDP port the device says it listens on (56700 on a real light). */
+  port: number;
+}
+
+/**
+ * The device serial and UDP port of a StateService (3) answer to exactly our GetService (our
+ * source and sequence, exact length, a real serial, UDP, a valid port), else null.
+ */
+export function parseLifxStateService(
+  bytes: Uint8Array,
+  expected: { source: number; sequence: number },
+): LifxServiceAnswer | null {
+  const header = readLifxHeader(bytes);
+  if (!header || bytes.length !== STATE_SERVICE_BYTES || header.type !== LIFX_STATE_SERVICE)
+    return null;
+  if (header.source !== expected.source || header.sequence !== expected.sequence) return null;
+  const mac = parseLifxMac(header.target);
+  if (!mac || bytes[LIFX_HEADER_BYTES] !== LIFX_SERVICE_UDP) return null;
+  const port = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(
+    LIFX_HEADER_BYTES + 1,
+    true,
+  );
+  return port >= 1 && port <= 65_535 ? { mac, port } : null;
+}

@@ -62,6 +62,23 @@ const screenRegion = (
     side_effect: "execute",
   })),
 });
+const TEAM = "6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f";
+const issuesCap = (over: { status?: CapabilityView["status"]; secrets?: boolean } = {}) => ({
+  ...capability("issues", over.status ?? "enabled"),
+  commands: [
+    "linear.issue.create",
+    "jira.issue.create",
+    "linear.issue.attach",
+    "jira.issue.attach",
+  ].map((name) => ({ name, description: name, side_effect: "external" })),
+  secrets:
+    over.secrets === false
+      ? []
+      : ["linear_write_key", "jira_write_email", "jira_write_token"].map((name) => ({
+          name,
+          set: true,
+        })),
+});
 const github = (): CapabilityView => ({
   ...capability("github", "enabled", { repositories: [] }),
   commands: [{ name: "issue.create", description: "create", side_effect: "external" }],
@@ -325,14 +342,15 @@ describe("the Core adapters", () => {
     };
     const { core, client } = fakeCore([github()], ops);
     const issues = createCoreIssueClient(client, timing);
+    // GitHub has no documented image upload endpoint: it stays text only.
     expect(issues.supportsAttachment("github")).toBe(false);
-    expect(issues.supportsAttachment("linear")).toBe(false);
+    expect(issues.supportsAttachment("linear")).toBe(true);
+    expect(issues.supportsAttachment("jira")).toBe(true);
     const draft = {
       tracker: "github" as const,
       project: "octo/phoenix",
       title: "Bug\u202e",
       body: "Details",
-      attachment: null,
     };
     expect(await issues.approve(draft)).toBe(true);
     // approving asks Core nothing: the confirmation is Core's, raised by create.
@@ -349,14 +367,35 @@ describe("the Core adapters", () => {
     expect(body.input.repository).toBe("octo/phoenix");
   });
 
-  it.each(["linear", "jira"] as const)("refuses %s visibly and sends nothing", async (tracker) => {
-    const { core, client } = fakeCore([github()], {});
+  it.each([
+    ["linear", "not-a-team-id", /team ID looks like/],
+    ["jira", "lower-case", /Jira project key is capital letters/],
+  ] as const)("refuses a bad %s project before any request", async (tracker, project, message) => {
+    const { core, client } = fakeCore([github(), issuesCap()], {});
     const issues = createCoreIssueClient(client, timing);
-    await expect(
-      issues.approve({ tracker, project: "octo/phoenix", title: "T", body: "", attachment: null }),
-    ).rejects.toThrow(/Only GitHub/);
-    expect(core.api.posts(ISSUE)).toHaveLength(0);
+    await expect(issues.approve({ tracker, project, title: "T", body: "" })).rejects.toThrow(
+      message,
+    );
+    expect(core.api.calls.filter((c) => c.method !== "GET")).toHaveLength(0);
   });
+
+  it.each(["linear", "jira"] as const)(
+    "says why %s cannot be used when issues is off or has no write credential",
+    async (tracker) => {
+      const project = tracker === "linear" ? TEAM : "PROJ";
+      for (const caps of [
+        [github()],
+        [issuesCap({ status: "disabled" })],
+        [issuesCap({ secrets: false })],
+      ]) {
+        const { core, client } = fakeCore(caps, {});
+        await expect(
+          createCoreIssueClient(client, timing).approve({ tracker, project, title: "T", body: "" }),
+        ).rejects.toThrow(/Issue trackers capability is off|No write credential/);
+        expect(core.api.calls.filter((c) => c.method !== "GET")).toHaveLength(0);
+      }
+    },
+  );
 
   it("refuses secret-looking text before any request", async () => {
     const { core, client } = fakeCore([github()], {});
@@ -368,7 +407,6 @@ describe("the Core adapters", () => {
         project: "octo/phoenix",
         title: "T",
         body: secret,
-        attachment: null,
       }),
     ).rejects.toThrow();
     expect(core.api.posts(ISSUE)).toHaveLength(0);
@@ -385,7 +423,6 @@ describe("the Core adapters", () => {
         project: "octo/phoenix",
         title: "T",
         body: "",
-        attachment: null,
       }),
     ).rejects.toThrow(/You declined/);
   });

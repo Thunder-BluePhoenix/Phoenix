@@ -57,7 +57,6 @@ describe("ScreenshotIssue", () => {
       project: "org/repo",
       title: "Bug",
       body: "Details",
-      attachment: new Blob(),
     };
     vi.spyOn(workflow, "captureOnAction").mockImplementation(async () => {
       calls.push("capture-click");

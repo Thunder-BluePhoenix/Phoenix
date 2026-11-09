@@ -8,6 +8,7 @@ import {
   type IssueDraft,
   type IssueTracker,
 } from "../core/screenshot";
+import { AttachImageError, type AttachRequest } from "../core/issue-attach";
 import { useT } from "../i18n";
 
 type Tool = Annotation["kind"];
@@ -25,6 +26,9 @@ export function ScreenshotIssue({ workflow }: { workflow: ScreenshotDraft }) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [draft, setDraft] = useState<IssueDraft | null>(null);
+  const [created, setCreated] = useState<{ tracker: IssueTracker; key: string } | null>(null);
+  const [prepared, setPrepared] = useState<AttachRequest | null>(null);
+  const [attachConfirmed, setAttachConfirmed] = useState(false);
   const [result, setResult] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -116,7 +120,12 @@ export function ScreenshotIssue({ workflow }: { workflow: ScreenshotDraft }) {
       setResult(
         issue ? t("focus.screenshot.created", { url: issue.url }) : t("focus.screenshot.declined"),
       );
-      if (issue) setDraft(null);
+      if (issue) {
+        setCreated(issue.key ? { tracker: draft.tracker, key: issue.key } : null);
+        setPrepared(null);
+        setAttachConfirmed(false);
+        setDraft(null);
+      }
     } catch (reason) {
       setError(
         t("focus.screenshot.error", {
@@ -126,6 +135,45 @@ export function ScreenshotIssue({ workflow }: { workflow: ScreenshotDraft }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  /** Step 1 of attaching: flatten and hash the redacted image and show exactly what would be sent. Sends nothing. */
+  const prepareAttach = async () => {
+    if (!created) return;
+    setBusy(true);
+    setError("");
+    try {
+      setPrepared(await workflow.prepareAttachment(created.tracker, created.key));
+      setAttachConfirmed(false);
+    } catch (reason) {
+      setError(t("focus.screenshot.error", { error: attachProblem(reason) }));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Step 2: only after the person ticked the confirmation. Core then asks for its own approval. */
+  const attach = async () => {
+    if (!prepared || !attachConfirmed) return;
+    setBusy(true);
+    setError("");
+    try {
+      await workflow.attachApproved(prepared);
+      setResult(t("focus.screenshot.attach.done", { key: prepared.details.issue }));
+      setPrepared(null);
+      setAttachConfirmed(false);
+      setCreated(null);
+    } catch (reason) {
+      setError(t("focus.screenshot.error", { error: attachProblem(reason) }));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const attachProblem = (reason: unknown): string => {
+    if (reason instanceof AttachImageError)
+      return t(`focus.screenshot.attach.problem.${reason.problem}`);
+    return reason instanceof Error ? reason.message : String(reason);
   };
 
   return (
@@ -170,7 +218,7 @@ export function ScreenshotIssue({ workflow }: { workflow: ScreenshotDraft }) {
             aria-label={t("focus.screenshot.title")}
           />
           <label>
-            {t("focus.screenshot.project")}
+            {t("screenRegion.projectLabel")}
             <input
               value={project}
               onChange={(event) => {
@@ -225,16 +273,63 @@ export function ScreenshotIssue({ workflow }: { workflow: ScreenshotDraft }) {
                 {t(`focus.screenshot.tracker.${draft.tracker}`)} · {draft.project}
               </p>
               <p>{draft.body}</p>
-              <p>
-                {t(
-                  draft.attachment
-                    ? "focus.screenshot.attachment"
-                    : "focus.screenshot.noAttachment",
-                )}
-              </p>
+              <p>{t("focus.screenshot.textOnly")}</p>
               <button type="button" disabled={busy} onClick={() => void create()}>
                 {t("focus.screenshot.create")}
               </button>
+            </div>
+          )}
+          {created && workflow.canAttach(created.tracker) && (
+            <div aria-label={t("focus.screenshot.attach.title")}>
+              <h3>{t("focus.screenshot.attach.title")}</h3>
+              <p>
+                {t("focus.screenshot.attach.intro", {
+                  tracker: t(`focus.screenshot.tracker.${created.tracker}`),
+                  key: created.key,
+                })}
+              </p>
+              {!prepared && (
+                <button type="button" disabled={busy} onClick={() => void prepareAttach()}>
+                  {t("focus.screenshot.attach.prepare")}
+                </button>
+              )}
+              {prepared && (
+                <>
+                  <ul aria-label={t("focus.screenshot.attach.details")}>
+                    <li>
+                      {t("focus.screenshot.attach.tracker", {
+                        tracker: t(`focus.screenshot.tracker.${prepared.details.tracker}`),
+                      })}
+                    </li>
+                    <li>{t("focus.screenshot.attach.issue", { key: prepared.details.issue })}</li>
+                    <li>
+                      {t("focus.screenshot.attach.file", { name: prepared.details.fileName })}
+                    </li>
+                    <li>{t("focus.screenshot.attach.size", { bytes: prepared.details.bytes })}</li>
+                    <li>
+                      {t("focus.screenshot.attach.hash", { hash: prepared.details.sha256Prefix })}
+                    </li>
+                  </ul>
+                  <p>{t("focus.screenshot.attach.redacted")}</p>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={attachConfirmed}
+                      onChange={(event) => setAttachConfirmed(event.target.checked)}
+                    />
+                    {t("focus.screenshot.attach.confirm", {
+                      tracker: t(`focus.screenshot.tracker.${prepared.details.tracker}`),
+                    })}
+                  </label>
+                  <button
+                    type="button"
+                    disabled={busy || !attachConfirmed}
+                    onClick={() => void attach()}
+                  >
+                    {t("focus.screenshot.attach.send")}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </>

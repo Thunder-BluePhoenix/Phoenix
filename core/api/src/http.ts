@@ -17,6 +17,15 @@ export const ATTACHMENT_BODY_MAX_BYTES = 7 * 1024 * 1024;
  */
 export const BROWSER_RELAY_BODY_MAX_BYTES = 16 * 1024 * 1024;
 export const BROWSER_RELAY_RESULT_PATH = /^\/api\/browser\/relay\/[^/]+\/result$/;
+/**
+ * The third larger body: the two image-attach commands of the `issues` capability (Phase 85),
+ * `POST /api/capabilities/issues/commands/{jira,linear}.issue.attach`. They carry one PNG of at most
+ * 5 MiB as base64 (6,990,508 bytes) inside the JSON `input`. Granted to those exact two paths only,
+ * after authentication; every other command route keeps MAX_BODY_BYTES.
+ */
+export const ISSUE_ATTACH_BODY_MAX_BYTES = 7 * 1024 * 1024;
+export const ISSUE_ATTACH_PATH =
+  /^\/api\/capabilities\/issues\/commands\/(?:jira|linear)\.issue\.attach$/;
 
 /** Thrown when a body exceeds its limit (MAX_BODY_BYTES unless the route asked for more); answered with 413 and the connection closed. */
 export class BodyTooLargeError extends PhoenixError {

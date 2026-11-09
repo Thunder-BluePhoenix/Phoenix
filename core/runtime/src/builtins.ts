@@ -12,7 +12,11 @@ import { createDockerCapability } from "@phoenix/capability-docker";
 import { createFrappeCapability } from "@phoenix/capability-frappe";
 import { createBrowserCapability, type BrowserRelay } from "@phoenix/capability-browser";
 import { createCalcomCapability } from "@phoenix/capability-calcom";
-import { createCalendarCapability, type ReminderStore } from "@phoenix/capability-calendar";
+import {
+  createCalendarCapability,
+  type MacosCalendarFeed,
+  type ReminderStore,
+} from "@phoenix/capability-calendar";
 import { createGitCapability } from "@phoenix/capability-git";
 import { createGithubCapability } from "@phoenix/capability-github";
 import { createIssuesCapability } from "@phoenix/capability-issues";
@@ -51,6 +55,8 @@ export interface BuiltinHost {
   dockerIdle?: DockerIdle;
   /** Phase 83: where the calendar keeps its reminder de-dup keys, so a restart does not remind again. */
   calendarReminders?: ReminderStore;
+  /** Phase 83: the desktop shell's EventKit snapshots (same instance as `RuntimeOptions.calendarMacos`). */
+  calendarMacos?: MacosCalendarFeed;
   /** Phase 95: the queue the Phoenix browser's chrome page polls; the same instance is given to the runtime. */
   browserRelay?: BrowserRelay;
 }
@@ -81,9 +87,10 @@ export function builtinCapabilities(
     createResendCapability(),
     createNotionCapability(),
     createCalcomCapability(),
-    createCalendarCapability(
-      host.calendarReminders ? { reminderStore: host.calendarReminders } : {},
-    ),
+    createCalendarCapability({
+      ...(host.calendarReminders ? { reminderStore: host.calendarReminders } : {}),
+      ...(host.calendarMacos ? { macosFeed: host.calendarMacos } : {}),
+    }),
     createSpotifyCapability(),
     createAppleMusicCapability(),
     createMprisCapability(),

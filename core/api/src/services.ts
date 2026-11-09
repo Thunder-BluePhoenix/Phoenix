@@ -19,7 +19,7 @@ import type { McpApi } from "./mcp-routes";
 import type { HandoffApi, SecretGuardApi } from "./handoff-routes";
 import type { PhoneApi } from "./phone-routes";
 import type { DigestService } from "./digest-routes";
-import type { CalendarApi } from "./calendar-routes";
+import type { CalendarApi, CalendarMacosApi } from "./calendar-routes";
 import type { EngineeringSignalsApi } from "./engineering-signals-routes";
 import type { TeamStatusApi, TeamWebhookApi } from "./team-webhook-routes";
 import type { TeamLinkApi } from "./team-link-routes";
@@ -1316,6 +1316,8 @@ export interface CoreServices {
   /** User-triggered, independently opted-in daily digest Slack delivery. */
   digestSlack?: DailyDigestSlackService;
   calendar?: CalendarApi;
+  /** Phase 83: where the desktop shell posts its macOS Calendar (EventKit) snapshot. */
+  calendarMacos?: CalendarMacosApi;
   engineeringSignals?: EngineeringSignalsApi;
   /** Incoming webhooks (Phase 92); absent when no OS secret store is available. */
   teamWebhooks?: TeamWebhookApi;

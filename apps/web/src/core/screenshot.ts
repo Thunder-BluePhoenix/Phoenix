@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 
+import {
+  AttachImageError,
+  buildAttachRequest,
+  type AttachRequest,
+  type AttachTracker,
+} from "./issue-attach";
+
 export type IssueTracker = "github" | "linear" | "jira";
 export interface RegionCaptureClient {
   /** Must check the OS permission before opening the region selector. */
@@ -13,14 +20,18 @@ export interface IssueDraft {
   project: string;
   title: string;
   body: string;
-  attachment: Blob | null;
 }
 export interface IssueClient {
   supportsAttachment(tracker: IssueTracker): boolean;
   /** Permission gateway: affirmative approval for exactly this draft, before any write/upload. */
   approve(draft: IssueDraft): Promise<boolean>;
-  /** Client owns provider upload and issue creation; must never be called without approve. */
-  create(draft: IssueDraft): Promise<{ url: string }>;
+  /** Client owns provider issue creation; must never be called without approve. `key` is the tracker's issue key. */
+  create(draft: IssueDraft): Promise<{ url: string; key?: string }>;
+  /**
+   * Attaches the redacted image to an issue that already exists. A separate write from `create`, with
+   * its own Core confirmation; only trackers for which `supportsAttachment` is true (never GitHub).
+   */
+  attach?(request: AttachRequest): Promise<void>;
 }
 export type Annotation =
   | { kind: "box" | "redact" | "arrow"; x: number; y: number; toX: number; toY: number }
@@ -155,6 +166,7 @@ export class ScreenshotDraft {
     }
   }
 
+  /** Cleans and checks the fields into an issue draft. No image is part of an issue: it is text only. */
   async preview(
     tracker: IssueTracker,
     project: string,
@@ -164,21 +176,10 @@ export class ScreenshotDraft {
     if (this.capturing) throw new Error("Capture already in progress");
     if (!this.image) throw new Error("Capture a region first");
     if (!project.trim() || !title.trim()) throw new Error("Project and title are required");
-    const canvas = document.createElement("canvas");
-    this.render(canvas);
-    let attachment: Blob | null = null;
-    if (this.client.supportsAttachment(tracker)) {
-      const { promise, resolve, reject } = Promise.withResolvers<Blob>();
-      canvas.toBlob(
-        (blob) => (blob ? resolve(blob) : reject(new Error("Image export failed"))),
-        "image/png",
-      );
-      attachment = await promise;
-    }
-    return { tracker, project: project.trim(), title: title.trim(), body, attachment };
+    return { tracker, project: project.trim(), title: title.trim(), body };
   }
 
-  async createApproved(draft: IssueDraft): Promise<{ url: string } | null> {
+  async createApproved(draft: IssueDraft): Promise<{ url: string; key?: string } | null> {
     if (this.creating || this.capturing)
       throw new Error("Capture or issue creation already in progress");
     this.creating = true;
@@ -191,6 +192,56 @@ export class ScreenshotDraft {
       if (!approved) return null;
       if (image !== this.image) throw new Error("Captured region changed during approval");
       return await this.client.create(current);
+    } finally {
+      this.creating = false;
+    }
+  }
+
+  /** True for trackers that can take the redacted image after the issue exists (never GitHub). */
+  canAttach(tracker: IssueTracker): tracker is AttachTracker {
+    return this.client.supportsAttachment(tracker) && this.client.attach !== undefined;
+  }
+
+  /** The current flattened, redacted image as a PNG blob. Redactions are drawn last, as in `render`. */
+  private async flatten(): Promise<Blob> {
+    if (!this.image) throw new Error("Capture a region first");
+    const canvas = document.createElement("canvas");
+    this.render(canvas);
+    const { promise, resolve, reject } = Promise.withResolvers<Blob>();
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("Image export failed"))),
+      "image/png",
+    );
+    return await promise;
+  }
+
+  /**
+   * Builds the attachment for an existing issue exactly as it would be sent: the validated PNG, its
+   * generated file name, size and hash. Nothing is sent. The page shows these to the person first.
+   */
+  async prepareAttachment(tracker: IssueTracker, issue: string): Promise<AttachRequest> {
+    if (!this.canAttach(tracker)) throw new Error("This tracker cannot take an attachment");
+    if (this.capturing || this.creating) throw new Error("Capture or issue creation in progress");
+    return await buildAttachRequest(tracker, issue, await this.flatten());
+  }
+
+  /**
+   * Sends a prepared attachment, after the person pressed the separate confirm button. The current
+   * image is flattened again and must hash to the same bytes the person was shown, so the preview
+   * cannot differ from what is uploaded. Core then asks for its own approval (the client's `attach`).
+   * Returns false when the person declined there.
+   */
+  async attachApproved(prepared: AttachRequest): Promise<void> {
+    const { tracker, issue } = prepared.details;
+    if (!this.canAttach(tracker)) throw new Error("This tracker cannot take an attachment");
+    if (this.creating || this.capturing) throw new Error("Capture or issue creation in progress");
+    this.creating = true;
+    try {
+      const current = await buildAttachRequest(tracker, issue, await this.flatten());
+      if (current.details.sha256Prefix !== prepared.details.sha256Prefix) {
+        throw new AttachImageError("changed");
+      }
+      await this.client.attach!(current);
     } finally {
       this.creating = false;
     }

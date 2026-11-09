@@ -5,8 +5,10 @@ import { loadConfig, type PhoenixConfig } from "@phoenix/config";
 import { createLogger } from "@phoenix/logging";
 import { KeychainSecretStore, type SecretStore } from "@phoenix/persistence";
 import { BrowserRelay } from "@phoenix/capability-browser";
+import { MacosCalendarFeed } from "@phoenix/capability-calendar";
 import { builtinCapabilities } from "./builtins";
 import { settingsReminderStore } from "./calendar";
+import { createOsDndReader } from "./focus/os-dnd";
 import { dockerIdleFrom } from "./docker-idle";
 import { MANAGED_ENV, MANAGED_ENV_VALUE, readConsentSecret } from "./consent-channel";
 import { PhoenixRuntime } from "./runtime";
@@ -93,12 +95,14 @@ if (process.env[MANAGED_ENV] === MANAGED_ENV_VALUE) {
   sentinel = process.stdin;
 }
 const browserRelay = new BrowserRelay();
+const calendarMacos = new MacosCalendarFeed();
 let runtime: PhoenixRuntime;
 try {
   runtime = new PhoenixRuntime({
     config,
     logger,
     browserRelay,
+    focus: { dnd: createOsDndReader() },
     ...(secrets ? { secrets } : {}),
     ...(consentSecret ? { consentSecret } : {}),
     ...(trustedKeyFile && indexFile && artifactDirectory
@@ -128,6 +132,7 @@ try {
         }),
         calendarReminders: settingsReminderStore(() => runtime.settings),
         browserRelay,
+        calendarMacos,
       },
     ),
   });
@@ -158,6 +163,9 @@ if (sentinel) {
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
+// OS Do Not Disturb is read-only and polled once a minute; the poll ends by itself where no read can
+// ever work (macOS, Windows, an unsupported desktop, a missing tool).
+runtime.focus.startDndPolling(60_000);
 runtime.start().catch((err: unknown) => {
   // The sockets and database were opened by now; release them so the next start is clean.
   void runtime.stop().finally(() => fail(err, { port: config.port, dataDir: config.dataDir }));

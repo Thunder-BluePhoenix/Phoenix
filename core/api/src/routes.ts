@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { ErrorCode, isPermission, PhoenixError } from "@phoenix/protocol";
-import { expectBoolean, expectObject, intParam, route, type Route } from "./http";
+import {
+  expectBoolean,
+  expectObject,
+  intParam,
+  ISSUE_ATTACH_BODY_MAX_BYTES,
+  route,
+  type Route,
+} from "./http";
 import { approvalRef, sameApprovalRef } from "./approval-ref";
 import { agentApprovalRoutes } from "./agent-approval-routes";
 import { agentLiveRoutes } from "./agent-live-routes";
@@ -251,7 +258,8 @@ export function buildRoutes(s: CoreServices): Route[] {
       return { uninstalled: params.id };
     }),
     route("POST", "/api/capabilities/:id/commands/:command", async ({ params, body, res }) => {
-      const b = expectObject(await body());
+      // The two issue image-attach commands may carry a base64 PNG; the server grants the larger limit to those paths only.
+      const b = expectObject(await body(ISSUE_ATTACH_BODY_MAX_BYTES));
       const op = caps().invoke(params.id!, params.command!, b.input ?? {}, "user");
       res.statusCode = 202;
       return op;
@@ -430,7 +438,7 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...handoffRoutes(s),
     ...phoneRoutes(s),
     ...(s.digest ? digestRoutes(s.digest, s.digestSlack) : []),
-    ...(s.calendar ? calendarRoutes(s.calendar) : []),
+    ...(s.calendar ? calendarRoutes(s.calendar, s.calendarMacos) : []),
     ...(s.engineeringSignals ? engineeringSignalsRoutes(s.engineeringSignals) : []),
     ...(s.teamWebhooks ? teamWebhookRoutes(s.teamWebhooks) : []),
     ...(s.teamStatus ? teamStatusRoutes(s.teamStatus) : []),

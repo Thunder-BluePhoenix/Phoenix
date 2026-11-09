@@ -16,6 +16,11 @@ pub mod browser_page;
 pub mod browser_policy;
 pub mod browser_profiles;
 pub mod browser_rules;
+#[cfg(target_os = "macos")]
+mod calendar_eventkit;
+mod calendar_events;
+#[cfg(target_os = "macos")]
+mod calendar_sync;
 mod connection;
 mod consent_dialog;
 mod core_status;
@@ -148,6 +153,9 @@ struct MenuItems<R: Runtime> {
     dictation_pill: CheckMenuItem<R>,
     shortcuts_enabled: CheckMenuItem<R>,
     mute: CheckMenuItem<R>,
+    /// Phase 83: share macOS Calendar with Core (macOS only).
+    #[cfg(target_os = "macos")]
+    calendar: CheckMenuItem<R>,
     /// Phase 72: the disabled Keep-awake countdown entry. It sits at the top of `menu` only while
     /// `awake_shown` (Core says a session is running).
     awake: MenuItem<R>,
@@ -1165,6 +1173,15 @@ fn build_menu<R: Runtime>(
         settings.muted,
         None::<&str>,
     )?;
+    #[cfg(target_os = "macos")]
+    let calendar = CheckMenuItem::with_id(
+        app,
+        calendar_sync::ITEM_ID,
+        calendar_events::menu_text(settings.calendar_share, calendar_eventkit::state()),
+        true,
+        settings.calendar_share,
+        None::<&str>,
+    )?;
     let mut entries: Vec<&dyn IsMenuItem<R>> = vec![&toggle, &open, &wardrobe];
     let separators = [
         PredefinedMenuItem::separator(app)?,
@@ -1191,6 +1208,8 @@ fn build_menu<R: Runtime>(
         &separators[2],
         &quit,
     ]);
+    #[cfg(target_os = "macos")]
+    entries.insert(entries.len() - 3, &calendar);
     let menu = Menu::with_items(app, &entries)?;
     // Not in the menu until Core says a session runs (see `apply_awake`).
     let awake = MenuItem::with_id(app, AWAKE_ITEM_ID, "Keep awake", false, None::<&str>)?;
@@ -1207,6 +1226,8 @@ fn build_menu<R: Runtime>(
         dictation_pill,
         shortcuts_enabled,
         mute,
+        #[cfg(target_os = "macos")]
+        calendar,
         awake,
         awake_separator,
         awake_shown: false,
@@ -1267,6 +1288,12 @@ pub fn handle_menu<R: Runtime>(app: &AppHandle<R>, id: &str) {
         "dictation_pill" => {
             let on = !app.state::<Shell<R>>().settings.lock().pill;
             set_dictation_pill(app, on);
+        }
+        // Phase 83: an explicit choice; turning it on is what asks macOS for Calendar access.
+        #[cfg(target_os = "macos")]
+        calendar_sync::ITEM_ID => {
+            let on = !app.state::<Shell<R>>().settings.lock().calendar_share;
+            calendar_sync::set_sharing(app, on);
         }
         // Quit is always available from the tray and the window's menu.
         "quit" => app.exit(0),
@@ -1536,6 +1563,8 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
             island::spawn_loop(handle.clone());
             if !skip_native_window_styling {
                 spawn_awake_loop(handle.clone());
+                #[cfg(target_os = "macos")]
+                calendar_sync::spawn_loop(handle.clone());
             }
             if settings.pill && !skip_native_window_styling {
                 let _ = pill::show(handle);

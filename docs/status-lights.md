@@ -8,9 +8,9 @@ is off until you consent to that light**; nothing is discovered, scanned or cont
 
 **Verification status: simulated only.** Everything below is proven against recording fakes (a fake event feed, fake transports, a fake
 deck surface) and, for the two wired transports, a fake Key Light (HTTP) and a fake LIFX light (a real UDP socket on loopback). No real
-Hue bridge, Key Light, Luxafor, LIFX bulb or Stream Deck was driven, so the Phase 88 exit criterion "a real light follows Fawkes through
-IDLE, WORKING, ERROR and RECORDING" is **not met**. The Hue request, Key Light request and Luxafor report are built from the vendors'
-documented formats and checked only for their shape. The LIFX frames are checked byte for byte against the layout in LIFX's public LAN
+Hue bridge, Key Light, Luxafor app, LIFX bulb or Stream Deck was contacted, so the Phase 88 exit criterion "a real light follows Fawkes through
+IDLE, WORKING, ERROR and RECORDING" is **not met**. The Hue, Key Light and Luxafor requests are built from the vendors'
+documented formats and were checked only against fakes (a fake bridge link, a fake HTTP server on loopback). The LIFX frames are checked byte for byte against the layout in LIFX's public LAN
 protocol documentation, never against a real bulb's firmware.
 
 ## Colours
@@ -136,13 +136,71 @@ const statusLights = createStatusLightsCapability({
   following), `core/runtime/test/lifx-transport.test.ts` (fake LIFX light on a real loopback UDP socket, `fake-lifx.ts`),
   `capabilities/status-lights/test/lifx.test.ts` (byte-exact frames).
 
+### Hue, Luxafor and LIFX discovery (added; fake-tested only)
+
+**No real Hue bridge, Luxafor app or LIFX bulb was contacted by any of this.** Evidence is
+`core/runtime/test/status-lights-hue.test.ts`, `status-lights-luxafor.test.ts`, `status-lights-discovery.test.ts` and
+`capabilities/status-lights/test/lifx-discovery.test.ts`.
+
+- **Provisioning kinds.** `{id, kind: "hue", bridge, resource}` (a paired bridge id and the light's UUID; no address, the bridge holds
+  it) and `{id, kind: "luxafor", address, port}` (port 5383 by default; same private/link-local/loopback IPv4-literal rule). A Hue light
+  must name a paired bridge. Removing a bridge deletes its key; its lights are then never contacted.
+- **Hue** (`hue.ts`, `hue-link.ts`). The bridge address is only what the owner typed (private IPv4 literal, never a hostname; no mDNS and
+  no cloud discovery). Flow: (1) `POST /api/status-lights/hue/inspect {address}` opens a TLS connection, reads the certificate's
+  SHA-256 fingerprint and subject, closes it and shows both without sending any HTTP byte; the owner confirms the fingerprint.
+  (2) The owner presses the bridge's round link button, then `POST /api/status-lights/hue/bridges {id, address, fingerprint}` sends
+  `POST /api {"devicetype":"phoenix#core"}` over a connection pinned to the confirmed fingerprint. The bridge answers error 101 (HTTP
+  200 with an `error` object) until the button was pressed, then `[{"success":{"username":...}}]`. CLIP v2 has no pairing call of its
+  own; the v1 `username` is the v2 `hue-application-key`. (3) The key is stored in the OS credential store under
+  `status-lights.hue.<bridge id>` and is never returned, listed, audited or logged; the bridge entry in settings holds the address,
+  port and fingerprint only. (4) Writes are `PUT /clip/v2/resource/light/<uuid>` with the `hue-application-key` header. The transport
+  refuses any other path and any body field other than `on.on`, `dimming.brightness` (0-100) and `color.xy` (0-1). A bridge answer with
+  a non-200 status or an `errors` array is a failure; the bridge's error text is never copied into a message. Writes to one bridge,
+  across all its lights, are at least 250 ms apart (about 10 commands a second is the bridge's documented limit).
+  `GET /api/status-lights/hue/bridges/:id/lights` lists UUIDs and names (names are bridge-supplied text) so the owner can pick;
+  `DELETE /api/status-lights/hue/bridges/:id` forgets the bridge and its key.
+- **TLS to a bridge with a self-signed certificate.** The certificate is issued to the bridge id, not its address, so normal
+  verification cannot succeed. Verification is NOT disabled globally and the global `fetch` is not used. `hue-link.ts` opens its own
+  `node:tls` socket per call with `rejectUnauthorized: false` for that socket only, compares the peer certificate's SHA-256 fingerprint
+  with the one the owner confirmed BEFORE writing any byte (so the application key never reaches a different certificate), and then
+  runs the HTTP request over that already verified socket. A real loopback TLS test with a self-signed certificate (generated with
+  `openssl`; skipped if `openssl` is missing) shows a mismatching fingerprint sends nothing. Limits: the pin is trust-on-first-use of
+  what the owner confirmed (a first connection can still be intercepted if the owner confirms a fingerprint they did not compare with
+  the bridge's own), and the Signify CA is not bundled, so the CA chain itself is not checked. A bridge that renews its certificate
+  needs re-pairing. Pairing errors answer "could not reach the bridge", never the certificate or key.
+- **Luxafor** (`luxafor.ts`). Only the documented "Incoming Local Webhook" of the Luxafor desktop app (Luxafor Knowledge Base, "Incoming
+  Local Webhook Developer Guide"): plain HTTP `POST /color {"color":"RRGGBB"}` to port 5383 (default) with `Authorization: Bearer
+<token>`, no redirects, 5 s timeout, at most one write per 250 ms. USB HID is not built: it needs a native dependency (a new npm
+  package or Rust crate). The webhook is off by default in the Luxafor app and must be enabled in its Settings. The token (the app's
+  default is a well known word, so the owner should set their own) is stored write-only with `PUT /api/status-lights/luxafor/:id/token
+{token}` under `status-lights.luxafor.<id>`, is sent only in that header, and is deleted when the light leaves the list. The
+  documentation says the app answers 200 immediately "regardless of whether the request body is valid or the token is correct", so a
+  success here only means the app accepted the request; a wrong token or a disabled webhook is silent and shows as a working light
+  that never changes. The server is plain TCP, so the token crosses the network in clear text: use it on the machine that runs the
+  Luxafor app (127.0.0.1) or a network you trust.
+- **LIFX discovery** (`lifx-discovery.ts`; frames `lifxGetService` and `parseLifxStateService` in `lifx.ts`). `POST
+/api/status-lights/lifx/discover {broadcast?}` sends ONE GetService (2, tagged, all-zero target, reusing the transport's header
+  layout) to port 56700 on `255.255.255.255` or a private/link-local/loopback address the owner entered, waits at most 2 s (never more
+  than 5 s), accepts only StateService (3) answers to that datagram's source and sequence, UDP service, from a private unicast IPv4
+  (a light on a port other than 56700 is accepted on loopback only), keeps at most 16 devices and stops early once it has them. A
+  second discovery within 5 s is refused. It returns `{mac, address, port, provisioned}` and nothing else happens: no state command is
+  sent and nothing is provisioned. The owner confirms which lights to use by adding them with `PUT /api/status-lights/devices`, and
+  consent is still the separate capability setting. Audited as `status_lights.lifx_discovery` with the count only.
+- **Rates.** LIFX 250 ms per light, Hue 250 ms per bridge, Luxafor 250 ms per light, discovery 5 s apart; all use `pacer.ts`.
+- **No Settings control** adds a Hue bridge, a Luxafor light or a discovered LIFX light; they are API only.
+- **Stream Deck plugin: not built, on purpose.** Elgato's SDK is a separate toolchain and package (a Node plugin bundle with its own
+  manifest and `@elgato/streamdeck` dependency); adding it here would be a new npm package. The deck ports in the capability remain
+  unconnected.
+
 `main.ts` still passes no `deck` ports: Core supplies lights, the event feed and Focus mode, not a Stream Deck surface.
 
 ## Not done
 
-- Hue (needs bridge pairing and a key) and Luxafor (USB HID) transports, bridge pairing, discovery, and the Stream Deck
-  plugin (manifest, property inspector, artwork). The deck is a port with no host surface.
-- LIFX discovery and any Settings control for the serial (a LIFX light is added through the API only).
+- The Stream Deck plugin (manifest, property inspector, artwork) and a host deck surface. The deck is a port with no host surface.
+- Luxafor over USB HID (needs a native dependency). Hue bridge discovery (mDNS or Philips' cloud) is deliberately not done: the owner
+  types the address. No Settings control for Hue pairing, a Luxafor token, LIFX discovery or a LIFX serial (API only).
+- The Hue, Luxafor and LIFX-discovery code was only run against fakes; no real bridge (certificate, link button, key format),
+  Luxafor app or bulb answered it.
 - No real-device run, so the exit criterion is unmet; the Key Light and LIFX transports were never run against a real light; Hue colour
   accuracy, LIFX bulb acceptance (colour accuracy, multizone or matrix devices, Thread-only firmware) and Luxafor colour order are
   unchecked.

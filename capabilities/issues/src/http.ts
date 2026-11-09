@@ -18,9 +18,9 @@ export interface HttpResult {
 }
 
 export interface HttpRequest {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PUT";
   headers: Record<string, string>;
-  body?: string;
+  body?: string | Uint8Array;
 }
 
 /** Reads at most `maxBytes` of the reply; the fetch signal also bounds how long that takes. */
@@ -60,7 +60,7 @@ export async function httpRequest(
     const res = await fetch(url, {
       method: request.method ?? "GET",
       headers: request.headers,
-      ...(request.body !== undefined ? { body: request.body } : {}),
+      ...(request.body !== undefined ? { body: request.body as BodyInit } : {}),
       redirect: "error",
       signal: AbortSignal.any([signal, deadline]),
     });

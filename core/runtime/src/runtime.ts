@@ -91,7 +91,8 @@ import { ProactiveRuntime } from "./proactive";
 import { RetrievalRuntime } from "./retrieval";
 import { DailyDigestService } from "./daily-digest/service";
 import { DailyDigestSlackService } from "./daily-digest/slack";
-import { CalendarService, StoreMeetingPrepQuery } from "./calendar";
+import { CalendarService, MacosSnapshotService, StoreMeetingPrepQuery } from "./calendar";
+import type { MacosCalendarFeed } from "@phoenix/capability-calendar";
 import { assertDeployAllowed } from "./calendar/freeze";
 import { EngineeringSignalsRuntime } from "./engineering-signals";
 import {
@@ -112,7 +113,8 @@ import { createChatTransport } from "./chat-approvals";
 import type { HttpTransport } from "@phoenix/capability-chat-approvals";
 import { RemoteRelayService, type RemoteRelayServiceDeps } from "./remote-relay/service";
 import { TeamLinkService, type TeamLinkDependencies } from "./team-status/link";
-import { StatusLightProvisioning } from "./status-lights/provision";
+import { StatusLightProvisioning, type StatusLightExtras } from "./status-lights/provision";
+import { nodeDiscoverySocket } from "./status-lights/lifx-discovery";
 import { FawkesRebirthService } from "./fawkes-rebirth/service";
 import { BrowserProfilesService } from "./browser-profiles/service";
 import { MusicConnectorsService } from "./music-connectors/service";
@@ -176,11 +178,13 @@ export interface RuntimeOptions {
   chatTransport?: HttpTransport;
   /** Relay tuning (tests inject a fetcher, a clock and an instant sleep). */
   relay?: Pick<RemoteRelayServiceDeps, "fetcher" | "clock" | "sleep">;
+  /** Status light tuning (tests inject a fake Hue link, a fake discovery socket and instant pacing). */
+  statusLights?: Omit<StatusLightExtras, "secrets">;
   /** Team link tuning (tests inject a fetcher, a clock, an instant sleep and a hand-driven heartbeat). */
   teamLink?: Pick<TeamLinkDependencies, "fetcher" | "clock" | "sleep" | "heartbeat">;
   /** Scheduler tuning (tests inject a clock and a power source; production reads this machine). */
   scheduledAwake?: Pick<ScheduledAwakeDependencies, "clock" | "power" | "env">;
-  /** Focus delivery tuning. The DND reader is read-only; Core has no OS DND adapter by default. */
+  /** Focus delivery tuning. The DND reader is read-only; Core has no OS DND adapter unless the host injects one (`focus/os-dnd`). */
   focus?: { clock?: FocusClock; dnd?: FocusDndReader };
   /** Signer id to Ed25519 public key (SPKI PEM) of who may sign browser extensions. Empty: none. */
   extensionSigners?: Readonly<Record<string, string>>;
@@ -280,6 +284,8 @@ export interface RuntimeOptions {
   filterLists?: FilterListsTuning;
   /** Phase 95: the queue between the browser capability and the chrome page's relay routes (same instance as `BuiltinHost.browserRelay`). */
   browserRelay?: BrowserRelay;
+  /** Phase 83: the macOS Calendar snapshot holder (same instance as `BuiltinHost.calendarMacos`); absent: the route is not served. */
+  calendarMacos?: MacosCalendarFeed;
 }
 
 /**
@@ -310,6 +316,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly meetingReview: MeetingReviewRuntime;
   readonly proactive: ProactiveRuntime;
   readonly calendar: CalendarService;
+  /** Phase 83: `POST /api/calendar/macos`, the desktop shell's EventKit snapshot door. */
+  readonly calendarMacos: MacosSnapshotService | undefined;
   readonly engineeringSignals: EngineeringSignalsRuntime;
   /** Chat approvals (Phase 86): off by default; absent inside the demo runtime. */
   readonly chatApprovals: ChatApprovalsService | undefined;
@@ -730,6 +738,9 @@ export class PhoenixRuntime implements CoreServices {
       killSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
       onPreferencesChanged: () => this.engineeringSignals.consentChanged(),
     });
+    this.calendarMacos = options.calendarMacos
+      ? new MacosSnapshotService(options.calendarMacos)
+      : undefined;
     this.calendar = new CalendarService({
       capabilities: this.capabilities,
       prep: new StoreMeetingPrepQuery(
@@ -896,7 +907,17 @@ export class PhoenixRuntime implements CoreServices {
           })
         : undefined;
     this.teamStatus = this.teamLink;
-    this.statusLights = new StatusLightProvisioning(this.settings, this.permissions.audit);
+    this.statusLights = new StatusLightProvisioning(
+      this.settings,
+      this.permissions.audit,
+      undefined,
+      undefined,
+      {
+        discoverySocket: nodeDiscoverySocket,
+        ...options.statusLights,
+        ...(options.secrets ? { secrets: options.secrets } : {}),
+      },
+    );
     this.scheduledAwake = new ScheduledAwakeService({
       settings: this.settings,
       permissions: this.permissions,

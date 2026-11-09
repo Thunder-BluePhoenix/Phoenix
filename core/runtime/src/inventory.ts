@@ -195,7 +195,7 @@ export class RuntimeInventory {
       {
         id: "status_lights_devices",
         description:
-          "Status lights (Phase 88): the LAN address and port of each Key Light or LIFX light you added (and the serial of each LIFX light), in settings. Consent to use a light is a separate setting of the status-lights capability. Nothing is contacted until both exist and the capability is enabled; only fixed colours are ever sent.",
+          "Status lights (Phase 88): the LAN address and port of each Key Light, LIFX or Luxafor light you added (the serial of each LIFX light, and the bridge and light id of each Hue light), and each paired Hue bridge's address and certificate fingerprint, in settings. Hue application keys and Luxafor tokens are only in the OS credential store. Consent to use a light is a separate setting of the status-lights capability. Nothing is contacted until both exist and the capability is enabled; only fixed colours are ever sent.",
         count: this.runtime.statusLights.lights().length,
         deleted_with: "replace the list with an empty one (PUT /api/status-lights/devices)",
       },

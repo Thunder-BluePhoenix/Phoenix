@@ -74,28 +74,30 @@ fn starts_with_window_tray_and_full_menu() {
         .into_iter()
         .map(|(i, _, _)| i)
         .collect();
-    assert_eq!(
-        ids,
-        [
-            "toggle",
-            "open",
-            "wardrobe",
-            "mode_floating",
-            "mode_island",
-            "mode_navbar",
-            "island_display",
-            "dictation_hotkey",
-            "dictation_key",
-            "dictation_pill",
-            "voice_open",
-            "voice_stop",
-            "shortcuts_enabled",
-            "mute",
-            "on_top",
-            "login",
-            "quit"
-        ]
-    );
+    #[allow(unused_mut)]
+    let mut expected = vec![
+        "toggle",
+        "open",
+        "wardrobe",
+        "mode_floating",
+        "mode_island",
+        "mode_navbar",
+        "island_display",
+        "dictation_hotkey",
+        "dictation_key",
+        "dictation_pill",
+        "voice_open",
+        "voice_stop",
+        "shortcuts_enabled",
+        "mute",
+        "on_top",
+        "login",
+        "quit",
+    ];
+    // Phase 83: the macOS-only Calendar sharing choice sits above Launch at login.
+    #[cfg(target_os = "macos")]
+    expected.insert(expected.len() - 2, "calendar_share");
+    assert_eq!(ids, expected);
     // A fresh install keeps the floating Fawkes; the island is opt-in.
     assert_eq!(item(&s.app, "mode_floating").1, Some(true));
     assert_eq!(item(&s.app, "mode_island").1, Some(false));

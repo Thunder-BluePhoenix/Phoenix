@@ -19,7 +19,8 @@ export const calendar: Record<keyof typeof enCalendar, string> = {
   "calendar.freeze": "部署冻结",
   "calendar.busy": "私人事件",
   "calendar.source": "来自 {meeting}",
-  "calendar.unconfigured": "未连接日历提供方。请连接 Google、Microsoft 或 CalDAV 以查看会议。",
+  "calendar.unconfigured":
+    "未连接日历提供方。请连接 Google、Microsoft 或 CalDAV；在 Mac 上也可以启用 macOS 日历，并在桌面应用的托盘菜单中选择“Share macOS Calendar with Phoenix”，以查看会议。",
   "calendar.unavailable": "日历源不可用，无法显示即将举行的会议和部署冻结。",
   "calendar.stale": "日历源已过期。刷新之前，无法信任即将举行的会议和部署冻结。",
   "calendar.lastChecked": "上次成功读取：{time}",

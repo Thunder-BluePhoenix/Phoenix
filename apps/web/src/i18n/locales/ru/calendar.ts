@@ -20,7 +20,7 @@ export const calendar: Record<keyof typeof enCalendar, string> = {
   "calendar.busy": "Частное событие",
   "calendar.source": "Из {meeting}",
   "calendar.unconfigured":
-    "Поставщик календаря не подключён. Подключите Google, Microsoft или CalDAV, чтобы видеть встречи.",
+    "Поставщик календаря не подключён. Подключите Google, Microsoft или CalDAV, либо на Mac включите календарь macOS и выберите «Share macOS Calendar with Phoenix» в меню в трее настольного приложения, чтобы видеть встречи.",
   "calendar.unavailable":
     "Лента календаря недоступна. Предстоящие встречи и заморозки развёртывания показать нельзя.",
   "calendar.stale":

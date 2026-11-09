@@ -10,6 +10,13 @@ export interface FocusApi {
     active: boolean;
     remainingMs: number | null;
     held: number;
+    /** Platform and documented source of the OS reading, when Core has an OS reader. */
+    dnd?: {
+      state: "on" | "off" | "unknown";
+      platform: string;
+      source: string | null;
+      reason: string | null;
+    };
   };
   start(minutes?: number): void;
   stop(): void;

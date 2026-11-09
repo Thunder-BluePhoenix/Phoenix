@@ -20,7 +20,7 @@ export const calendar: Record<keyof typeof enCalendar, string> = {
   "calendar.busy": "ব্যক্তিগত অনুষ্ঠান",
   "calendar.source": "{meeting} থেকে",
   "calendar.unconfigured":
-    "কোনো ক্যালেন্ডার প্রদানকারী সংযুক্ত নেই। মিটিং দেখতে Google, Microsoft বা CalDAV সংযুক্ত করুন।",
+    'কোনো ক্যালেন্ডার প্রদানকারী সংযুক্ত নেই। মিটিং দেখতে Google, Microsoft বা CalDAV সংযুক্ত করুন, অথবা Mac-এ macOS Calendar চালু করে ডেস্কটপ অ্যাপের ট্রে মেনু থেকে "Share macOS Calendar with Phoenix" বেছে নিন।',
   "calendar.unavailable":
     "ক্যালেন্ডার ফিড পাওয়া যাচ্ছে না। আসন্ন মিটিং ও ডিপ্লয় ফ্রিজ দেখানো যাচ্ছে না।",
   "calendar.stale":

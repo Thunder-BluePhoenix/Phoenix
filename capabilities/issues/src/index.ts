@@ -4,13 +4,22 @@
 // Issue-tracker capability (Phase 26, create commands Phase 85). Awareness of the issues assigned
 // to you in GitHub Issues, Linear and Jira through one provider interface and one event protocol:
 // issues.assigned, issues.status_changed, issues.unassigned (plus the ephemeral
-// issues.completed that lets Fawkes celebrate). Polling is read-only. The ONLY writes are the two
-// confirmed commands `linear.issue.create` and `jira.issue.create` (text only, see create.ts);
-// Phoenix never edits, closes or comments on an issue and never attaches an image.
+// issues.completed that lets Fawkes celebrate). Polling is read-only. The ONLY writes are the four
+// confirmed commands `linear.issue.create` and `jira.issue.create` (text only, see create.ts) and
+// `linear.issue.attach` and `jira.issue.attach` (one PNG on an existing issue, see attach.ts).
+// Phoenix never edits, closes or comments on an issue. GitHub has no attach command: it offers no
+// documented upload endpoint for issue images.
 import { defineCapability, type CapabilityContext, type HealthResult } from "@phoenix/sdk";
 import { CONFIG_SCHEMA, createProvider, parseTrackers, type TrackerKind } from "./config";
 import { baseline, reconcile, type IssueSnapshot } from "./diff";
 import { MAX_RETRY_AFTER_MS } from "./http";
+import {
+  attachJiraImage,
+  attachLinearImage,
+  attachSchema,
+  JIRA_ISSUE_KEY_PATTERN,
+  LINEAR_IDENTIFIER_PATTERN,
+} from "./attach";
 import {
   createJiraIssue,
   createLinearIssue,
@@ -28,6 +37,7 @@ import type { ProviderOptions } from "./provider-base";
 import { TrackerError, type HttpLimits, type IssueProvider, type RawIssueChange } from "./types";
 import { isRecord, maxIso } from "./validate";
 
+export * from "./attach";
 export * from "./config";
 export * from "./create";
 export * from "./diff";
@@ -194,7 +204,7 @@ export function createIssuesCapability(options: IssuesOptions = {}) {
       name: "Issue trackers",
       version: "0.2.0",
       description:
-        "Tells Fawkes when a GitHub, Linear or Jira issue is assigned to you or changes status (polling is read-only). Two commands write, linear.issue.create and jira.issue.create: each creates one text-only issue (no image) only when you confirm it, using separate write credentials. Nothing is created or sent otherwise.",
+        "Tells Fawkes when a GitHub, Linear or Jira issue is assigned to you or changes status (polling is read-only). Four commands write: linear.issue.create and jira.issue.create each create one text-only issue, and linear.issue.attach and jira.issue.attach each attach one screenshot PNG you confirm to an existing issue. Each runs only when you confirm it, using separate write credentials. Nothing is created or sent otherwise. GitHub is text only: it has no documented image upload endpoint.",
       license: "GPL-3.0-or-later",
       homepage: "https://github.com/Thunder-BluePhoenix/Phoenix",
       events: ["issues.*"],
@@ -205,6 +215,7 @@ export function createIssuesCapability(options: IssuesOptions = {}) {
         "issue keys and titles",
         "issue assignment and status",
         "issue title and description you confirm (sent to Linear or Jira Cloud, secret-redacted)",
+        "a redacted screenshot PNG you confirm (sent to Jira Cloud, or to Linear and its Google Cloud Storage upload address)",
       ],
       healthcheck: { interval_ms: 30_000 },
       secrets: [
@@ -295,6 +306,24 @@ export function createIssuesCapability(options: IssuesOptions = {}) {
             },
           },
         },
+        {
+          name: "jira.issue.attach",
+          description:
+            "Attaches ONE already-redacted PNG screenshot (at most 5 MiB) to an existing Jira Cloud issue. WRITES to Jira and always asks for your confirmation; the card names the issue key, the generated file name, the byte size and a content-hash prefix. Needs the jira_write_email and jira_write_token secrets and config.create.jira_site (https, *.atlassian.net). Not idempotent: look in Jira before repeating after an unknown outcome.",
+          side_effect: "external",
+          permissions: ["network", "external_api"],
+          timeout_ms: 60_000,
+          input_schema: attachSchema(JIRA_ISSUE_KEY_PATTERN),
+        },
+        {
+          name: "linear.issue.attach",
+          description:
+            "Attaches ONE already-redacted PNG screenshot (at most 5 MiB) to an existing Linear issue: asks Linear for a signed upload address, uploads the image there, then links it to the issue. WRITES to Linear and always asks for your confirmation; the card names the issue key, the generated file name, the byte size and a content-hash prefix. Needs the linear_write_key secret; talks only to api.linear.app and to the Google Cloud Storage address Linear returns. Not idempotent: look in Linear before repeating after an unknown outcome.",
+          side_effect: "external",
+          permissions: ["network", "external_api"],
+          timeout_ms: 120_000,
+          input_schema: attachSchema(LINEAR_IDENTIFIER_PATTERN),
+        },
       ],
       config_schema: CONFIG_SCHEMA,
       state_rules: [
@@ -347,6 +376,37 @@ export function createIssuesCapability(options: IssuesOptions = {}) {
         } catch (err) {
           if (err instanceof TrackerError) throw err;
           throw new TrackerError("unavailable", "Unexpected error while creating the Jira issue");
+        }
+      },
+      async "jira.issue.attach"(input, ctx) {
+        try {
+          return await attachJiraImage(input, {
+            secret: (name) => ctx.secret(name),
+            signal: ctx.signal,
+            site: createSiteFromConfig(ctx.config),
+            ...(options.limits ? { limits: options.limits } : {}),
+          });
+        } catch (err) {
+          if (err instanceof TrackerError) throw err;
+          throw new TrackerError(
+            "unavailable",
+            "Unexpected error while attaching the image to Jira",
+          );
+        }
+      },
+      async "linear.issue.attach"(input, ctx) {
+        try {
+          return await attachLinearImage(input, {
+            secret: (name) => ctx.secret(name),
+            signal: ctx.signal,
+            ...(options.limits ? { limits: options.limits } : {}),
+          });
+        } catch (err) {
+          if (err instanceof TrackerError) throw err;
+          throw new TrackerError(
+            "unavailable",
+            "Unexpected error while attaching the image to Linear",
+          );
         }
       },
     },

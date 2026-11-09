@@ -153,22 +153,17 @@ export function newIdempotencyKey(): string {
   return `image-issue-${crypto.randomUUID()}`;
 }
 
-/** Checks and cleans what was typed. Secret-looking text is refused, never sent or cut. */
-export function buildImageIssueDraft(
-  fields: { image: IssueImage | null; repository: string; title: string; body: string },
-  idempotencyKey: string,
-): DraftResult {
-  const fail = (key: MessageKey, vars?: Vars): DraftResult => ({
-    ok: false,
+/** The cleaned title and description, or why they cannot be sent. Secret-looking text is refused, never cut. */
+export function cleanIssueText(
+  rawTitle: string,
+  rawBody: string,
+): { ok: true; title: string; body: string } | { ok: false; problem: DraftProblem } {
+  const fail = (key: MessageKey, vars?: Vars) => ({
+    ok: false as const,
     problem: vars ? { key, vars } : { key },
   });
-  if (!fields.image) return fail("focus.issueDraft.imageRequired");
-  const repository = fields.repository.trim();
-  if (!new RegExp(REPOSITORY_PATTERN).test(repository)) {
-    return fail("handoff.attach.repositoryInvalid");
-  }
-  const title = cleanTitle(fields.title);
-  const body = cleanBody(fields.body);
+  const title = cleanTitle(rawTitle);
+  const body = cleanBody(rawBody);
   if (title.length === 0) return fail("focus.issueDraft.titleRequired");
   if (title.length > ISSUE_LIMITS.titleChars) {
     return fail("focus.issueDraft.titleTooLong", { max: ISSUE_LIMITS.titleChars });
@@ -181,13 +176,28 @@ export function buildImageIssueDraft(
   if (inTitle && inBody) return fail("focus.issueDraft.secretInBoth");
   if (inTitle) return fail("focus.issueDraft.secretInTitle");
   if (inBody) return fail("focus.issueDraft.secretInBody");
+  return { ok: true, title, body };
+}
+
+/** Checks and cleans what was typed. Secret-looking text is refused, never sent or cut. */
+export function buildImageIssueDraft(
+  fields: { image: IssueImage | null; repository: string; title: string; body: string },
+  idempotencyKey: string,
+): DraftResult {
+  if (!fields.image) return { ok: false, problem: { key: "focus.issueDraft.imageRequired" } };
+  const repository = fields.repository.trim();
+  if (!new RegExp(REPOSITORY_PATTERN).test(repository)) {
+    return { ok: false, problem: { key: "handoff.attach.repositoryInvalid" } };
+  }
+  const text = cleanIssueText(fields.title, fields.body);
+  if (!text.ok) return text;
   return {
     ok: true,
     draft: {
       input: {
         repository,
-        title,
-        ...(body ? { body } : {}),
+        title: text.title,
+        ...(text.body ? { body: text.body } : {}),
         idempotency_key: idempotencyKey,
       },
       image: fields.image,

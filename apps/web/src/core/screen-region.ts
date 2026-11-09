@@ -13,12 +13,15 @@
 //     only waits and reports the operation's outcome; it never calls `/api/confirmations`.
 //   * The image arrives once, as base64 in the operation result (Core blanks it after a minute). It is
 //     checked again here (PNG signature, byte cap) and kept in page memory only: never saved, never sent.
-//   * The issue is created as TEXT ONLY, GitHub only. No tracker in this build can take an image, and
-//     Linear and Jira have no create command, so those refuse visibly.
+//   * The issue itself is always TEXT ONLY. GitHub stops there (it has no documented image upload). For
+//     Linear and Jira the person may then attach the redacted PNG in a separate, second step; that is
+//     its own Core-confirmed `issues` command (`*.issue.attach`), never part of the create.
 import type { IssueClient, IssueDraft, RegionCaptureClient } from "./screenshot";
 import { ApiError, type PhoenixClient } from "./client";
+import { ISSUES_CAPABILITY, type AttachTracker } from "./issue-attach";
 import {
   buildImageIssueDraft,
+  cleanIssueText,
   createUnavailable,
   GITHUB_CAPABILITY,
   ISSUE_COMMAND,
@@ -201,16 +204,27 @@ export function createCoreRegionCapture(
   };
 }
 
-/**
- * `IssueClient` over the `github` capability: text only (`supportsAttachment` is always false), GitHub
- * only. The text is cleaned and secret-scanned with the same rules as the image flow before any
- * request. The person's approval is Core's `issue.create` confirmation, raised when `create` runs;
- * a decline surfaces as an error from `create`, never as a created issue.
- */
-export function createCoreIssueClient(client: PhoenixClient, timing: CoreTiming = {}): IssueClient {
-  const input = (draft: IssueDraft) => {
-    if (draft.tracker !== "github") throw new Error(translate("screenRegion.trackerUnsupported"));
-    // The image is never part of the issue, so a placeholder stands in for the draft check.
+const TEAM_ID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const JIRA_PROJECT = /^[A-Z][A-Z0-9_]{1,49}$/;
+const ISSUE_KEY = /^[A-Za-z][A-Za-z0-9_]{0,49}-\d{1,9}$/;
+
+/** Core's failure for a write, in the words of the issue flow (decline, emergency stop, timeout, other). */
+function writeFailure(err: unknown): never {
+  if (err instanceof CommandFailure) {
+    if (err.code === "PERMISSION_DENIED") throw new Error(translate("focus.issueDraft.denied"));
+    if (err.code === "SECURITY_POLICY_BLOCKED") {
+      throw new Error(translate("focus.issueDraft.blocked"));
+    }
+    if (err.code === "OPERATION_TIMEOUT") throw new Error(translate("focus.issueDraft.timeout"));
+    throw new Error(translate("focus.issueDraft.failed", { message: err.message }));
+  }
+  throw err;
+}
+
+/** `{ command, input }` of the create command for a draft; the text is cleaned and secret-scanned first. */
+function createCall(draft: IssueDraft): { capability: string; command: string; input: unknown } {
+  if (draft.tracker === "github") {
+    // The image is never part of the GitHub issue, so a placeholder stands in for the draft check.
     const built = buildImageIssueDraft(
       {
         image: { name: "screenshot.png", mime: "image/png", base64: "" },
@@ -221,41 +235,120 @@ export function createCoreIssueClient(client: PhoenixClient, timing: CoreTiming 
       `screenshot-issue-${crypto.randomUUID()}`,
     );
     if (!built.ok) throw new Error(translate(built.problem.key, built.problem.vars ?? {}));
-    return built.draft.input;
-  };
+    return { capability: GITHUB_CAPABILITY, command: ISSUE_COMMAND, input: built.draft.input };
+  }
+  const text = cleanIssueText(draft.title, draft.body);
+  if (!text.ok) throw new Error(translate(text.problem.key, text.problem.vars ?? {}));
+  const body = text.body ? { body: text.body } : {};
+  if (draft.tracker === "linear") {
+    if (!TEAM_ID.test(draft.project)) throw new Error(translate("screenRegion.linearTeamInvalid"));
+    return {
+      capability: ISSUES_CAPABILITY,
+      command: "linear.issue.create",
+      input: { team_id: draft.project, title: text.title, ...body },
+    };
+  }
+  if (!JIRA_PROJECT.test(draft.project))
+    throw new Error(translate("screenRegion.jiraProjectInvalid"));
   return {
-    supportsAttachment: () => false,
+    capability: ISSUES_CAPABILITY,
+    command: "jira.issue.create",
+    input: { project: draft.project, title: text.title, ...body },
+  };
+}
+
+/** What `linear.issue.create` / `jira.issue.create` return, read defensively. */
+function readTrackerIssue(raw: unknown): { url: string; key: string } | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.url !== "string" || typeof r.key !== "string" || !ISSUE_KEY.test(r.key)) return null;
+  return { url: r.url, key: r.key };
+}
+
+/** Why the `issues` capability cannot run `command` now, or null when Core's own view says it can. */
+function issuesUnavailable(
+  list: readonly CapabilityView[],
+  command: string,
+  tracker: AttachTracker,
+) {
+  const issues = list.find((c) => c.id === ISSUES_CAPABILITY);
+  if (issues?.status !== "enabled" || !issues.commands.some((c) => c.name === command)) {
+    return translate("screenRegion.issuesUnavailable");
+  }
+  const secrets =
+    tracker === "linear" ? ["linear_write_key"] : ["jira_write_email", "jira_write_token"];
+  if (!secrets.every((name) => issues.secrets?.find((s) => s.name === name)?.set === true)) {
+    return translate("screenRegion.issuesNoWriteCredential", {
+      tracker: translate(
+        tracker === "linear" ? "focus.screenshot.tracker.linear" : "focus.screenshot.tracker.jira",
+      ),
+    });
+  }
+  return null;
+}
+
+/**
+ * `IssueClient` over Core. GitHub: text only, through the `github` capability's `issue.create`.
+ * Linear and Jira: text through `issues` `linear.issue.create` / `jira.issue.create`, and then, only
+ * when the person asks for it in a second step, the redacted PNG through `linear.issue.attach` /
+ * `jira.issue.attach`. GitHub has no attach: it offers no documented endpoint for an issue image.
+ * The text is cleaned and secret-scanned with the same rules as the image flow before any request.
+ * Every approval is Core's: each command is `external`, so Core raises its own confirmation when the
+ * command runs; a decline surfaces as an error, never as a created issue or an attached image.
+ */
+export function createCoreIssueClient(client: PhoenixClient, timing: CoreTiming = {}): IssueClient {
+  const capabilities = async () =>
+    (await client.request<{ capabilities: CapabilityView[] }>("GET", "/api/capabilities"))
+      .capabilities;
+  return {
+    supportsAttachment: (tracker) => tracker === "linear" || tracker === "jira",
     async approve(draft) {
       // Everything that can be refused is refused before Core is asked anything.
-      input(draft);
-      const list = await client.request<{ capabilities: CapabilityView[] }>(
-        "GET",
-        "/api/capabilities",
-      );
-      const why = createUnavailable(list.capabilities);
-      if (why) throw new Error(translate(why));
+      const call = createCall(draft);
+      const list = await capabilities();
+      if (draft.tracker === "github") {
+        const why = createUnavailable(list);
+        if (why) throw new Error(translate(why));
+      } else {
+        const why = issuesUnavailable(list, call.command, draft.tracker);
+        if (why) throw new Error(why);
+      }
       return true;
     },
     async create(draft) {
+      const call = createCall(draft);
       let result: unknown;
       try {
-        result = await runCommand(client, GITHUB_CAPABILITY, ISSUE_COMMAND, input(draft), timing);
+        result = await runCommand(client, call.capability, call.command, call.input, timing);
       } catch (err) {
-        if (err instanceof CommandFailure) {
-          if (err.code === "PERMISSION_DENIED")
-            throw new Error(translate("focus.issueDraft.denied"));
-          if (err.code === "SECURITY_POLICY_BLOCKED") {
-            throw new Error(translate("focus.issueDraft.blocked"));
-          }
-          if (err.code === "OPERATION_TIMEOUT")
-            throw new Error(translate("focus.issueDraft.timeout"));
-          throw new Error(translate("focus.issueDraft.failed", { message: err.message }));
-        }
-        throw err;
+        return writeFailure(err);
       }
-      const created = readCreated(result);
+      if (draft.tracker === "github") {
+        const created = readCreated(result);
+        if (!created) throw new Error(translate("focus.issueDraft.failed", { message: "" }));
+        return { url: created.url };
+      }
+      const created = readTrackerIssue(result);
       if (!created) throw new Error(translate("focus.issueDraft.failed", { message: "" }));
-      return { url: created.url };
+      return created;
+    },
+    async attach(request) {
+      const { tracker, issue } = request.details;
+      if (!ISSUE_KEY.test(issue)) throw new Error(translate("screenRegion.issueKeyInvalid"));
+      const command = `${tracker}.issue.attach`;
+      const why = issuesUnavailable(await capabilities(), command, tracker);
+      if (why) throw new Error(why);
+      let result: unknown;
+      try {
+        result = await runCommand(client, ISSUES_CAPABILITY, command, request.input, timing);
+      } catch (err) {
+        return writeFailure(err);
+      }
+      const r =
+        typeof result === "object" && result !== null ? (result as Record<string, unknown>) : {};
+      if (r.attached !== true || r.issue !== issue) {
+        throw new Error(translate("focus.issueDraft.failed", { message: "" }));
+      }
     },
   };
 }

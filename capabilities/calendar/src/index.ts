@@ -3,8 +3,9 @@
 import { defineCapability, type CapabilityContext } from "@phoenix/sdk";
 import { realSleep, startPolling, type Sleep } from "@phoenix/service-kit";
 import { ReminderBook, safeEvent, type CalendarEvent, type ReminderStore } from "./events";
-import { CalendarFeedError, type CalendarAdapter } from "./adapters";
+import { CalendarFeedError, macosCalendar, type CalendarAdapter } from "./adapters";
 import { caldavTarget } from "./caldav";
+import type { MacosCalendarFeed } from "./macos-feed";
 import { prepareMeeting, type MeetingPrepQuery } from "./prep";
 import {
   buildAdapter,
@@ -18,6 +19,7 @@ export * from "./adapters";
 export * from "./caldav";
 export * from "./events";
 export * from "./ics";
+export * from "./macos-feed";
 export * from "./prep";
 export * from "./providers";
 export interface CalendarOptions {
@@ -29,6 +31,11 @@ export interface CalendarOptions {
   adapters?: Partial<Record<ProviderName, CalendarAdapter>>;
   /** Where the Google and Graph tokens are sent. Code only, never a config setting (tests pass loopback mocks). */
   endpoints?: ProviderEndpoints;
+  /**
+   * Where the desktop shell's EventKit snapshots land (Core's `POST /api/calendar/macos`). Without
+   * it, or without a snapshot, `macos: true` makes the feed unavailable.
+   */
+  macosFeed?: MacosCalendarFeed;
   now?: () => number;
   sleep?: Sleep;
   prep?: MeetingPrepQuery;
@@ -79,6 +86,9 @@ export function createCalendarCapability(options: CalendarOptions = {}) {
             throw new CalendarFeedError(`${name} credential missing`);
           const adapter =
             options.adapters?.[name] ??
+            (name === "macos" && options.macosFeed
+              ? macosCalendar(options.macosFeed.runner)
+              : undefined) ??
             buildAdapter(name, ctx.config, credential ?? "", endpoints, ctx.signal);
           const batch = await adapter.list(from, to, ctx.signal);
           const safe: CalendarEvent[] = [];
@@ -199,7 +209,7 @@ export function createCalendarCapability(options: CalendarOptions = {}) {
             type: "boolean",
             default: false,
             description:
-              "macOS Calendar. Phoenix has no built-in reader (needs a host-supplied one); turning this on without one makes the feed unavailable, never silently empty.",
+              "macOS Calendar, read by the Phoenix desktop app through EventKit (needs the app, and full Calendar access you grant from Settings). Without a fresh snapshot from the app the feed is unavailable, never silently empty.",
           },
           caldav_url: {
             type: "string",

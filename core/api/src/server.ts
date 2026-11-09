@@ -9,6 +9,8 @@ import {
   BROWSER_RELAY_BODY_MAX_BYTES,
   BROWSER_RELAY_RESULT_PATH,
   decodeParams,
+  ISSUE_ATTACH_BODY_MAX_BYTES,
+  ISSUE_ATTACH_PATH,
   matchRoute,
   readJsonBody,
   sendError,
@@ -135,8 +137,8 @@ export class ApiServer {
         res,
         url,
         params: decodeParams(params),
-        // Only POST /api/attachments and POST /api/browser/relay/:id/result may read more than the default; the route (already
-        // authenticated above) asks for it, nobody else gets it.
+        // Only POST /api/attachments, POST /api/browser/relay/:id/result and the two issue image-attach
+        // commands may read more than the default; the route (already authenticated above) asks for it, nobody else gets it.
         body: (maxBytes) =>
           readJsonBody(
             req,
@@ -144,7 +146,8 @@ export class ApiServer {
               req.method === "POST" &&
               ((url.pathname === "/api/attachments" && maxBytes <= ATTACHMENT_BODY_MAX_BYTES) ||
                 (BROWSER_RELAY_RESULT_PATH.test(url.pathname) &&
-                  maxBytes <= BROWSER_RELAY_BODY_MAX_BYTES))
+                  maxBytes <= BROWSER_RELAY_BODY_MAX_BYTES) ||
+                (ISSUE_ATTACH_PATH.test(url.pathname) && maxBytes <= ISSUE_ATTACH_BODY_MAX_BYTES))
               ? maxBytes
               : undefined,
           ),

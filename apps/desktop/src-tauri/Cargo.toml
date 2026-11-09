@@ -50,6 +50,8 @@ objc2-core-foundation = { version = "0.3", default-features = false, features = 
 dispatch2 = { version = "0.3", default-features = false, features = ["std", "objc2"] }
 core-graphics = "0.25"
 core-foundation = "0.10"
+# Phase 83: the macOS Calendar reader (EKEventStore). A NEW objc2 0.3 family crate (Zlib OR Apache-2.0 OR MIT), macOS only; see docs/phases/phase-83-calendar-and-meeting-prep.md.
+objc2-event-kit = { version = "0.3", default-features = false, features = ["std", "block2", "EKEventStore", "EKEvent", "EKCalendar", "EKCalendarItem", "EKObject", "EKParticipant", "EKTypes"] }
 
 # Island window on Linux: the GTK window handle (same gtk 0.18 tauri uses) and libloading, which
 # is already in the lockfile through tauri's dependencies. libgtk-layer-shell is opened with

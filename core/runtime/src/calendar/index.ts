@@ -4,3 +4,4 @@ export * from "./freeze";
 export * from "./prep-query";
 export * from "./service";
 export * from "./reminder-store";
+export * from "./macos-snapshot";
