@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { PhoenixClient, readInjectedToken } from "../core/client";
 import { CoreProvider } from "../core/context";
+import { DemoFollowProvider } from "../core/demo-follow";
 import { I18nProvider } from "../i18n";
 import { FloatingApp } from "./FloatingApp";
 import { tauriShell } from "./shell";
@@ -25,7 +26,9 @@ async function boot() {
     <StrictMode>
       <CoreProvider client={client}>
         <I18nProvider>
-          <FloatingApp shell={shell} />
+          <DemoFollowProvider>
+            <FloatingApp shell={shell} />
+          </DemoFollowProvider>
         </I18nProvider>
       </CoreProvider>
     </StrictMode>,

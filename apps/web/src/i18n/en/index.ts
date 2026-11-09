@@ -26,6 +26,7 @@ import { safety } from "./safety";
 import { services } from "./services";
 import { settings } from "./settings";
 import { sounds } from "./sounds";
+import { musicPlay } from "./music-play";
 import { shell } from "./shell";
 import { signals } from "./signals";
 import { browserProfiles } from "./browser-profiles";
@@ -80,6 +81,7 @@ export const en = {
   ...machine,
   ...fawkesRebirth,
   ...sounds,
+  ...musicPlay,
   ...follow,
   ...serviceGlances,
   ...serviceGlancesB,

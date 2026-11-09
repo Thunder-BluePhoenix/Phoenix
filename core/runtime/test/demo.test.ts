@@ -199,6 +199,33 @@ describe("demo mode: exit criterion", () => {
     expect(core.runtime.events.count()).toBe(before.events.length);
   });
 
+  it("GET /api/demo/view reports the demo's own state with no url or token, and never the real one", async () => {
+    const started = await startDemo();
+    const realBefore = started.core.runtime.state.snapshot();
+    expect((await started.core.api("GET", "/api/demo/view")).json).toMatchObject({
+      running: true,
+      state: { state: "IDLE" },
+      tasks: [],
+    });
+    await started.ask("POST", "/api/capabilities/mock/commands/simulate", {
+      input: { scenario: "build-fail" },
+    });
+    let view: { running: boolean; state?: { state: string } } = { running: true };
+    await vi.waitFor(async () => {
+      view = (await started.core.api("GET", "/api/demo/view")).json as typeof view;
+      expect(view.state?.state).toBe("ERROR");
+    });
+    const text = JSON.stringify(view);
+    expect(text).not.toContain(started.demo.token);
+    expect(text).not.toContain(started.demo.url);
+    expect(text).not.toContain("127.0.0.1");
+    expect(started.core.runtime.state.snapshot()).toEqual(realBefore);
+    // Needs the real session token, and the demo's own Core has no view route to call.
+    expect((await fetch(started.core.base + "/api/demo/view")).status).toBe(401);
+    await started.core.api("POST", "/api/demo/stop", {});
+    expect((await started.core.api("GET", "/api/demo/view")).json).toEqual({ running: false });
+  });
+
   it("the demo Core is gone after stop", async () => {
     const started = await startDemo();
     await started.core.api("POST", "/api/demo/stop", {});
@@ -419,6 +446,7 @@ describe("demo mode: limits", () => {
       ["POST", "/api/demo/start"],
       ["POST", "/api/demo/stop"],
       ["GET", "/api/demo/status"],
+      ["GET", "/api/demo/view"],
     ] as const) {
       const res = await fetch(core.base + path, { method });
       expect(res.status, path).toBe(401);

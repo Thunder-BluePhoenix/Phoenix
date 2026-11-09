@@ -449,3 +449,20 @@ describe("switch pill dispatch", () => {
     expect(audit).toHaveLength(2);
   });
 });
+
+describe("play requests (Phase 94)", () => {
+  it("routes 'play X on <site>' to a search the person confirms, never to a tool", () => {
+    expect(matchIntent("play lo-fi beats on SoundCloud", TOOLS)).toEqual({
+      kind: "music_search",
+      service: "soundcloud",
+      query: "lo fi beats",
+    });
+    expect(matchIntent("play jazz on youtube", [])).toMatchObject({ kind: "music_search" });
+  });
+
+  it("refuses other services and keeps play/pause without a site refused", () => {
+    expect(matchIntent("play jazz on spotify", TOOLS)).toMatchObject({ kind: "refuse" });
+    expect(matchIntent("play pause the music", TOOLS)).toMatchObject({ kind: "refuse" });
+    expect(matchIntent("play on youtube", TOOLS)).toMatchObject({ kind: "refuse" });
+  });
+});

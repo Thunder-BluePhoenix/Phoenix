@@ -253,3 +253,5 @@ function validateSelection(selection: MediaSelection): void {
   if (selection.artist !== undefined && (selection.artist.length > 300 || !selection.artist.trim()))
     throw new Error("Invalid artist");
 }
+
+export * from "./play-request";

@@ -29,5 +29,7 @@ export const sounds: Record<keyof typeof ensounds, string> = {
   "sounds.saveFailed": "শব্দের সেটিংস সংরক্ষণ করা যায়নি।",
   "sounds.loadFailed": "শব্দের সেটিংস লোড করা যায়নি।",
   "sounds.note":
-    "আপনার নিজের শব্দের ফোল্ডার এখনও পাওয়া যায় না; শুধু Phoenix-এর অন্তর্নির্মিত সুর ব্যবহৃত হয়।",
+    "আপনার নিজের শব্দের ফোল্ডার শুধু Phoenix ডেস্কটপ অ্যাপে কাজ করে; এখানে শুধু Phoenix-এর অন্তর্নির্মিত সুর ব্যবহৃত হয়।",
+  "sounds.folder":
+    "কোনো শব্দ বদলাতে এই ফোল্ডারটি নিজে তৈরি করুন এবং এতে greet.wav, poke.wav, dizzy.wav, recover.wav, jump.wav, waiting.wav বা error.wav নামের WAV ফাইল রাখুন: {path}। Phoenix এটি তৈরি করে না, তালিকাভুক্তও করে না। সাধারণ PCM WAV নয়, 1 MiB-এর বেশি বা 5 সেকেন্ডের বেশি দীর্ঘ ফাইল উপেক্ষা করা হয় এবং অন্তর্নির্মিত শব্দ বাজে।",
 };

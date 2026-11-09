@@ -19,6 +19,7 @@
     "allow-shortcuts-reset",
     "allow-shortcuts-set-enabled",
     "allow-shortcuts-set-muted",
-    "allow-read-dropped-file"
+    "allow-read-dropped-file",
+    "allow-sound-override"
   ]
 }

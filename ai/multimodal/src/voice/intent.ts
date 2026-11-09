@@ -13,6 +13,12 @@
 // action: Core asks a person to approve the exact query before it leaves the computer, and voice can
 // never give that approval.
 
+import {
+  routePlayRequest,
+  type PlayRouteRefusal,
+  type PlayService,
+} from "../../../../capabilities/youtube-music/src/index";
+
 export type VoiceSideEffect = "none" | "read" | "write" | "execute" | "external" | "production";
 
 export interface VoiceTool {
@@ -26,6 +32,7 @@ export type VoiceIntent =
   | { kind: "web_search"; tool: string; query: string }
   | { kind: "switch_pill"; direction: "next" | "previous" }
   | { kind: "mailto_draft"; body: string }
+  | { kind: "music_search"; service: PlayService; query: string }
   | { kind: "deny" }
   | { kind: "unavailable"; message: string }
   | { kind: "refuse"; message: string };
@@ -54,6 +61,13 @@ export const WEB_SEARCH_TOOL = "web-search.search_confirmed";
  * (the prompt shows 80 characters of a value), so what they approve is all of what is sent.
  */
 export const MAX_SPOKEN_QUERY_CHARS = 80;
+const PLAY_REFUSAL: Record<Exclude<PlayRouteRefusal, "not_play_request">, string> = {
+  unknown_service:
+    "I can only search SoundCloud, Bandcamp or YouTube. Say: play, then what, on one of them.",
+  empty_query: "What should I search for?",
+  too_long: "That search is too long for you to read in full. Say a shorter one.",
+  bad_characters: "I could not use that search.",
+};
 const MUSIC = /\b(music|song|track|album|artist|playing|listening)\b/iu;
 /** Phrase -> conventional tool names, tried in order; the first that is enabled and read-only wins. */
 const SERVICE_PHRASES: readonly { phrase: RegExp; tools: readonly string[] }[] = [
@@ -129,6 +143,12 @@ export function matchIntent(text: string, tools: readonly VoiceTool[]): VoiceInt
   const request = normaliseIntentText(text);
   if (request.length === 0) return { kind: "refuse", message: "I did not catch a request." };
   if (DENY.test(request)) return { kind: "deny" };
+  // "play <query> on soundcloud|bandcamp|youtube" is a SEARCH the person confirms on screen: the page
+  // shows the site and the exact query, and only their click opens it. Voice never plays or picks.
+  const play = routePlayRequest(request);
+  if (play.ok) return { kind: "music_search", service: play.service, query: play.query };
+  if (play.reason !== "not_play_request")
+    return { kind: "refuse", message: PLAY_REFUSAL[play.reason] };
   const search = WEB_SEARCH.exec(request);
   if (search) {
     const query = (search[1] ?? "").trim();

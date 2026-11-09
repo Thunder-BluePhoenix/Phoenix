@@ -29,5 +29,8 @@ export const sounds: Record<keyof typeof ensounds, string> = {
   "sounds.preview.failed": "تعذّر تشغيل الصوت على هذا الجهاز.",
   "sounds.saveFailed": "تعذّر حفظ إعدادات الصوت.",
   "sounds.loadFailed": "تعذّر تحميل إعدادات الصوت.",
-  "sounds.note": "مجلد أصواتك الخاصة غير متاح بعد؛ تُستخدم فقط نغمات Phoenix المدمجة.",
+  "sounds.note":
+    "مجلد أصواتك الخاصة يعمل فقط في تطبيق Phoenix لسطح المكتب؛ هنا تُستخدم نغمات Phoenix المدمجة فقط.",
+  "sounds.folder":
+    "لاستبدال صوت، أنشئ هذا المجلد بنفسك وضع فيه ملفات WAV بالأسماء greet.wav وpoke.wav وdizzy.wav وrecover.wav وjump.wav وwaiting.wav وerror.wav: {path}. لا ينشئه Phoenix ولا يعرض محتوياته. يُتجاهل أي ملف ليس WAV من نوع PCM عاديًا أو يزيد حجمه على 1 ميبيبايت أو تزيد مدته على 5 ثوانٍ ويُشغَّل الصوت المدمج.",
 };

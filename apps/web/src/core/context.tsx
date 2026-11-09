@@ -10,6 +10,7 @@ import {
 } from "react";
 import { chatStoreFor } from "./chat-store";
 import { displayedState, type PhoenixClient } from "./client";
+import { useDemoView } from "./demo-view";
 import type { ActiveTask, ConnectionStatus, PetState } from "./types";
 
 const ClientContext = createContext<PhoenixClient | null>(null);
@@ -57,7 +58,9 @@ export function useTasks(): ActiveTask[] {
   const client = useClient();
   const [tasks, setTasks] = useState<ActiveTask[]>([]);
   useEffect(() => client.tasksChanged.on(setTasks), [client]);
-  return tasks;
+  // Phase 70: in the floating window and the island, a running demo's tasks replace the real ones.
+  const demo = useDemoView();
+  return demo ? demo.tasks : tasks;
 }
 
 /** True while the user is composing a chat message and no request is in flight. */
@@ -73,8 +76,12 @@ function useListening(): boolean {
  * of this page only: Core is not told (nothing typed leaves the page before Send).
  */
 export function useDisplayedState(): PetState {
-  const shown = displayedState(usePetState(), useConnection());
+  const status = useConnection();
+  const shown = displayedState(usePetState(), status);
   const listening = useListening();
+  // Phase 70: only while the real Core is reachable, so OFFLINE is never hidden by the demo.
+  const demo = useDemoView();
+  if (demo && status === "online") return demo.state;
   if (listening && shown.state === "IDLE") {
     return { ...shown, state: "LISTENING", explanation: "Listening: you are writing a message" };
   }

@@ -20,9 +20,13 @@ Below the step buttons, **Play automatically** runs the same steps through the s
 - Its one timer is cleared and its subscriptions removed whenever the run ends or the walkthrough unmounts. The interval (`DEFAULT_STEP_INTERVAL_MS`, 6000), the timer functions and the reduced-motion source are injectable (`DemoHost`'s `timeline` prop, `DemoTimeline` options) so tests use fake timers. There is no setting for the interval in the UI.
 - Code: `apps/web/src/core/demo-timeline.ts`, wired in `apps/web/src/components/Demo.tsx`; tests: `apps/web/test/demo-timeline.test.tsx` (fake timers, no real clock). Non-English strings for the new controls are machine-generated and not reviewed by a native speaker.
 
-## Floating window, pill and island: still not switched
+## Floating window and island: follow the demo (built, never run in a real window)
 
-Only the main web app switches to the demo runtime. The floating window, the pill and the island are separate webview entry points (`apps/web/src/floating/main.tsx`, `pill/main.tsx`, `island/main.tsx`), each with its own `PhoenixClient` on the real Core and no `DemoHost`; the demo controller's state (the demo token and client) exists only in the main window's page memory. Making them follow the demo needs a cross-window handoff of the demo session (for example a Tauri event or command from the shell carrying the demo URL and token, and a `DemoHost`-style client switch in each of those three entry points, restored when the demo stops) — a desktop-shell change that is not in the web code alone and was not built. While a demo runs those windows keep showing the real Core's data. No timed run is mirrored there either.
+The main web app switches its own client to the demo Core. The floating window and the island are separate webview entry points on the real Core, and they are **not** given the demo URL or token. Instead the real Core reports the running demo's Fawkes state and active tasks on `GET /api/demo/view` (real session token; `{ "running": false }` when no demo runs). The answer holds only `state` (`state`, `explanation`, `since`, `recording`, `sleeping`) and up to 20 `tasks`, read from the demo runtime's own state engine; no address, no token, no condition list.
+
+`DemoFollowProvider` (`apps/web/src/core/demo-follow.tsx`, mounted in `floating/main.tsx` and `island/main.tsx` only) polls that route every 1.5 s while the real Core is online and validates the answer (`demo-view.ts`: bounded text and counts, state names `[A-Z_]{1,24}`, only known fields copied; anything malformed counts as "no demo"). While a view is present `useDisplayedState`, `useTasks` and the pill list show the demo's state and tasks (the real agent sessions are left out of the pills); when the demo ends, the answer is malformed, the request fails or the real Core goes offline, the window shows the real Core again. OFFLINE is never hidden by the demo.
+
+Not covered: the dictation pill (a page served by Core with its own client; it shows dictation, not Fawkes' state, and is not given a demo view), glance data of other cards (only state and tasks follow; the Pet summary and approvals list in those windows still read the real Core), and the poll delay (up to 1.5 s after a state change). Tests use fakes (`apps/web/test/demo-follow.test.tsx`, `core/runtime/test/demo.test.ts`); nothing ran in a real window.
 
 ## Isolation and safety
 
@@ -42,11 +46,12 @@ Only one demo can run at a time. It refuses to start when the real emergency sto
 
 All routes require the real Core's normal session token.
 
-| Route                  | Result                                                                                                                               |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `POST /api/demo/start` | Starts the isolated Core and returns `{ url, token, steps }`. `steps` are ordered `{ scenario, caption_id, caption, route }` values. |
-| `POST /api/demo/stop`  | Stops the isolated Core; returns `{ stopped }`.                                                                                      |
-| `GET /api/demo/status` | Returns `{ running, step_count, idle_limit_ms }`.                                                                                    |
+| Route                  | Result                                                                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/demo/start` | Starts the isolated Core and returns `{ url, token, steps }`. `steps` are ordered `{ scenario, caption_id, caption, route }` values.  |
+| `POST /api/demo/stop`  | Stops the isolated Core; returns `{ stopped }`.                                                                                       |
+| `GET /api/demo/status` | Returns `{ running, step_count, idle_limit_ms }`.                                                                                     |
+| `GET /api/demo/view`   | Returns `{ running: false }` or `{ running: true, state, tasks }` of the demo (no URL, no token), for the floating window and island. |
 
 Giving the temporary demo token to the holder of the real session token is intentional: it grants access only to an isolated, in-memory Core with no real data. The web app validates that the returned URL is exactly loopback `http://127.0.0.1:<port>` before using it.
 

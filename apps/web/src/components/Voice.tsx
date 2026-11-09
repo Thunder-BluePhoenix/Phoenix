@@ -10,6 +10,8 @@ import {
   type AssistantPhase,
   type SpeechDeps,
 } from "../core/voice-assistant";
+import { routeSearch } from "../core/music-search";
+import { MusicSearchCard } from "./MusicSearchCard";
 import { isMailtoDraft, voiceBlocked, type VoiceSettings, type VoiceStatus } from "../core/voice";
 import { useT, type MessageKey } from "../i18n";
 import { Feedback } from "./Feedback";
@@ -60,6 +62,8 @@ export function VoiceBanner({
   if (local.phase === "idle" && !local.error && !local.reply) return null;
   const listening = local.phase !== "idle";
   const draft = local.reply?.action?.type === "mailto" ? local.reply.action.url : null;
+  // A spoken "play X on <site>" only ever becomes this card; the person's click opens the search.
+  const musicAction = local.reply?.action?.type === "music_search" ? local.reply.action : null;
   return (
     <section className="voice-banner" aria-label={t("capture.voice.banner.label")}>
       {listening && (
@@ -86,6 +90,9 @@ export function VoiceBanner({
             </>
           )}
         </p>
+      )}
+      {musicAction && (
+        <MusicSearchCard route={routeSearch(musicAction.service, musicAction.query)} />
       )}
     </section>
   );

@@ -31,5 +31,7 @@ export const sounds: Record<keyof typeof ensounds, string> = {
   "sounds.saveFailed": "Impossible d’enregistrer les réglages du son.",
   "sounds.loadFailed": "Impossible de charger les réglages du son.",
   "sounds.note":
-    "Un dossier de vos propres sons n’est pas encore disponible ; seules les tonalités intégrées de Phoenix sont utilisées.",
+    "Votre dossier de sons ne fonctionne que dans l’application de bureau Phoenix ; ici, seules les tonalités intégrées de Phoenix sont utilisées.",
+  "sounds.folder":
+    "Pour remplacer un son, créez vous-même ce dossier et placez-y des fichiers WAV nommés greet.wav, poke.wav, dizzy.wav, recover.wav, jump.wav, waiting.wav ou error.wav : {path}. Phoenix ne le crée ni ne le liste jamais. Un fichier qui n’est pas un WAV PCM simple, dépasse 1 Mio ou dure plus de 5 secondes est ignoré et le son intégré est joué.",
 };

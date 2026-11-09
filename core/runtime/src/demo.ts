@@ -10,6 +10,7 @@ import {
   type DemoStartView,
   type DemoStatusView,
   type DemoStepView,
+  type DemoView,
 } from "@phoenix/api";
 import { HookInstaller, type GitExec, type TerminalFocuser } from "@phoenix/capability-agents";
 import { mockCapability } from "@phoenix/capability-mock";
@@ -90,6 +91,9 @@ export function mockScenarioNames(): string[] {
     { scenario?: { enum?: string[] } } | undefined;
   return props?.scenario?.enum ?? [];
 }
+
+/** The most tasks `view()` returns. */
+export const DEMO_VIEW_MAX_TASKS = 20;
 
 export const DEMO_IDLE_LIMIT_MS = 10 * 60_000;
 
@@ -222,6 +226,24 @@ export class DemoRuntime implements DemoApi {
       running: this.active !== null,
       step_count: DEMO_STEP_DEFS.length,
       idle_limit_ms: this.idleLimitMs,
+    };
+  }
+
+  view(): DemoView {
+    const active = this.active;
+    if (!active) return { running: false };
+    const snap = active.runtime.state.snapshot();
+    // Only these fields leave: no condition list, no key, no address, no token.
+    return {
+      running: true,
+      state: {
+        state: snap.state,
+        explanation: snap.explanation,
+        since: snap.since,
+        recording: snap.recording,
+        sleeping: snap.sleeping,
+      },
+      tasks: active.runtime.state.tasks().slice(0, DEMO_VIEW_MAX_TASKS),
     };
   }
 

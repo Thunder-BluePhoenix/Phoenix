@@ -1,0 +1,13 @@
+# Only the runtime files ship: extension.js, src/*.js, package.json, README.md, LICENSE, media/icon.png.
+test/**
+scripts/**
+**/*.test.*
+**/*.map
+**/*.ts
+.vscode/**
+.vscode-test/**
+.gitignore
+.prettierrc*
+tsconfig*.json
+node_modules/**
+*.vsix

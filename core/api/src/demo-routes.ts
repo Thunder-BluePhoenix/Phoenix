@@ -28,12 +28,38 @@ export interface DemoStatusView {
   idle_limit_ms: number;
 }
 
+/**
+ * What the real Core tells its own windows about a running demo (`GET /api/demo/view`): the demo's
+ * Fawkes state and active tasks only. It carries no URL and no token, so the floating window and
+ * the island can follow the demo through the real Core connection they already have.
+ */
+export interface DemoViewState {
+  state: string;
+  explanation: string;
+  since: string;
+  recording: boolean;
+  sleeping: boolean;
+}
+export interface DemoViewTask {
+  key: string;
+  state: string;
+  title: string;
+  source: string;
+  since: string;
+  updatedAt: string;
+  progress?: number;
+}
+export type DemoView =
+  { running: false } | { running: true; state: DemoViewState; tasks: DemoViewTask[] };
+
 /** Phase 70: demo mode. Session-token routes only; the demo itself runs in a second, in-memory Core. */
 export interface DemoApi {
   /** `origin` is the browser origin that asked (already accepted by this Core); the demo Core accepts it too. */
   start(origin: string | undefined): Promise<DemoStartView>;
   stop(): Promise<{ stopped: boolean }>;
   status(): DemoStatusView;
+  /** The running demo's state and tasks, read from its own engine; `{ running: false }` otherwise. */
+  view(): DemoView;
 }
 
 export function demoRoutes(s: CoreServices): Route[] {
@@ -45,5 +71,6 @@ export function demoRoutes(s: CoreServices): Route[] {
     route("POST", "/api/demo/start", ({ req }) => demo().start(req.headers.origin)),
     route("POST", "/api/demo/stop", () => demo().stop()),
     route("GET", "/api/demo/status", () => demo().status()),
+    route("GET", "/api/demo/view", () => demo().view()),
   ];
 }

@@ -5,7 +5,28 @@
   "version": "0.1.0",
   "publisher": "phoenix-contributors",
   "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Thunder-BluePhoenix/Phoenix.git",
+    "directory": "integrations/vscode"
+  },
+  "homepage": "https://github.com/Thunder-BluePhoenix/Phoenix/tree/main/integrations/vscode#readme",
+  "bugs": {
+    "url": "https://github.com/Thunder-BluePhoenix/Phoenix/issues"
+  },
+  "icon": "media/icon.png",
+  "keywords": [
+    "phoenix",
+    "fawkes",
+    "tasks",
+    "diagnostics",
+    "local-first"
+  ],
   "private": true,
+  "scripts": {
+    "package:vsix": "npx --yes @vscode/vsce package",
+    "generate:icon": "node scripts/generate-icon.js"
+  },
   "engines": {
     "vscode": "^1.80.0"
   },

@@ -351,6 +351,34 @@ describe("running", () => {
     );
   });
 
+  it("a music_search action is only a card: the service and query are re-checked and nothing opens by itself", async () => {
+    const { socket, api } = await listening();
+    api.set("POST /api/music/connectors/bandcamp/search", () => ({
+      url: "https://bandcamp.com/search?q=jazz",
+    }));
+    socket.fromCore({
+      type: "reply",
+      text: "I did not play anything.",
+      outcome: "ok",
+      intent: "music_search",
+      action: { type: "music_search", service: "bandcamp", query: "jazz" },
+    });
+    expect(await screen.findByText("Search for: jazz")).toBeTruthy();
+    const link = await screen.findByRole("link", { name: "Open search page" });
+    expect(link.getAttribute("href")).toBe("https://bandcamp.com/search?q=jazz");
+    socket.fromCore({
+      type: "reply",
+      text: "x",
+      outcome: "ok",
+      intent: "music_search",
+      action: { type: "music_search", service: "evil.example", query: "jazz" },
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: "Open search page" })).toBeNull(),
+    );
+    expect(screen.getByText(/Only SoundCloud, Bandcamp and YouTube/)).toBeTruthy();
+  });
+
   it("Core ending the session (kill switch) releases the microphone and says why", async () => {
     const { mic, socket, api } = await listening();
     socket.fromCore({ type: "ended", reason: "kill_switch" });

@@ -121,6 +121,14 @@ a missing referrer or origin is possible) was never seen.
 4. Have the ad blocker consult `policy.describe(site).adBlocking`/`forUrl()`.
 5. Call `await connector.dispose()` on shutdown.
 
+## Play requests route to search, then a person chooses (built, simulated)
+
+"play <query> on soundcloud|bandcamp|youtube", typed in the command palette or said to Fawkes, is parsed by the pure `routePlayRequest` (`capabilities/youtube-music/src/play-request.ts`). It accepts only those three services (Spotify Web and anything else is refused), a query of 1 to 80 characters without control, bidirectional, zero-width or line-separator characters, and builds the address with `searchUrl`. The page shows a card with the site and the exact query; Core is asked for the address (`POST /api/music/connectors/:site/search`, 403 unless the person turned that site on) and a link appears only if the answer equals the address built in the page. The person's click follows the link to the site's own search page. Nothing is played, no result is picked, nothing is embedded or fetched.
+
+Why the link is not "open in the Phoenix browser": `phoenix://browser/open?url=` is parsed by `browser_core::radar_link`, which accepts loopback dev-server addresses only (it is the port radar's hand-off). Passing a music-site address through it would mean widening the shell's open policy for a remote site, a Rust and policy change for the owner to decide, not something to do inside this slice. The link also was never tried inside the real webview, where `target="_blank"` may do nothing.
+
+Now playing: `nowPlayingOf(snapshot)` stays unused. No player is hosted, so there is no snapshot to report and no media event is emitted.
+
 ## Limitations
 
 Evidence is simulated with injected fakes and, for the Core routes, a running Core

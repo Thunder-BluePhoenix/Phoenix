@@ -50,6 +50,7 @@ mod position;
 pub mod quit_veto;
 mod settings;
 pub mod shortcuts;
+mod sounds_folder;
 mod system_audio;
 #[cfg(target_os = "macos")]
 mod system_audio_macos;
@@ -1446,6 +1447,7 @@ pub fn builder<R: Runtime>(options: ShellOptions) -> tauri::Builder<R> {
             shortcuts_set_enabled,
             shortcuts_set_muted,
             read_dropped_file,
+            sounds_folder::sound_override,
             browser::open_tab,
             browser::close_tab,
             browser::activate_tab,

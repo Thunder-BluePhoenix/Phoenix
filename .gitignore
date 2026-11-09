@@ -17,3 +17,6 @@ apps/desktop/src-tauri/gen/
 .claude-flow/
 .swarm/
 ruvector.db
+
+# VS Code extension package output
+*.vsix

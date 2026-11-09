@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { PhoenixClient, readInjectedToken } from "../core/client";
 import { CoreProvider } from "../core/context";
+import { DemoFollowProvider } from "../core/demo-follow";
 import { I18nProvider } from "../i18n";
 import { IslandApp } from "./IslandApp";
 import { tauriIslandShell } from "./shell";
@@ -25,7 +26,9 @@ async function boot() {
     <StrictMode>
       <CoreProvider client={client}>
         <I18nProvider>
-          <IslandApp shell={shell} />
+          <DemoFollowProvider>
+            <IslandApp shell={shell} />
+          </DemoFollowProvider>
         </I18nProvider>
       </CoreProvider>
     </StrictMode>,

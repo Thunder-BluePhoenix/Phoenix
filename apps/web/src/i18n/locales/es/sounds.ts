@@ -31,5 +31,7 @@ export const sounds: Record<keyof typeof ensounds, string> = {
   "sounds.saveFailed": "No se pudieron guardar los ajustes de sonido.",
   "sounds.loadFailed": "No se pudieron cargar los ajustes de sonido.",
   "sounds.note":
-    "Aún no está disponible una carpeta con tus propios sonidos; solo se usan los tonos integrados de Phoenix.",
+    "Tu carpeta de sonidos propios solo funciona en la app de escritorio de Phoenix; aquí solo se usan los tonos integrados de Phoenix.",
+  "sounds.folder":
+    "Para reemplazar un sonido, crea tú mismo esta carpeta y pon en ella archivos WAV llamados greet.wav, poke.wav, dizzy.wav, recover.wav, jump.wav, waiting.wav o error.wav: {path}. Phoenix nunca la crea ni lista su contenido. Un archivo que no sea un WAV PCM simple, que supere 1 MiB o dure más de 5 segundos se ignora y suena el sonido integrado.",
 };

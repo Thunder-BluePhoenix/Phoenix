@@ -28,5 +28,7 @@ export const sounds: Record<keyof typeof ensounds, string> = {
   "sounds.preview.failed": "无法在此设备上播放声音。",
   "sounds.saveFailed": "无法保存声音设置。",
   "sounds.loadFailed": "无法加载声音设置。",
-  "sounds.note": "暂不支持使用你自己的声音文件夹；只使用 Phoenix 内置的提示音。",
+  "sounds.note": "你自己的声音文件夹只在 Phoenix 桌面应用中有效；此处只使用 Phoenix 内置的提示音。",
+  "sounds.folder":
+    "要替换某个声音，请自己创建此文件夹，并放入名为 greet.wav、poke.wav、dizzy.wav、recover.wav、jump.wav、waiting.wav 或 error.wav 的 WAV 文件：{path}。Phoenix 不会创建它，也不会列出其内容。不是普通 PCM WAV、超过 1 MiB 或长于 5 秒的文件会被忽略，改播内置声音。",
 };

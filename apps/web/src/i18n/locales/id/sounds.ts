@@ -30,5 +30,7 @@ export const sounds: Record<keyof typeof ensounds, string> = {
   "sounds.saveFailed": "Pengaturan suara tidak dapat disimpan.",
   "sounds.loadFailed": "Pengaturan suara tidak dapat dimuat.",
   "sounds.note":
-    "Folder suara Anda sendiri belum tersedia; hanya nada bawaan Phoenix yang dipakai.",
+    "Folder suara Anda sendiri hanya berfungsi di aplikasi desktop Phoenix; di sini hanya nada bawaan Phoenix yang dipakai.",
+  "sounds.folder":
+    "Untuk mengganti suara, buat sendiri folder ini lalu letakkan berkas WAV bernama greet.wav, poke.wav, dizzy.wav, recover.wav, jump.wav, waiting.wav atau error.wav di dalamnya: {path}. Phoenix tidak pernah membuat atau mendaftar isinya. Berkas yang bukan WAV PCM biasa, lebih dari 1 MiB, atau lebih dari 5 detik diabaikan dan suara bawaan diputar.",
 };

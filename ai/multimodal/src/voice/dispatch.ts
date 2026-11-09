@@ -38,7 +38,9 @@ export interface VoiceActions {
 }
 
 export type VoiceUiAction =
-  { type: "switch_pill"; direction: "next" | "previous" } | { type: "mailto"; url: string };
+  | { type: "switch_pill"; direction: "next" | "previous" }
+  | { type: "mailto"; url: string }
+  | { type: "music_search"; service: "soundcloud" | "bandcamp" | "youtube"; query: string };
 
 export type VoiceOutcome = "ok" | "refused" | "unavailable" | "failed" | "denied";
 
@@ -85,6 +87,13 @@ export async function dispatchRequest(
       return {
         text: "Switching pills.",
         action: { type: "switch_pill", direction: intent.direction },
+        intent: intent.kind,
+        outcome: "ok",
+      };
+    case "music_search":
+      return {
+        text: "I did not play anything. Check the search on screen and open it yourself.",
+        action: { type: "music_search", service: intent.service, query: intent.query },
         intent: intent.kind,
         outcome: "ok",
       };

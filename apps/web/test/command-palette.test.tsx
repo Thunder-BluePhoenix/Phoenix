@@ -68,6 +68,22 @@ const activeOption = () => {
 const type = (text: string) => fireEvent.change(box(), { target: { value: text } });
 
 describe("command palette", () => {
+  it("Enter on a play request shows a search card, never a page or playback (Phase 94)", async () => {
+    mount();
+    pressPaletteKey();
+    type("play lo-fi on soundcloud");
+    fireEvent.keyDown(box(), { key: "Enter" });
+    expect(await screen.findByText("Search for: lo-fi")).toBeTruthy();
+    expect(screen.getByText("Site: SoundCloud")).toBeTruthy();
+    // The card appears only after Enter, and a changed query drops it.
+    type("play lo-fi on soundcloud please");
+    expect(screen.queryByText("Search for: lo-fi")).toBeNull();
+    type("play x on tidal");
+    fireEvent.keyDown(box(), { key: "Enter" });
+    expect(screen.getByText(/Only SoundCloud, Bandcamp and YouTube/)).toBeTruthy();
+    expect(dialog()).not.toBeNull();
+  });
+
   it("opens with Ctrl+K as a labelled modal combobox with the input focused", () => {
     mount();
     expect(dialog()).toBeNull();

@@ -897,6 +897,60 @@ fn a_dropped_file_is_announced_without_its_path_and_read_once_by_its_window_only
     assert_eq!(announced.lock().unwrap().len(), 1);
 }
 
+/// Phase 59: the sounds folder is read for the pet windows only, by fixed id, never by path.
+fn sound_override_serves_the_pet_windows_a_fixed_id_and_refuses_others() {
+    let dir = tempfile::tempdir().unwrap();
+    let folder = dir.path().join("sounds");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("greet.wav"), b"RIFF-bytes").unwrap();
+    std::fs::write(dir.path().join("secret.wav"), b"outside").unwrap();
+    let s = start(dir.path());
+    let pet = s.app.get_webview_window(WINDOW_LABEL).expect("pet window");
+    let key = s.app.invoke_key().to_string();
+
+    let found = invoke(
+        &key,
+        &pet,
+        "sound_override",
+        serde_json::json!({"id": "greet"}),
+    )
+    .expect("greet");
+    assert_eq!(found["wav"].as_array().map(Vec::len), Some(10));
+    assert_eq!(found["folder"], folder.to_string_lossy().as_ref());
+    let missing = invoke(
+        &key,
+        &pet,
+        "sound_override",
+        serde_json::json!({"id": "poke"}),
+    )
+    .expect("poke");
+    assert!(missing["wav"].is_null());
+    let folder_only = invoke(&key, &pet, "sound_override", serde_json::json!({})).expect("folder");
+    assert!(folder_only["wav"].is_null());
+    assert_eq!(folder_only["folder"], folder.to_string_lossy().as_ref());
+    for bad in ["../secret", "secret", "greet.wav", "GREET"] {
+        let refused = invoke(&key, &pet, "sound_override", serde_json::json!({"id": bad}))
+            .expect_err("refused");
+        assert_eq!(refused["code"], "unknown_sound", "{bad}");
+    }
+
+    let other = tauri::WebviewWindowBuilder::new(
+        &s.app,
+        "stranger",
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .build()
+    .expect("other window");
+    let forbidden = invoke(
+        &key,
+        &other,
+        "sound_override",
+        serde_json::json!({"id": "greet"}),
+    )
+    .expect_err("not a pet window");
+    assert_eq!(forbidden["code"], "forbidden");
+}
+
 /// Phase 93: a start with fake DNS, a fake folder dialog and fake shields, and the browser's chrome
 /// window open. The mock runtime has no webview engine, so what it proves is the command surface
 /// (caller checks, validation, tab bookkeeping, events), not rendering or blocking.
@@ -1652,7 +1706,7 @@ fn main() {
     #[cfg(target_os = "linux")]
     gtk::init().expect("GTK failed to initialise: is a display available (xvfb-run)?");
 
-    let tests: [(&str, fn()); 26] = [
+    let tests: [(&str, fn()); 27] = [
         (
             "starts with window, tray and full menu",
             starts_with_window_tray_and_full_menu,
@@ -1701,6 +1755,10 @@ fn main() {
         (
             "shortcut commands work from the pet window and refuse any other",
             shortcut_commands_work_from_the_pet_window_and_refuse_any_other,
+        ),
+        (
+            "sound override serves the pet windows a fixed id and refuses others",
+            sound_override_serves_the_pet_windows_a_fixed_id_and_refuses_others,
         ),
         (
             "jump to terminal asks Core, then falls back to the agents page",

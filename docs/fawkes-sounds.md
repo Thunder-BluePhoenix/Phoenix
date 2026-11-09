@@ -29,6 +29,16 @@ One `SoundHost` per Core client (`soundHostFor`, `useSoundHost`) creates the pet
 - **Errors** are swallowed and reported as `failed`; the host never throws into the page.
 - **Preview.** Settings has one button per event. A preview plays at the slider's volume even while sounds are OFF (that is how a person hears what they would turn on), but obeys every other rule: muted, volume 0, quiet mode, quiet hours, the emergency stop, the demo, no gesture. A silent preview says why. A preview never changes the saved switch.
 
+## The user sounds folder (desktop only)
+
+`<app data dir>/sounds/<id>.wav` replaces a built-in sound, where `<id>` is one of `greet`, `poke`, `dizzy`, `recover`, `jump`, `waiting`, `error` (the app data dir is Tauri's `app_data_dir`, the folder that holds `desktop.json`; Settings → Fawkes sounds shows the exact path in the desktop app). Creating the folder and the files is the user's job: Phoenix never creates, lists or writes it.
+
+- **Shell side** (`apps/desktop/src-tauri/src/sounds_folder.rs`): one command, `sound_override`, with an optional `id` and no path argument. An id outside the fixed list of seven is refused before any file system call (`../x`, separators, NUL, other case, `greet.wav`). The file must be a regular file by `symlink_metadata` (a symlink, folder, FIFO or device is "no override"), is compared with the opened file (same device and inode on Unix; the open does not follow a link on Windows), is refused when empty or over 1 MiB, and is read with a bound one byte past the cap. It answers `{ folder, wav }`; without an `id` it only reports the folder. Only the floating (`fawkes`) and island (`fawkes-island`) windows may ask: the command checks the caller's label first and only `capabilities/default.json` grants `allow-sound-override` (the pill and browser capabilities do not). A symlinked folder itself is followed; only the file is checked.
+- **Web side** (`apps/web/src/commands/sounds-shell.ts`, `SoundHost`): inside the Tauri shell the host passes a resolver to the pet player, which still runs `inspectWav` on the bytes (PCM WAV, at most 2 MiB and 5 seconds), so a bad file falls back to the built-in sound; a shell error also falls back. In an ordinary browser there is no resolver. Nothing is read while sounds are off, muted, at volume 0 or quiet; the previews use overrides too.
+- **Settings** shows the folder path (read only) with the accepted names and limits, or, in a browser, a note that the folder is a desktop feature.
+- **Tests:** `sounds_folder.rs` (13: all seven ids, missing, traversal-like ids, symlink and dangling symlink, oversize and exactly the cap, empty, folder named like a sound, FIFO, the folder is never created, caller labels, and a source-reading test of the wiring: caller checked before the read, no path argument, granted to the pet windows only, no listing/creating calls); `tests/lifecycle.rs` runs the real command through the mock runtime (pet window reads, another window is refused, bad ids refused); `apps/web/test/sounds-shell.test.tsx` (14: fake shell override, ids asked, validation fallback, failing shell, no shell, disabled reads nothing, preview, the Tauri bridge, the three id lists agree, the Settings text). A resolver that is not passed, or a caller check that is removed, fails the tests; the symlink and size rules each have a second line of defence in the code, so the tests only fail when both are removed.
+- **Not verified:** no override file was ever played, no real webview called the command, and the Windows and Linux builds (including `FILE_FLAG_OPEN_REPARSE_POINT`) were not compiled or run here; the path text shown in Settings was not looked at on a real device.
+
 ## Strings
 
 `apps/web/src/i18n/en/sounds.ts` and the nine locales. The nine non-English files are machine-translated and unreviewed.
@@ -39,6 +49,6 @@ One `SoundHost` per Core client (`soundHostFor`, `useSoundHost`) creates the pet
 
 ## Not done
 
-- **The desktop user sounds folder** (replace any built-in sound with `<soundId>.wav`) is not built. Only the injected `SoundOverrideResolver` interface exists; no host passes one, and no Rust/Tauri code reads a real folder.
+- **The desktop user sounds folder** is built (see above) but nobody put a file in it and listened; it is only fake-tested and tested against a temporary directory and the mock Tauri runtime.
 - No sound was heard on any device, and the Web Audio backend was only tested against fakes.
 - The floating and island windows use the same host but were only run in happy-dom; their mute flag still comes from the desktop shell.

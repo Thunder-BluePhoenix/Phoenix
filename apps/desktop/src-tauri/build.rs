@@ -26,6 +26,7 @@ fn main() {
             "shortcuts_set_enabled",
             "shortcuts_set_muted",
             "read_dropped_file",
+            "sound_override",
             "open_tab",
             "close_tab",
             "activate_tab",

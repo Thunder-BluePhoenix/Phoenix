@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-sound-override"
+description = "Enables the sound_override command without any pre-configured scope."
+commands.allow = ["sound_override"]
+
+[[permission]]
+identifier = "deny-sound-override"
+description = "Denies the sound_override command without any pre-configured scope."
+commands.deny = ["sound_override"]

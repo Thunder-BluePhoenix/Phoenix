@@ -19,11 +19,13 @@ import {
   type QuietHoursConfig,
   type SoundBackend,
   type SoundEvent,
+  type SoundOverrideResolver,
   type SoundOutcome,
   type SoundPlayer,
 } from "@phoenix/pet-runtime";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useOptionalDemo } from "../components/Demo";
+import { tauriSoundsShell, type SoundsShell } from "../commands/sounds-shell";
 import { ApiError, type PhoenixClient } from "./client";
 import { useClient } from "./context";
 
@@ -93,6 +95,12 @@ function parseQuietInputs(
 export interface SoundHostOptions {
   /** Plays WAV bytes. Default: Web Audio on a lazily created `AudioContext`. */
   backend?: SoundBackend;
+  /**
+   * The desktop shell's user sounds folder (Phase 59). Default: the Tauri shell when this page runs
+   * inside it, none in an ordinary browser. Tests pass a fake, or null for none. Whatever it returns
+   * is still validated by the pet runtime (`inspectWav`) before it can play.
+   */
+  shell?: SoundsShell | null;
   now?: () => number;
   /** Whether the user has interacted with the page (browser autoplay rules). Default: observed. */
   gesture?: () => boolean;
@@ -158,6 +166,7 @@ export class SoundHost {
   private readonly listeners = new Set<() => void>();
   private readonly inner: SoundPlayer;
   private readonly previewer: SoundPlayer;
+  private readonly shell: SoundsShell | null;
   private readonly now: () => number;
   private readonly maxAgeMs: number;
 
@@ -172,9 +181,16 @@ export class SoundHost {
       options.playTimeoutMs ?? PLAY_TIMEOUT_MS,
     );
     const isQuiet = () => this.isQuiet();
+    this.shell = options.shell === undefined ? tauriSoundsShell() : options.shell;
+    const shell = this.shell;
+    // A shell that refuses or fails means "no override": the built-in sound plays.
+    const resolver: SoundOverrideResolver | undefined = shell
+      ? { resolve: (id) => shell.override(id).catch(() => null) }
+      : undefined;
     this.inner = createSoundPlayer({
       backend,
       isQuiet,
+      resolver,
       settings: () => ({
         enabled: this.prefs?.enabled === true,
         muted: this.muted,
@@ -186,6 +202,7 @@ export class SoundHost {
     this.previewer = createSoundPlayer({
       backend,
       isQuiet,
+      resolver,
       settings: () => ({ enabled: true, muted: this.muted, volume: this.previewVolume / 100 }),
     });
     this.player = {
@@ -202,6 +219,16 @@ export class SoundHost {
         }
       },
     };
+  }
+
+  /** Where the desktop's user sounds folder is, or null in a browser / when the shell cannot say. */
+  async soundsFolder(): Promise<string | null> {
+    if (!this.shell) return null;
+    try {
+      return await this.shell.folder();
+    } catch {
+      return null;
+    }
   }
 
   /** True while quiet mode, quiet hours, the emergency stop or the demo is on, or Core could not say. */

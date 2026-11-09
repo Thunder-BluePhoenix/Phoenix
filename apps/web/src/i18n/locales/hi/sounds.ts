@@ -30,5 +30,7 @@ export const sounds: Record<keyof typeof ensounds, string> = {
   "sounds.saveFailed": "ध्वनि सेटिंग सहेजी नहीं जा सकीं।",
   "sounds.loadFailed": "ध्वनि सेटिंग लोड नहीं हो सकीं।",
   "sounds.note":
-    "आपकी अपनी ध्वनियों का फ़ोल्डर अभी उपलब्ध नहीं है; केवल Phoenix की अंतर्निहित ध्वनियाँ उपयोग होती हैं।",
+    "आपकी अपनी ध्वनियों का फ़ोल्डर केवल Phoenix डेस्कटॉप ऐप में काम करता है; यहाँ केवल Phoenix की अंतर्निहित ध्वनियाँ उपयोग होती हैं।",
+  "sounds.folder":
+    "किसी ध्वनि को बदलने के लिए यह फ़ोल्डर खुद बनाएँ और इसमें greet.wav, poke.wav, dizzy.wav, recover.wav, jump.wav, waiting.wav या error.wav नाम की WAV फ़ाइलें रखें: {path}। Phoenix इसे न बनाता है, न इसकी सूची देखता है। जो फ़ाइल सादी PCM WAV न हो, 1 MiB से बड़ी हो या 5 सेकंड से लंबी हो, उसे छोड़ दिया जाता है और अंतर्निहित ध्वनि बजती है।",
 };

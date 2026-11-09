@@ -12,6 +12,8 @@ import { formatChord, isComposing, type Platform } from "../commands/keys";
 import { PALETTE_ATTRIBUTE } from "../commands/useShortcuts";
 import { available, type Bindings, type Command, type CommandContext } from "../commands/registry";
 import { useHashRoute } from "../core/hooks";
+import { routeCommandText, type PlayRoute } from "../core/music-search";
+import { MusicSearchCard } from "./MusicSearchCard";
 import { useLocale, useT } from "../i18n";
 
 /** Combining accents and Arabic vowel marks: ignored when comparing, so "cafe" finds "café". */
@@ -79,6 +81,8 @@ function PaletteDialog({ onClose, commands, bindings, platform, ctx }: CommandPa
   const input = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  // "play <query> on <service>" pressed with Enter: a search card, never playback (Phase 94).
+  const [playRoute, setPlayRoute] = useState<PlayRoute | null>(null);
 
   // Focus goes into the palette, and back to where it was when the palette closes. The element
   // is put back before a command's own focus move (the panel's heading) because unmount cleanups
@@ -131,7 +135,7 @@ function PaletteDialog({ onClose, commands, bindings, platform, ctx }: CommandPa
     if (e.key === "Tab") {
       const focusable = Array.from(
         dialog.current?.querySelectorAll<HTMLElement>(
-          "input, button, [tabindex]:not([tabindex='-1'])",
+          "input, button, a[href], [tabindex]:not([tabindex='-1'])",
         ) ?? [],
       );
       if (focusable.length === 0) return;
@@ -159,6 +163,11 @@ function PaletteDialog({ onClose, commands, bindings, platform, ctx }: CommandPa
       setActive(e.key === "Home" ? 0 : Math.max(shown.length - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
+      const play = routeCommandText(query);
+      if (play) {
+        setPlayRoute(play);
+        return;
+      }
       const entry = shown[current];
       if (entry) run(entry.command);
     }
@@ -199,6 +208,7 @@ function PaletteDialog({ onClose, commands, bindings, platform, ctx }: CommandPa
           onChange={(e) => {
             setQuery(e.target.value);
             setActive(0);
+            setPlayRoute(null);
           }}
         />
         <ul
@@ -227,7 +237,8 @@ function PaletteDialog({ onClose, commands, bindings, platform, ctx }: CommandPa
             );
           })}
         </ul>
-        {shown.length === 0 && (
+        {playRoute && <MusicSearchCard route={playRoute} />}
+        {shown.length === 0 && !playRoute && (
           <p className="palette-empty muted">{t("shell.palette.empty", { query })}</p>
         )}
         <p id={`${base}-hint`} className="palette-hint muted small">

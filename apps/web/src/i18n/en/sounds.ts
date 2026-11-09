@@ -29,5 +29,7 @@ export const sounds = {
   "sounds.saveFailed": "Could not save the sound settings.",
   "sounds.loadFailed": "Could not load the sound settings.",
   "sounds.note":
-    "A folder of your own sounds is not available yet; only Phoenix's built-in tones are used.",
+    "Your own sounds folder works only in the Phoenix desktop app; here only Phoenix's built-in tones are used.",
+  "sounds.folder":
+    "To replace a sound, create this folder yourself and put WAV files named greet.wav, poke.wav, dizzy.wav, recover.wav, jump.wav, waiting.wav or error.wav in it: {path}. Phoenix never creates or lists it. A file that is not a plain PCM WAV, is over 1 MiB or longer than 5 seconds is ignored and the built-in sound plays.",
 } as const;

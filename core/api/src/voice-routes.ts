@@ -28,7 +28,8 @@
 //          {"type":"ready"}
 //          {"type":"state","state":"waiting|awake|thinking"}
 //          {"type":"reply","text":"...","outcome":"ok|refused|unavailable|failed|denied",
-//             "intent":"...","action"?:{"type":"switch_pill","direction":"next|previous"}|{"type":"mailto","url":"mailto:..."}}
+//             "intent":"...","action"?:{"type":"switch_pill","direction":"next|previous"}|{"type":"mailto","url":"mailto:..."}
+//             |{"type":"music_search","service":"soundcloud|bandcamp|youtube","query":"..."}}
 //          {"type":"ended","reason":"..."}      (sent by the socket) the session is over (stop, kill switch, disabled, ...)
 //          {"type":"error","error":"..."}       a frame was refused; the session is discarded
 //        Client -> server: binary frames only, 16 kHz mono signed 16-bit little-endian PCM, 2..65536
@@ -74,7 +75,9 @@ export type VoiceStreamMessageView =
       outcome: string;
       intent: string;
       action?:
-        { type: "switch_pill"; direction: "next" | "previous" } | { type: "mailto"; url: string };
+        | { type: "switch_pill"; direction: "next" | "previous" }
+        | { type: "mailto"; url: string }
+        | { type: "music_search"; service: "soundcloud" | "bandcamp" | "youtube"; query: string };
     };
 
 export interface VoiceStreamHandle {

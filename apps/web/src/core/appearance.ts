@@ -11,6 +11,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError } from "./client";
 import { useClient, useTasks } from "./context";
+import { useDemoView } from "./demo-view";
 import { useAgentLiveSessions } from "./hooks";
 
 export const APPEARANCE_PATH = "/api/fawkes/appearance";
@@ -143,9 +144,11 @@ export function useActivePills(): Pill[] {
   const { data } = useAppearance();
   const tasks = useTasks();
   const { sessions } = useAgentLiveSessions();
+  // While a followed demo runs, the real agent sessions are not mixed into the demo's pills.
+  const demoRunning = useDemoView() !== null;
   return useMemo(() => {
     const active: string[] = [];
-    for (const s of sessions) if (s.active) active.push(`agent:${s.agent}`);
+    if (!demoRunning) for (const s of sessions) if (s.active) active.push(`agent:${s.agent}`);
     for (const t of tasks) if (t.source !== "core") active.push(`capability:${t.source}`);
     const pills: Pill[] = [];
     for (const id of new Set(active)) {
@@ -155,5 +158,5 @@ export function useActivePills(): Pill[] {
       pills.push({ id, label, colour: style.colour, glyph: style.glyph });
     }
     return orderPills(pills);
-  }, [data, tasks, sessions]);
+  }, [data, tasks, sessions, demoRunning]);
 }

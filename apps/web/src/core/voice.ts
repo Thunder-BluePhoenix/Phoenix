@@ -31,7 +31,10 @@ export interface VoiceStarted {
 
 /** `direction` is absent from an older Core: that means "next". Anything but "previous" is "next". */
 export type VoiceAction =
-  { type: "switch_pill"; direction?: "next" | "previous" } | { type: "mailto"; url: string };
+  | { type: "switch_pill"; direction?: "next" | "previous" }
+  | { type: "mailto"; url: string }
+  /** Untrusted: the page re-checks the service and query (`routeSearch`) before showing anything. */
+  | { type: "music_search"; service: string; query: string };
 
 export interface VoiceReply {
   text: string;

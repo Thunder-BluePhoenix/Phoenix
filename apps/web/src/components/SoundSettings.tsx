@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { SOUND_EVENTS, type SoundEvent, type SoundOutcome } from "@phoenix/pet-runtime";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatNumber } from "../core/format";
 import { useSoundHost, useSoundPrefs } from "../core/sounds";
 import { useT, type MessageKey } from "../i18n";
@@ -38,6 +38,17 @@ export function SoundSettingsSection() {
   const [draft, setDraft] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [silent, setSilent] = useState<string | null>(null);
+  // Desktop app only: where the user's own sounds folder is (read only; the shell never creates it).
+  const [folder, setFolder] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void host.soundsFolder().then((path) => {
+      if (live) setFolder(path);
+    });
+    return () => {
+      live = false;
+    };
+  }, [host]);
 
   const save = async (change: { enabled?: boolean; volume?: number }) => {
     setError(null);
@@ -112,7 +123,9 @@ export function SoundSettingsSection() {
           <Feedback error={error} saved={silent} />
         </>
       )}
-      <p className="muted small">{t("sounds.note")}</p>
+      <p className="muted small">
+        {folder === null ? t("sounds.note") : t("sounds.folder", { path: folder })}
+      </p>
     </section>
   );
 }
