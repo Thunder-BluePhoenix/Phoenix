@@ -188,15 +188,41 @@ bidi and zero-width characters are rejected with 400, other fields are rejected.
 
 Tests: `ai/models/test/local-generate.test.ts`, `ai/browsing/test/browsing.test.ts` (`propose`),
 `core/runtime/test/browser-assist.test.ts` (running Core, a fake Ollama behind a recording fetch, the 35 fixtures
-of `ai/evaluation/test/browsing-injection-cases.ts`). All simulated. Not built: any web UI for the route, and no
-real model has ever answered it.
+of `ai/evaluation/test/browsing-injection-cases.ts`). All simulated. No real model has ever answered it.
+
+### Web UI: "Ask Fawkes to help with this page" (chrome panel)
+
+`apps/web/src/browser/assist.ts` + `AssistPanel.tsx`, opened from the ✦ button in the Phoenix browser's **chrome**
+window (never drawn inside a page; the chrome grows to `BROWSER_CHROME_ASSIST_HEIGHT` while it is open). **Evidence:
+fake shell + fake Core only (`apps/web/test/browser-assist.test.tsx`); it has never been drawn in a real window or
+used with a real model or page.**
+
+- **Goal:** at most 500 characters; control, bidi and zero-width characters are refused client-side with a visible
+  reason and nothing is sent (the route checks again).
+- **Propose** posts `{ goal }` with the session token. The answer is parsed strictly (status, `plan.page_url` an
+  http(s) address, at most 5 `click`/`type`/`submit` steps whose selector fits the capability's grammar, `type` with
+  text); anything else shows "could not be reached, nothing was run".
+- **Steps are inert text** (`click` / `type` / `submit`, the control and, for `type`, the text, with control and bidi
+  characters shown as U+FFFD), under the label "Proposed by a local model that read this page. Nothing has run." No
+  step is a link or a handler. The count of suggestions Core refused (`dropped`) is shown.
+- **Run this step** sends ONE `POST /api/capabilities/browser/commands/<kind>` with `{ pageUrl: plan.page_url, selector[, text] }`,
+  which raises the existing approval card. There is no run-all, no auto-advance, and while a step waits for approval or
+  runs, every step button and Propose are disabled. A declined, blocked, unreachable or timed-out step shows a fixed
+  message (Core's own text is never shown) and the next step is not started.
+- **Page re-check:** before a step is sent, the ACTIVE tab must be the tab the plan was proposed for and still on
+  `plan.page_url` (fragment ignored); otherwise the step is refused with "The tab is no longer on the page these steps
+  were proposed for. Ask again." and no command is sent. This is feedback and a fast refusal; the authority is Core,
+  which re-reads the page after approval, and Rust, which compares `expectedUrl` again.
+- **Statuses** `no_local_model`, `local_model_failed`, `no_browser` show fixed translated messages; the route's
+  `detail` is not displayed.
+- **Strings:** `apps/web/src/i18n/en/browser-assist.ts` and nine machine-translated, unreviewed locales.
 
 ## Limitations and unmet exit criteria
 
 - The phase's exit criteria (a multi-step flow on a real test site; injection tests passing) are **not
   claimed**. The injection suite exists but is simulated: no real browser, site or model was used.
 - Built with fakes only: browser tools in the gateway, the approval card and a browser source for the reader (see
-  above). Unbuilt: measurement of a real model against the visible attacker text, a web UI for `POST /api/browser/assist`,
+  above). Unbuilt: measurement of a real model against the visible attacker text, a run of the new chrome panel in a real window,
   log-in, and any run in a real webview or on a real site. Controls
   without a unique id or name cannot be acted on.
 - Login is only possible by the user typing credentials themselves; the assistant never fills them.

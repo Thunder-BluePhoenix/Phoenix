@@ -127,18 +127,29 @@ export function readScheduledAwake(raw: unknown): ScheduledAwake | null {
 
 // ── Status lights ────────────────────────────────────────────────────────────
 
-export type ProvisionedLight = {
-  id: string;
+interface LightAddress {
   address: string;
   port: number | null;
-} & ({ kind: "key-light" } | { kind: "lifx"; mac: string });
+}
+
+export type ProvisionedLight = { id: string } & (
+  | ({ kind: "key-light" } & LightAddress)
+  | ({ kind: "lifx"; mac: string } & LightAddress)
+  | ({ kind: "luxafor" } & LightAddress)
+  | { kind: "hue"; bridge: string; resource: string }
+);
 
 function readLight(raw: unknown): ProvisionedLight | null {
   if (!isRecord(raw)) return null;
-  const { id, kind, address, port, mac } = raw;
-  if (typeof id !== "string" || typeof address !== "string") return null;
+  const { id, kind, address, port, mac, bridge, resource } = raw;
+  if (typeof id !== "string") return null;
+  if (kind === "hue")
+    return typeof bridge === "string" && typeof resource === "string"
+      ? { id, kind, bridge, resource }
+      : null;
+  if (typeof address !== "string") return null;
   const base = { id, address, port: typeof port === "number" ? port : null };
-  if (kind === "key-light") return { ...base, kind };
+  if (kind === "key-light" || kind === "luxafor") return { ...base, kind };
   if (kind === "lifx" && typeof mac === "string") return { ...base, kind, mac };
   return null;
 }
@@ -149,13 +160,16 @@ export function readLights(raw: unknown): ProvisionedLight[] | null {
 }
 
 /** A light as the PUT body spells it: the port only when Core reported one, the serial for LIFX. */
-export const lightBody = (light: ProvisionedLight) => ({
-  id: light.id,
-  kind: light.kind,
-  address: light.address,
-  ...(light.port === null ? {} : { port: light.port }),
-  ...(light.kind === "lifx" ? { mac: light.mac } : {}),
-});
+export const lightBody = (light: ProvisionedLight) =>
+  light.kind === "hue"
+    ? { id: light.id, kind: light.kind, bridge: light.bridge, resource: light.resource }
+    : {
+        id: light.id,
+        kind: light.kind,
+        address: light.address,
+        ...(light.port === null ? {} : { port: light.port }),
+        ...(light.kind === "lifx" ? { mac: light.mac } : {}),
+      };
 
 /** The ids the status-lights capability's `devices` setting allows, from its stored config. */
 export function consentedIds(config: Record<string, unknown> | undefined): string[] {

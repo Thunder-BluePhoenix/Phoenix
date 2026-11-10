@@ -35,7 +35,9 @@ import { shields } from "./shields";
 import { browser } from "./browser";
 import { browserApproval } from "./browser-approval";
 import { browserChrome } from "./browser-chrome";
+import { browserAssist } from "./browser-assist";
 import { awakeSchedule } from "./awake-schedule";
+import { statusLights } from "./status-lights";
 import { awakeSettings } from "./awake-settings";
 import { teamStatus } from "./team-status";
 import { teamWebhooks } from "./team-webhooks";
@@ -75,7 +77,9 @@ export const en = {
   ...browser,
   ...browserApproval,
   ...browserChrome,
+  ...browserAssist,
   ...awakeSchedule,
+  ...statusLights,
   ...awakeSettings,
   ...teamStatus,
   ...teamWebhooks,

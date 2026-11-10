@@ -129,9 +129,20 @@ const statusLights = createStatusLightsCapability({
 - **Consent is separate.** The `devices` setting of the status-lights capability config lists the lights you allow. Provisioning alone
   never lights anything.
 - **Trusted events.** Only events with source `agents` (and `core` for `notetaker.*`) drive colours.
-- **Settings section:** see `apps/web/src/components/StatusLightsSettings.tsx`. It lists and keeps LIFX lights (so removing a Key Light
-  does not drop them) but only adds Key Lights; a LIFX light is added through `PUT /api/status-lights/devices` with its serial. The new
-  and changed `awakeSchedule.lights.*` strings exist in all nine locales; the non-English ones are machine-translated and unreviewed.
+- **Settings section:** `apps/web/src/components/StatusLightsSettings.tsx` (with `HueBridgesSettings.tsx`, `StatusLightsParts.tsx`,
+  `apps/web/src/core/status-lights.ts`). It adds Key Lights by address and keeps every other kind in the list when it saves. **Hue:**
+  enter a name and the bridge's private IPv4 address, "Read the bridge certificate" (`POST .../hue/inspect`, nothing is sent to the
+  bridge), then the address and SHA-256 fingerprint are shown as text with the "press the round link button" step; the pair button stays
+  disabled and the handler refuses until an explicit confirm box is ticked, and editing the address drops the confirmation. Paired
+  bridges list with their fingerprint, "Show lights" and "Remove bridge". **Luxafor:** add the machine running the app, then a
+  write-only password field per light (`PUT .../luxafor/:id/token`); the field is emptied as soon as it is sent, nothing is read back,
+  and the token is cleared by removing the light (Core deletes it). **LIFX:** a "Find LIFX lights" button runs one discovery and lists
+  the results as text; a light is added only by its own "Add this light" button. **Quiet hours:** read and written as `quiet_hours` in
+  the capability's config (the same route as consent), then the capability is restarted. Every error is a fixed translated text (Core's
+  and the device's own words are dropped); names and ids a device supplies have control and bidi characters stripped and render as text.
+  Strings are in `apps/web/src/i18n/*/status-lights.ts` for all ten locales; the nine non-English ones are machine-translated and
+  unreviewed. Evidence: `apps/web/test/status-lights-settings.test.tsx` (fake Core, happy-dom). **No real Hue bridge, Luxafor app or LIFX
+  bulb was used.** The Stream Deck still has no Settings control.
 - **Tests.** `core/runtime/test/status-lights-wiring.test.ts` (fake Key Light on loopback, provisioning/audit, LIFX over UDP, Focus
   following), `core/runtime/test/lifx-transport.test.ts` (fake LIFX light on a real loopback UDP socket, `fake-lifx.ts`),
   `capabilities/status-lights/test/lifx.test.ts` (byte-exact frames).
@@ -187,18 +198,50 @@ const statusLights = createStatusLightsCapability({
   sent and nothing is provisioned. The owner confirms which lights to use by adding them with `PUT /api/status-lights/devices`, and
   consent is still the separate capability setting. Audited as `status_lights.lifx_discovery` with the count only.
 - **Rates.** LIFX 250 ms per light, Hue 250 ms per bridge, Luxafor 250 ms per light, discovery 5 s apart; all use `pacer.ts`.
-- **No Settings control** adds a Hue bridge, a Luxafor light or a discovered LIFX light; they are API only.
-- **Stream Deck plugin: not built, on purpose.** Elgato's SDK is a separate toolchain and package (a Node plugin bundle with its own
-  manifest and `@elgato/streamdeck` dependency); adding it here would be a new npm package. The deck ports in the capability remain
-  unconnected.
+- **Stream Deck plugin: built as a plain Node bundle, never loaded** (`apps/streamdeck/`, see [Stream Deck plugin](#stream-deck-plugin-apps-streamdeck)). It does
+  not use the capability's `deck` ports: those still have no host surface, and `main.ts` passes none.
 
 `main.ts` still passes no `deck` ports: Core supplies lights, the event feed and Focus mode, not a Stream Deck surface.
 
+## Stream Deck plugin (`apps/streamdeck`)
+
+`apps/streamdeck/com.phoenix.fawkes.sdPlugin/` is a Stream Deck plugin bundle (Elgato's `.sdPlugin` folder layout) with no npm dependency:
+Node built-ins only. Elgato documents the plugin WebSocket protocol, so the plugin speaks it directly: Stream Deck starts
+`bin/plugin.js` with `-port -pluginUUID -registerEvent -info`, the plugin opens `ws://127.0.0.1:<port>` with Node's built-in
+`WebSocket` and sends `{event: <registerEvent>, uuid: <pluginUUID>}`. The manifest (`manifest.json`, `CodePath` `bin/plugin.js`,
+`Nodejs.Version` `24`, `SDKVersion` 2, `Software.MinimumVersion` 7.1, mac and windows) follows Elgato's manifest reference.
+
+| Action                          | Does                                                                                                                                                                      | Cannot                                                                                                                         |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `com.phoenix.fawkes.state`      | shows Fawkes' coarse display state (an existing state name: ERROR, WAITING, RECORDING, WORKING, IDLE, SLEEPING, OFFLINE ...) as a colour and a title, refreshed every 5 s | do anything on press except refresh                                                                                            |
+| `com.phoenix.fawkes.keep-awake` | on press, asks Core to run `awake.start` for 30 minutes                                                                                                                   | start anything by itself: Core's permission gateway asks on screen every time (`awake.start` is a confirmed `execute` command) |
+
+- **No key approves or denies anything.** There is no approve key, no deny key and no confirmation id anywhere in the plugin or the host; a
+  test greps the plugin sources for `/api/confirmations`. Keep-awake is the only request, it has a fixed length (30 minutes, set in the
+  host, not in the message) and a 10 s cooldown in the plugin so a mashed key cannot queue prompts. The key shows "Confirm on screen"
+  after Core accepts (HTTP 202), never "started".
+- **The token stays out of the plugin.** `bin/host.js` (the same pattern as `apps/extension/host`) is started by the plugin for one
+  message: one length-prefixed JSON frame in, one out. The host reads the session token like the CLI does, sends it only to
+  `http://127.0.0.1:<port>` (not `localhost`), refuses redirects, and exposes exactly two messages, `{kind:"state"}` and
+  `{kind:"keep_awake"}`, with no other field. The plugin passes the child only `PHOENIX_ENV`, `PHOENIX_DATA_DIR`,
+  `PHOENIX_CORE_URL` and the home directory variables, never `PHOENIX_SESSION_TOKEN`. Replies carry a state name checked against the fixed
+  list, never Core's text.
+- **Core routes: none added.** The host uses the existing `GET /api/pet/state` and `POST /api/capabilities/awake/commands/start`.
+  Core passes nothing to the plugin.
+- **Limit (same as every session-token client):** the host's token file read is the same access any process of the same OS user has, and Core
+  has no user identity, so the plugin's only protection is that it asks and Core confirms on screen. The `x-phoenix-client: stream-deck` header
+  is a label, not authentication.
+- **Evidence.** `apps/streamdeck/test/plugin.test.ts` (a fake WebSocket) and `host.test.ts` (framing, hostile messages, a real in-process
+  Core with the keep-awake capability on a fake machine, the real host script run as a child process against a closed port). Stream Deck
+  never ran: the plugin was never loaded in the Stream Deck app, never packaged with Elgato's CLI or signed, and no hardware was used.
+  Using the manifest's `Nodejs.Version` 24 means Stream Deck 7.1 or newer, which supplies its own Node; the tests ran under Node 22.
+  The key images are flat colours and two simple SVG icons; nothing from Coucou is used.
+
 ## Not done
 
-- The Stream Deck plugin (manifest, property inspector, artwork) and a host deck surface. The deck is a port with no host surface.
+- The Stream Deck plugin was never loaded in the Stream Deck app, packaged with Elgato's CLI, signed or shown on hardware; it has no approve or deny key, no record key and no property inspector. The capability's `deck` ports (approve/deny/record keys) still have no host surface.
 - Luxafor over USB HID (needs a native dependency). Hue bridge discovery (mDNS or Philips' cloud) is deliberately not done: the owner
-  types the address. No Settings control for Hue pairing, a Luxafor token, LIFX discovery or a LIFX serial (API only).
+  types the address. Hue pairing, the Luxafor token, LIFX discovery and quiet hours now have Settings controls (fake-tested only); a Key Light and Hue light still cannot be edited in place, only removed and added again.
 - The Hue, Luxafor and LIFX-discovery code was only run against fakes; no real bridge (certificate, link button, key format),
   Luxafor app or bulb answered it.
 - No real-device run, so the exit criterion is unmet; the Key Light and LIFX transports were never run against a real light; Hue colour

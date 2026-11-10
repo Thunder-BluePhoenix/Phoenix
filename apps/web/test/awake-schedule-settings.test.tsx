@@ -346,7 +346,7 @@ describe("status lights", () => {
     ]);
   });
 
-  it("shows Core's message for an address that is not on the local network", async () => {
+  it("shows a fixed text, not Core's words, for an address that is not on the local network", async () => {
     mountLights(
       {},
       {
@@ -362,7 +362,7 @@ describe("status lights", () => {
     });
     fireEvent.click(s.getByRole("button", { name: "Add light" }));
     expect((await s.findByRole("alert")).textContent).toBe(
-      "address must be an IPv4 address on your own network",
+      "The light list could not be saved. Check the name and address.",
     );
     expect(s.queryByText("bad")).toBeNull();
   });
@@ -443,10 +443,10 @@ describe("status lights", () => {
     expect(s.queryByRole("button")).toBeNull();
   });
 
-  it("states that only fixed colours are sent and only Key Light is supported", async () => {
+  it("states that only fixed colours are sent and that credentials are write-only", async () => {
     mountLights({});
     const s = await lightsSection();
     await s.findByText(/Only fixed colours are sent/);
-    expect(s.getByText(/Only the Elgato Key Light and LIFX are supported/)).toBeTruthy();
+    expect(s.getByText(/Credentials .* are write-only/)).toBeTruthy();
   });
 });

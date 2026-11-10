@@ -11,6 +11,7 @@ import { useT, type MessageKey } from "../i18n";
 import { classifyAddress, classifyPortRadarUrl, type SearchProvider } from "./address";
 import {
   BROWSER_CHROME_HEIGHT,
+  BROWSER_CHROME_ASSIST_HEIGHT,
   BROWSER_CHROME_FIND_EXTRA,
   BROWSER_CHROME_PANEL_HEIGHT,
   type BrowserShell,
@@ -24,6 +25,8 @@ import { useFindInPage } from "./find";
 import { PermissionPanel } from "./PermissionPanel";
 import { SYSTEM_CLOCK, usePermissionPrompts, type PermissionClock } from "./permissions";
 import { useBrowserRelay } from "./relay";
+import { AssistPanel } from "./AssistPanel";
+import { useBrowserAssist } from "./assist";
 import { INITIAL_STATE, activeTab, addressText, clampZoom, reduce } from "./state";
 
 /** Zoom steps the buttons walk through. The shell clamps anything else. */
@@ -113,6 +116,9 @@ export function BrowserApp({
   const tab = activeTab(state);
   const { data: petSettings } = usePetSettings();
   const find = useFindInPage(shell, tab?.tabId ?? null);
+  const assist = useBrowserAssist(tab);
+  const [assistOpen, setAssistOpen] = useState(false);
+  const [assistFocus, setAssistFocus] = useState(0);
   const [findFocus, setFindFocus] = useState(0);
   const permissions = usePermissionPrompts(shell, permissionClock, () => fail(""));
   const hasTab = tab !== null;
@@ -138,9 +144,11 @@ export function BrowserApp({
   const wantedHeight =
     state.pending !== null || permissions.queue.length > 0
       ? BROWSER_CHROME_PANEL_HEIGHT
-      : find.open && hasTab
-        ? BROWSER_CHROME_HEIGHT + BROWSER_CHROME_FIND_EXTRA
-        : BROWSER_CHROME_HEIGHT;
+      : assistOpen && hasTab
+        ? BROWSER_CHROME_ASSIST_HEIGHT
+        : find.open && hasTab
+          ? BROWSER_CHROME_HEIGHT + BROWSER_CHROME_FIND_EXTRA
+          : BROWSER_CHROME_HEIGHT;
   const sentHeight = useRef<number>(BROWSER_CHROME_HEIGHT);
   useEffect(() => {
     if (!shell || sentHeight.current === wantedHeight) return;
@@ -505,6 +513,19 @@ export function BrowserApp({
         >
           ⌕
         </button>
+        <button
+          type="button"
+          className="browser-button"
+          aria-label={t("browser.assist.open")}
+          aria-expanded={assistOpen}
+          disabled={!tab}
+          onClick={() => {
+            setAssistOpen(true);
+            setAssistFocus((n) => n + 1);
+          }}
+        >
+          ✦
+        </button>
         <div className="browser-zoom" role="group" aria-label={t("browser.zoom.label")}>
           <button
             type="button"
@@ -537,6 +558,13 @@ export function BrowserApp({
       </form>
 
       {find.open && tab && <FindBar find={find} focusToken={findFocus} />}
+      {assistOpen && tab && (
+        <AssistPanel
+          assist={assist}
+          focusToken={assistFocus}
+          onClose={() => setAssistOpen(false)}
+        />
+      )}
 
       <div className="browser-status">
         <label className="browser-profile-picker">

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "UUID": "com.phoenix.fawkes",
+  "Name": "Phoenix Fawkes",
+  "Version": "0.1.0.0",
+  "Author": "Phoenix contributors",
+  "Description": "Shows Fawkes' coarse state on a key, and a key that asks Phoenix to keep the computer awake for 30 minutes. Phoenix always asks you on screen first; no key approves anything.",
+  "Icon": "imgs/plugin-icon",
+  "Category": "Phoenix",
+  "CategoryIcon": "imgs/category-icon",
+  "CodePath": "bin/plugin.js",
+  "SDKVersion": 2,
+  "Software": { "MinimumVersion": "7.1" },
+  "OS": [
+    { "Platform": "mac", "MinimumVersion": "13" },
+    { "Platform": "windows", "MinimumVersion": "10" }
+  ],
+  "Nodejs": { "Version": "24" },
+  "Actions": [
+    {
+      "UUID": "com.phoenix.fawkes.state",
+      "Name": "Fawkes state",
+      "Tooltip": "Shows what Fawkes is doing (IDLE, WORKING, WAITING, ERROR, RECORDING ...). View only.",
+      "Icon": "imgs/state-action",
+      "Controllers": ["Keypad"],
+      "SupportedInMultiActions": false,
+      "States": [{ "Image": "imgs/state-key", "ShowTitle": true, "TitleAlignment": "bottom" }]
+    },
+    {
+      "UUID": "com.phoenix.fawkes.keep-awake",
+      "Name": "Keep awake 30 min",
+      "Tooltip": "Asks Phoenix to keep the computer awake for 30 minutes. Phoenix asks you to confirm on screen; nothing starts until you do.",
+      "Icon": "imgs/awake-action",
+      "Controllers": ["Keypad"],
+      "SupportedInMultiActions": false,
+      "States": [
+        {
+          "Image": "imgs/awake-key",
+          "Title": "Awake 30m",
+          "ShowTitle": true,
+          "TitleAlignment": "bottom"
+        }
+      ]
+    }
+  ]
+}

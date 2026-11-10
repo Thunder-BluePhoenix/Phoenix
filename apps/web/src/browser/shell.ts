@@ -12,6 +12,8 @@ export const BROWSER_CHROME_HEIGHT = 80;
 export const BROWSER_CHROME_PANEL_HEIGHT = 220;
 /** Extra chrome height while the find bar is open. */
 export const BROWSER_CHROME_FIND_EXTRA = 36;
+/** Chrome height while the assistant panel is open (the shell clamps to 400). */
+export const BROWSER_CHROME_ASSIST_HEIGHT = 320;
 export const ZOOM_MIN = 0.5;
 export const ZOOM_MAX = 3;
 

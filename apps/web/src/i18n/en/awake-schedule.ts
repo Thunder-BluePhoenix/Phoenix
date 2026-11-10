@@ -65,8 +65,6 @@ export const awakeSchedule = {
   "awakeSchedule.lights.loadFailed": "Status lights could not be loaded.",
   "awakeSchedule.lights.intro":
     "Fawkes can show what it is doing on a light on your own network. A light is contacted only when you added it here, allowed Fawkes to light it, and the Status lights capability is enabled.",
-  "awakeSchedule.lights.limits":
-    "Only fixed colours are sent, never any text. Only the Elgato Key Light and LIFX are supported so far; a LIFX light is added through the Core API with its serial.",
   "awakeSchedule.lights.capabilityOff":
     "The Status lights capability is not enabled. Enable it here or in Integrations.",
   "awakeSchedule.lights.enable": "Enable",

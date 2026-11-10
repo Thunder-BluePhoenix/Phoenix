@@ -1,0 +1,6 @@
+{
+  "name": "com.phoenix.fawkes.sdplugin",
+  "private": true,
+  "type": "module",
+  "description": "Stream Deck plugin bundle for Phoenix. No dependencies: Node built-ins only."
+}

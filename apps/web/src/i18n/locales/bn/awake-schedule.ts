@@ -58,8 +58,6 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.lights.loadFailed": "স্ট্যাটাস লাইট লোড করা যায়নি।",
   "awakeSchedule.lights.intro":
     "Fawkes কী করছে তা আপনার নিজের নেটওয়ার্কের একটি লাইটে দেখাতে পারে। লাইটের সাথে তখনই যোগাযোগ করা হয় যখন আপনি সেটি এখানে যোগ করেছেন, Fawkes-কে জ্বালানোর অনুমতি দিয়েছেন এবং “স্ট্যাটাস লাইট” সক্ষমতা চালু আছে।",
-  "awakeSchedule.lights.limits":
-    "শুধু নির্দিষ্ট রং পাঠানো হয়, কখনও কোনো লেখা নয়। এখন পর্যন্ত শুধু Elgato Key Light ও LIFX সমর্থিত; LIFX লাইট Core API-র মাধ্যমে তার সিরিয়ালসহ যোগ করা হয়।",
   "awakeSchedule.lights.capabilityOff":
     "“স্ট্যাটাস লাইট” সক্ষমতা চালু নেই। এখানে বা “ইন্টিগ্রেশন”-এ চালু করুন।",
   "awakeSchedule.lights.enable": "চালু করুন",

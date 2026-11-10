@@ -214,3 +214,38 @@ body {
 .browser-find-input:focus-visible {
   outline: 2px solid var(--bc-focus);
 }
+/* Fawkes browsing assistant panel (Phase 95): proposed steps are inert text. */
+.browser-assist {
+  max-height: 240px;
+  overflow-y: auto;
+}
+.browser-assist-form {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.browser-assist-input {
+  flex: 1;
+  min-width: 0;
+}
+.browser-assist-input[aria-invalid="true"] {
+  border-color: var(--bc-danger);
+}
+.browser-assist-input:focus-visible {
+  outline: 2px solid var(--bc-focus);
+}
+.browser-assist-steps {
+  margin: 4px 0 0;
+  padding-inline-start: 20px;
+}
+.browser-assist-step {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 3px 0;
+}
+.browser-assist-what {
+  overflow-wrap: anywhere;
+  user-select: text;
+}

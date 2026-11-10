@@ -59,8 +59,6 @@ export const awakeSchedule: Record<keyof typeof enAwakeSchedule, string> = {
   "awakeSchedule.lights.loadFailed": "Impossible de charger les voyants d’état.",
   "awakeSchedule.lights.intro":
     "Fawkes peut montrer ce qu’il fait sur une lumière de votre propre réseau. Une lumière n’est contactée que si vous l’avez ajoutée ici, autorisé Fawkes à l’allumer et activé la capacité Voyants d’état.",
-  "awakeSchedule.lights.limits":
-    "Seules des couleurs fixes sont envoyées, jamais de texte. Seuls l’Elgato Key Light et LIFX sont pris en charge pour l’instant ; une lumière LIFX s’ajoute via l’API de Core avec son numéro de série.",
   "awakeSchedule.lights.capabilityOff":
     "La capacité Voyants d’état n’est pas activée. Activez-la ici ou dans Intégrations.",
   "awakeSchedule.lights.enable": "Activer",

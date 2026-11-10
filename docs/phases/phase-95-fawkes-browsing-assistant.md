@@ -5,7 +5,7 @@
 | Stage | Stage 15 — Phoenix browser |
 | Release target | Post-v2.0 track |
 | Priority | Medium |
-| Status | 🟨 Built as code with fakes; every check is simulated. Gateway browser tools (`capabilities/browser`), a relay to the Phoenix browser's chrome page, Rust `page_snapshot`/`page_action` commands, a real-source `PageReader` (`createRelayPageReader`) and an approval card exist, tested against fakes and Tauri's mock runtime only. **`BrowsingAssistant.propose` is reachable through `POST /api/browser/assist`** (local-only `AiService.generateLocal`, fakes only; no web UI). No real webview, page, site or model was used; neither exit criterion is met |
+| Status | 🟨 Built as code with fakes; every check is simulated. Gateway browser tools (`capabilities/browser`), a relay to the Phoenix browser's chrome page, Rust `page_snapshot`/`page_action` commands, a real-source `PageReader` (`createRelayPageReader`) and an approval card exist, tested against fakes and Tauri's mock runtime only. **`BrowsingAssistant.propose` is reachable through `POST /api/browser/assist`** (local-only `AiService.generateLocal`, fakes only) with a chrome panel (fakes only). No real webview, page, site or model was used; neither exit criterion is met |
 | Depends on | [Phase 93 — Phoenix Mini Browser](phase-93-phoenix-mini-browser.md), [Phase 30 — Policy Gateway & Tool Gateway](phase-30-policy-and-tool-gateway.md) |
 | Unblocks | — |
 
@@ -30,7 +30,8 @@ Fawkes can read and act on web pages, only with your approval.
 - `core/permissions/src/browser-card.ts`, `Approvals.tsx`: approval card with action, page (host+path), selector/destination and the full typed text. Fakes only.
 - Rust `page_snapshot` / `page_action` (chrome window only), `apps/web/src/browser/relay.ts`, `/api/browser/relay/*`: the real browser source and executor; mock runtime and fakes only.
 - `ai/models` `AiService.generateLocal` (vetted on-device providers only; throws `NoLocalModelError` before anything is serialized) and `core/runtime/src/browser-assist.ts` + `POST /api/browser/assist` (goal <= 500 chars, control/bidi rejected; returns a proposed plan as data; nothing executes without the per-action approval card). Fake local model only.
-- Not built: a web UI for the assist route, log-in, anything run in a real webview or with a real model.
+- `apps/web/src/browser/assist.ts`, `AssistPanel.tsx`: the "Ask Fawkes to help with this page" panel in the browser CHROME (opened with the ✦ button; never inside a page). Goal box (500 chars; control, bidi and zero-width characters refused with a visible reason, nothing sent), a Propose button that calls `POST /api/browser/assist` with the session token, then the proposed steps as inert text under a "proposed by a local model, nothing has run" label, one "Run this step" button per step. A step goes out as exactly one `POST /api/capabilities/browser/commands/<click|type|submit>` (the existing approval card); there is no run-all and nothing advances after a step ends. Before each step the active tab must be the tab the plan was proposed for AND still on `plan.page_url` (fragment ignored), else the step is refused with a visible reason; Core re-reads the page after approval as a second check. `no_local_model`, `local_model_failed`, `no_browser` and a failed or malformed request show fixed translated messages (the server's `detail` is never shown). Ten locales (machine-translated, unreviewed). `apps/web/test/browser-assist.test.tsx`, fake shell + fake Core only.
+- Not built: log-in, anything run in a real webview or with a real model.
 
 ## Exit criteria
 
@@ -54,7 +55,7 @@ A static read-only review by tools (not a human audit) found that a page could c
 
 ### What was not built
 
-A web UI for `/api/browser/assist`, log-in, any run in a real webview, and any measurement of a real model against visible attacker text. The reader cannot see class-hidden or white-on-white text.
+Log-in, any run (including the new chrome panel, never drawn in a real window) in a real webview, and any measurement of a real model against visible attacker text. The reader cannot see class-hidden or white-on-white text.
 
 ### What was not run
 
