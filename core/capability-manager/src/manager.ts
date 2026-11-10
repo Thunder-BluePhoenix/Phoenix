@@ -651,7 +651,7 @@ export class CapabilityManager {
             details: {
               actor,
               operation_id: op.id,
-              ...targets,
+              targets,
               ...confirmInputs(input, spec.input_schema),
             },
           },

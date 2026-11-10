@@ -10,7 +10,15 @@
 // approvals are bound to the exact request through a hash Core recomputes. Approving or denying goes
 // through the SAME audited paths as the desktop (PermissionGateway.resolveConfirmation,
 // AgentApprovals.decide) with the actor `device:<id>`. docs/phone-link.md is the protocol contract.
-import { createHash, createPublicKey, randomBytes, timingSafeEqual, verify } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  createPublicKey,
+  randomBytes,
+  timingSafeEqual,
+  verify,
+  X509Certificate,
+} from "node:crypto";
 import { networkInterfaces, type NetworkInterfaceInfo } from "node:os";
 import { join } from "node:path";
 import {
@@ -70,6 +78,13 @@ const AUDIT_FAILURES_PER_MINUTE = 20;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 12;
 const STATEMENT_VERSION = "phoenix-phone-approval-v1";
+/** Pairing channel binding (docs/phone-link.md §Channel binding). */
+export const PAIRING_BINDING_VERSION = 1;
+const PAIRING_BINDING_LABEL = "phoenix-pair-v1";
+const BINDING_HEX = /^[0-9a-f]{64}$/;
+/** The one error every failed binding gets (missing, malformed or wrong): it says nothing about which. */
+export const PAIRING_BINDING_REFUSED =
+  "Pairing refused: channel binding failed; start a new pairing";
 const REQUEST_VERSION = "PHX1";
 const KEY_ENABLED = "phone.enabled";
 const KEY_VERIFY = "phone.require_user_verification";
@@ -125,6 +140,34 @@ export function requestHash(binding: {
 
 export const previewHash = (preview: Record<string, unknown>): string =>
   sha256(canonicalJson(preview)).toString("hex");
+
+/**
+ * The pairing channel binding: HMAC-SHA256, keyed with the pairing code's 12 normalised characters
+ * (upper case, no dashes, ASCII bytes), over "phoenix-pair-v1" || SHA-256(certificate SPKI DER) ||
+ * SHA-256(certificate DER) || device public key (SPKI DER). Fixed field widths, so there is nothing
+ * to delimit. The phone computes it over the certificate it saw on the TLS connection; Core over
+ * its own.
+ */
+export function pairingBinding(
+  code: string,
+  spkiSha256: Buffer,
+  certSha256: Buffer,
+  devicePublicKey: Buffer,
+): Buffer {
+  return createHmac("sha256", Buffer.from(code, "utf8"))
+    .update(PAIRING_BINDING_LABEL, "utf8")
+    .update(spkiSha256)
+    .update(certSha256)
+    .update(devicePublicKey)
+    .digest();
+}
+
+/** The `binding_v` / `binding` pair of a pairing request, or null when it is missing or malformed. */
+function presentedBinding(body: Record<string, unknown>): Buffer | null {
+  if (body.binding_v !== PAIRING_BINDING_VERSION) return null;
+  const text = body.binding;
+  return typeof text === "string" && BINDING_HEX.test(text) ? Buffer.from(text, "hex") : null;
+}
 
 function equalHex(a: string, b: string): boolean {
   const x = Buffer.from(a);
@@ -268,6 +311,9 @@ interface Running {
   address: string;
   port: number;
   fingerprint: string;
+  /** SHA-256 of the served certificate's SPKI DER and of its DER: what the pairing binding covers. */
+  spkiSha256: Buffer;
+  certSha256: Buffer;
 }
 
 const isPrivateLan = (address: string): boolean => {
@@ -423,7 +469,15 @@ export class PhoneLink implements PhoneApi, PhoneDeviceApi {
         `The phone link could not listen on ${address}`,
       );
     }
-    this.running = { listener, address, port: bound.port, fingerprint: identity.fingerprint };
+    const served = new X509Certificate(identity.cert);
+    this.running = {
+      listener,
+      address,
+      port: bound.port,
+      fingerprint: identity.fingerprint,
+      spkiSha256: sha256(served.publicKey.export({ type: "spki", format: "der" })),
+      certSha256: sha256(served.raw),
+    };
   }
 
   /** Closes the socket and forgets everything a session could rely on. */
@@ -626,6 +680,7 @@ export class PhoneLink implements PhoneApi, PhoneDeviceApi {
       port: String(running.port),
       code: grouped,
       fp: running.fingerprint,
+      bv: String(PAIRING_BINDING_VERSION),
     });
     return {
       code: grouped,
@@ -713,7 +768,8 @@ export class PhoneLink implements PhoneApi, PhoneDeviceApi {
     expires_at: string;
   } {
     const now = this.clock.now();
-    if (this.running === null)
+    const running = this.running;
+    if (running === null)
       throw new PhoenixError(ErrorCode.CAPABILITY_UNAVAILABLE, "The phone link is not listening");
     if (this.lockedUntil > now)
       throw new PhoneThrottledError(
@@ -724,13 +780,15 @@ export class PhoneLink implements PhoneApi, PhoneDeviceApi {
     if (wait > 0)
       throw new PhoneThrottledError("Too many wrong pairing codes from this address", wait);
     const body = plainObject(input);
-    exactKeys(body, ["code", "name", "public_key"]);
-    if (!this.takeCode(normaliseCode(body.code), now, remote)) {
+    exactKeys(body, ["code", "name", "public_key", "binding_v", "binding"]);
+    const givenCode = normaliseCode(body.code);
+    if (!this.takeCode(givenCode, now, remote)) {
       throw new PhoenixError(ErrorCode.PERMISSION_DENIED, "Pairing code invalid or expired");
     }
     // The code is spent from here on, whatever happens to the rest of the request.
-    const name = deviceName(body.name);
     const key = deviceKey(body.public_key);
+    this.checkBinding(body, givenCode, key.spki, running);
+    const name = deviceName(body.name);
     const spkiBase64 = key.spki.toString("base64");
     if (this.devicesStore.list().some((x) => x.revokedAt === null && x.publicKey === spkiBase64))
       throw invalid("This device key is already paired");
@@ -789,6 +847,34 @@ export class PhoneLink implements PhoneApi, PhoneDeviceApi {
         ),
     );
     return { pair_id: id, status: "pending", expires_at: new Date(expiresAt).toISOString() };
+  }
+
+  /**
+   * The channel binding (docs/phone-link.md §Channel binding). Core recomputes the HMAC over ITS OWN
+   * certificate and compares in constant time. The code was already spent by {@link takeCode}, so a
+   * missing, malformed or mismatching binding leaves nothing to retry with: the refusal is audited
+   * (reason only) and the caller always gets the same fixed error.
+   */
+  private checkBinding(
+    body: Record<string, unknown>,
+    code: string,
+    devicePublicKey: Buffer,
+    running: Running,
+  ): void {
+    const given = presentedBinding(body);
+    const expected = pairingBinding(code, running.spkiSha256, running.certSha256, devicePublicKey);
+    if (given !== null && given.length === expected.length && timingSafeEqual(given, expected))
+      return;
+    this.d.permissions.audit.record({
+      actor: "phone-link",
+      action: "phone.pair.refused",
+      decision: "denied",
+      details: {
+        reason: given === null ? "binding_missing" : "binding_mismatch",
+        code_burned: true,
+      },
+    });
+    throw new PhoenixError(ErrorCode.PERMISSION_DENIED, PAIRING_BINDING_REFUSED);
   }
 
   /**

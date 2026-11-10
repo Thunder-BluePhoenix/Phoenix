@@ -5,7 +5,7 @@
 | Stage | Stage 12 — Coucou parity and beyond |
 | Release target | Post-v2.0 track |
 | Priority | Medium |
-| Status | 🟨 Built, exit criteria not met: only the Core side exists (off-by-default HTTPS LAN listener, pairing, signed requests, approvals bound to the exact request, device list and revoke, a Settings page); no iOS or Android app, no push, no biometric prompt, no PWA; tested with a Node fake phone over loopback and the web page against fake responses; never used with a real phone or over a real LAN; pairing code not bound to the certificate by HMAC (open); the exit criterion is not met |
+| Status | 🟨 Built, exit criteria not met: only the Core side exists (off-by-default HTTPS LAN listener, pairing, signed requests, approvals bound to the exact request, device list and revoke, a Settings page); no iOS or Android app, no push, no biometric prompt, no PWA; tested with a Node fake phone over loopback and the web page against fake responses; never used with a real phone or over a real LAN; pairing HMAC channel binding built and tested only against the Node fake phone (the code is still sent in the body, so it does not stop a body-reading MITM); the exit criterion is not met |
 | Depends on | [Phase 45 — Cross-Device Context & Sync](phase-45-cross-device-context.md), [Phase 56 — Agent Approvals & Questions from Fawkes](phase-56-agent-approvals-from-fawkes.md) |
 | Unblocks | [Phase 87 — Remote Access Relay](phase-87-remote-access-relay.md), [Phase 89 — Apple Watch, Browser Extension & phoenix CLI](phase-89-watch-extension-cli.md) |
 
@@ -17,7 +17,7 @@ Follow agents and approve requests from a phone.
 
 - [ ] iPhone: Live Activity / Dynamic Island, notifications you can act on, Face ID on every Allow, widgets, Control Center, Siri and Shortcuts, Spotlight, Focus filter. **Not built.** There is no `apps/ios`, no push notification path (it needs APNs/FCM accounts) and no biometric prompt; the phone side of `user_verification` does not exist.
 - [ ] Android: approvals with fingerprint, agents at a glance, answers and chat, island overlay, home-screen widgets. **Not built.** There is no `apps/android`.
-- [ ] LAN phone link: off by default, pairing code, pinned TLS, approvals bound to the exact request. The Core side of every part is built (see the notes below and [phone-link.md](../phone-link.md)) and tested with a Node fake phone over loopback (`core/runtime/test/phone-link.test.ts`, `phone-cert.test.ts`, the client in `phone-client.ts`) and with the web page against fake responses (`apps/web/test/phone-link.test.tsx`). Unticked because pinning is the phone's job (it compares the certificate's SHA-256 fingerprint) and only the Node fake phone ever did it, because the pairing code is not bound to the certificate by an HMAC (open), and because **no real phone, no iOS or Android TLS stack and no real LAN took part.**
+- [ ] LAN phone link: off by default, pairing code, pinned TLS, approvals bound to the exact request. The Core side of every part is built (see the notes below and [phone-link.md](../phone-link.md)) and tested with a Node fake phone over loopback (`core/runtime/test/phone-link.test.ts`, `phone-cert.test.ts`, the client in `phone-client.ts`) and with the web page against fake responses (`apps/web/test/phone-link.test.tsx`). Unticked because pinning is the phone's job (it compares the certificate's SHA-256 fingerprint) and only the Node fake phone ever did it, because the pairing HMAC channel binding is implemented only in Core and the Node fake phone, and because **no real phone, no iOS or Android TLS stack and no real LAN took part.**
 
 ## Tasks — Phoenix improvements
 
@@ -59,7 +59,7 @@ An independent static review (read-only, not a human audit) found the following;
 - nonce exhaustion: one device could fill the replay table for the others;
 - key directory permissions.
 
-**Not fixed (open):** the pairing code is not bound to the TLS certificate or the device key by an HMAC. Closing it needs a protocol change and a phone client, so until then a man in the middle on the LAN during the two-minute pairing window is stopped only by the person comparing the fingerprint in the confirmation prompt.
+**Channel binding (built, fake-phone-tested):** pairing now REQUIRES `binding_v:1` and `binding = HMAC-SHA256(code, "phoenix-pair-v1" || SPKI-SHA256 || cert-SHA256 || device key)`; Core recomputes it from its own certificate, compares in constant time, and on mismatch or absence refuses with a fixed error, burns the single-use code and audits it ([phone-link.md](../phone-link.md#channel-binding), exact layout and an asserted test vector). **Still open:** the code itself is still in the request body, so a man in the middle that terminates TLS and reads the body can relay a valid binding; closing that needs a code-derived proof instead of the code (decision row). No real phone, no real LAN man in the middle.
 
 Also open and inherited: Core cannot tell a person from a program on the desktop that holds the session token, so such a program can start a pairing and read the code (the pairing confirmation prompt has the same limit as every other approval); and `GET /` injects the session token unauthenticated (pre-existing, see the [gap register](../gaps.md)).
 

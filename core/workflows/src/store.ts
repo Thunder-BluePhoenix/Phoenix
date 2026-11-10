@@ -300,6 +300,16 @@ export class WorkflowStore {
     return row.n;
   }
 
+  /** Runs waiting for a slot or holding one (queued, running, compensating), all workflows. */
+  countActiveRuns(): number {
+    const row = this.db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM workflow_runs WHERE status IN ('queued', 'running', 'compensating')",
+      )
+      .get() as { n: number };
+    return row.n;
+  }
+
   countRefusedSince(workflowId: string, since: number): number {
     const row = this.db
       .prepare(

@@ -20,6 +20,7 @@
 //   * The meeting is named in a created task only when the person ticked that box when approving;
 //     the default is an opaque Phoenix plan id (meetings are sensitive).
 import { createHash } from "node:crypto";
+import type { GenerateFn } from "@phoenix/ai-context";
 import type { Actor as ItemActor, MeetingItem, MeetingItemService } from "@phoenix/ai-meetings";
 import type { ToolCall, ToolCallResult } from "@phoenix/ai-tool-gateway";
 import { redact } from "@phoenix/logging";
@@ -29,7 +30,6 @@ import { ErrorCode, PhoenixError } from "@phoenix/protocol";
 import {
   cleanText,
   generatePlan,
-  type GenerateFn,
   MAX_CRITERIA,
   MAX_QUESTION,
   MAX_QUESTIONS,

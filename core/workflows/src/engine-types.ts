@@ -81,6 +81,8 @@ export interface EngineDeps {
   /** Runs executing at once (default 4); the rest wait in a queue. */
   maxConcurrent?: number;
   rate?: RateLimit;
+  /** Runs queued or running across all workflows before new ones are refused (default 200). */
+  maxActiveRuns?: number;
   /** Deepest chain of workflow-emitted events that may still start a run (default 3). */
   maxChainDepth?: number;
   newId?: () => string;
@@ -88,6 +90,10 @@ export interface EngineDeps {
 
 export const DEFAULT_RATE: RateLimit = { max: 20, windowMs: 60_000 };
 export const DEFAULT_CONCURRENCY = 4;
+/** Runs queued or running (executing or undoing) across ALL workflows; a new run past it is refused. */
+export const MAX_ACTIVE_RUNS = 200;
+/** The recorded reason of a run refused by the global cap (fixed: it carries no counts). */
+export const GLOBAL_CAP_REASON = "global limit: too many workflow runs are queued or running";
 /** Refused runs recorded per workflow per window; more are dropped (counted in the log only). */
 export const MAX_REFUSED_RECORDS = 50;
 

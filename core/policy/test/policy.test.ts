@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { openDatabase, type Database } from "@phoenix/persistence";
 import { SIDE_EFFECTS, type Permission, type SideEffect } from "@phoenix/protocol";
 import { afterEach, describe, expect, it } from "vitest";
-import { AuditLog } from "../../permissions/src";
+import { AuditLog } from "@phoenix/permissions";
 import {
   assessRisk,
   ENVIRONMENTS,

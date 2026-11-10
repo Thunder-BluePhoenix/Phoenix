@@ -5,7 +5,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PhoenixEvent } from "@phoenix/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AiStepRequest, EventSource } from "../src";
+import { GLOBAL_CAP_REASON, MAX_ACTIVE_RUNS, type AiStepRequest, type EventSource } from "../src";
 import { newRunState } from "../src/run-state";
 import { StepRunner } from "../src/runner";
 import {
@@ -863,4 +863,154 @@ describe("tool access", () => {
       `system:${run.correlationId}`,
     );
   });
+});
+
+describe("global run cap", () => {
+  const slow = (id: string) =>
+    devWorkflow(
+      id,
+      [{ id: "h", type: "action", tool: "deploys.hang", timeout_ms: 5000 }],
+      ["deploys.hang"],
+      {
+        environment: "local",
+      },
+    );
+
+  it("refuses a burst over the cap with the fixed reason, and the cap releases as runs finish", async () => {
+    const t = setup();
+    const clock = new ManualClock();
+    const calls = newCalls();
+    const core = await boot({
+      path: t.db,
+      calls,
+      now: clock.now,
+      sleep: clock.sleep,
+      maxConcurrent: 1,
+      maxActiveRuns: 3,
+      rate: { max: 1_000, windowMs: 60_000 },
+    });
+    await started(core);
+    core.admin.save(user, slow("slow"));
+    for (let i = 0; i < 5; i++) core.bus.publish(buildFailed({ i }));
+    await vi.waitFor(() => expect(calls.held).toHaveLength(1));
+    await core.bus.drain();
+    const runs = core.engine.listRuns({ limit: 200 });
+    expect(runs.filter((r) => r.status === "refused").map((r) => r.reason)).toEqual([
+      GLOBAL_CAP_REASON,
+      GLOBAL_CAP_REASON,
+    ]);
+    expect(runs.filter((r) => r.status === "queued" || r.status === "running")).toHaveLength(3);
+    // The cap releases as runs finish (the hung call times out, the next run takes the slot).
+    for (let n = 1; n <= 3; n++) {
+      await vi.waitFor(() => expect(calls.held).toHaveLength(n));
+      clock.advance(5000);
+    }
+    await core.engine.idle();
+    expect(core.engine.listRuns({ limit: 200 }).filter((r) => r.status === "failed")).toHaveLength(
+      3,
+    );
+    core.bus.publish(buildFailed({ i: 99 }));
+    await core.bus.drain();
+    await vi.waitFor(() => expect(calls.held).toHaveLength(4));
+    const after = core.engine.listRuns({ limit: 200 });
+    expect(after.filter((r) => r.status === "refused")).toHaveLength(2);
+    expect(after.filter((r) => r.status === "queued" || r.status === "running")).toHaveLength(1);
+    clock.advance(5000);
+    await core.engine.idle();
+  });
+
+  it("counts runs across workflows, and leaves per-workflow rate limits unchanged", async () => {
+    const t = setup();
+    const clock = new ManualClock();
+    const calls = newCalls();
+    const core = await boot({
+      path: t.db,
+      calls,
+      now: clock.now,
+      sleep: clock.sleep,
+      maxConcurrent: 1,
+      maxActiveRuns: 4,
+      rate: { max: 2, windowMs: 60_000 },
+    });
+    await started(core);
+    for (const id of ["wa", "wb", "wc"]) core.admin.save(user, slow(id));
+    for (let i = 0; i < 3; i++) core.bus.publish(buildFailed({ i }));
+    await vi.waitFor(() => expect(calls.held).toHaveLength(1));
+    await core.bus.drain();
+    const refused = core.engine
+      .listRuns({ limit: 200 })
+      .filter((r) => r.status === "refused")
+      .map((r) => r.reason);
+    // Each event triggers all three workflows: 9 attempts. Four runs fit across workflows; of the
+    // other five, one is a workflow past its OWN rate limit (2 per window, checked first) and four
+    // hit the global cap.
+    expect(refused.filter((r) => r === GLOBAL_CAP_REASON)).toHaveLength(4);
+    expect(refused.filter((r) => /rate limit/.test(r ?? ""))).toHaveLength(1);
+    expect(refused).toHaveLength(5);
+    expect(
+      core.engine
+        .listRuns({ limit: 200 })
+        .filter((r) => r.status === "queued" || r.status === "running"),
+    ).toHaveLength(4);
+    clock.advance(5000);
+    for (let n = 2; n <= 4; n++) {
+      await vi.waitFor(() => expect(calls.held).toHaveLength(n));
+      clock.advance(5000);
+    }
+    await core.engine.idle();
+  });
+
+  it("keeps the per-workflow rate limit reason when the global cap is not reached", async () => {
+    const t = setup();
+    const core = await boot({
+      path: t.db,
+      calls: newCalls(),
+      rate: { max: 1, windowMs: 60_000 },
+    });
+    await started(core);
+    core.admin.save(
+      user,
+      devWorkflow("quick", [{ id: "n", type: "notify", title: "t", message: "m" }], [], {
+        environment: "local",
+      }),
+    );
+    for (let i = 0; i < 3; i++) core.bus.publish(buildFailed({ i }));
+    await core.bus.drain();
+    await core.engine.idle();
+    const runs = core.engine.listRuns({ limit: 200 });
+    expect(runs.filter((r) => r.status === "succeeded")).toHaveLength(1);
+    expect(runs.filter((r) => r.status === "refused").map((r) => r.reason)).toEqual([
+      expect.stringMatching(/rate limit/),
+      expect.stringMatching(/rate limit/),
+    ]);
+  });
+
+  it("defaults to 200 queued or running runs across all workflows", async () => {
+    expect(MAX_ACTIVE_RUNS).toBe(200);
+    const t = setup();
+    const clock = new ManualClock();
+    const calls = newCalls();
+    const core = await boot({
+      path: t.db,
+      calls,
+      now: clock.now,
+      sleep: clock.sleep,
+      maxConcurrent: 1,
+      rate: { max: 1_000_000, windowMs: 60_000 },
+    });
+    await started(core);
+    core.admin.save(user, slow("flood"));
+    for (let i = 0; i < 203; i++) core.bus.publish(buildFailed({ i }));
+    await vi.waitFor(() => expect(calls.held).toHaveLength(1));
+    await core.bus.drain();
+    const count = (status: "queued" | "running" | "refused") =>
+      core.engine.listRuns({ status, limit: 200 }).length;
+    expect(count("queued") + count("running")).toBe(200);
+    expect(count("refused")).toBe(3);
+    for (let n = 1; n <= 200; n++) {
+      await vi.waitFor(() => expect(calls.held).toHaveLength(n));
+      clock.advance(5000);
+    }
+    await core.engine.idle();
+  }, 60_000);
 });

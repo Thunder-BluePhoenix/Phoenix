@@ -82,7 +82,7 @@ n8n is self-hosted, so `base_url` stays configurable. It is now **visible** (sta
 
 - Idempotency keys are in memory only: lost on a Core restart or when the capability is disabled, so a repeated call can duplicate an action afterwards. An action whose outcome is unknown (a dropped POST or a 5xx) is reported as unknown and is not re-sent automatically.
 - Stripe does not enforce a restricted key: a secret key pasted by mistake is only ever used for GET requests.
-- The confirmation prompt names the target only through its summary text; the permission gateway copies `details` for workflows only.
+- The confirmation prompt names the target in its summary text and, since the follow-up, in structured `details.targets` for every capability confirmation: the capability manager builds them from the command input (`*_id`, `id`, `project`, `target`, `x-phoenix-confirm`), and the gateway re-sanitises them (control and format characters removed, redacted, at most 80 characters, at most 16 names). Unmarked input never appears. Tests: `core/runtime/test/capability-confirm-targets.test.ts`. The web approval card does not render `details.targets` yet.
 
 What was not done or not run: any real service or key; any real browser or Core run of the web glances; per-service mini Fawkes artwork; the terms and rate limits of these services were not reviewed. Open items are in the [gap register](../gaps.md).
 

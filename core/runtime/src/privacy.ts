@@ -230,7 +230,7 @@ export class PrivacyService {
       })),
       audit_log: {
         description:
-          "Security record of permissions, approvals and deletions. Kept so actions stay accountable; never sent anywhere.",
+          "Security record of permissions, approvals and deletions. Kept so actions stay accountable; never sent anywhere. Rows are hash-chained so an edited, deleted or reordered row is detectable (GET /api/audit/verify); this does not stop someone who can rewrite the whole database file.",
         count: this.d.audit.count(),
       },
       derived: this.d.derived(),

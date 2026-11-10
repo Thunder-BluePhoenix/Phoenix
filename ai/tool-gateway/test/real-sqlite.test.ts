@@ -5,13 +5,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CapabilityManager } from "@phoenix/capability-manager";
-import { EventBus } from "../../../core/event-bus/src";
+import { EventBus } from "@phoenix/event-bus";
 import { PermissionGateway } from "@phoenix/permissions";
 import { EventStore, MemorySecretStore, openDatabase, type Database } from "@phoenix/persistence";
 import { PolicyAdmin, PolicyEngine, PolicyStore, type Actor } from "@phoenix/policy";
-import { StateEngine } from "../../../core/state-engine/src";
+import { StateEngine } from "@phoenix/state-engine";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createGitCapability } from "../../../capabilities/git/src";
+import { createGitCapability } from "@phoenix/capability-git";
 import { approverFromPermissions, enabledManifests, ToolGateway, ToolRegistry } from "../src";
 
 const user: Actor = { kind: "user", id: "me", trustedByUser: true };

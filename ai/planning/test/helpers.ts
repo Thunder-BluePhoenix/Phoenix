@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
+import type { GenerateFn } from "@phoenix/ai-context";
 import type { GenerateRequest, GenerateResult } from "@phoenix/ai-models";
 import type { ToolCall, ToolCallResult } from "@phoenix/ai-tool-gateway";
 import type { PolicyDecision } from "@phoenix/policy";
 import type { MeetingItem } from "@phoenix/ai-meetings";
 import { rig as meetingRig, type Rig as MeetingRig } from "../../meetings/test/helpers";
-import { PlanService, type Destination, type GenerateFn, type ToolCaller } from "../src";
+import { PlanService, type Destination, type ToolCaller } from "../src";
 
 /** The input of a recorded call as strings (every field the planner sends is a string or a list). */
 export function sentInput(call: ToolCall | undefined): Record<string, string> {

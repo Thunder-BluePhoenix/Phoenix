@@ -31,8 +31,8 @@ import {
   AllProvidersFailedError,
   NoProviderError,
   type GenerateRequest,
-  type GenerateResult,
 } from "@phoenix/ai-models";
+import type { GenerateFn } from "@phoenix/ai-context";
 import { redact } from "@phoenix/logging";
 import { isRecord } from "./guards";
 import {
@@ -48,9 +48,6 @@ import {
   type PlanTask,
   type Statement,
 } from "./types";
-
-/** A model call: structurally the same as `GenerateFn` of `@phoenix/ai-context` (not a dependency here). */
-export type GenerateFn = (request: GenerateRequest) => Promise<GenerateResult>;
 
 /** Sent with every generation request. Deliberately not a cloud-permitted sensitive purpose. */
 export const PURPOSE_DRAFT_ENGINEERING_PLAN = "draft an engineering plan from a meeting item";

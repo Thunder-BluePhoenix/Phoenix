@@ -5,6 +5,7 @@
 // Ollama and Anthropic adapters) with a counting fake fetch: by default no cloud request is made,
 // and even a user who opted in to cloud AI for sensitive data does not get plan generation in the
 // cloud (the purpose is not in SENSITIVE_CLOUD_PURPOSES).
+import { generateWith } from "@phoenix/ai-context";
 import {
   AiService,
   createDefaultProviders,
@@ -75,7 +76,7 @@ const OFF = { public: false, internal: false, sensitive: false };
 
 async function plan(env: Env) {
   const r = planRig();
-  r.ai.fn = async (request) => (await env.ai.run({ kind: "generate", request })).result;
+  r.ai.fn = generateWith(env.ai);
   return { out: await r.plans.generate(r.decision.id, GITHUB, me), r };
 }
 

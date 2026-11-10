@@ -19,7 +19,7 @@ Every agent session can be undone, and Fawkes notices when an agent is stuck.
 - [ ] One-click rollback of everything a session changed, with a preview diff and approval. Built: a preview (names, counts and a bounded redacted diff) with a hash bound to both trees; owner approval through the permission gateway as `execute`; the plan is recomputed after approval; rollback refuses when HEAD moved or the tree changed, deletes only listed HEAD-untracked, non-ignored regular files and never touches `.git` (`rollback.ts`, `agent-safety-rollback.test.ts`, `agent-safety-api.test.ts`). Unticked because it was **never run on a real agent session** and a race of hundreds of milliseconds between the recompute and the writes remains.
 - [ ] Loop detection: the same failing command N times, the same file edited back and forth. Built as pure detectors that emit one `agent.safety.loop` WARNING per episode (`detectors.ts`, `agent-safety-detectors.test.ts`). Unticked because it is **weaker than specified**: steps carry no exit code or output, so "the same failing command" is the same command repeated, and file ping-pong is detected only from line-count swaps (equal-sized edits and Write edits are invisible).
 - [x] Stall detection: waiting on the user for more than a set time, no activity for a set time. `agent.safety.stall` WARNING, one per episode (`detectors.ts`, `agent-safety-detectors.test.ts`). Simulated steps only; no real agent stalled.
-- [x] Fawkes WARNING with the reason; optional notification. A pet WARNING state rule is added through `StateEngine.addRules` and a notification mute setting exists. The `NotificationService` path is not exercised by a test.
+- [x] Fawkes WARNING with the reason; optional notification. A pet WARNING state rule is added through `StateEngine.addRules` and a notification mute setting exists. The real `NotificationService` delivers a loop or a stall warning (stored, announced as `notification.created`, silent when the source is muted) in `core/runtime/test/agent-safety-notifications.test.ts`, simulated; no real desktop notification was seen.
 - [x] Checkpoints expire on a retention setting and never touch the user's own branches or stashes. Retention is 7 days, pruned hourly and at start; every ref deletion is guarded to the `refs/phoenix/checkpoints/` namespace (`agent-safety-rollback.test.ts`). The 7 days is a number chosen by the implementing agent, not a product decision.
 
 ## Deliverables
@@ -62,7 +62,7 @@ A `PreToolUse` edit hook so that checkpoints precede the first edit; loop detect
 
 ### What was not run
 
-Any real agent session (Claude Code, Codex), a real hook, a rollback of an agent's real work, real git in a hostile repository, and the `NotificationService` path. Cross-check: a throwaway test (deleted) showed that this phase's real `agent.safety.stall` event is consumed by Phase 78's real board, which marks the session stuck. Open items are in the [gap register](../gaps.md).
+Any real agent session (Claude Code, Codex), a real hook, a rollback of an agent's real work, real git in a hostile repository, and a delivered notification seen on a real desktop. Cross-check: a throwaway test (deleted) showed that this phase's real `agent.safety.stall` event is consumed by Phase 78's real board, which marks the session stuck. Open items are in the [gap register](../gaps.md).
 
 
 ## Notes & risks

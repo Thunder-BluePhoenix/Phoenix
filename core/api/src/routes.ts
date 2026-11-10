@@ -410,6 +410,8 @@ export function buildRoutes(s: CoreServices): Route[] {
         }),
       };
     }),
+    // Chain check only: counts and at most one row id, never an entry's content.
+    route("GET", "/api/audit/verify", () => s.permissions.audit.verify()),
     route("GET", "/api/security/kill-switch", () => ({
       engaged: s.permissions.isKillSwitchEngaged(),
     })),

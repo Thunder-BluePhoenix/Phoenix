@@ -167,6 +167,7 @@ export interface BootOptions {
   sleep?: EngineDeps["sleep"];
   rate?: EngineDeps["rate"];
   maxConcurrent?: number;
+  maxActiveRuns?: number;
   maxChainDepth?: number;
   /** Replace how the engine reads the bus (for delivering the same event twice). */
   events?: EngineDeps["events"];
@@ -262,6 +263,7 @@ export async function boot(o: BootOptions): Promise<Core> {
     ...(o.sleep ? { sleep: o.sleep } : {}),
     ...(o.rate ? { rate: o.rate } : {}),
     ...(o.maxConcurrent ? { maxConcurrent: o.maxConcurrent } : {}),
+    ...(o.maxActiveRuns ? { maxActiveRuns: o.maxActiveRuns } : {}),
     ...(o.maxChainDepth ? { maxChainDepth: o.maxChainDepth } : {}),
   });
   const admin = new WorkflowAdmin({

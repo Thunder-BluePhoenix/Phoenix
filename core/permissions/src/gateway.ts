@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
-import { silentLogger, type Logger } from "@phoenix/logging";
+import { redact, silentLogger, type Logger } from "@phoenix/logging";
 import { SettingsStore, type Database } from "@phoenix/persistence";
 import {
   ALWAYS_CONFIRM,
@@ -52,6 +52,12 @@ export interface Confirmation {
     dailyDigest?: { preview: string; citedSourceCount: number };
     /** Phase 95: what a browser action will do. Display only; `text` is the full typed text. */
     browser?: BrowserCard;
+    /**
+     * The command input values its capability marked for the prompt (`*_id`, `id`, `project`,
+     * `target`, `x-phoenix-confirm`), re-sanitised here: control and format characters removed,
+     * redacted, at most {@link MAX_CONFIRM_TARGET_CHARS} characters each.
+     */
+    targets?: Record<string, string>;
   };
 }
 
@@ -62,6 +68,32 @@ export interface PermissionGatewayOptions {
   logger?: Logger;
   now?: () => number;
   confirmationTimeoutMs?: number;
+}
+
+const MAX_CONFIRM_TARGETS = 16;
+export const MAX_CONFIRM_TARGET_CHARS = 80;
+const TARGET_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+const UNSHOWN_CHARS = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+
+/**
+ * `details.targets` of an {@link ActionRequest} (put there by the capability manager from the
+ * command input, only for properties marked for confirmation), cut down to short sanitised strings.
+ * A long `command` keeps its END so the executable name stays visible; every other value keeps its start.
+ */
+function confirmTargets(source: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (typeof source !== "object" || source === null || Array.isArray(source)) return out;
+  for (const [name, value] of Object.entries(source)) {
+    if (Object.keys(out).length >= MAX_CONFIRM_TARGETS) break;
+    if (!TARGET_NAME.test(name) || (typeof value !== "string" && typeof value !== "number"))
+      continue;
+    const shown = String(redact(String(value).replace(UNSHOWN_CHARS, "")));
+    out[name] =
+      name === "command" && shown.length > MAX_CONFIRM_TARGET_CHARS
+        ? `…${shown.slice(shown.length - (MAX_CONFIRM_TARGET_CHARS - 1))}`
+        : shown.slice(0, MAX_CONFIRM_TARGET_CHARS);
+  }
+  return out;
 }
 
 const KILL_SWITCH_KEY = "security.kill_switch";
@@ -274,6 +306,12 @@ export class PermissionGateway {
   }
 
   private confirmationDetails(request: ActionRequest): NonNullable<Confirmation["details"]> {
+    const targets = confirmTargets(request.details?.targets);
+    const details = this.capabilityDetails(request);
+    return Object.keys(targets).length ? { ...details, targets } : details;
+  }
+
+  private capabilityDetails(request: ActionRequest): NonNullable<Confirmation["details"]> {
     if (request.capabilityId === "workflows") {
       const source = request.details;
       const workflow: { workflow?: string; run?: string; step?: string } = {};

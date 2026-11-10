@@ -5,6 +5,7 @@
 // prompts off-device). Skipped unless PHOENIX_REAL_OLLAMA is set:
 //   PHOENIX_REAL_OLLAMA=1 npx vitest run ai/planning/test/real-ollama.test.ts
 // Creates nothing anywhere: a plan is a draft.
+import { generateWith } from "@phoenix/ai-context";
 import { AiService, OllamaProvider, ProviderRegistry } from "@phoenix/ai-models";
 import { describe, expect, it } from "vitest";
 import { generatePlan } from "../src";
@@ -44,8 +45,7 @@ describe.skipIf(!process.env.PHOENIX_REAL_OLLAMA)(
           item: r.decision,
           destination,
           transcriptText: r.meetings.transcript(r.meetingId)?.text ?? null,
-          generate: async (request) =>
-            (await ai.run({ kind: "generate", request, timeoutMs: 200_000 })).result,
+          generate: generateWith(ai, 200_000),
         });
         const statements = [
           out.plan.summary,

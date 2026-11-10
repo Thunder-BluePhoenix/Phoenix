@@ -693,10 +693,7 @@ describe("commands", () => {
     expect(requests[0]!.details).toEqual({
       actor: "user",
       operation_id: op.id,
-      deployment_id: "dpl_ABC123",
-      id: "7",
-      project: "web",
-      target: "production",
+      targets: { deployment_id: "dpl_ABC123", id: "7", project: "web", target: "production" },
     });
     expect(permissions.pendingConfirmations()[0]!.summary).toContain("deployment_id: dpl_ABC123");
     expect(permissions.pendingConfirmations()[0]!.summary).not.toContain("idempotency_key");

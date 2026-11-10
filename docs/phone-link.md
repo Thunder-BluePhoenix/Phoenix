@@ -109,12 +109,16 @@ detector. **No real phone camera or phone app scanned a code from the screen.**
    **single use**, held only as a SHA-256 in memory, and returned only in this response (never in the
    status route, logs, events or audit).
 2. Phone: generates an ECDSA P-256 key pair (hardware-backed where it can) and sends
-   `POST /phone/v1/pair {"code","name","public_key"}` where `public_key` is the base64 DER SPKI.
+   `POST /phone/v1/pair {"code","name","public_key","binding_v":1,"binding"}` where `public_key` is the
+   base64 DER SPKI and `binding` is the channel-binding proof (see [Channel binding](#channel-binding)),
+   computed over the certificate the phone **actually saw on this TLS connection**. The pairing URI
+   also carries `bv=1`.
 3. Core checks the code in constant time. The first correct code spends it, whatever else is wrong with
    the request. Wrong codes count **only while a code is live**: 5 from one remote address lock that address
    out for 5 minutes (`429` + `Retry-After`) without touching the live code or other addresses, and 20
    wrong guesses from all addresses together destroy the live code and pause pairing for 5 minutes. Bad
-   posts while no code is live cost nothing. A request while the link is off is refused. Response:
+   posts while no code is live cost nothing. A request while the link is off is refused. Core then
+   checks the channel binding; a missing, malformed or wrong one is refused (see below). Response:
    `{pair_id, status:"pending", expires_at}`.
 4. Core raises a confirmation `Pair phone "<name>"? Key fingerprint <fp>` (capability `phone-link`,
    side effect `execute`) via the permission gateway. The desktop UI answers it with the existing
@@ -126,6 +130,59 @@ detector. **No real phone camera or phone app scanned a code from the screen.**
    a phone cannot approve another phone's pairing.
 
 At most 20 unrevoked devices; one pending pairing at a time; the same key cannot be paired twice.
+
+### Channel binding
+
+The binding is **required** (`binding_v: 1`); there is no compatibility switch. No phone client and no
+paired device predates it (the Core side was the only implementation, see GAPS), so nothing existing
+breaks. A request without `binding_v: 1` and a 64-hex-character lower-case `binding` is refused exactly
+like a wrong binding. Any other field value of `binding_v` is refused too.
+
+```
+binding = HMAC-SHA256( key = code, msg = "phoenix-pair-v1" || spki_sha256 || cert_sha256 || device_public_key )
+```
+
+| Part                | Bytes | Content                                                                                                  |
+| ------------------- | ----- | -------------------------------------------------------------------------------------------------------- |
+| `code` (HMAC key)   | 12    | the pairing code's 12 characters, upper case, dashes and spaces removed, as ASCII bytes (`ABCDEFGHJKLM`) |
+| `"phoenix-pair-v1"` | 15    | ASCII label, no terminator                                                                               |
+| `spki_sha256`       | 32    | SHA-256 of the DER `SubjectPublicKeyInfo` of the certificate the phone saw on the TLS connection         |
+| `cert_sha256`       | 32    | SHA-256 of the DER certificate itself (the value behind the pinned `fp`, as raw bytes)                   |
+| `device_public_key` | var.  | the DER SPKI bytes of the phone's own key, i.e. base64-decoded `public_key`                              |
+
+All parts are fixed-width except the last, so no delimiters exist. `binding` is the 32-byte digest as 64
+lower-case hex characters. The phone must hash the certificate from the connection it POSTs on, not
+a stored copy. Core recomputes the HMAC from **its own** certificate and the code it holds and compares in
+constant time (`timingSafeEqual`). If something between phone and Core terminated TLS with another
+certificate, the phone's SPKI/certificate hashes differ from Core's and the pairing is refused.
+
+**On mismatch** Core refuses with `403` and one fixed message (`Pairing refused: channel binding failed;
+start a new pairing`) that does not say which part failed. The single-use code is **already burned**
+(the code check spends it before the binding is looked at), no pending pairing and no confirmation
+prompt are created, and the audit gets `phone.pair.refused {reason: "binding_missing" | "binding_mismatch",
+code_burned: true}`: no code, binding or key. The user starts a new pairing to retry.
+
+**Test vector** (inputs fixed bytes: `code = ABCDEFGHJKLM`, `spki_sha256` = bytes `00 01 … 1f`, `cert_sha256` =
+bytes `20 21 … 3f`, `device_public_key` = 91 bytes `40 41 … 9a`):
+
+```
+4921cacc117faf0614a29973a6defe615a348cfdd8b4ba6d7e5019e7e7ecfab5
+```
+
+`core/runtime/test/phone-link.test.ts` ("the test vector in docs/phone-link.md…") recomputes this from
+those inputs and asserts that this document contains the hex, so the document and the code cannot drift.
+
+**Limits, honestly:** this is verified only against the Node fake phone (`core/runtime/test/phone-client.ts`,
+which implements the phone side independently of Core's function); no real phone exists, and **no real
+LAN man-in-the-middle was staged**: the substituted-certificate test simulates it by having the fake
+phone hash a different certificate. The pairing `code` is still sent in the request body (the wire
+contract is unchanged), so an active man in the middle that terminates TLS **and** reads the body
+learns the code and could compute a binding over Core's certificate for a relayed request. The binding
+therefore detects a phone that hashed a certificate other than Core's (a phone that does not pin, or
+a relay that cannot read the body) but is not by itself a proof against that attacker; the phone's
+certificate pin and the person comparing the key fingerprint in the confirmation remain the other
+checks. A stronger design (the phone sends a code-derived proof instead of the code) is a protocol
+change recorded as a decision in the gap register.
 
 ## Request signing
 
@@ -224,7 +281,6 @@ Focus filter, PWA support. **The exit criterion “a permission request is appro
 real phone with biometric confirmation” is UNMET.** Verified only with a Node test client acting as the
 phone.
 
-Also not built: the pairing code is not yet cryptographically bound to the listener's key and certificate
-(an HMAC over the SPKI + certificate fingerprint would need a protocol change and a phone client), so a
-man in the middle on the LAN during the 2-minute pairing window is stopped only by the person comparing the
-fingerprint in the confirmation.
+The pairing code is bound to the listener's certificate by an HMAC ([Channel binding](#channel-binding)),
+verified only against the Node fake phone: no phone client implements it yet and no real LAN
+man-in-the-middle was staged. The person comparing the fingerprint in the confirmation remains the second check.

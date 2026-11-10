@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 // @vitest-environment happy-dom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PhoenixClient } from "../src/core/client";
 import { CoreProvider } from "../src/core/context";
@@ -63,14 +63,36 @@ function fakeShell(initial: IslandFrame | null): FakeIslandShell {
   return shell;
 }
 
-async function setup(shell: IslandShell | null) {
+const agentSession = (id: string, agent: string) => ({
+  id,
+  agent,
+  project: "/p",
+  repository: "p",
+  first_seen: "",
+  last_seen: "",
+  active: true,
+  step_count: 1,
+  dropped_steps: 0,
+  has_terminal: false,
+});
+
+async function setup(shell: IslandShell | null, agents: string[] = []) {
   const client = new PhoenixClient({
     token: "tok",
     baseUrl: "http://127.0.0.1:4870",
     WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
     minReconnectMs: 3_600_000,
     maxReconnectMs: 3_600_000,
-    fetchImpl: fakeApi({ "GET /api/pet/settings": () => ({ reduced_motion: "auto" }) }).fetchImpl,
+    fetchImpl: fakeApi({
+      "GET /api/pet/settings": () => ({ reduced_motion: "auto" }),
+      ...(agents.length > 0
+        ? {
+            "GET /api/agent/sessions": () => ({
+              sessions: agents.map((agent, i) => agentSession(`s${i}`, agent)),
+            }),
+          }
+        : {}),
+    }).fetchImpl,
   });
   render(
     <CoreProvider client={client}>
@@ -193,6 +215,29 @@ describe("Fawkes island page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open in Phoenix" }));
     expect(shell.opened).toEqual(["/panel/overview"]);
     expect(fawkes()?.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("shows one active-agent pill per active session inside the expanded island, and none while collapsed", async () => {
+    const shell = fakeShell(frame("expanded"));
+    await setup(shell, ["codex", "claude"]);
+    await waitFor(() =>
+      expect(document.querySelectorAll(".island-body .source-pill").length).toBe(2),
+    );
+    expect(
+      Array.from(document.querySelectorAll<HTMLElement>(".island-body .source-pill")).map(
+        (el) => el.dataset.source,
+      ),
+    ).toEqual(["agent:claude", "agent:codex"]);
+    act(() => shell.emit(frame("small")));
+    expect(document.querySelector(".source-pill")).toBeNull();
+    act(() => shell.emit(frame("expanded")));
+    expect(document.querySelectorAll(".island-body .source-pill").length).toBe(2);
+  });
+
+  it("draws no pill list in the expanded island when no agent session is active", async () => {
+    await setup(fakeShell(frame("expanded")));
+    expect(document.querySelector(".island-body")).not.toBeNull();
+    expect(document.querySelector(".source-pills")).toBeNull();
   });
 
   it("shows the recording indicator whenever Kage is recording and the island is expanded", async () => {

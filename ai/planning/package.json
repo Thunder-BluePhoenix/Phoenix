@@ -8,6 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@phoenix/ai-context": "workspace:*",
     "@phoenix/ai-meetings": "workspace:*",
     "@phoenix/ai-memory": "workspace:*",
     "@phoenix/ai-models": "workspace:*",

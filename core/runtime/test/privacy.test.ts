@@ -84,6 +84,28 @@ describe("privacy API", () => {
     expect(audit).toContain("privacy.retention.changed");
   });
 
+  it("GET /api/audit/verify needs the session token and returns only the chain verdict", async () => {
+    const { api, base, runtime } = await setup();
+    runtime.permissions.audit.record({
+      actor: "user",
+      action: "secret.sentinel.action",
+      decision: "info",
+      details: { note: "sentinel-detail-text" },
+    });
+    const ok = await api("GET", "/api/audit/verify");
+    expect(ok.status).toBe(200);
+    expect(Object.keys(ok.json).sort()).toEqual(["checked", "firstBadId", "ok", "unchainedPrefix"]);
+    expect(ok.json).toMatchObject({ ok: true, firstBadId: null, unchainedPrefix: 0 });
+    expect(ok.json.checked).toBeGreaterThan(0);
+    expect((await fetch(`${base}/api/audit/verify`)).status).toBe(401);
+    // Edit one stored row: the verdict names it and still carries no content.
+    const row = runtime.permissions.audit.list({ limit: 1 })[0]!;
+    runtime.db.prepare("UPDATE audit_log SET decision = 'denied' WHERE id = ?").run(row.id);
+    const bad = await api("GET", "/api/audit/verify");
+    expect(bad.json).toMatchObject({ ok: false, firstBadId: row.id });
+    expect(JSON.stringify(bad.json)).not.toContain("sentinel");
+  });
+
   it("delete-all needs confirmation, empties the class and is audited", async () => {
     const { api } = await setup();
     expect((await api("POST", "/api/privacy/delete", { data: "events" })).json.code).toBe(

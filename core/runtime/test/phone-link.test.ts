@@ -5,7 +5,9 @@ import { connect as netConnect, createServer, type Socket } from "node:net";
 import { request as httpsRequest } from "node:https";
 import type { NetworkInterfaceInfo } from "node:os";
 import { PhoneThrottledError, type PhoneAuthRequest } from "@phoenix/api";
-import { existsSync } from "node:fs";
+import { createHash, generateKeyPairSync, X509Certificate } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger, type LogRecord } from "@phoenix/logging";
 import { afterEach, describe, expect, it } from "vitest";
@@ -17,13 +19,16 @@ import {
   MAX_NONCES_PER_DEVICE,
   MAX_WRONG_CODES,
   MAX_WRONG_CODES_PER_CODE,
+  PAIRING_BINDING_REFUSED,
+  pairingBinding,
   PAIRING_TTL_MS,
   DEFAULT_PHONE_PORT,
   requestHash,
   previewHash,
   type PhoneLinkTuning,
 } from "../src/phone-link";
-import { FakePhone } from "./phone-client";
+import { buildSelfSignedCertificate } from "../src/phone-cert";
+import { FakePhone, phoneBinding } from "./phone-client";
 import { startCore, TOKEN, type TestCore } from "./helpers";
 
 /** Time the phone link sees; nothing in these tests waits on a real timer. */
@@ -151,11 +156,17 @@ async function rig(tuning: PhoneLinkTuning = {}) {
 }
 
 /** A well-formed pairing body for calling `pair()` directly with a chosen remote address. */
-const pairBody = (code: string) => ({
-  code,
-  name: "Direct caller",
-  public_key: new FakePhone("127.0.0.1", 0, null, () => 0).publicKey,
-});
+const pairBody = (core: TestCore, code: string) => {
+  const publicKey = new FakePhone("127.0.0.1", 0, null, () => 0).publicKey;
+  const cert = new X509Certificate(readFileSync(join(core.dataDir, "phone", "tls-cert.pem")));
+  return {
+    code,
+    name: "Direct caller",
+    public_key: publicKey,
+    binding_v: 1,
+    binding: phoneBinding(code, cert.raw, Buffer.from(publicKey, "base64")),
+  };
+};
 
 const bodyOf = (a: Approval, extra: Record<string, unknown> = {}) => ({
   id: a.id,
@@ -304,7 +315,9 @@ describe("pairing", () => {
     // Pairing as a whole is not locked and the code the user is showing still lives.
     expect((await r.status()).locked_out_until).toBeNull();
     expect((await r.status()).pairing).not.toBeNull();
-    expect(() => r.core.runtime.phone.pair(pairBody(live.code), "192.0.2.77")).not.toThrow();
+    expect(() =>
+      r.core.runtime.phone.pair(pairBody(r.core, live.code), "192.0.2.77"),
+    ).not.toThrow();
     r.clock.advance(LOCKOUT_MS + 1);
     expect((await phone.pair("AAAA-AAAA-AAAA", "After the wait")).status).toBe(403);
   });
@@ -325,14 +338,16 @@ describe("pairing", () => {
     await r.enable();
     const live = (await r.core.api("POST", "/api/phone/pairing")).json;
     for (let i = 0; i < MAX_WRONG_CODES; i++)
-      expect(() => r.core.runtime.phone.pair(pairBody("AAAA-AAAA-AAAA"), "192.0.2.1")).toThrow(
-        /invalid or expired/,
-      );
-    expect(() => r.core.runtime.phone.pair(pairBody("AAAA-AAAA-AAAA"), "192.0.2.1")).toThrow(
-      PhoneThrottledError,
-    );
+      expect(() =>
+        r.core.runtime.phone.pair(pairBody(r.core, "AAAA-AAAA-AAAA"), "192.0.2.1"),
+      ).toThrow(/invalid or expired/);
+    expect(() =>
+      r.core.runtime.phone.pair(pairBody(r.core, "AAAA-AAAA-AAAA"), "192.0.2.1"),
+    ).toThrow(PhoneThrottledError);
     expect((await r.status()).locked_out_until).toBeNull();
-    expect(r.core.runtime.phone.pair(pairBody(live.code), "192.0.2.2").status).toBe("pending");
+    expect(r.core.runtime.phone.pair(pairBody(r.core, live.code), "192.0.2.2").status).toBe(
+      "pending",
+    );
   });
 
   it("many addresses together cannot grind one live code: the budget destroys it and pauses pairing", async () => {
@@ -343,19 +358,21 @@ describe("pairing", () => {
     for (let i = 0; i < guesses; i++) {
       expect(() =>
         r.core.runtime.phone.pair(
-          pairBody("AAAA-AAAA-AAAA"),
+          pairBody(r.core, "AAAA-AAAA-AAAA"),
           `192.0.2.${10 + Math.floor(i / MAX_WRONG_CODES)}`,
         ),
       ).toThrow(/invalid or expired/);
     }
     expect((await r.status()).locked_out_until).not.toBeNull();
     expect((await r.status()).pairing).toBeNull();
-    expect(() => r.core.runtime.phone.pair(pairBody(live.code), "192.0.2.200")).toThrow(
+    expect(() => r.core.runtime.phone.pair(pairBody(r.core, live.code), "192.0.2.200")).toThrow(
       PhoneThrottledError,
     );
     r.clock.advance(LOCKOUT_MS + 1);
     const later = (await r.core.api("POST", "/api/phone/pairing")).json;
-    expect(r.core.runtime.phone.pair(pairBody(later.code), "192.0.2.200").status).toBe("pending");
+    expect(r.core.runtime.phone.pair(pairBody(r.core, later.code), "192.0.2.200").status).toBe(
+      "pending",
+    );
   });
 
   it("rejects a malformed key or name without spending a second try", async () => {
@@ -986,7 +1003,7 @@ describe("a disabled link refuses everything", () => {
     expect(r.core.runtime.phone.authenticate(authRequest(phone)).id).toBe(phone.deviceId);
     await r.core.runtime.phone.configure({ enabled: false });
     expect(() => r.core.runtime.phone.authenticate(authRequest(phone))).toThrow(/not listening/);
-    expect(() => r.core.runtime.phone.pair(pairBody(pairing.code), "192.0.2.50")).toThrow(
+    expect(() => r.core.runtime.phone.pair(pairBody(r.core, pairing.code), "192.0.2.50")).toThrow(
       /not listening/,
     );
   });
@@ -1264,5 +1281,151 @@ describe("replay-nonce quota", () => {
       r.core.runtime.phone.authenticate(authRequest(busy));
     expect(() => r.core.runtime.phone.authenticate(authRequest(busy))).toThrow(PhoneThrottledError);
     expect(r.core.runtime.phone.authenticate(authRequest(other)).id).toBe(other.deviceId);
+  });
+});
+
+/** Fixed inputs of the test vector in docs/phone-link.md §Channel binding. */
+const ramp = (start: number, length: number): Buffer =>
+  Buffer.from(Array.from({ length }, (_, i) => (start + i) % 256));
+
+describe("pairing channel binding", () => {
+  async function binder() {
+    const r = await rig();
+    const on = await r.enable();
+    const phone = new FakePhone("127.0.0.1", on.port!, on.fingerprint, () => r.clock.now());
+    const pairing = (await r.core.api("POST", "/api/phone/pairing")).json;
+    return { r, phone, pairing };
+  }
+  const refusals = async (r: Awaited<ReturnType<typeof rig>>) =>
+    (await r.audit()).filter((a) => a.action === "phone.pair.refused");
+
+  it("the test vector in docs/phone-link.md is what the code computes (doc and code cannot drift)", () => {
+    const hex = pairingBinding("ABCDEFGHJKLM", ramp(0, 32), ramp(32, 32), ramp(64, 91)).toString(
+      "hex",
+    );
+    const doc = readFileSync(
+      fileURLToPath(new URL("../../../docs/phone-link.md", import.meta.url)),
+      "utf8",
+    );
+    expect(doc).toContain(hex);
+    // The fake phone's independent implementation agrees on the same layout.
+    const cert = new X509Certificate(
+      buildSelfSignedCertificate({
+        privateKey: generateKeyPairSync("ec", { namedCurve: "prime256v1" }).privateKey,
+        address: "127.0.0.1",
+        notBefore: new Date(0),
+        notAfter: new Date(1e12),
+      }),
+    );
+    const spki = cert.publicKey.export({ type: "spki", format: "der" });
+    const key = ramp(64, 91);
+    expect(phoneBinding("ABCD-EFGH-JKLM", cert.raw, key)).toBe(
+      pairingBinding(
+        "ABCDEFGHJKLM",
+        createHash("sha256").update(spki).digest(),
+        createHash("sha256").update(cert.raw).digest(),
+        key,
+      ).toString("hex"),
+    );
+  });
+
+  it("a valid binding pairs", async () => {
+    const { r, phone, pairing } = await binder();
+    const reply = await phone.pair(pairing.code, "Bound phone");
+    expect(reply.status).toBe(200);
+    expect((await r.status()).pending_pair).not.toBeNull();
+  });
+
+  it("a substituted certificate (different SPKI) is refused with the fixed error and burns the code", async () => {
+    const { r, phone, pairing } = await binder();
+    const mitm = new X509Certificate(
+      buildSelfSignedCertificate({
+        privateKey: generateKeyPairSync("ec", { namedCurve: "prime256v1" }).privateKey,
+        address: "127.0.0.1",
+        notBefore: new Date(r.clock.now() - 60_000),
+        notAfter: new Date(r.clock.now() + 86_400_000),
+      }),
+    );
+    const bad = await phone.pair(pairing.code, "Victim", phone.publicKey, {
+      seenCertDer: mitm.raw,
+    });
+    expect(bad.status).toBe(403);
+    expect(JSON.stringify(bad.json)).toContain(PAIRING_BINDING_REFUSED);
+    expect((await r.status()).pending_pair).toBeNull();
+    expect((await r.status()).pairing).toBeNull(); // burned
+    // The correct request with the same code is now useless.
+    expect((await phone.pair(pairing.code, "Retry")).status).toBe(403);
+    expect((await r.status()).pending_pair).toBeNull();
+    const refused = (await refusals(r)).filter((a) => a.details.reason === "binding_mismatch");
+    expect(refused).toHaveLength(1);
+    expect(refused[0]!.details.code_burned).toBe(true);
+    expect(JSON.stringify(await r.audit())).not.toContain(pairing.code.replace(/-/g, ""));
+  });
+
+  it("a binding over a different device key, or the wrong version, is refused", async () => {
+    const { r, phone, pairing } = await binder();
+    const other = new FakePhone("127.0.0.1", 0, null, () => 0).publicKey;
+    const wrongKey = await phone.pair(pairing.code, "A", phone.publicKey, {
+      binding: phoneBinding(
+        pairing.code,
+        new X509Certificate(readFileSync(join(r.core.dataDir, "phone", "tls-cert.pem"))).raw,
+        Buffer.from(other, "base64"),
+      ),
+    });
+    expect(wrongKey.status).toBe(403);
+    const second = (await r.core.api("POST", "/api/phone/pairing")).json;
+    expect((await phone.pair(second.code, "B", phone.publicKey, { bindingV: 2 })).status).toBe(403);
+    const third = (await r.core.api("POST", "/api/phone/pairing")).json;
+    expect((await phone.pair(third.code, "C", phone.publicKey, { bindingV: "1" })).status).toBe(
+      403,
+    );
+    expect((await refusals(r)).length).toBe(3);
+  });
+
+  it("a wrong code fails (the binding cannot rescue it) and leaves the live code usable", async () => {
+    const { r, phone, pairing } = await binder();
+    const wrong = await phone.pair("AAAA-AAAA-AAAA", "Guesser");
+    expect(wrong.status).toBe(403);
+    expect(JSON.stringify(wrong.json)).not.toContain(PAIRING_BINDING_REFUSED);
+    expect((await r.status()).pairing).not.toBeNull();
+    // A phone that typed the right code but keyed the binding with another one is refused.
+    const keyed = await phone.pair(pairing.code, "Mistyped", phone.publicKey, {
+      bindingCode: "AAAA-AAAA-AAAA",
+    });
+    expect(keyed.status).toBe(403);
+    expect(JSON.stringify(keyed.json)).toContain(PAIRING_BINDING_REFUSED);
+    expect((await r.status()).pairing).toBeNull();
+  });
+
+  it("a replay of a good pairing request fails: the code is single use", async () => {
+    const { r, phone, pairing } = await binder();
+    const body = (seen: Buffer) =>
+      JSON.stringify({
+        code: pairing.code,
+        name: "Replayed",
+        public_key: phone.publicKey,
+        binding_v: 1,
+        binding: phoneBinding(pairing.code, seen, Buffer.from(phone.publicKey, "base64")),
+      });
+    expect((await phone.raw("POST", "/phone/v1/pair", {}, body)).status).toBe(200);
+    expect((await phone.raw("POST", "/phone/v1/pair", {}, body)).status).toBe(403);
+    expect((await r.status()).pending_pair).not.toBeNull(); // still the first one only
+  });
+
+  it("a pairing without a binding is refused and burns the code", async () => {
+    const { r, phone, pairing } = await binder();
+    const none = await phone.pair(pairing.code, "Old client", phone.publicKey, {
+      omitBinding: true,
+    });
+    expect(none.status).toBe(403);
+    expect(JSON.stringify(none.json)).toContain(PAIRING_BINDING_REFUSED);
+    expect((await r.status()).pairing).toBeNull();
+    expect((await r.status()).pending_pair).toBeNull();
+    expect((await refusals(r)).some((a) => a.details.reason === "binding_missing")).toBe(true);
+  });
+
+  it("the pairing URI announces binding version 1", async () => {
+    const { pairing } = await binder();
+    expect(new URL(pairing.uri).searchParams.get("bv")).toBe("1");
   });
 });

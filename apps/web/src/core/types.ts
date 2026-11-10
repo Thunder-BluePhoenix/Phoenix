@@ -87,6 +87,8 @@ export interface Confirmation {
     dailyDigest?: { preview: string; citedSourceCount: number };
     /** Phase 95: what the browsing assistant asks to do on the active tab. Display only. */
     browser?: BrowserActionDetails;
+    /** Phase 67: command input values the capability marked for the prompt (sanitised, <=80 chars each). */
+    targets?: Record<string, string>;
   };
   /** Optional, present only for a request raised by an active agent run (Phase 31). */
   task_id?: string;

@@ -150,5 +150,7 @@ Mounted on the meeting detail page (`#/meetings/<id>`, `MeetingItems.tsx`) and t
 - Fawkes PRD v1.0 §9.2
 - AI Evolution v1.0→v2.0 §18
 
+- **Audit hash chain** (gap row, Phases 30 and 35; same change): migration 34 adds nullable `prev_hash` and `entry_hash` to `audit_log`. `AuditLog.record` reads the previous hash and inserts in one `BEGIN IMMEDIATE` transaction, and `entry_hash` = SHA-256 over the domain prefix `phoenix-audit-v1`, `prev_hash`, id, timestamp, actor, action, capability, decision and canonical (sorted-key) details JSON. Rows from before the migration stay unchained (a prefix); the first chained row anchors on a fixed genesis constant. `AuditLog.verify()` and session-token `GET /api/audit/verify` return only `{ok, checked, firstBadId, unchainedPrefix}`, never entry content. **What this is not:** the algorithm is public and uses no secret, so anyone with write access to the SQLite file can edit rows and recompute the whole chain from the genesis constant, and can drop the newest rows undetected. It detects accidental or partial tampering (one edited, deleted or reordered row), not a full rewrite. An external anchor (for example periodically exporting the head hash somewhere the local user cannot rewrite) is an owner decision and is not built. Tests: `core/permissions/test/audit-chain.test.ts`, `core/runtime/test/privacy.test.ts`.
+
 ---
 Back to [TRACKER](TRACKER.md)

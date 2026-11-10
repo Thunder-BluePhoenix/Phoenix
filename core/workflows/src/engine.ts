@@ -10,7 +10,14 @@ import { silentLogger, type Logger } from "@phoenix/logging";
 import type { Actor, AutonomyLevel } from "@phoenix/policy";
 import { createEvent, type PhoenixEvent } from "@phoenix/protocol";
 import { boundRecord, boundValue } from "./bound";
-import { realSleep, DEFAULT_CONCURRENCY, DEFAULT_RATE, type EngineDeps } from "./engine-types";
+import {
+  realSleep,
+  DEFAULT_CONCURRENCY,
+  DEFAULT_RATE,
+  GLOBAL_CAP_REASON,
+  MAX_ACTIVE_RUNS,
+  type EngineDeps,
+} from "./engine-types";
 import { evaluateCondition, type Value } from "./expr";
 import { RunExecutor } from "./executor";
 import { compiledExpression } from "./render";
@@ -360,6 +367,8 @@ export class WorkflowEngine {
     const rate = this.d.rate ?? DEFAULT_RATE;
     if (this.d.store.countStartedSince(def.id, this.now() - rate.windowMs) >= rate.max)
       return `rate limit: at most ${rate.max} runs per ${rate.windowMs} ms`;
+    if (this.d.store.countActiveRuns() >= (this.d.maxActiveRuns ?? MAX_ACTIVE_RUNS))
+      return GLOBAL_CAP_REASON;
     const checked = validateDefinition(def, this.catalog);
     if (!checked.ok)
       return `the definition is not runnable now: ${checked.problems[0] ?? "invalid"}`;

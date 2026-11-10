@@ -3,7 +3,15 @@
 //
 // A Node client acting as the phone (Phase 71 tests): it owns a P-256 key pair, pins the
 // certificate fingerprint the desktop showed, and signs requests the way docs/phone-link.md says.
-import { generateKeyPairSync, randomBytes, sign, type KeyObject } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  generateKeyPairSync,
+  randomBytes,
+  sign,
+  X509Certificate,
+  type KeyObject,
+} from "node:crypto";
 import { request } from "node:https";
 import type { TLSSocket } from "node:tls";
 import { signedRequestText } from "../src/phone-link";
@@ -23,6 +31,37 @@ export interface SignOverrides {
   /** Sign this body but send `sentBody` instead (a tampering man in the middle). */
   sentBody?: string;
   extraHeaders?: Record<string, string>;
+}
+
+/** Deliberate faults for a pairing request. */
+export interface PairOptions {
+  /** Send no `binding`/`binding_v` at all (a client that predates the channel binding). */
+  omitBinding?: boolean;
+  /** Key the HMAC with this instead of the code (a client that typed the code wrong). */
+  bindingCode?: string;
+  /** Replace the computed binding hex outright. */
+  binding?: string;
+  bindingV?: unknown;
+  /**
+   * Compute the binding over this certificate (DER) instead of the one the TLS connection showed:
+   * what a phone does when something between it and Core presented a certificate of its own.
+   */
+  seenCertDer?: Buffer;
+}
+
+/**
+ * The binding the phone sends (docs/phone-link.md §Channel binding), written out independently of
+ * Core's `pairingBinding`: HMAC-SHA256(key = code bytes, msg = "phoenix-pair-v1" || SHA-256(SPKI of the
+ * certificate seen) || SHA-256(certificate seen) || device public key).
+ */
+export function phoneBinding(code: string, seenCertDer: Buffer, devicePublicKey: Buffer): string {
+  const spki = new X509Certificate(seenCertDer).publicKey.export({ type: "spki", format: "der" });
+  return createHmac("sha256", Buffer.from(code.toUpperCase().replace(/[\s-]/g, ""), "utf8"))
+    .update("phoenix-pair-v1", "utf8")
+    .update(createHash("sha256").update(spki).digest())
+    .update(createHash("sha256").update(seenCertDer).digest())
+    .update(devicePublicKey)
+    .digest("hex");
 }
 
 export class FakePhone {
@@ -47,7 +86,8 @@ export class FakePhone {
     method: string,
     path: string,
     headers: Record<string, string>,
-    body?: string,
+    /** A function receives the DER of the certificate seen on THIS TLS connection (pairing binding). */
+    body?: string | ((seenCertDer: Buffer) => string),
   ): Promise<PhoneReply> {
     const { promise, resolve, reject } = Promise.withResolvers<PhoneReply>();
     const req = request(
@@ -61,7 +101,7 @@ export class FakePhone {
         rejectUnauthorized: false,
         headers: {
           host: `${this.host}:${this.port}`,
-          ...(body !== undefined
+          ...(typeof body === "string"
             ? {
                 "content-type": "application/json",
                 "content-length": String(Buffer.byteLength(body)),
@@ -89,21 +129,48 @@ export class FakePhone {
       socket.once("secureConnect", () => {
         const cert = (socket as TLSSocket).getPeerCertificate();
         peer = cert.fingerprint256;
-        if (this.pinnedFingerprint !== null && peer !== this.pinnedFingerprint)
+        if (this.pinnedFingerprint !== null && peer !== this.pinnedFingerprint) {
           req.destroy(new Error(`certificate does not match the pin: ${peer}`));
+          return;
+        }
+        if (typeof body === "function") {
+          const text = body(cert.raw);
+          req.setHeader("content-type", "application/json");
+          req.setHeader("content-length", String(Buffer.byteLength(text)));
+          req.end(text);
+        }
       });
     });
     req.on("error", reject);
-    req.end(body);
+    if (typeof body !== "function") req.end(body);
     return promise;
   }
 
-  pair(code: string, name: string, publicKey = this.publicKey): Promise<PhoneReply> {
-    return this.raw(
-      "POST",
-      "/phone/v1/pair",
-      {},
-      JSON.stringify({ code, name, public_key: publicKey }),
+  /** Pairs with the binding computed over the certificate this very connection saw. */
+  pair(
+    code: string,
+    name: string,
+    publicKey = this.publicKey,
+    options: PairOptions = {},
+  ): Promise<PhoneReply> {
+    return this.raw("POST", "/phone/v1/pair", {}, (seen) =>
+      JSON.stringify({
+        code,
+        name,
+        public_key: publicKey,
+        ...(options.omitBinding
+          ? {}
+          : {
+              binding_v: options.bindingV ?? 1,
+              binding:
+                options.binding ??
+                phoneBinding(
+                  options.bindingCode ?? code,
+                  options.seenCertDer ?? seen,
+                  Buffer.from(publicKey, "base64"),
+                ),
+            }),
+      }),
     );
   }
 

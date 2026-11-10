@@ -11,5 +11,8 @@
     "@phoenix/protocol": "workspace:*",
     "@phoenix/persistence": "workspace:*",
     "@phoenix/logging": "workspace:*"
+  },
+  "devDependencies": {
+    "@phoenix/permissions": "workspace:*"
   }
 }

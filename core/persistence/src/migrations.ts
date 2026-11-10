@@ -1293,4 +1293,15 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX page_notes_received ON page_notes (received_at);
     `,
   },
+  {
+    version: 34,
+    name: "audit_hash_chain",
+    // Tamper evidence for audit_log: each new row stores the previous row's hash and its own
+    // (see AuditLog in core/permissions). Rows that exist now keep NULL in both columns and form
+    // an unchained prefix; the first chained row anchors on a fixed genesis constant.
+    sql: `
+      ALTER TABLE audit_log ADD COLUMN prev_hash TEXT;
+      ALTER TABLE audit_log ADD COLUMN entry_hash TEXT;
+    `,
+  },
 ];

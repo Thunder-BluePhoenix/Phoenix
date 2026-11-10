@@ -326,6 +326,9 @@ importers:
 
   ai/planning:
     dependencies:
+      '@phoenix/ai-context':
+        specifier: workspace:*
+        version: link:../context
       '@phoenix/ai-meetings':
         specifier: workspace:*
         version: link:../meetings
@@ -422,6 +425,19 @@ importers:
       '@phoenix/protocol':
         specifier: workspace:*
         version: link:../../protocol
+    devDependencies:
+      '@phoenix/capability-git':
+        specifier: workspace:*
+        version: link:../../capabilities/git
+      '@phoenix/event-bus':
+        specifier: workspace:*
+        version: link:../../core/event-bus
+      '@phoenix/sdk-testing':
+        specifier: workspace:*
+        version: link:../../sdk/testing
+      '@phoenix/state-engine':
+        specifier: workspace:*
+        version: link:../../core/state-engine
 
   apps/desktop:
     devDependencies:
@@ -1026,6 +1042,10 @@ importers:
       '@phoenix/protocol':
         specifier: workspace:*
         version: link:../../protocol
+    devDependencies:
+      '@phoenix/permissions':
+        specifier: workspace:*
+        version: link:../permissions
 
   core/registry:
     dependencies:

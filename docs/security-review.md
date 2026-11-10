@@ -65,6 +65,7 @@ These are real and are not fixed in v0.1.
 
 13. **Search by meaning, extraction and graph questions were measured on small data.** The relevance gain depends on the dev-tuned `k = 20` and vector weight 0.5 (Phase 37 doc); extraction quality of `llama3.2` on long real meetings is unmeasured; the graph's value gate is not met on its own (Phase 38 doc). None of this is a security property, but the UI must not present these answers as more certain than they are.
 14. **Vector search is a linear scan and embeddings are not encrypted at rest** (see the vectors row). A large memory store makes `retrieval.truncated` true and leaves the oldest memories out of the vector half.
+15. **The audit log's hash chain is not tamper-proof against a local writer.** Since migration 34 each new `audit_log` row carries `prev_hash` and `entry_hash` (SHA-256, domain prefix `phoenix-audit-v1`), and `GET /api/audit/verify` reports `{ok, checked, firstBadId, unchainedPrefix}`. That catches an accidentally or partly edited, deleted or reordered row. Anyone who can write the database file can recompute the whole chain (the algorithm is public, no key is involved) or drop the newest rows, and rows from before the migration are an unchained prefix that is not checked. An external anchor, such as periodically exporting the head hash, is an owner decision and is not built. The privacy inventory states this next to the audit-log row.
 
 ## Re-running this review
 

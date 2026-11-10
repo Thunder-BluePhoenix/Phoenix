@@ -15,8 +15,8 @@ import {
 } from "@phoenix/policy";
 import type { CapabilityManifest } from "@phoenix/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createGitCapability } from "../../../capabilities/git/src";
-import { createHarness, type Harness } from "../../../sdk/testing/src";
+import { createGitCapability } from "@phoenix/capability-git";
+import { createHarness, type Harness } from "@phoenix/sdk-testing";
 import {
   approverFromPermissions,
   enabledManifests,

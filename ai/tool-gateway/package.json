@@ -14,5 +14,11 @@
     "@phoenix/policy": "workspace:*",
     "@phoenix/capability-manager": "workspace:*",
     "@phoenix/permissions": "workspace:*"
+  },
+  "devDependencies": {
+    "@phoenix/capability-git": "workspace:*",
+    "@phoenix/event-bus": "workspace:*",
+    "@phoenix/sdk-testing": "workspace:*",
+    "@phoenix/state-engine": "workspace:*"
   }
 }
