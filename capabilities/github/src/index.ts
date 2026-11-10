@@ -194,6 +194,13 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
   let views: Record<string, RepoView> = {};
   let polled = false;
   let inflight: Promise<void> | null = null;
+  /**
+   * The context the background loop reads settings from: `init`'s, replaced by `onConfig`, so a
+   * saved `repositories`, `poll_ms` or `api_url` applies without disable and enable.
+   */
+  let live: CapabilityContext | undefined;
+  /** Ends the loop's current wait early so a saved change is applied now. */
+  let wake: AbortController | undefined;
 
   // What the last cycle learned, for health and for the delay before the next one.
   let failure: GithubError | undefined;
@@ -625,12 +632,21 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
       resumeAt = undefined;
       // History rule: anything that began before this moment is background, not news.
       liveSince = now();
+      live = ctx;
       void (async () => {
         while (!ctx.signal.aborted) {
-          await pollOnce(ctx);
-          await sleep(delayFor(ctx), ctx.signal);
+          await pollOnce(live ?? ctx);
+          const waiting = (wake = new AbortController());
+          await sleep(delayFor(live ?? ctx), AbortSignal.any([ctx.signal, waiting.signal]));
+          if (wake === waiting) wake = undefined;
         }
       })();
+    },
+    onConfig(ctx) {
+      // The poll loop is the only holder of an old context; commands and health already get the
+      // current one from Core. Ending the wait polls the new repository list at once.
+      live = ctx;
+      wake?.abort();
     },
     commands: {
       async status(_input, ctx) {

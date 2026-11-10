@@ -4,8 +4,8 @@
 // The capability inside the real capability manager, bus and permission gateway (in memory), on a
 // fake machine: confirmation each time, events on the bus, kill switch and disable releasing.
 import { createHarness, type Harness } from "@phoenix/sdk-testing";
-import { afterEach, describe, expect, it } from "vitest";
-import { createAwakeCapability } from "../src";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createAwakeCapability, type BatteryReading } from "../src";
 import { FakeFeed, FakeSystem, settle } from "../testing/fakes";
 
 let h: Harness | undefined;
@@ -143,5 +143,61 @@ describe("awake in the capability manager", () => {
     await h.drain();
     expect(endedEvents(h)).toHaveLength(1);
     expect(endedEvents(h)[0]?.payload.reason).toBe("cancelled");
+  });
+});
+
+describe("config reload (onConfig, Phase 25)", () => {
+  async function onBattery(percent: number, config: Record<string, unknown>) {
+    const sys = new FakeSystem();
+    const feed = new FakeFeed();
+    const level = { reading: { kind: "battery", percent, onBattery: true } as BatteryReading };
+    const awake = createAwakeCapability({
+      env: sys.env,
+      feed: () => feed,
+      battery: () => Promise.resolve(level.reading),
+      batteryPollMs: 60_000,
+      modules: [],
+    });
+    h = createHarness({ modules: [awake] });
+    h.manager.configure("awake", config);
+    await h.enable("awake");
+    return { sys, level };
+  }
+
+  it("a raised battery floor ends the running session at the next battery check", async () => {
+    const { sys, level } = await onBattery(50, { battery_floor_percent: 10 });
+    expect((await h!.run("awake", "start", { minutes: 120 })).status).toBe("succeeded");
+    level.reading = { kind: "battery", percent: 30, onBattery: true };
+    await sys.clock.advance(60_000);
+    expect(sys.alive).toHaveLength(1);
+    h!.manager.configure("awake", { battery_floor_percent: 40 });
+    await sys.clock.advance(60_000);
+    expect(sys.alive).toHaveLength(0);
+    expect(h!.events.find((e) => e.event_type === "awake.session.ended")?.payload).toMatchObject({
+      reason: "battery",
+    });
+  });
+
+  it("a saved floor is what status reports and what a new start is refused under", async () => {
+    await onBattery(30, { battery_floor_percent: 10 });
+    expect((await h!.run("awake", "status")).result).toMatchObject({ battery_floor_percent: 10 });
+    h!.manager.configure("awake", { battery_floor_percent: 40 });
+    expect((await h!.run("awake", "status")).result).toMatchObject({ battery_floor_percent: 40 });
+    const refused = await h!.run("awake", "start", { minutes: 5 });
+    expect(refused.status).toBe("failed");
+  });
+
+  it("a reload with no session running is harmless and the capability stays healthy", async () => {
+    await onBattery(80, {});
+    h!.manager.configure("awake", { battery_floor_percent: 25 });
+    await vi.waitFor(() => expect(h!.manager.get("awake").health.status).toBe("healthy"));
+    expect(h!.manager.get("awake").status).toBe("enabled");
+  });
+
+  it("the hook does not throw on a hostile stored config or before any enable", () => {
+    const awake = createAwakeCapability({ modules: [] });
+    expect(() =>
+      awake.onConfig!({ config: { battery_floor_percent: "ten" } } as never),
+    ).not.toThrow();
   });
 });

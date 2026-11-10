@@ -109,6 +109,7 @@ export function createStatusLightsCapability(
   let deck: StreamDeck | undefined;
   let emitted: CapabilityContext["emit"] | undefined;
   let consented: ReadonlySet<string> = new Set();
+  let quiet: QuietHours | null = null;
   let provisioned: readonly Device[] = [];
   let unsubscribeFocus: (() => void) | undefined;
   /** Devices whose last write failed; one warning per failure streak, one recovery. */
@@ -135,6 +136,22 @@ export function createStatusLightsCapability(
     controller?.stop();
     controller = undefined;
     failing.clear();
+  }
+
+  /** Starts the Stream Deck surface when the config switches it on; `ctx` is the context it was read from. */
+  function startDeck(ctx: CapabilityContext): void {
+    const surface = options.deck?.();
+    const deckConfig = deckFrom(ctx.config.stream_deck);
+    if (!surface || !deckConfig.enabled) return;
+    deck = new StreamDeck({
+      surface: surface.surface,
+      actions: surface.actions,
+      approveCapabilities: deckConfig.approveCapabilities,
+      selfId: "status-lights",
+      awakeMinutes: deckConfig.awakeMinutes,
+      onError: (key) => ctx.logger.warn("stream deck key failed", { key }),
+    });
+    deck.start();
   }
 
   const module = defineCapability({
@@ -222,7 +239,7 @@ export function createStatusLightsCapability(
       emitted = ctx.emit;
       consented = new Set(idList(ctx.config.devices));
       provisioned = options.devices?.() ?? [];
-      const quiet = quietFrom(ctx.config.quiet_hours);
+      quiet = quietFrom(ctx.config.quiet_hours);
       const feed = options.feed?.();
       if (!feed) {
         ctx.logger.warn("status lights have no event feed; nothing will follow Fawkes");
@@ -248,24 +265,29 @@ export function createStatusLightsCapability(
         onUpdate: () => deck?.update(lights.snapshot().shown),
       });
       controller = lights;
-      const surface = options.deck?.();
-      const deckConfig = deckFrom(ctx.config.stream_deck);
-      if (surface && deckConfig.enabled) {
-        deck = new StreamDeck({
-          surface: surface.surface,
-          actions: surface.actions,
-          approveCapabilities: deckConfig.approveCapabilities,
-          selfId: "status-lights",
-          awakeMinutes: deckConfig.awakeMinutes,
-          onError: (key) => ctx.logger.warn("stream deck key failed", { key }),
-        });
-        deck.start();
-      }
+      startDeck(ctx);
       lights.start();
       unsubscribeFocus = options.focusChanges?.(() => {
         lights.refreshPolicy();
         deck?.render();
       });
+    },
+    onConfig(ctx) {
+      // Consent, quiet hours and the Stream Deck settings apply to the running lights. A light that
+      // is no longer listed is revoked (no further writes); one newly listed is an explicit fresh
+      // opt-in. A light revoked by the `revoke` command and still listed stays revoked.
+      const before = consented;
+      consented = new Set(idList(ctx.config.devices));
+      quiet = quietFrom(ctx.config.quiet_hours);
+      const lights = controller;
+      if (!lights) return;
+      for (const device of provisioned) {
+        if (before.has(device.id) !== consented.has(device.id)) lights.consentChanged(device.id);
+      }
+      deck?.stop();
+      deck = undefined;
+      startDeck(ctx);
+      lights.refreshPolicy();
     },
     commands: {
       status(): StatusLightsStatus {

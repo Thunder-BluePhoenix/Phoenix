@@ -327,3 +327,38 @@ describe("polling", () => {
     await vi.waitFor(() => expect(r.m.runs.length).toBeGreaterThan(reads));
   });
 });
+
+describe("config reload (onConfig, Phase 25)", () => {
+  it("a saved poll_ms sets the next wait of the running radar", async () => {
+    const r = await ready({ config: { watch: true, poll_ms: 5000 } });
+    await vi.waitFor(() => expect(r.waits).toHaveLength(1));
+    h!.manager.configure("ports", { watch: true, poll_ms: 9000 });
+    await vi.waitFor(() => expect(r.m.sleeps.at(-1)).toBe(9000));
+    expect(r.m.sleeps.filter((ms) => ms === 5000)).toHaveLength(1);
+  });
+
+  it("switching watch on starts the radar and switching it off stops it, without disable and enable", async () => {
+    const r = await ready({ config: { poll_ms: 5000 } });
+    await yieldToLoop();
+    expect(r.m.runs).toEqual([]);
+    h!.manager.configure("ports", { watch: true, poll_ms: 5000 });
+    await vi.waitFor(() => expect(r.waits).toHaveLength(1));
+    const reads = r.m.runs.length;
+    expect(reads).toBeGreaterThan(0);
+    h!.manager.configure("ports", { watch: false, poll_ms: 5000 });
+    await yieldToLoop();
+    await yieldToLoop();
+    await yieldToLoop();
+    expect(r.m.runs.length).toBe(reads);
+    expect(h!.manager.get("ports").status).toBe("enabled");
+  });
+
+  it("the hook does not throw on a hostile stored config (Core would contain it anyway)", async () => {
+    await ready();
+    const module = createPortsCapability();
+    const ctx = { config: { watch: "yes", poll_ms: {} }, signal: new AbortController().signal };
+    expect(() => module.onConfig!(ctx as never)).not.toThrow();
+    h!.manager.configure("ports", { watch: false });
+    expect(h!.manager.get("ports").health.status).not.toBe("unhealthy");
+  });
+});

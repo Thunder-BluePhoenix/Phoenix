@@ -28,7 +28,7 @@ curl "${H[@]}" -X POST -d '{}' http://127.0.0.1:4870/api/capabilities/github/ena
 ```
 
 - **Token (optional).** A fine-grained personal access token with read-only _Pull requests_, _Actions_, _Deployments_ and _Metadata_ is enough. Without a token only public repositories work, GitHub allows 60 requests per hour, polling is slowed to fit (about one cycle every 3.6 minutes for one repository) and review requests for you cannot be detected (Phoenix does not know who you are).
-- `repositories`: up to 20 `owner/name`. `poll_ms`: 5000 or more, default 30000. `api_url`: GitHub Enterprise (`https://HOST/api/v3`).
+- `repositories`: up to 20 `owner/name`. `poll_ms`: 5000 or more, default 30000. `api_url`: GitHub Enterprise (`https://HOST/api/v3`). A saved change applies to the running watcher at once, without disable and enable.
 - Enabling grants `network` and `external_api`.
 
 ## How it behaves

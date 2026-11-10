@@ -38,7 +38,7 @@ renewed. A hold that cannot start refuses the `start`.
 
 ## Battery floor
 
-Config `battery_floor_percent` (1..90, default 10). A session ends (`reason: battery`) when the
+Config `battery_floor_percent` (1..90, default 10; a saved change applies to the running session's next battery check and to the next `start`, without disable and enable). A session ends (`reason: battery`) when the
 machine is **on battery** and below the floor; `start` is refused in the same state. Read through
 `pmset -g batt` (macOS), `/sys/class/power_supply/BAT*` (Linux), `Get-CimInstance Win32_Battery`
 (Windows, unverified), polled every 60 s. A machine with no battery never trips the rule. If the

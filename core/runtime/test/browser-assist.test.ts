@@ -8,16 +8,16 @@
 // no page read; a cloud provider, even preferred and granted, never sees them; the answer is data
 // and nothing is dispatched or approved by the route; a gullible model's output cannot add steps
 // that are not controls on the page or are protected.
+import type { FetchLike } from "@phoenix/ai-models";
 import { BrowserRelay, createBrowserCapability } from "@phoenix/capability-browser";
 import { afterEach, describe, expect, it } from "vitest";
 import { CASES, INSTR, PAGE_URL } from "../../../ai/evaluation/test/browsing-injection-cases";
 import { fakeNetwork, type FakeNetwork } from "./ai-network";
 import { startCore, type TestCore } from "./helpers";
 
-let stop: (() => Promise<void>) | undefined;
+const stops: (() => Promise<void>)[] = [];
 afterEach(async () => {
-  await stop?.();
-  stop = undefined;
+  for (const stop of stops.splice(0)) await stop();
 });
 
 interface Rig {
@@ -31,7 +31,13 @@ interface Rig {
 
 async function boot(
   chat: (body: string) => string = () => "I can't tell.",
-  options: { ollama?: "up" | "down"; ai?: boolean; relay?: boolean } = {},
+  options: {
+    ollama?: "up" | "down";
+    ai?: boolean;
+    relay?: boolean;
+    /** Wraps the fake network, e.g. to hold a model call open. */
+    wrapFetch?: (inner: FetchLike) => FetchLike;
+  } = {},
 ): Promise<Rig> {
   const net = fakeNetwork({ chat, ollama: options.ollama });
   const relay = new BrowserRelay();
@@ -40,16 +46,16 @@ async function boot(
     {
       capabilities: [createBrowserCapability({ relay })],
       runtime: {
-        fetch: net.fetch,
+        fetch: options.wrapFetch ? options.wrapFetch(net.fetch) : net.fetch,
         ...(options.relay === false ? {} : { browserRelay: relay }),
       },
     },
   );
   let running = true;
-  stop = async () => {
+  stops.push(async () => {
     running = false;
     await core.runtime.stop();
-  };
+  });
   if (options.ai !== false) {
     expect((await core.api("POST", "/api/ai/settings", { enabled: true })).status).toBe(200);
   }
@@ -272,4 +278,126 @@ describe("POST /api/browser/assist with the hostile pages of the injection suite
     expect((await r.core.api("GET", "/api/confirmations")).json.confirmations).toEqual([]);
     await r.end();
   }, 120_000);
+});
+
+/** A fetch wrapper that parks every model call until `release()` (or until the call is aborted). */
+function gate() {
+  let open = false;
+  let reached = 0;
+  const waiters: (() => void)[] = [];
+  return {
+    reached: () => reached,
+    release: () => {
+      open = true;
+      for (const w of waiters.splice(0)) w();
+    },
+    wrap:
+      (inner: FetchLike): FetchLike =>
+      async (url, init) => {
+        if (url.endsWith("/api/chat") && !open) {
+          reached += 1;
+          const { promise, resolve } = Promise.withResolvers<void>();
+          waiters.push(resolve);
+          const signal = init?.signal;
+          const aborted = new Promise<never>((_ok, reject) => {
+            signal?.addEventListener(
+              "abort",
+              () => reject(new DOMException("aborted", "AbortError")),
+              {
+                once: true,
+              },
+            );
+          });
+          await Promise.race([promise, aborted]);
+        }
+        return inner(url, init);
+      },
+  };
+}
+
+async function until(check: () => boolean | Promise<boolean>): Promise<void> {
+  for (let i = 0; i < 200; i++) {
+    if (await check()) return;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  throw new Error("condition not reached");
+}
+
+describe("POST /api/browser/assist concurrency cap", () => {
+  it("refuses a second call while the first holds the model, with a plain 429, and frees the slot after success", async () => {
+    const g = gate();
+    const r = await boot(undefined, { wrapFetch: g.wrap });
+    const first = assist(r, "first");
+    await until(() => g.reached() === 1);
+    const second = await assist(r, "second");
+    expect(second.status).toBe(429);
+    expect(second.headers.get("retry-after")).toBe("5");
+    expect(second.json.code).toBe("CAPABILITY_UNAVAILABLE");
+    expect(second.json.message).toMatch(/already working on another request/);
+    expect(JSON.stringify(second.json)).not.toMatch(/\n\s+at |\.ts:\d+/);
+    expect(g.reached()).toBe(1);
+    g.release();
+    const done = await first;
+    expect(done.status).toBe(200);
+    expect(done.json.status).toBe("ok");
+    expect((await assist(r, "third")).status).toBe(200);
+    await r.end();
+  });
+
+  it("frees the slot after a model error", async () => {
+    let fail = true;
+    const r = await boot(undefined, {
+      wrapFetch: (inner) => async (url, init) => {
+        if (fail && url.endsWith("/api/chat")) throw new TypeError("fetch failed");
+        return inner(url, init);
+      },
+    });
+    const failed = await assist(r, "one");
+    expect(failed.status).toBe(200);
+    expect(failed.json.status).not.toBe("ok");
+    fail = false;
+    // The router may park a failed provider, so the answer can still be "no local model": what
+    // matters is that the second call was answered, not refused with 429.
+    const next = await assist(r, "two");
+    expect(next.status).toBe(200);
+    await r.end();
+  });
+
+  it("frees the slot when the client aborts", async () => {
+    const g = gate();
+    const r = await boot(undefined, { wrapFetch: g.wrap });
+    const client = new AbortController();
+    const first = fetch(`${r.core.base}/api/browser/assist`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token-0123456789",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ goal: "first" }),
+      signal: client.signal,
+    }).catch(() => undefined);
+    await until(() => g.reached() === 1);
+    expect((await assist(r, "while held")).status).toBe(429);
+    client.abort();
+    await first;
+    g.release();
+    await until(async () => (await assist(r, "after abort")).status === 200);
+    await r.end();
+  });
+
+  it("does not share the cap between Cores", async () => {
+    const g = gate();
+    const a = await boot(undefined, { wrapFetch: g.wrap });
+    const b = await boot();
+    const held = assist(a, "held");
+    await until(() => g.reached() === 1);
+    expect((await assist(a, "refused")).status).toBe(429);
+    const other = await assist(b, "other core");
+    expect(other.status).toBe(200);
+    expect(other.json.status).toBe("ok");
+    g.release();
+    expect((await held).status).toBe(200);
+    await a.end();
+    await b.end();
+  });
 });

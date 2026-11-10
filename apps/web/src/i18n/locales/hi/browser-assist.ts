@@ -15,6 +15,8 @@ export const browserAssist: Record<keyof typeof enBrowserAssist, string> = {
   "browser.assist.goalControl": "लक्ष्य में कंट्रोल अक्षर नहीं हो सकते।",
   "browser.assist.goalHidden": "लक्ष्य में टेक्स्ट-दिशा या शून्य-चौड़ाई वाले अक्षर नहीं हो सकते।",
   "browser.assist.requestFailed": "सहायक तक नहीं पहुँचा जा सका। कुछ भी नहीं चलाया गया।",
+  "browser.assist.busy":
+    "सहायक अभी किसी दूसरे अनुरोध पर काम कर रहा है। थोड़ी देर रुककर फिर कोशिश करें। कुछ भी नहीं चलाया गया।",
   "browser.assist.noLocalModel":
     "डिवाइस पर कोई मॉडल उपलब्ध नहीं है, इसलिए फॉक्स ने यह पेज नहीं पढ़ा। पेज का टेक्स्ट कभी क्लाउड सेवा को नहीं भेजा जाता।",
   "browser.assist.localModelFailed":

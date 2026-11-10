@@ -15,6 +15,7 @@ export const browserAssist: Record<keyof typeof enBrowserAssist, string> = {
   "browser.assist.goalControl": "目标不能包含控制字符。",
   "browser.assist.goalHidden": "目标不能包含文字方向或零宽字符。",
   "browser.assist.requestFailed": "无法联系助手。未执行任何操作。",
+  "browser.assist.busy": "助手仍在处理另一个请求。请稍等片刻后重试。未执行任何操作。",
   "browser.assist.noLocalModel":
     "设备上没有可用的模型，因此 Fawkes 没有读取此页面。页面文字绝不会发送到云服务。",
   "browser.assist.localModelFailed":

@@ -198,7 +198,17 @@ export class SessionController implements SessionPort {
   /** Set by shutdown / disable / kill switch while a start is waiting on the battery read. */
   private startCancelled = false;
 
-  constructor(private readonly o: SessionControllerOptions) {}
+  /** The battery floor in force; starts as `o.floor` and follows `setFloor`. */
+  private floor: number;
+
+  constructor(private readonly o: SessionControllerOptions) {
+    this.floor = o.floor;
+  }
+
+  /** A saved config change: applies to the next start and to the battery watch of a running session. */
+  setFloor(percent: number): void {
+    this.floor = percent;
+  }
 
   active(): ActiveSession | null {
     const s = this.session;
@@ -208,7 +218,7 @@ export class SessionController implements SessionPort {
   status(): SessionStatus {
     const s = this.session;
     const base = {
-      battery_floor_percent: this.o.floor,
+      battery_floor_percent: this.floor,
       min_minutes: MIN_SESSION_MINUTES,
       max_minutes: MAX_SESSION_MINUTES,
     };
@@ -259,10 +269,10 @@ export class SessionController implements SessionPort {
     try {
       const reading = await this.o.battery();
       this.refuseIfCancelled(signal);
-      if (belowFloor(reading, this.o.floor)) {
+      if (belowFloor(reading, this.floor)) {
         throw new AwakeError(
           "battery_low",
-          `The battery is below ${this.o.floor}%. Plug in to start a session.`,
+          `The battery is below ${this.floor}%. Plug in to start a session.`,
         );
       }
       const now = this.o.clock.now();
@@ -291,7 +301,7 @@ export class SessionController implements SessionPort {
       session.watch = watchBattery({
         read: this.o.battery,
         clock: this.o.clock,
-        floor: this.o.floor,
+        floor: () => this.floor,
         pollMs: this.o.batteryPollMs,
         initialUnknown: reading.kind === "unknown" ? 1 : 0,
         onTrip: () => this.end("battery"),

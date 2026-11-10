@@ -15,6 +15,8 @@ export const browserAssist: Record<keyof typeof enBrowserAssist, string> = {
   "browser.assist.goalControl": "لا يمكن أن يحتوي الهدف على أحرف تحكم.",
   "browser.assist.goalHidden": "لا يمكن أن يحتوي الهدف على أحرف اتجاه النص أو أحرف بعرض صفري.",
   "browser.assist.requestFailed": "تعذر الوصول إلى المساعد. لم يتم تشغيل أي شيء.",
+  "browser.assist.busy":
+    "المساعد لا يزال يعمل على طلب آخر. انتظر قليلًا ثم أعد المحاولة. لم يتم تشغيل أي شيء.",
   "browser.assist.noLocalModel":
     "لا يوجد نموذج على الجهاز، لذا لم يقرأ فوكس هذه الصفحة. لا يُرسل نص الصفحة إلى أي خدمة سحابية أبدًا.",
   "browser.assist.localModelFailed":

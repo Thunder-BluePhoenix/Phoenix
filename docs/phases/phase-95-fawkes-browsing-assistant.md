@@ -50,6 +50,7 @@ Fawkes can read and act on web pages, only with your approval.
 - **Page reader** (`readPageSnapshot`): visible text and control descriptions only, no form values, linear tokenizer, size limits.
 - **Injection suite** in `ai/evaluation/test`: 35 simulated cases, gullible scripted model.
 - Documentation: [browsing-assistant.md](../browsing-assistant.md).
+- **Assist concurrency cap:** `POST /api/browser/assist` allows one in-flight call per Core, refuses another with a plain 429 + `Retry-After`, aborts a call after 130 s (504), and frees the slot in `finally` (answer, model error, client abort, deadline). The panel shows a translated "still working, try again" message on 429. Simulated tests only.
 
 ### Security review
 

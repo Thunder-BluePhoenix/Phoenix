@@ -8,6 +8,7 @@
 // page and re-checks the action after approval (a second, independent check); the page check here is
 // for feedback and a fast refusal.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ApiError } from "../core/client";
 import { useClient } from "../core/context";
 import { useCommandAction } from "../core/hooks";
 import type { TabInfo } from "./shell";
@@ -190,6 +191,8 @@ export interface BrowserAssist {
   proposing: boolean;
   /** The route could not be reached or answered something that is not an answer. */
   requestFailed: boolean;
+  /** Core refused with 429: another assistant call is still running. Try again shortly. */
+  busy: boolean;
   proposal: Proposal | null;
   statuses: Readonly<Record<number, StepStatus>>;
   /** A step is waiting for approval or running. */
@@ -209,6 +212,7 @@ export function useBrowserAssist(tab: TabInfo | null): BrowserAssist {
   const [goal, setGoalText] = useState("");
   const [proposing, setProposing] = useState(false);
   const [requestFailed, setRequestFailed] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [statuses, setStatuses] = useState<Readonly<Record<number, StepStatus>>>({});
   const seq = useRef(0);
@@ -256,6 +260,7 @@ export function useBrowserAssist(tab: TabInfo | null): BrowserAssist {
     const tabId = tab.tabId;
     setProposing(true);
     setRequestFailed(false);
+    setBusy(false);
     setProposal(null);
     setStatuses({});
     client
@@ -266,9 +271,11 @@ export function useBrowserAssist(tab: TabInfo | null): BrowserAssist {
         if (answer) setProposal({ tabId, answer });
         else setRequestFailed(true);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (n !== seq.current) return;
-        setRequestFailed(true);
+        // Core's 429 means another call is still running: a fixed "try again" message, not a failure.
+        if (error instanceof ApiError && error.status === 429) setBusy(true);
+        else setRequestFailed(true);
       })
       .finally(() => {
         if (n === seq.current) setProposing(false);
@@ -303,6 +310,7 @@ export function useBrowserAssist(tab: TabInfo | null): BrowserAssist {
     problem,
     proposing,
     requestFailed,
+    busy,
     proposal,
     statuses,
     stepBusy,

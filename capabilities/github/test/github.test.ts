@@ -815,3 +815,40 @@ describe("status command and health", () => {
     expect(requests(/repos/)).toEqual([]);
   });
 });
+
+describe("config reload (onConfig, Phase 25)", () => {
+  it("a saved repository list is polled at once, without disable and enable", async () => {
+    await ready();
+    expect(requests(/repos\/octo\/other/)).toEqual([]);
+    h!.manager.configure("github", {
+      repositories: [REPO, "octo/other"],
+      api_url: gh!.url,
+    });
+    await vi.waitFor(() => expect(requests(/repos\/octo\/other\//).length).toBeGreaterThan(0));
+    const status = (await h!.run("github", "status")).result as StatusResult;
+    expect(status.repositories.map((r) => r.repository)).toEqual([REPO, "octo/other"]);
+  });
+
+  it("a saved poll_ms sets the next wait", async () => {
+    await ready({ config: { poll_ms: 600_000 } });
+    expect(clock.sleeps[0]).toBe(600_000);
+    h!.manager.configure("github", { repositories: [REPO], api_url: gh!.url, poll_ms: 30_000 });
+    await vi.waitFor(() => expect(clock.sleeps.length).toBeGreaterThan(1));
+    expect(clock.sleeps.at(-1)).toBe(30_000);
+  });
+
+  it("the hook itself cannot throw on a hostile stored config, so a reload never marks the capability unhealthy", async () => {
+    const module = createGithubCapability();
+    const ctx = { config: { repositories: 7, poll_ms: "soon", api_url: {} } } as never;
+    expect(() => module.onConfig!(ctx)).not.toThrow();
+    await ready();
+    h!.manager.configure("github", { repositories: [REPO, "octo/other"], api_url: gh!.url });
+    await vi.waitFor(() => expect(requests(/repos\/octo\/other\//).length).toBeGreaterThan(0));
+    expect(h!.manager.get("github").health.status).not.toBe("unhealthy");
+    expect(
+      h!.permissions.audit
+        .list({ limit: 100 })
+        .filter((e) => e.action === "capability.config_reload_failed"),
+    ).toEqual([]);
+  });
+});

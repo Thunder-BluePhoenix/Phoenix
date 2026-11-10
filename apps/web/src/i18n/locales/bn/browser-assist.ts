@@ -15,6 +15,8 @@ export const browserAssist: Record<keyof typeof enBrowserAssist, string> = {
   "browser.assist.goalControl": "লক্ষ্যে কন্ট্রোল অক্ষর থাকতে পারে না।",
   "browser.assist.goalHidden": "লক্ষ্যে লেখার দিক বা শূন্য-প্রস্থের অক্ষর থাকতে পারে না।",
   "browser.assist.requestFailed": "সহকারীর সাথে যোগাযোগ করা যায়নি। কিছুই চালানো হয়নি।",
+  "browser.assist.busy":
+    "সহকারী এখনও অন্য একটি অনুরোধে কাজ করছে। একটু অপেক্ষা করে আবার চেষ্টা করুন। কিছুই চালানো হয়নি।",
   "browser.assist.noLocalModel":
     "ডিভাইসে কোনো মডেল নেই, তাই ফক্স এই পেজ পড়েনি। পেজের লেখা কখনও ক্লাউড সেবায় পাঠানো হয় না।",
   "browser.assist.localModelFailed":

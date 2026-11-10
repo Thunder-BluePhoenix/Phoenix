@@ -14,11 +14,16 @@
 //   * VOICE MAY DENY, NEVER APPROVE: the only thing voice can do to a confirmation is `deny`.
 //   * Tool output is untrusted data: it is summarised into a fixed sentence (summary.ts).
 import { isConfirmedSearchTool, matchIntent, type VoiceIntent, type VoiceTool } from "./intent";
+import { summariseConfirmationTargets } from "./approval-summary";
 import { MAX_REPLY_CHARS, clipSpeech, summariseToolOutput } from "./summary";
 
-/** The narrow view of the permission gateway voice gets: list what is pending, and deny it. */
+/**
+ * The narrow view of the permission gateway voice gets: list what is pending, and deny it. A pending
+ * item may carry the gateway's `details.targets`; they are untrusted text and only ever spoken
+ * through `summariseConfirmationTargets`.
+ */
 export interface VoiceApprovals {
-  pending(): { id: string }[];
+  pending(): { id: string; targets?: Record<string, string> }[];
   deny(id: string): void;
 }
 
@@ -108,11 +113,14 @@ export async function dispatchRequest(
       const pending = deps.approvals.pending();
       for (const { id } of pending) deps.approvals.deny(id);
       deps.audit("voice.action", { session, action: "deny", count: pending.length });
+      const spoken = summariseConfirmationTargets(pending);
       return {
-        text:
+        text: clipSpeech(
           pending.length === 0
             ? "Nothing is waiting for approval."
-            : `Denied ${pending.length} waiting ${pending.length === 1 ? "request" : "requests"}.`,
+            : `Denied ${pending.length} waiting ${pending.length === 1 ? "request" : "requests"}.${spoken ? ` ${spoken}` : ""}`,
+          MAX_REPLY_CHARS,
+        ),
         intent: intent.kind,
         outcome: "denied",
       };
@@ -154,7 +162,15 @@ async function runTool(
   const own = new AbortController();
   const onAbort = () => own.abort();
   signal.addEventListener("abort", onAbort, { once: true });
-  const stopWaiting = deps.after(() => own.abort(), deps.approvalWaitMs);
+  // What this call itself put in front of a person: whatever is pending now that was not before.
+  const before = new Set(deps.approvals.pending().map((p) => p.id));
+  let waitingFor = "";
+  const stopWaiting = deps.after(() => {
+    waitingFor = summariseConfirmationTargets(
+      deps.approvals.pending().filter((p) => !before.has(p.id)),
+    );
+    own.abort();
+  }, deps.approvalWaitMs);
   try {
     const result = await deps.actions.call(tool, own.signal, input);
     deps.audit("voice.action", { session, tool, outcome: "ok" });
@@ -165,7 +181,10 @@ async function runTool(
     return {
       ...base,
       text: timedOut
-        ? "That needs your approval in the Pet Panel, so I stopped waiting."
+        ? clipSpeech(
+            `That needs your approval in the Pet Panel, so I stopped waiting.${waitingFor ? ` ${waitingFor}` : ""}`,
+            MAX_REPLY_CHARS,
+          )
         : "I could not run that.",
       outcome: "failed",
     };

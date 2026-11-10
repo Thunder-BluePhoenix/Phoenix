@@ -44,7 +44,8 @@ from event content to a URL, header, path or byte of a frame.
 ## Consent, revoke, failure
 
 - **Per-device consent.** Config `devices` lists the ids of the lights you allow. A provisioned light not listed is never written to.
-  Consent is read again at write time, so a withdrawal wins over a write already queued.
+  Consent is read again at write time, so a withdrawal wins over a write already queued. A saved change to `devices`, `quiet_hours` or
+  `stream_deck` applies to the running lights through `onConfig`, without disable and enable.
 - **Revoke.** Command `revoke {device_id}` (side effect `none`: it only removes access, so it never asks) aborts the write in flight
   and blocks that light until the capability is enabled again with the id still in `devices`. The host also calls
   `controller.consentChanged(id)` after a settings change that adds or removes a light.

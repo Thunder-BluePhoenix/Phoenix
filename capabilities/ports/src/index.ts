@@ -166,38 +166,60 @@ export function createPortsCapability(options: PortsCapabilityOptions = {}) {
     return snapshot;
   }
 
+  /**
+   * The context the radar loop reads `watch`, `poll_ms`, the thresholds and the recipes from:
+   * `init`'s, replaced by `onConfig`.
+   */
+  let live: CapabilityContext | undefined;
+  let watching = false;
+  /** Ends the loop's current wait early so a saved change is applied now. */
+  let wake: AbortController | undefined;
+
   function startWatching(ctx: CapabilityContext): void {
-    if (ctx.config.watch !== true) return;
-    const pollMs = numberIn(ctx.config.poll_ms, MIN_POLL_MS, MAX_POLL_MS, DEFAULT_POLL_MS);
+    if (watching || ctx.config.watch !== true) return;
+    watching = true;
     void (async () => {
-      while (!ctx.signal.aborted) {
-        await ctx.untilWatched();
-        if (ctx.signal.aborted) break;
-        try {
-          const snapshot = await refresh(ctx);
-          const print = fingerprint(snapshot);
-          if (print !== lastFingerprint) {
-            lastFingerprint = print;
-            ctx.emit(
-              {
-                event_type: "ports.radar.changed",
-                severity: "info",
-                subject: "Port radar",
-                payload: {
-                  ports: snapshot.ports.length,
-                  forgotten: snapshot.ports.filter((p) => p.forgotten).length,
-                  heavy: snapshot.ports.filter((p) => p.heavy).length,
+      try {
+        while (!ctx.signal.aborted && live?.config.watch === true) {
+          await live.untilWatched();
+          const cur = live;
+          if (ctx.signal.aborted || cur?.config.watch !== true) break;
+          try {
+            const snapshot = await refresh(cur);
+            const print = fingerprint(snapshot);
+            if (print !== lastFingerprint) {
+              lastFingerprint = print;
+              ctx.emit(
+                {
+                  event_type: "ports.radar.changed",
+                  severity: "info",
+                  subject: "Port radar",
+                  payload: {
+                    ports: snapshot.ports.length,
+                    forgotten: snapshot.ports.filter((p) => p.forgotten).length,
+                    heavy: snapshot.ports.filter((p) => p.heavy).length,
+                  },
                 },
-              },
-              { ephemeral: true },
-            );
+                { ephemeral: true },
+              );
+            }
+          } catch (err) {
+            ctx.logger.warn("port radar poll failed", {
+              error: err instanceof PortsError ? err.kind : "unknown",
+            });
           }
-        } catch (err) {
-          ctx.logger.warn("port radar poll failed", {
-            error: err instanceof PortsError ? err.kind : "unknown",
-          });
+          const pollMs = numberIn(
+            (live ?? cur).config.poll_ms,
+            MIN_POLL_MS,
+            MAX_POLL_MS,
+            DEFAULT_POLL_MS,
+          );
+          const waiting = (wake = new AbortController());
+          await env.sleep(pollMs, AbortSignal.any([ctx.signal, waiting.signal]));
+          if (wake === waiting) wake = undefined;
         }
-        await env.sleep(pollMs, ctx.signal);
+      } finally {
+        watching = false;
       }
     })();
   }
@@ -367,6 +389,14 @@ export function createPortsCapability(options: PortsCapabilityOptions = {}) {
       lastFingerprint = "";
       stopper.reset();
       ctx.signal.addEventListener("abort", () => stopper.reset(), { once: true });
+      live = ctx;
+      startWatching(ctx);
+    },
+    onConfig(ctx) {
+      // `watch`, `poll_ms`, the thresholds and the recipes apply to the running radar. Commands
+      // already get the current context from Core.
+      live = ctx;
+      wake?.abort();
       startWatching(ctx);
     },
     commands: {
@@ -398,6 +428,7 @@ export function createPortsCapability(options: PortsCapabilityOptions = {}) {
     },
     shutdown() {
       stopper.reset();
+      live = undefined;
       emitted = undefined;
     },
   });

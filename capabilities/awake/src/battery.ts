@@ -171,7 +171,8 @@ export function belowFloor(reading: BatteryReading, floor: number): boolean {
 export interface BatteryWatchOptions {
   read: () => Promise<BatteryReading>;
   clock: AwakeClock;
-  floor: number;
+  /** Read at every poll, so a floor changed while the session runs applies to it. */
+  floor: () => number;
   pollMs: number;
   /** Called at most once, with why. After it is called the watch is stopped. */
   onTrip: (why: "below_floor" | "unreadable") => void;
@@ -215,7 +216,7 @@ export function watchBattery(options: BatteryWatchOptions): BatteryWatch {
       if (unknown >= UNKNOWN_READS_BEFORE_END) return trip("unreadable");
     } else {
       unknown = 0;
-      if (belowFloor(reading, floor)) return trip("below_floor");
+      if (belowFloor(reading, floor())) return trip("below_floor");
     }
     arm();
   };

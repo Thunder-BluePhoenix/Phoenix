@@ -6,7 +6,7 @@
 // focus mode, shutdown, and the manifest's declared surface. Simulated: no real light or deck.
 import { createHarness, type Harness } from "@phoenix/sdk-testing";
 import { createEvent } from "@phoenix/protocol";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   COLORS,
   DECK_KEYS,
@@ -325,5 +325,102 @@ describe("re-enable", () => {
     await h!.enable("status-lights");
     expect((await h!.run("status-lights", "status")).result).toMatchObject({ state: "IDLE" });
     expect(h!.bus.metrics().subscribers).toBeGreaterThan(0);
+  });
+});
+
+describe("config reload (onConfig, Phase 25)", () => {
+  it("a light un-consented in a saved change goes dark at once and stays unwritten", async () => {
+    const r = await ready({ devices: ["desk", "shelf"] });
+    await r.publish("agents", "agent.working", { agent_id: "x" });
+    expect(colours(r.b).at(-1)).toBe(rgb("WORKING"));
+    const sent = r.b.sent.length;
+    h!.manager.configure("status-lights", { devices: ["desk"] });
+    await r.publish("agents", "agent.failed", { agent_id: "x" });
+    expect(r.b.sent.length).toBe(sent);
+    expect(colours(r.a).at(-1)).toBe(rgb("ERROR"));
+    const status = (await h!.run("status-lights", "status")).result as {
+      devices: { id: string; consented: boolean; live: boolean }[];
+    };
+    expect(status.devices.find((d) => d.id === "shelf")).toMatchObject({
+      consented: false,
+      live: false,
+    });
+  });
+
+  it("a light newly consented in a saved change is lit with the current state", async () => {
+    const r = await ready({ devices: ["desk"] });
+    await r.publish("agents", "agent.working", { agent_id: "x" });
+    expect(r.b.sent).toEqual([]);
+    h!.manager.configure("status-lights", { devices: ["desk", "shelf"] });
+    await h!.drain();
+    await vi.waitFor(() => expect(colours(r.b).at(-1)).toBe(rgb("WORKING")));
+  });
+
+  it("saved quiet hours darken the lights without disable and enable", async () => {
+    const r = await ready({ devices: ["desk"] });
+    await r.publish("agents", "agent.working", { agent_id: "x" });
+    expect(colours(r.a).at(-1)).toBe(rgb("WORKING"));
+    h!.manager.configure("status-lights", {
+      devices: ["desk"],
+      quiet_hours: { timezone: "UTC", start: "00:00", end: "23:59" },
+    });
+    await vi.waitFor(() => expect(colours(r.a).at(-1)).toBe(rgb("IDLE")));
+    expect((await h!.run("status-lights", "status")).result).toMatchObject({
+      suppressed: "quiet",
+    });
+  });
+
+  it("saved Stream Deck settings take effect: approve list, awake minutes, and switching it off", async () => {
+    const r = await ready({
+      devices: ["desk"],
+      stream_deck: { enabled: true, approve_capabilities: ["git"], awake_minutes: 20 },
+    });
+    expect(r.deck.faces.get(DECK_KEYS.awake)?.label).toBe("20m");
+    h!.manager.configure("status-lights", {
+      devices: ["desk"],
+      stream_deck: { enabled: true, approve_capabilities: ["stripe"], awake_minutes: 45 },
+    });
+    expect(r.deck.faces.get(DECK_KEYS.awake)?.label).toBe("45m");
+    r.deck.queue = [approval({ id: "c1", capabilityId: "stripe" }), approval({ id: "c2" })];
+    r.capability.refresh();
+    r.deck.press(DECK_KEYS.approve);
+    await Promise.resolve();
+    expect(r.deck.resolved).toEqual([{ id: "c1", approved: true }]);
+    h!.manager.configure("status-lights", { devices: ["desk"] });
+    expect(r.deck.attached).toBe(false);
+  });
+
+  it("a failing reload is contained: Core stays up, the capability is unhealthy, the audit has the class only", async () => {
+    let calls = 0;
+    const deck = new FakeDeck();
+    const a = new FakeTransport();
+    const capability = createStatusLightsCapability({
+      devices: () => [{ id: "desk", kind: "luxafor", transport: a }],
+      feed: () => h?.bus,
+      deck: () => {
+        if (++calls > 1) throw new TypeError("deck vanished at /Users/someone/private");
+        return { surface: deck, actions: deck };
+      },
+    });
+    h = createHarness({ modules: [capability] });
+    h.manager.configure("status-lights", { devices: ["desk"], stream_deck: { enabled: true } });
+    await h.enable("status-lights");
+    expect(() =>
+      h!.manager.configure("status-lights", {
+        devices: ["desk"],
+        stream_deck: { enabled: true, awake_minutes: 5 },
+      }),
+    ).not.toThrow();
+    await vi.waitFor(() => expect(h!.manager.get("status-lights").health.status).toBe("unhealthy"));
+    expect(h!.manager.get("status-lights").status).toBe("enabled");
+    const rows = h!.permissions.audit
+      .list({ limit: 100 })
+      .filter((e) => e.action === "capability.config_reload_failed");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      capabilityId: "status-lights",
+      details: { error: "TypeError" },
+    });
+    expect(JSON.stringify(rows)).not.toContain("private");
   });
 });

@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHarness, type Harness } from "@phoenix/sdk-testing";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitCapability, diff, readStatus, type RepoStatus } from "../src";
 
 const dirs: string[] = [];
@@ -169,5 +169,69 @@ describe("git capability", () => {
     h = createHarness({ modules: [createGitCapability()] });
     h.manager.configure("git", { repositories: ["relative/repo"] });
     await expect(h.enable("git")).rejects.toThrow(/must be absolute/);
+  });
+});
+
+describe("config reload (onConfig, Phase 25)", () => {
+  async function slowWatch(...repositories: string[]) {
+    h = createHarness({ modules: [createGitCapability()] });
+    h.manager.configure("git", { repositories, poll_ms: 60_000 });
+    await h.enable("git");
+    await h.run("git", "status"); // baseline; the background loop now waits a minute
+    return h;
+  }
+
+  it("a saved repository list is watched without disable and enable", async () => {
+    const first = fixtureRepo();
+    const second = fixtureRepo();
+    conflict(second);
+    await slowWatch(first);
+    expect(h!.types("git")).toEqual([]);
+    h!.manager.configure("git", { repositories: [first, second], poll_ms: 60_000 });
+    await vi.waitFor(() => expect(h!.types("git")).toEqual(["git.merge_conflict"]));
+  });
+
+  it("a saved change wakes the background loop instead of waiting out the old poll_ms", async () => {
+    const dir = fixtureRepo();
+    await slowWatch(dir);
+    writeFileSync(join(dir, "a.txt"), "two\n");
+    sh(dir, "commit", "-qam", "second");
+    expect(h!.types("git")).toEqual([]);
+    h!.manager.configure("git", { repositories: [dir], poll_ms: 60_000 });
+    await vi.waitFor(() => expect(h!.types("git")).toContain("git.commit.created"));
+  });
+
+  it("a repository removed and added back again starts afresh instead of replaying what happened meanwhile", async () => {
+    const first = fixtureRepo();
+    const second = fixtureRepo();
+    await slowWatch(first, second);
+    h!.manager.configure("git", { repositories: [first], poll_ms: 60_000 });
+    writeFileSync(join(second, "a.txt"), "two\n");
+    sh(second, "commit", "-qam", "while unwatched");
+    h!.manager.configure("git", { repositories: [first, second], poll_ms: 60_000 });
+    await vi.waitFor(async () => {
+      const status = (await h!.run("git", "status")).result as { repositories: { path: string }[] };
+      expect(status.repositories.map((r) => r.path)).toContain(second);
+    });
+    expect(h!.types("git")).toEqual([]);
+  });
+
+  it("a relative path in a saved change is contained: Core stays up, the capability is unhealthy, the audit has the class only", async () => {
+    const dir = fixtureRepo();
+    await slowWatch(dir);
+    expect(() =>
+      h!.manager.configure("git", { repositories: [dir, "relative/secret-folder"] }),
+    ).not.toThrow();
+    await vi.waitFor(() => expect(h!.manager.get("git").health.status).toBe("unhealthy"));
+    expect(h!.manager.get("git").status).toBe("enabled");
+    const rows = h!.permissions.audit
+      .list({ limit: 100 })
+      .filter((e) => e.action === "capability.config_reload_failed");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ capabilityId: "git", details: { error: "Error" } });
+    expect(JSON.stringify(rows)).not.toContain("secret-folder");
+    // A later valid save recovers.
+    h!.manager.configure("git", { repositories: [dir] });
+    await vi.waitFor(() => expect(h!.manager.get("git").health.status).not.toBe("unhealthy"));
   });
 });

@@ -397,6 +397,11 @@ export function createAwakeCapability(options: AwakeCapabilityOptions = {}): Cap
       const services = powerServices(deps);
       options.onQuitCheck?.(services ? () => services.canQuit() : undefined);
     },
+    onConfig(ctx) {
+      // Only the battery floor is applied to a running session. The lid-action, continuity and
+      // recovery settings are still read when the capability is enabled.
+      ref.controller?.setFloor(floorFromConfig(ctx.config.battery_floor_percent));
+    },
     commands: composed.commands,
     health(): { status: "healthy"; message: string } {
       const session = ref.controller?.status().session;

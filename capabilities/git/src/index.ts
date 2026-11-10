@@ -136,6 +136,13 @@ export function summarise(r: RepoState): string {
 export function createGitCapability() {
   const repos = new Map<string, RepoState>();
   let inflight: Promise<void> | null = null;
+  /**
+   * The context the background loop reads `repositories` and `poll_ms` from: `init`'s, replaced by
+   * `onConfig`. Commands and health get the current context from Core on their own.
+   */
+  let live: CapabilityContext | undefined;
+  /** Ends the loop's current wait early, so a saved change applies now rather than a poll later. */
+  let wake: (() => void) | undefined;
 
   async function pollOne(ctx: CapabilityContext, path: string): Promise<void> {
     const prev = repos.get(path);
@@ -169,7 +176,10 @@ export function createGitCapability() {
       .finally(() => (inflight = null)));
   }
 
-  const paths = (ctx: CapabilityContext) => (ctx.config.repositories as string[] | undefined) ?? [];
+  const paths = (ctx: CapabilityContext) =>
+    ((ctx.config.repositories as string[] | undefined) ?? []).filter((p) => isAbsolute(p));
+  const relativePaths = (ctx: CapabilityContext) =>
+    ((ctx.config.repositories as string[] | undefined) ?? []).filter((p) => !isAbsolute(p));
 
   return defineCapability({
     manifest: {
@@ -245,21 +255,37 @@ export function createGitCapability() {
     },
     init(ctx) {
       repos.clear();
-      const relative = paths(ctx).filter((p) => !isAbsolute(p));
+      const relative = relativePaths(ctx);
       if (relative.length)
         throw new Error(`Repository paths must be absolute: ${relative.join(", ")}`);
-      const interval = (ctx.config.poll_ms as number | undefined) ?? 2_000;
+      live = ctx;
       void (async () => {
         while (!ctx.signal.aborted) {
-          await pollAll(ctx);
+          await pollAll(live ?? ctx);
+          const interval = ((live ?? ctx).config.poll_ms as number | undefined) ?? 2_000;
           await new Promise<void>((resolve) => {
-            const t = setTimeout(resolve, interval);
-            ctx.signal.addEventListener("abort", () => (clearTimeout(t), resolve()), {
-              once: true,
-            });
+            const done = () => {
+              clearTimeout(t);
+              if (wake === done) wake = undefined;
+              resolve();
+            };
+            const t = setTimeout(done, interval);
+            wake = done;
+            ctx.signal.addEventListener("abort", done, { once: true });
           });
         }
       })();
+    },
+    onConfig(ctx) {
+      // Applies a saved `repositories` / `poll_ms` to the running watcher. Relative paths are never
+      // watched (commands and the loop skip them); they are reported by throwing, which Core
+      // contains and audits by error class only.
+      live = ctx;
+      const watched = new Set(paths(ctx));
+      for (const known of [...repos.keys()]) if (!watched.has(known)) repos.delete(known);
+      wake?.();
+      const relative = relativePaths(ctx);
+      if (relative.length) throw new Error("Repository paths must be absolute");
     },
     commands: {
       async status(_input, ctx) {

@@ -22,7 +22,7 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 curl -X POST -H "Authorization: Bearer $TOKEN" http://127.0.0.1:4870/api/capabilities/git/enable
 ```
 
-Enabling grants `repository_access`. Change the list by disabling, reconfiguring and enabling again.
+Enabling grants `repository_access`. A saved change to `repositories` or `poll_ms` applies to the running watcher without disabling (it polls at once); a relative path in the new list is refused: the capability turns unhealthy and the audit records `capability.config_reload_failed` with the error class only.
 
 ## `recent_commits` command (read-only)
 

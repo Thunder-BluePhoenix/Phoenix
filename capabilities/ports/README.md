@@ -13,6 +13,8 @@ one after approval. Full description, rules and verification status: [docs/port-
 `restart_process` starts only a recipe the owner wrote in the config (`src/recipes.ts`, `src/restart.ts`); Phoenix never rebuilds a
 program's command line from `ps` or `lsof`. See [Restarting](../../docs/port-radar.md#restarting-owner-written-recipes-only).
 
+A saved change to `watch` or `poll_ms` applies to the running radar without disable and enable (`onConfig`); thresholds and recipes are read on every call.
+
 Layout: `src/parse.ts` (pure parsers), `src/collect.ts` (injected `Runner`), `src/project.ts` (`.git` walk), `src/policy.ts` (stop
 rules, flags), `src/snapshot.ts`, `src/stop.ts` (proof, SIGTERM, force), `src/real.ts` (the only `process.kill`), `src/index.ts`
 (manifest). Tests use `testing/fakes.ts`, a pretend machine; no test signals a real process. The single real, read-only test is

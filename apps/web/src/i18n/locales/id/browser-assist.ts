@@ -15,6 +15,8 @@ export const browserAssist: Record<keyof typeof enBrowserAssist, string> = {
   "browser.assist.goalControl": "Tujuan tidak boleh berisi karakter kontrol.",
   "browser.assist.goalHidden": "Tujuan tidak boleh berisi karakter arah teks atau lebar nol.",
   "browser.assist.requestFailed": "Asisten tidak dapat dihubungi. Tidak ada yang dijalankan.",
+  "browser.assist.busy":
+    "Asisten masih mengerjakan permintaan lain. Tunggu sebentar lalu coba lagi. Tidak ada yang dijalankan.",
   "browser.assist.noLocalModel":
     "Tidak ada model di perangkat, jadi Fawkes tidak membaca halaman ini. Teks halaman tidak pernah dikirim ke layanan cloud.",
   "browser.assist.localModelFailed":

@@ -112,7 +112,12 @@ function asPhoenixError(err: unknown): PhoenixError {
 /** The narrowed permission view: voice can list and DENY, and there is no way to approve. */
 export function voiceApprovals(permissions: PermissionGateway): VoiceApprovals {
   return {
-    pending: () => permissions.pendingConfirmations().map((c) => ({ id: c.id })),
+    pending: () =>
+      permissions.pendingConfirmations().map((c) => ({
+        id: c.id,
+        // Untrusted text, re-sanitised by the gateway; voice speaks it only as quoted data.
+        ...(c.details?.targets ? { targets: c.details.targets } : {}),
+      })),
     deny: (id) => void permissions.resolveConfirmation(id, false, "voice"),
   };
 }

@@ -16,6 +16,8 @@ export const browserAssist: Record<keyof typeof enBrowserAssist, string> = {
   "browser.assist.goalHidden":
     "Цель не может содержать символы направления текста и символы нулевой ширины.",
   "browser.assist.requestFailed": "Помощник недоступен. Ничего не выполнено.",
+  "browser.assist.busy":
+    "Помощник ещё занят другим запросом. Подождите немного и повторите попытку. Ничего не выполнено.",
   "browser.assist.noLocalModel":
     "На устройстве нет модели, поэтому Фокс не читал эту страницу. Текст страницы никогда не отправляется в облачный сервис.",
   "browser.assist.localModelFailed":

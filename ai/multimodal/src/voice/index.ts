@@ -5,6 +5,7 @@ export * from "./utterance";
 export * from "./wake";
 export * from "./intent";
 export * from "./summary";
+export * from "./approval-summary";
 export * from "./settings";
 export * from "./dispatch";
 export * from "./sessions";

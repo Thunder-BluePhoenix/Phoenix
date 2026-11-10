@@ -14,6 +14,8 @@ export const browserAssist = {
   "browser.assist.goalControl": "The goal cannot contain control characters.",
   "browser.assist.goalHidden": "The goal cannot contain text-direction or zero-width characters.",
   "browser.assist.requestFailed": "The assistant could not be reached. Nothing was run.",
+  "browser.assist.busy":
+    "The assistant is still working on another request. Wait a moment and try again. Nothing was run.",
   "browser.assist.noLocalModel":
     "No on-device model is available, so Fawkes did not read this page. Page text is never sent to a cloud service.",
   "browser.assist.localModelFailed":

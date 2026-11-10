@@ -138,6 +138,16 @@ recogniser heard a real query.**
 - If a call waits for a person's approval longer than 60 s, voice stops waiting and aborts its own
   call; the gateway withdraws that call's own confirmation. Voice denies nothing else on a timeout,
   so a confirmation another actor raised during the wait is left for the person.
+- `pending()` also carries each confirmation's `details.targets` (already re-sanitised by the
+  gateway). Voice still treats them as untrusted text: "deny" and the 60 s timeout reply add a short
+  sentence `target: "<value>", … and N more` (`approval-summary.ts`). Only values are spoken, each
+  inside quotes after the fixed word `target:`; control, bidi, zero-width and quote characters are
+  removed, NFKC folded, values clipped to 80 characters, secret-shaped runs and the redaction marker
+  spoken as `[hidden]`, wake phrases and answer or action words (approve, yes, no, deny, ok, send, …)
+  replaced by an ellipsis, at most 3 values in all. The timeout reply names only the confirmations
+  that call itself raised. Nothing here changes what approving or denying does. Tests:
+  `ai/multimodal/test/voice/approval-summary.test.ts`, `core/runtime/test/voice-approvals-targets.test.ts`
+  (simulated; no real voice session or speaker).
 
 ## Audit
 

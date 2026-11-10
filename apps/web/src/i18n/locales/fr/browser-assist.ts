@@ -16,6 +16,8 @@ export const browserAssist: Record<keyof typeof enBrowserAssist, string> = {
   "browser.assist.goalHidden":
     "L'objectif ne peut pas contenir de caractères de direction du texte ni de largeur nulle.",
   "browser.assist.requestFailed": "L'assistant est injoignable. Rien n'a été exécuté.",
+  "browser.assist.busy":
+    "L'assistant travaille encore sur une autre demande. Patientez un instant puis réessayez. Rien n'a été exécuté.",
   "browser.assist.noLocalModel":
     "Aucun modèle n'est disponible sur l'appareil, donc Fawkes n'a pas lu cette page. Le texte de la page n'est jamais envoyé à un service cloud.",
   "browser.assist.localModelFailed":

@@ -294,6 +294,18 @@ describe("assistant panel", () => {
     expect(document.body.textContent).not.toContain("boom");
   });
 
+  it("shows a readable try-again message, not the failure text, when Core answers 429 busy", async () => {
+    await mount(OK_PLAN, { assistStatus: 429 });
+    await open();
+    await propose();
+    expect(screen.getByRole("alert").textContent).toBe(
+      "The assistant is still working on another request. Wait a moment and try again. Nothing was run.",
+    );
+    expect(document.body.textContent).not.toContain("boom");
+    expect(document.body.textContent).not.toContain("could not be reached");
+    expect((proposeButton() as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("runs exactly the chosen step through the browser command path and never the next one", async () => {
     const { api } = await mount();
     await open();

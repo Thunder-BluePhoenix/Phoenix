@@ -16,6 +16,8 @@ export const browserAssist: Record<keyof typeof enBrowserAssist, string> = {
   "browser.assist.goalHidden":
     "El objetivo no puede contener caracteres de dirección del texto ni de ancho cero.",
   "browser.assist.requestFailed": "No se pudo contactar con el asistente. No se ejecutó nada.",
+  "browser.assist.busy":
+    "El asistente sigue trabajando en otra solicitud. Espera un momento e inténtalo de nuevo. No se ejecutó nada.",
   "browser.assist.noLocalModel":
     "No hay un modelo en el dispositivo, así que Fawkes no leyó esta página. El texto de la página nunca se envía a un servicio en la nube.",
   "browser.assist.localModelFailed":

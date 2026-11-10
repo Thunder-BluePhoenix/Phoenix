@@ -126,6 +126,11 @@ export function AssistPanel({
           {t("browser.assist.requestFailed")}
         </p>
       )}
+      {assist.busy && (
+        <p className="browser-error" role="alert">
+          {t("browser.assist.busy")}
+        </p>
+      )}
       {answer && answer.status !== "ok" && (
         <p className="browser-error" role="alert">
           {t(FAILURE[answer.status])}
