@@ -7,9 +7,15 @@
 // argument "-" as an input name and `examples/common-whisper.cpp` (`read_audio_data`) then reads
 // all of stdin into memory and decodes it from memory (miniaudio `ma_decoder_init_memory`); it
 // logs "read N bytes from stdin". This is in the source of the CLI; the README does not mention it.
-// The unit tests use a fake process runner. Whether a given whisper-cli build and model produce a
-// good transcript from stdin has NOT been proven here (only a stub test model was available).
-// Output goes to stdout only: we pass no -o* flag, so whisper-cli writes no output file either.
+// Transcript on stdout (read from the installed whisper-cpp 1.8.6 behaviour, not from its docs):
+// with only `-nt -np -` that build exits 0, logs "read N bytes from stdin" and prints NOTHING on
+// stdout (it warns "'--output-file -' used without any other '--output-*'"), so the transcript was
+// empty. `-otxt -of -` makes it print the transcript to stdout; with an empty working directory
+// no file was created (checked with a real spawn and a stdin pipe, and by the Phase 64 real run
+// `ai/multimodal/test/real-dictation.test.ts`). `-of -` means "stdout", not a file named "-".
+// Older whisper.cpp builds may not support `-of -`; that was not verified here. If one does not,
+// it could write "-.txt" in its working directory, so the real-dictation test watches the cwd.
+// The unit tests use a fake process runner.
 import { spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
@@ -195,7 +201,7 @@ export class WhisperStdinRecognizer implements SpeechRecognizer {
         try {
           const out = await this.run(
             this.executable,
-            ["-m", this.options.modelPath, "-nt", "-np", "-"],
+            ["-m", this.options.modelPath, "-nt", "-np", "-otxt", "-of", "-", "-"],
             wav,
             abort.signal,
           );

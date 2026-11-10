@@ -21,7 +21,9 @@ microphone (webview, only after you switched voice on)
   The ring is also zeroed the moment its contents move into an utterance. (Tests:
   `ai/multimodal/test/voice/`, `core/runtime/test/voice.test.ts`.)
 - Recognition uses the existing `SpeechRecognizer` seam (`WhisperStdinRecognizer`: whisper.cpp
-  reading the audio from stdin). By default no audio file is written by Phoenix. If the owner opts in to
+  reading the audio from stdin, arguments `-nt -np -otxt -of - -`: `-otxt -of -` is what makes whisper-cpp
+  1.8.6 print the transcript to stdout; without it that build printed nothing). By default no audio file is written by Phoenix
+  (observed once on one machine for dictation, not proven; [evidence](evidence/phase-64-real-dictation-2026-11-11.md)). If the owner opts in to
   Parakeet (`PHOENIX_SPEECH_ENGINES` lists `parakeet` and `PHOENIX_PARAKEET_MODEL_DIR` is set), that
   engine's `sherpa-onnx-offline` can only read a WAV file, so while it is the active engine each utterance
   goes to a private temporary file (0700 directory, 0600 file) that is zeroed and removed straight after;

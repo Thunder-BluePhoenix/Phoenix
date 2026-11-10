@@ -491,7 +491,12 @@ describe("whisper.cpp over stdin (no audio file)", () => {
     await expect(session.finish()).resolves.toEqual({ text: "Hello world." });
     expect(captured).toMatchObject({ header: "RIFFWAVE", bytes: 44 + 8, sample: 5 });
     expect(captured!.args.at(-1)).toBe("-");
-    expect(captured!.args.some((a) => a === "-f" || a.startsWith("-o"))).toBe(false);
+    // No input or output FILE argument: `-f` is absent and the only output flags are `-otxt -of -`
+    // (whisper-cli 1.8.6 prints NOTHING on stdout without `-otxt`; `-of -` means stdout).
+    expect(captured!.args).not.toContain("-f");
+    expect(captured!.args.slice(0, 2)).toEqual(["-m", "/models/m.bin"]);
+    expect(captured!.args.slice(-4)).toEqual(["-otxt", "-of", "-", "-"]);
+    expect(captured!.args.filter((a) => a.startsWith("-o"))).toEqual(["-otxt", "-of"]);
     expect(wavRef!.every((b) => b === 0)).toBe(true);
     expect(wavHeader(8).byteLength).toBe(44);
     expect(cleanWhisperOutput("[_BEG_]\n a\n b")).toBe("a b");
