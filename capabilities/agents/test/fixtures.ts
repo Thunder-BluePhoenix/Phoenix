@@ -38,6 +38,26 @@ export const HOOKS = {
     hook_event_name: "Notification",
     message: "Claude is waiting for your input",
   },
+  // Shapes copied from code.claude.com/docs/en/hooks#notification-input (newer Claude Code, `notification_type`).
+  NotificationTypedPermission: {
+    ...common,
+    hook_event_name: "Notification",
+    message: "Claude needs your permission",
+    title: "Permission needed",
+    notification_type: "permission_prompt",
+  },
+  NotificationTypedIdle: {
+    ...common,
+    hook_event_name: "Notification",
+    message: "Claude is waiting for you",
+    notification_type: "idle_prompt",
+  },
+  NotificationAuthSuccess: {
+    ...common,
+    hook_event_name: "Notification",
+    message: "Signed in",
+    notification_type: "auth_success",
+  },
   Stop: { ...common, hook_event_name: "Stop", stop_hook_active: false },
   SessionEnd: { ...common, hook_event_name: "SessionEnd", reason: "prompt_input_exit" },
   PreToolUse: { ...common, hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: {} },

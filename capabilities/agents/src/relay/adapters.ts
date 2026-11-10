@@ -406,6 +406,7 @@ export const AGENT_ADAPTERS: readonly AgentAdapter[] = [
     skeleton: {},
     shape: "grouped",
     spec: geminiSpec,
+    note: "Gemini CLI 0.17.0 runs no hooks unless `tools.enableHooks` is true in settings.json (default false, read from the installed package; newer releases document `hooksConfig.enabled`, default true). Phoenix does not change that setting.",
   }),
   jsonAdapter({
     id: "copilot-cli",

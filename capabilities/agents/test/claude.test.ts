@@ -100,6 +100,66 @@ describe("waitReason", () => {
   ] as const)("%s → %s", (message, reason) => expect(waitReason(message)).toBe(reason));
 });
 
+describe("Notification notification_type", () => {
+  it("a typed permission or idle prompt keeps its reason whatever the message says", () => {
+    expect(mapClaudeHook(HOOKS.NotificationTypedPermission)).toEqual({
+      ...base,
+      state: "waiting",
+      reason: "permission",
+    });
+    expect(mapClaudeHook(HOOKS.NotificationTypedIdle)).toEqual({
+      ...base,
+      state: "waiting",
+      reason: "idle",
+    });
+    // The type wins over the text: this message would read as "permission" by text alone.
+    expect(
+      mapClaudeHook({
+        ...HOOKS.NotificationTypedIdle,
+        message: "Claude needs your permission",
+      }),
+    ).toMatchObject({ reason: "idle" });
+  });
+
+  it.each([
+    "auth_success",
+    "auth_storage_failure",
+    "elicitation_complete",
+    "elicitation_response",
+    "agent_completed",
+    "quota_auto_resume_fired",
+    "quota_auto_resume_disabled",
+    "plugin_notification",
+  ])("%s is not a wait and is ignored", (type) => {
+    expect(mapClaudeHook({ ...HOOKS.NotificationPermission, notification_type: type })).toBeNull();
+  });
+
+  it.each([
+    ["elicitation_dialog", "input"],
+    ["elicitation_url_dialog", "input"],
+    ["agent_needs_input", "input"],
+    ["quota_auto_resume_stale", "input"],
+  ] as const)("%s waits for %s", (type, reason) => {
+    expect(mapClaudeHook({ ...HOOKS.NotificationIdle, notification_type: type })).toMatchObject({
+      state: "waiting",
+      reason,
+    });
+  });
+
+  it("an unknown or non-string type falls back to the message text", () => {
+    expect(
+      mapClaudeHook({ ...HOOKS.NotificationPermission, notification_type: "brand_new" }),
+    ).toMatchObject({ reason: "permission" });
+    expect(mapClaudeHook({ ...HOOKS.NotificationIdle, notification_type: { a: 1 } })).toMatchObject(
+      { reason: "idle" },
+    );
+    // A prototype key is not a known type.
+    expect(
+      mapClaudeHook({ ...HOOKS.NotificationIdle, notification_type: "constructor" }),
+    ).toMatchObject({ reason: "idle" });
+  });
+});
+
 describe("claudeHooksConfig", () => {
   it("registers a command hook for exactly the followed hooks", () => {
     const config = claudeHooksConfig("tsx hook.ts") as {

@@ -19,12 +19,13 @@ export const CLAUDE_AGENT = "claude-code";
 
 /**
  * Hook name → what the agent is doing. Every other hook (PreToolUse, SubagentStop, …) is ignored.
- * `StopFailure` ("the turn ends due to an API error", code.claude.com/docs/en/hooks#stopfailure,
- * first listed in the Claude Code changelog at 2.1.78) is the only failure hook mapped: a failed
- * tool call (`PostToolUseFailure`) is not the agent failing, Claude normally carries on. Claude
- * Code 2.0.31 rejects the name ("StopFailure" is not valid, shown by `claude doctor` against a
- * throwaway CLAUDE_CONFIG_DIR), as it does `PermissionRequest`, so these hooks need a newer
- * Claude Code. The payload's error type, details and message are never copied.
+ * `StopFailure` ("the turn ends due to an API error", code.claude.com/docs/en/hooks#stopfailure)
+ * is the only failure hook mapped: a failed tool call (`PostToolUseFailure`) is not the agent
+ * failing, Claude normally carries on. Claude Code 2.0.31 rejects the name and `PermissionRequest`
+ * ("not valid", shown by `claude doctor` against a throwaway CLAUDE_CONFIG_DIR); 2.1.308 accepts
+ * the whole printed hooks set (same check; a deliberately unknown event name in a control dir is
+ * reported, so the check does validate). The payload's error type, details and message are never
+ * copied.
  */
 export const CLAUDE_HOOK_STATES: Readonly<Record<string, AgentState>> = {
   SessionStart: "started",
@@ -50,6 +51,43 @@ export function waitReason(message: unknown): WaitReason {
   return "input";
 }
 
+/**
+ * Newer Claude Code sends `notification_type` on Notification hooks
+ * (code.claude.com/docs/en/hooks#notification, read 2026-11-10). The types that mean Claude is
+ * waiting for the person map to a reason. The rest are not a wait (sign-in finished, an MCP
+ * elicitation completed or answered, a background session finished, a usage-limit wait ended or
+ * was given up, a mod's notice) and are ignored, so they never show as WAITING. A type this
+ * version does not know, or no type (Claude Code 2.0.x), falls back to the message text.
+ */
+const NOTIFICATION_WAITS: Readonly<Record<string, WaitReason>> = {
+  permission_prompt: "permission",
+  idle_prompt: "idle",
+  elicitation_dialog: "input",
+  elicitation_url_dialog: "input",
+  agent_needs_input: "input",
+  // Claude Code stopped at a usage-limit reset and waits for Enter.
+  quota_auto_resume_stale: "input",
+};
+const NOTIFICATION_NOT_WAITS: Readonly<Record<string, true>> = {
+  auth_success: true,
+  auth_storage_failure: true,
+  elicitation_complete: true,
+  elicitation_response: true,
+  agent_completed: true,
+  quota_auto_resume_fired: true,
+  quota_auto_resume_disabled: true,
+  plugin_notification: true,
+};
+
+/** The wait a Notification payload means, or null when it is a notification that is not a wait. */
+export function notificationWait(type: unknown, message: unknown): WaitReason | null {
+  if (typeof type === "string") {
+    if (Object.hasOwn(NOTIFICATION_WAITS, type)) return NOTIFICATION_WAITS[type]!;
+    if (Object.hasOwn(NOTIFICATION_NOT_WAITS, type)) return null;
+  }
+  return waitReason(message);
+}
+
 export interface ClaudeMapOptions {
   /** Include a title derived from the prompt of UserPromptSubmit (default false: prompts stay in Claude Code). */
   withTitle?: boolean;
@@ -60,6 +98,7 @@ interface HookPayload {
   session_id?: unknown;
   cwd?: unknown;
   message?: unknown;
+  notification_type?: unknown;
   prompt?: unknown;
 }
 
@@ -77,6 +116,8 @@ export function mapClaudeHook(
     return null;
   }
   const state = CLAUDE_HOOK_STATES[p.hook_event_name]!;
+  const reason = state === "waiting" ? notificationWait(p.notification_type, p.message) : undefined;
+  if (state === "waiting" && reason === null) return null;
   if (typeof p.session_id !== "string" || !AGENT_ID_PATTERN.test(p.session_id)) return null;
   if (
     typeof p.cwd !== "string" ||
@@ -96,7 +137,7 @@ export function mapClaudeHook(
     state,
     workspace: p.cwd,
     ...(task ? { task } : {}),
-    ...(state === "waiting" ? { reason: waitReason(p.message) } : {}),
+    ...(reason ? { reason } : {}),
   };
 }
 
