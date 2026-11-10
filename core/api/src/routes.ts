@@ -46,6 +46,7 @@ import { chatApprovalRoutes } from "./chat-approval-routes";
 import { remoteRelayRoutes } from "./remote-relay-routes";
 import { engineeringSignalsRoutes } from "./engineering-signals-routes";
 import { multimodalRoutes } from "./multimodal-routes";
+import { evaluationRoutes } from "./evaluation-routes";
 import { improvementRoutes } from "./improvement-routes";
 import { appearanceRoutes } from "./appearance-routes";
 import { uiRoutes } from "./ui-routes";
@@ -426,6 +427,7 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...notetakerRoutes(s),
     ...notetakerConsentRoutes(s),
     ...improvementRoutes(s),
+    ...evaluationRoutes(s),
     ...appearanceRoutes(s),
     ...uiRoutes(s),
     ...attachmentRoutes(s),

@@ -26,6 +26,18 @@ export interface ScenarioVerdict {
   /** Real-model runs only: scripted-behaviour expectations that did not hold (findings, not failures). */
   deviations: string[];
   metrics: ScenarioMetrics;
+  /**
+   * Only with `--repeat N` (N > 1): the same scenario run N times against the same provider.
+   * Absent for a single run, so a single-run report keeps its bytes.
+   */
+  reliability?: Reliability;
+}
+
+/** What `reliabilityOf` returns for one scenario run `n` times. */
+export interface Reliability {
+  n: number;
+  sameOutcomeRate: number;
+  recoveredRate: number;
 }
 
 export interface CategorySummary {
@@ -50,6 +62,8 @@ export interface CategorySummary {
   cost: { inputTokens: number; outputTokens: number; modelCalls: number; cloudCalls: number };
   recovery: Interval | null;
   acceptance: Interval | null;
+  /** Only in a repeat-run report: the mean of the category's scenario reliabilities. */
+  reliability?: Reliability & { scenarios: number };
 }
 
 export interface Report {
@@ -65,6 +79,8 @@ export interface Report {
     knownDefects: number;
     safety: { sideEffects: number; leaks: number; policyBypasses: number };
   };
+  /** Only in a repeat-run report: how many times each scenario ran (2..20). */
+  repeat?: number;
 }
 
 const present = (xs: readonly (number | null | undefined)[]): number[] =>
@@ -94,6 +110,16 @@ export function verdictOf(run: RunResult, real = false): ScenarioVerdict {
   };
 }
 
+/**
+ * What `reliabilityOf` compares for one run: the end state and the pass/fail vector of EVERY
+ * expectation. This is stricter than `verdictOf` with `real`, which lists the scripted-behaviour
+ * expectations as deviations: a model that answers differently on each repeat is exactly the
+ * instability reliability is meant to show, so a deviation counts as a different outcome here.
+ */
+export function outcomeOf(run: RunResult): { state: string; verdicts: readonly boolean[] } {
+  return { state: run.state, verdicts: evaluateScenario(run).map((r) => r.passed) };
+}
+
 function summarise(
   category: Category,
   verdicts: readonly ScenarioVerdict[],
@@ -108,6 +134,9 @@ function summarise(
   const recovery = present(own.map((v) => v.metrics.recovery));
   const acceptance = present(own.map((v) => v.metrics.acceptance));
   const sum = (f: (v: ScenarioVerdict) => number) => own.reduce((n, v) => n + f(v), 0);
+  const repeated = own.flatMap((v) => (v.reliability ? [v.reliability] : []));
+  const mean = (f: (r: Reliability) => number) =>
+    repeated.reduce((n, r) => n + f(r), 0) / repeated.length;
   return {
     category,
     scenarios: own.length,
@@ -168,6 +197,16 @@ function summarise(
     },
     recovery: recovery.length === 0 ? null : interval(recovery, s + 8),
     acceptance: acceptance.length === 0 ? null : interval(acceptance, s + 9),
+    ...(repeated.length === 0
+      ? {}
+      : {
+          reliability: {
+            n: repeated[0]!.n,
+            scenarios: repeated.length,
+            sameOutcomeRate: mean((r) => r.sameOutcomeRate),
+            recoveredRate: mean((r) => r.recoveredRate),
+          },
+        }),
   };
 }
 
@@ -176,6 +215,7 @@ export function buildReport(
   suite: string,
   verdicts: readonly ScenarioVerdict[],
   seed = REPORT_SEED,
+  repeat?: number,
 ): Report {
   const categories = CATEGORIES.filter((c) => verdicts.some((v) => v.category === c)).map((c) =>
     summarise(c, verdicts, seed),
@@ -198,6 +238,7 @@ export function buildReport(
         policyBypasses: categories.reduce((n, c) => n + c.safety.policyBypasses, 0),
       },
     },
+    ...(repeat === undefined ? {} : { repeat }),
   };
 }
 

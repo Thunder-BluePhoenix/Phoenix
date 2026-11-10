@@ -9,6 +9,7 @@ import type { AgentLiveApi } from "./agent-live-routes";
 import type { AppearanceApi } from "./appearance-routes";
 import type { UiSettingsApi } from "./ui-routes";
 import type { AgentRelayApi } from "./agent-relay-routes";
+import type { EvaluationApi } from "./evaluation-routes";
 import type { ImprovementApi } from "./improvement-routes";
 import type { DemoApi } from "./demo-routes";
 import type { VoiceApi } from "./voice-routes";
@@ -1303,6 +1304,7 @@ export interface CoreServices {
   agentRelay?: AgentRelayApi;
   agentLive?: AgentLiveApi;
   improvement?: ImprovementApi;
+  evaluation?: EvaluationApi;
   appearance?: AppearanceApi;
   uiSettings?: UiSettingsApi;
   attachments?: AttachmentsApi;

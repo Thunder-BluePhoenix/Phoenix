@@ -51,6 +51,8 @@ export interface RunResult {
 export interface RunOptions {
   /** A real provider to use instead of the scripted model. */
   realProvider?: ModelProvider;
+  /** Wall clock for timing a real provider (default `Date.now`); see `WorldOptions.now`. */
+  now?: () => number;
   /** Called with the finished run before the world is closed. */
   inspect?: (run: RunResult) => void | Promise<void>;
   /** Offline-only bounded candidate, carried into the real harness world. */
@@ -82,6 +84,7 @@ export async function runScenario(
   const world = await buildWorld({
     setup: scenario.setup,
     ...(options.realProvider ? { realProvider: options.realProvider } : {}),
+    ...(options.now ? { now: options.now } : {}),
     extraAgents: (w) => [
       createOpsAgent({
         model: w.model,

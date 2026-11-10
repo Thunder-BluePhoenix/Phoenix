@@ -152,7 +152,12 @@ function cloudProvider(log: ModelLog): ModelProvider {
 }
 
 /** Wraps a real provider so every prompt and token count is logged like the scripted one's. */
-function recording(inner: ModelProvider, log: ModelLog, clock: { now: number }): ModelProvider {
+function recording(
+  inner: ModelProvider,
+  log: ModelLog,
+  clock: { now: number },
+  wall: () => number,
+): ModelProvider {
   return {
     id: inner.id,
     label: inner.label,
@@ -167,9 +172,9 @@ function recording(inner: ModelProvider, log: ModelLog, clock: { now: number }):
     async generate(req, opts) {
       const text = req.messages.map((m) => m.content).join("\n");
       log.prompts.push({ text, privacy: req.privacy, purpose: req.purpose });
-      const started = Date.now();
+      const started = wall();
       const result = await inner.generate(req, opts);
-      clock.now += Date.now() - started;
+      clock.now += wall() - started;
       log.inputTokens += result.usage?.inputTokens ?? Math.ceil(text.length / 4);
       log.outputTokens += result.usage?.outputTokens ?? Math.ceil(result.text.length / 4);
       log.replies.push(result.text);
@@ -182,6 +187,8 @@ export interface WorldOptions {
   setup: Setup;
   /** Replaces the scripted model (the opt-in real-Ollama run). Its calls are still logged. */
   realProvider?: ModelProvider;
+  /** Wall clock used to time a real provider's calls; inject a fixed one for byte-stable repeat runs. */
+  now?: () => number;
   /** Agents beyond the CI agent; built with the world's model. */
   extraAgents?: (w: Pick<World, "model" | "engine" | "viewer" | "admin">) => AgentDefinition[];
 }
@@ -297,7 +304,7 @@ export async function buildWorld(options: WorldOptions): Promise<World> {
   const registry2 = new ProviderRegistry();
   registry2.register(
     options.realProvider
-      ? recording(options.realProvider, modelLog, clock)
+      ? recording(options.realProvider, modelLog, clock, options.now ?? Date.now)
       : scriptedProvider(setup.model ?? [], modelLog, clock),
   );
   registry2.register(cloudProvider(modelLog));

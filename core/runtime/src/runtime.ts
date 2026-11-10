@@ -101,6 +101,7 @@ import {
   terminalHistorySource,
   unavailableAdvisoryProvider,
 } from "./engineering-signals/providers";
+import { EvaluationRuntime } from "./evaluation";
 import { ImprovementRuntime } from "./improvement";
 import { LocalRegistryRuntime, type LocalRegistryConfig } from "./registry";
 import { SyncRuntime, type SyncTransportFactory } from "./sync";
@@ -356,6 +357,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly attachments: AttachmentRuntime;
   /** Governed improvement history; no trusted task reader/baseline/apply configured by default. */
   readonly improvement: ImprovementRuntime;
+  /** Read-only acceptance counts from review decisions and approval records (Phase 33). */
+  readonly evaluation: EvaluationRuntime;
   /** Fawkes outfit, user packs and per-source pills (Phase 61); session-token routes only. */
   readonly appearance: AppearanceRuntime;
   /** The interface language (Phase 70, `ui.locale`); session-token routes only. */
@@ -1172,6 +1175,7 @@ export class PhoenixRuntime implements CoreServices {
       logger: this.logger,
     });
     this.improvement = new ImprovementRuntime({ db: this.db });
+    this.evaluation = new EvaluationRuntime(this.db);
     this.appearance = new AppearanceRuntime({
       settings: this.settings,
       bus: this.bus,

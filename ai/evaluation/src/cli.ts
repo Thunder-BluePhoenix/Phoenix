@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 //
-//   npx tsx ai/evaluation/src/cli.ts run [--update-golden]   run the offline suite, print per category
+//   npx tsx ai/evaluation/src/cli.ts run [--update-golden] [--repeat N]   run the offline suite, print per category
+//                                                            (--repeat N, 1..20: run each case N times, add reliability)
 //   npx tsx ai/evaluation/src/cli.ts gate v0.4               verdict of a gate on the latest report
 //   npx tsx ai/evaluation/src/cli.ts gates                   list the gates
-//   PHOENIX_REAL_OLLAMA=1 npx tsx ai/evaluation/src/cli.ts real   categories a, b, g against llama3.2 (opt-in, never in CI)
+//   PHOENIX_REAL_OLLAMA=1 npx tsx ai/evaluation/src/cli.ts real [--repeat N]   categories a, b, g against llama3.2 (opt-in, never in CI)
 //
 // `gate` reads the report `run` last wrote (`ai/evaluation/golden/latest-report.json`); with
 // `--golden` it judges the committed baseline instead. The exit code is 0 only when the gate passes.
 import { evaluateGate, GATES, type GateVerdict } from "./gate";
 import { GOLDEN_PATH, readReport, REAL_REPORT_PATH, writeReport } from "./golden";
 import type { Report } from "./report";
-import type { Category } from "./types";
-import { OllamaProvider } from "@phoenix/ai-models";
-import { runSuite } from "./suite";
+import type { Category, Scenario } from "./types";
+import { OllamaProvider, type ModelProvider } from "@phoenix/ai-models";
+import { checkRepeat, runSuite } from "./suite";
 import { ALL_SCENARIOS } from "./scenarios";
 import { join } from "node:path";
 
@@ -38,7 +39,10 @@ export function formatReport(report: Report): string {
       `  ${c.category.padEnd(24)} ${c.passed}/${c.scenarios - c.knownDefects} pass ` +
         `[${c.passRate.low.toFixed(2)}, ${c.passRate.high.toFixed(2)}]` +
         (c.knownDefects > 0 ? ` +${c.knownDefects} known defect(s)` : "") +
-        ` side-effects ${c.safety.sideEffects} leaks ${c.safety.leaks} bypasses ${c.safety.policyBypasses}${g}`,
+        ` side-effects ${c.safety.sideEffects} leaks ${c.safety.leaks} bypasses ${c.safety.policyBypasses}${g}` +
+        (c.reliability
+          ? ` reliability same-outcome ${c.reliability.sameOutcomeRate.toFixed(2)} recovered ${c.reliability.recoveredRate.toFixed(2)} (x${c.reliability.n})`
+          : ""),
     );
   }
   return lines.join("\n");
@@ -63,13 +67,61 @@ export function formatVerdict(v: GateVerdict): string {
   return lines.join("\n");
 }
 
-async function main(argv: string[]): Promise<number> {
+/**
+ * Reads `--repeat N` / `--repeat=N`: an integer 1..20, default 1. Anything else throws RangeError.
+ */
+export function parseRepeat(argv: readonly string[]): number {
+  const at = argv.findIndex((a) => a === "--repeat" || a.startsWith("--repeat="));
+  if (at < 0) return 1;
+  const raw = argv[at]!.startsWith("--repeat=")
+    ? argv[at]!.slice("--repeat=".length)
+    : argv[at + 1];
+  if (raw === undefined || !/^\d+$/.test(raw))
+    throw new RangeError("repeat must be an integer from 1 to 20");
+  return checkRepeat(Number(raw));
+}
+
+/** Seams for tests; the real command passes none. */
+export interface CliDeps {
+  /** Replaces the scripted model of `run`: every repeat of every case calls this same instance. */
+  provider?: ModelProvider;
+  /** Fixed wall clock for timing `provider`'s calls. */
+  now?: () => number;
+  /** Cases to run (default: all). */
+  scenarios?: readonly Scenario[];
+  /** Where `run` writes its report; `null` writes nothing (default: the gitignored latest report). */
+  latestPath?: string | null;
+  out?: (text: string) => void;
+}
+
+export async function main(argv: string[], deps: CliDeps = {}): Promise<number> {
   const [command, arg] = argv;
+  const out = deps.out ?? ((t: string) => void process.stdout.write(t));
   if (command === "run") {
-    const { report } = await runSuite("offline", ALL_SCENARIOS);
-    writeReport(LATEST_PATH, report);
+    let repeat: number;
+    try {
+      repeat = parseRepeat(argv);
+    } catch (err) {
+      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+      return 2;
+    }
+    // A repeat-run report carries extra fields: it must never replace the committed baseline.
+    if (argv.includes("--update-golden") && repeat > 1) {
+      process.stderr.write("--update-golden cannot be combined with --repeat above 1\n");
+      return 2;
+    }
+    const { report } = await runSuite(
+      deps.provider ? "injected-provider" : "offline",
+      deps.scenarios ?? ALL_SCENARIOS,
+      undefined,
+      deps.provider,
+      undefined,
+      { repeat, ...(deps.now ? { now: deps.now } : {}) },
+    );
+    const latest = deps.latestPath === undefined ? LATEST_PATH : deps.latestPath;
+    if (latest !== null) writeReport(latest, report);
     if (argv.includes("--update-golden")) writeReport(GOLDEN_PATH, report);
-    process.stdout.write(`${formatReport(report)}\n`);
+    out(`${formatReport(report)}\n`);
     return 0;
   }
   if (command === "real") {
@@ -88,7 +140,16 @@ async function main(argv: string[]): Promise<number> {
     const chosen = ALL_SCENARIOS.filter(
       (s) => REAL_CATEGORIES.includes(s.category) && s.subject !== "hostile",
     );
-    const { report } = await runSuite("real-ollama", chosen, undefined, provider);
+    let repeat: number;
+    try {
+      repeat = parseRepeat(argv);
+    } catch (err) {
+      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+      return 2;
+    }
+    const { report } = await runSuite("real-ollama", chosen, undefined, provider, undefined, {
+      repeat,
+    });
     writeReport(REAL_LATEST_PATH, report);
     process.stdout.write(`${formatReport(report)}\n`);
     for (const v of report.scenarios) {
@@ -158,7 +219,7 @@ async function main(argv: string[]): Promise<number> {
     return verdict.passed ? 0 : 1;
   }
   process.stderr.write(
-    "usage: cli.ts run [--update-golden] | real | gate <v0.4|v0.5|v0.7|v1.0> [--golden] [--real-quality --real-category=<category> --real-scenario=<id>] | gates\n",
+    "usage: cli.ts run [--update-golden] [--repeat N] | real [--repeat N] | gate <v0.4|v0.5|v0.7|v1.0> [--golden] [--real-quality --real-category=<category> --real-scenario=<id>] | gates\n",
   );
   return 2;
 }
