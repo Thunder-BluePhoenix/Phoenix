@@ -21,7 +21,7 @@ read -rs STRIPE_KEY && printf '{"value":"%s"}' "$STRIPE_KEY" | \
 curl "${H[@]}" -X POST -d '{}' http://127.0.0.1:4870/api/capabilities/stripe/enable
 ```
 
-Secret `restricted_key` is sent only as a Bearer credential to Stripe's own API origin (`https://api.stripe.com`). There is deliberately **no `base_url` setting**: anyone holding the API token could otherwise point the stored key at a host of their choosing. Tests inject a local mock through the code-only `apiUrl` creation option. The key is never logged or put in an error, event or config. Config: `poll_ms` (15000+, default 60000). Enabling grants `network` and `external_api`.
+Secret `restricted_key` is sent only as a Bearer credential to Stripe's own API origin (`https://api.stripe.com`). There is deliberately **no `base_url` setting**: anyone holding the API token could otherwise point the stored key at a host of their choosing. Tests inject a local mock through the code-only `apiUrl` creation option. The key is never logged or put in an error, event or config. Config: `poll_ms` (300000+, default 600000; Stripe allows a low-volume account only 10,000 read requests a month, see docs/service-terms.md). Enabling grants `network` and `external_api`.
 
 ## `status` command (read)
 
@@ -38,3 +38,5 @@ The Overview shows counts, per-currency totals, balance and the latest payments 
 ## Unverified
 
 Written from Stripe's public API reference. **Nothing has been run against the real Stripe API** (test mode or live); the mock in `testing/mock-stripe.ts` encodes my reading of the docs. Whether a restricted key limited to Charges and Balance reads is accepted by `GET /v1/charges` and `GET /v1/balance` has not been checked.
+
+Poll defaults and floors are checked against the vendor's documented request limit by `test/service-limits.test.ts`. The minimum is 300000 because Stripe documents a 10,000 read requests a month minimum allocation per account ([docs/service-terms.md](../../docs/service-terms.md), read 2026-11-10; not legal advice).

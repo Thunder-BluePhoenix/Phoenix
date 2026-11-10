@@ -61,6 +61,8 @@ export interface CapabilityManagerOptions {
   preflight?(command: { capabilityId: string; command: string; sideEffect: string }): Promise<void>;
 }
 
+const CONFIG_RELOAD_FAILED = "configuration reload failed; the new values may not be applied";
+
 const SECRET_NAME = /^[a-z][a-z0-9_]{0,63}$/;
 
 interface Entry {
@@ -85,6 +87,10 @@ interface Entry {
   resume?: boolean;
   /** The built-in's private data directory once it was made (see `dataDirOf`). */
   dataDir?: string;
+  /** Bumped by every config reload so a slow older hook cannot overrule a newer one. */
+  reloadSeq?: number;
+  /** Set while the last `onConfig` reload failed; reported as unhealthy. */
+  configError?: string;
 }
 
 const MAX_OPERATIONS = 500;
@@ -318,6 +324,7 @@ export class CapabilityManager {
 
     const abort = new AbortController();
     entry.abort = abort;
+    delete entry.configError;
     entry.ctx = this.context(entry, abort.signal);
     try {
       if (entry.kind === "builtin") {
@@ -375,6 +382,7 @@ export class CapabilityManager {
     // A stopped capability is no longer working, recording or warning about anything.
     this.o.state.clearSource(id);
     entry.status = "disabled";
+    delete entry.configError;
     entry.disabledReason = reason;
     entry.health = { status: "unknown" };
     this.persist(entry);
@@ -408,7 +416,66 @@ export class CapabilityManager {
     this.validateConfig(entry, cfg);
     entry.config = cfg;
     this.persist(entry);
+    this.reloadConfig(entry);
     return this.view(entry);
+  }
+
+  /**
+   * Applies a newly stored configuration to an ENABLED built-in that declares `onConfig`. The hook
+   * gets a fresh context holding a frozen copy of the new config, which also replaces `entry.ctx`
+   * so later commands and health checks see it. It is invoked synchronously; an async hook is
+   * awaited under the call timeout.
+   * `configure()` itself stays synchronous and never throws because of the hook: a throw or
+   * timeout is logged, audited by error class only (config values and error messages can carry
+   * values, so neither is recorded) and leaves the capability unhealthy until a later reload
+   * succeeds. Modules without the hook, external capabilities and capabilities that are not
+   * enabled are untouched.
+   */
+  private reloadConfig(entry: Entry): void {
+    const hook = entry.module?.onConfig;
+    if (entry.kind !== "builtin" || !hook || entry.status !== "enabled" || !entry.abort) return;
+    const seq = (entry.reloadSeq = (entry.reloadSeq ?? 0) + 1);
+    const ctx = this.context(entry, entry.abort.signal);
+    // The stored configuration is in force whether or not the hook copes with it, so commands and
+    // health checks from now on see the new frozen copy.
+    entry.ctx = ctx;
+    const current = () => entry.reloadSeq === seq && entry.status === "enabled" && !this.closed;
+    const fail = (err: unknown) => {
+      if (!current()) return;
+      const error = err instanceof Error ? err.constructor.name : typeof err;
+      const code = err instanceof PhoenixError ? err.code : undefined;
+      this.logger.warn("capability config reload failed", { id: entry.manifest.id, error });
+      this.o.permissions.audit.record({
+        actor: "system",
+        action: "capability.config_reload_failed",
+        capabilityId: entry.manifest.id,
+        decision: "info",
+        details: { error, ...(code ? { code } : {}) },
+      });
+      entry.configError = CONFIG_RELOAD_FAILED;
+      void this.checkHealth(entry.manifest.id).catch(() => {});
+    };
+    const done = () => {
+      if (!current() || entry.configError === undefined) return;
+      delete entry.configError;
+      void this.checkHealth(entry.manifest.id).catch(() => {});
+    };
+    let result: void | Promise<void>;
+    try {
+      result = hook.call(entry.module, ctx);
+    } catch (err) {
+      fail(err);
+      return;
+    }
+    if (
+      result === undefined ||
+      result === null ||
+      typeof (result as Promise<void>).then !== "function"
+    ) {
+      done();
+      return;
+    }
+    guarded(() => result, this.callTimeoutMs).then(done, fail);
   }
 
   // ── Secrets ───────────────────────────────────────────────────────────────
@@ -858,6 +925,9 @@ export class CapabilityManager {
       result = { status: "unhealthy", message: toPhoenixError(err).message };
     }
     if (entry.status !== "enabled" || this.closed) return this.view(entry); // disabled while checking
+    if (entry.configError !== undefined) {
+      result = { status: "unhealthy", message: entry.configError };
+    }
 
     entry.health = { ...result, checkedAt: new Date().toISOString() };
     const available = result.status !== "unhealthy";

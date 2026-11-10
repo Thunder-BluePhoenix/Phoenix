@@ -188,3 +188,14 @@ a failed source; TON Center allows 1 request per second without a key). The XRPS
 Center `jetton/wallets` and Solana `getBalance` shapes were written from documentation and never run
 live. `xrpscan` field naming (`xrpBalance`) and Blockscout's `coin_balance` are the shapes
 most worth checking first.
+
+## Indexer limits and terms (docs/service-terms.md)
+
+Read on 2026-11-10 from public pages; not legal advice. BlockCypher documents 100 requests per hour and 3 per second for
+the free tier, so Litecoin/Dogecoin requests are spaced 400 ms apart on one shared gate and the delay between checks is
+raised so one cycle never exceeds 100 per hour (`src/budget.ts`, `maxRequestsPerHour` in `networks.ts`). XRPSCAN
+documents 10,000 requests a day on its free tier and licenses its API under CC BY-NC-SA 4.0 (personal, non-commercial
+display only); Stellar Horizon's default is 3,600 an hour. Solana's public RPC allows 40 requests per 10 s per method:
+`getBalance` calls are spaced 300 ms apart. Blockscout's public hosts, Blockstream and TronGrid document no number
+(TronGrid and Blockscout say keyless scripted access may be refused); those defaults are unchanged. `test/service-limits.test.ts`
+fails if a default or spacing goes below these.

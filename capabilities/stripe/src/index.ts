@@ -24,8 +24,9 @@ export * from "./client";
 export * from "./events";
 export * from "./parse";
 
-export const DEFAULT_POLL_MS = 60_000;
-export const MIN_POLL_MS = 15_000;
+export const DEFAULT_POLL_MS = 600_000;
+// Stripe allows a low-volume account 10,000 read requests a month (docs/service-terms.md); 300 s is 8,640.
+export const MIN_POLL_MS = 300_000;
 export const CHARGES_PER_POLL = 25;
 const MAX_STATUS_ITEMS = 10;
 

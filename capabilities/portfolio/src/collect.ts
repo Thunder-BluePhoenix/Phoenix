@@ -8,7 +8,13 @@ import { readJson } from "./client";
 import { type Credentials, type ExchangeSpec } from "./exchanges";
 import type { NetworkSpec } from "./networks";
 import type { RawHolding, SourceStatus } from "./snapshot";
-import { SOLANA_ASSET, SOLANA_NAME, SOLANA_NETWORK_ID, type SolanaBalanceClient } from "./solana";
+import {
+  SOLANA_ASSET,
+  SOLANA_MIN_INTERVAL_MS,
+  SOLANA_NAME,
+  SOLANA_NETWORK_ID,
+  type SolanaBalanceClient,
+} from "./solana";
 import { decimalText, roundedAmount, type TokenWatch } from "./tokens";
 
 export interface Collected {
@@ -187,6 +193,7 @@ async function tokenHoldings(
 async function solanaHoldings(
   addresses: readonly string[],
   client: SolanaBalanceClient,
+  gate: Gate,
 ): Promise<SourceRead> {
   const holdings: RawHolding[] = [];
   const status: SourceStatus = {
@@ -198,6 +205,7 @@ async function solanaHoldings(
   let failure: ServiceError | undefined;
   for (const address of addresses) {
     try {
+      await gate();
       const lamports = await client.balance(address);
       if (lamports > 0n) {
         holdings.push({
@@ -261,16 +269,24 @@ async function exchangeHoldings(spec: ExchangeSpec, input: CollectInput): Promis
 
 export async function collect(input: CollectInput): Promise<Collected> {
   const jobs: Promise<SourceRead>[] = [];
+  // Services count per IP, so networks on one host (Litecoin and Dogecoin on BlockCypher) share a gate.
+  const gates = new Map<string, Gate>();
   for (const [spec, addresses] of input.networks) {
-    const gate = spec.minIntervalMs
-      ? makeGate(spec.minIntervalMs, input.pace ?? realSleep, input.signal)
-      : undefined;
+    let gate: Gate | undefined;
+    if (spec.minIntervalMs) {
+      gate = gates.get(spec.baseUrl);
+      if (!gate) {
+        gate = makeGate(spec.minIntervalMs, input.pace ?? realSleep, input.signal);
+        gates.set(spec.baseUrl, gate);
+      }
+    }
     jobs.push(networkHoldings(spec, addresses, input.endpoints, input.signal, gate));
     const list = input.tokens.get(spec);
     if (list) jobs.push(tokenHoldings(spec, addresses, list, input.endpoints, input.signal, gate));
   }
   if (input.solana?.addresses.length) {
-    jobs.push(solanaHoldings(input.solana.addresses, input.solana.client));
+    const gate = makeGate(SOLANA_MIN_INTERVAL_MS, input.pace ?? realSleep, input.signal);
+    jobs.push(solanaHoldings(input.solana.addresses, input.solana.client, gate));
   }
   for (const spec of input.exchanges) jobs.push(exchangeHoldings(spec, input));
   const done = await Promise.all(jobs);

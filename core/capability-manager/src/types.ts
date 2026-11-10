@@ -72,6 +72,18 @@ export interface CapabilityModule {
    * make it idempotent.
    */
   stopping?(ctx: CapabilityContext, reason: string): void;
+  /**
+   * Optional. Called after `configure()` stored a new configuration while this capability is
+   * ENABLED, with a fresh context whose frozen `ctx.config` is the new copy (same `signal`, so
+   * `ctx.emit` and abort behave as before). Use it to apply the new values without a
+   * disable/enable cycle. Without this hook the capability keeps today's behaviour: the
+   * configuration is read when it is enabled, and a change needs disable then enable. The
+   * hook runs guarded (timeout enforced); a throw or timeout is contained: it is audited as
+   * `capability.config_reload_failed` (error class only, never config values) and the capability
+   * is reported unhealthy until a later reload succeeds or it is disabled. The `ctx` of earlier
+   * calls (for example one captured in `init`) keeps its old `config`.
+   */
+  onConfig?(ctx: CapabilityContext): void | Promise<void>;
   shutdown?(ctx: CapabilityContext): void | Promise<void>;
 }
 

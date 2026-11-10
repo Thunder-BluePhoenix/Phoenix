@@ -20,6 +20,7 @@ import {
 import type { AiService } from "@phoenix/ai-models";
 import {
   AiEmbedder,
+  INDEXER_COOLDOWN_KEY,
   FeatureReranker,
   Retriever,
   VectorIndexer,
@@ -343,6 +344,7 @@ export class RetrievalRuntime implements RetrievalApi {
           vectors: this.vectors,
           embedder,
           minIntervalMs: 0,
+          cooldownStore: this.d.settings,
           canIndex: () => !this.closed && this.inactiveReason() === null,
         }),
       };
@@ -378,7 +380,13 @@ export class RetrievalRuntime implements RetrievalApi {
     const model = this.embedder(this.settings()).modelKey;
     this.lastRun = null;
     this.vectors.dropModel(model);
-    // The old indexer may be in cooldown after an outage; a deliberate retry gets a fresh one.
+    // The old indexer may be in cooldown after an outage; a deliberate retry gets a fresh one,
+    // and the persisted cooldown is cleared so that one does not load it again.
+    try {
+      this.d.settings.delete(INDEXER_COOLDOWN_KEY);
+    } catch {
+      // A store that cannot be written only keeps the old cooldown; the rebuild still runs.
+    }
     this.indexer = null;
     await this.runIndex();
     return this.status();

@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { ModelError } from "@phoenix/ai-models";
+import { SettingsStore } from "@phoenix/persistence";
 import { describe, expect, it } from "vitest";
-import { AiEmbedder, EmbedderMismatchError, VectorIndexer, type IndexerOptions } from "../src";
+import {
+  AiEmbedder,
+  EmbedderMismatchError,
+  INDEXER_COOLDOWN_KEY,
+  VectorIndexer,
+  type IndexerOptions,
+} from "../src";
 import { aiRig, rig, toyVector, ToyEmbedder, type Rig } from "./helpers";
 
 function indexer(r: Rig, embedder: IndexerOptions["embedder"], over: Partial<IndexerOptions> = {}) {
@@ -366,5 +373,137 @@ describe("router fallback", () => {
     );
     expect(a.cloud.embedRequests).toEqual([]);
     expect(r.vectors.count(a.embedder.modelKey)).toBe(0);
+  });
+});
+
+describe("persisted outage cooldown", () => {
+  const COOLDOWN = 60_000;
+
+  function down() {
+    const r = rig();
+    const a = aiRig({}, r.clock);
+    a.local.failEmbed = new ModelError("network", "local", "connection refused", {
+      retryable: true,
+    });
+    r.add({ text: "alpha beta", dedupeKey: "a" });
+    r.add({ text: "gamma delta", dedupeKey: "b" });
+    const store = new SettingsStore(r.db);
+    const make = (over: Partial<IndexerOptions> = {}) =>
+      indexer(r, a.embedder, { backoffMs: () => COOLDOWN, cooldownStore: store, ...over });
+    return { r, a, store, make };
+  }
+
+  it("uses a split key under memory.indexer", () => {
+    expect(INDEXER_COOLDOWN_KEY).toBe("memory.indexer.cooldown_until");
+  });
+
+  it("survives a restart: a new indexer over the same store does not call the provider", async () => {
+    const { r, a, store, make } = down();
+    const start = r.clock.now.getTime();
+    await make().run();
+    expect(store.get(INDEXER_COOLDOWN_KEY, null)).toBe(start + COOLDOWN);
+
+    const calls = a.local.embedRequests.length;
+    const restarted = make(); // a fresh process: nothing in memory
+    const report = await restarted.run();
+    expect(report.degraded.map((d) => d.reason)).toEqual(["provider_unavailable"]);
+    expect(report).toMatchObject({ embedded: 0, remaining: 2 });
+    expect(a.local.embedRequests.length).toBe(calls);
+  });
+
+  it("expires exactly at the boundary and is then removed from the store", async () => {
+    const { r, a, store, make } = down();
+    const start = r.clock.now.getTime();
+    await make().run();
+    a.local.failEmbed = null;
+
+    r.clock.now = new Date(start + COOLDOWN - 1);
+    const early = make();
+    expect((await early.run()).degraded).toHaveLength(1);
+    expect(store.get(INDEXER_COOLDOWN_KEY, null)).toBe(start + COOLDOWN);
+
+    r.clock.now = new Date(start + COOLDOWN);
+    expect(await make().run()).toMatchObject({ embedded: 2, remaining: 0, degraded: [] });
+    expect(store.get(INDEXER_COOLDOWN_KEY, null)).toBeNull();
+  });
+
+  it("an already expired stored value is ignored and deleted when the indexer starts", async () => {
+    const { r, store, make } = down();
+    store.set(INDEXER_COOLDOWN_KEY, r.clock.now.getTime());
+    make();
+    expect(store.get(INDEXER_COOLDOWN_KEY, null)).toBeNull();
+    store.set(INDEXER_COOLDOWN_KEY, "soon");
+    make();
+    expect(store.get(INDEXER_COOLDOWN_KEY, null)).toBeNull();
+  });
+
+  it("a later success in the same run clears the cooldown", async () => {
+    const r = rig();
+    const a = aiRig({}, r.clock);
+    a.local.vectorFor = (text) => {
+      if (text.includes("poison")) throw new ModelError("protocol", "local", "bad item");
+      return toyVector(text);
+    };
+    // A lone failing public-ish item before the provider has ever answered looks like an outage.
+    r.add({ text: "poison pill", dedupeKey: "p" });
+    r.add({
+      text: "meeting notes",
+      dedupeKey: "m",
+      contentType: "meeting_summary",
+      source: "kage",
+    });
+    const store = new SettingsStore(r.db);
+    const ix = indexer(r, a.embedder, { backoffMs: () => COOLDOWN, cooldownStore: store });
+    const report = await ix.run();
+    expect(report.embedded).toBe(1); // the sensitive item was embedded after the cooldown began
+    expect(store.get(INDEXER_COOLDOWN_KEY, null)).toBeNull();
+    // ... and the in-memory cooldown is gone too: the next run calls the provider again.
+    const calls = a.local.embedRequests.length;
+    await ix.run();
+    expect(a.local.embedRequests.length).toBeGreaterThan(calls);
+  });
+
+  it("indexing keeps working when the store throws", async () => {
+    const { r, a } = down();
+    const boom = () => {
+      throw new Error("settings store is locked");
+    };
+    const broken = { get: boom, set: boom, delete: boom };
+    const ix = indexer(r, a.embedder, { backoffMs: () => COOLDOWN, cooldownStore: broken });
+    const first = await ix.run();
+    expect(first.degraded.map((d) => d.reason)).toEqual(["provider_unavailable"]);
+    // The cooldown still holds in memory.
+    const calls = a.local.embedRequests.length;
+    await ix.run();
+    expect(a.local.embedRequests.length).toBe(calls);
+    // And recovery works: expiry and success go through a store that cannot be written.
+    a.local.failEmbed = null;
+    r.clock.now = new Date(r.clock.now.getTime() + COOLDOWN);
+    expect(await ix.run()).toMatchObject({ embedded: 2, remaining: 0 });
+  });
+});
+
+describe("persisted outage cooldown on a long-lived indexer", () => {
+  it("a run after the cooldown with nothing to embed still removes the stored value, and the boundary is exact", async () => {
+    const r = rig();
+    const a = aiRig({}, r.clock);
+    a.local.failEmbed = new ModelError("network", "local", "down", { retryable: true });
+    const ids = [
+      r.add({ text: "alpha beta", dedupeKey: "a" }),
+      r.add({ text: "gamma delta", dedupeKey: "b" }),
+    ];
+    const store = new SettingsStore(r.db);
+    const start = r.clock.now.getTime();
+    const ix = indexer(r, a.embedder, { backoffMs: () => 60_000, cooldownStore: store });
+    await ix.run();
+    expect(store.get(INDEXER_COOLDOWN_KEY, null)).toBe(start + 60_000);
+    for (const id of ids) r.store.forget(id); // nothing is left to embed
+
+    r.clock.now = new Date(start + 59_999);
+    expect((await ix.run()).degraded).toHaveLength(1);
+    expect(store.get(INDEXER_COOLDOWN_KEY, null)).toBe(start + 60_000);
+    r.clock.now = new Date(start + 60_000);
+    expect((await ix.run()).degraded).toEqual([]);
+    expect(store.get(INDEXER_COOLDOWN_KEY, null)).toBeNull();
   });
 });

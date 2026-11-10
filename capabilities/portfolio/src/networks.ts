@@ -44,6 +44,11 @@ export interface NetworkSpec {
    * gap between them.
    */
   minIntervalMs?: number;
+  /**
+   * The documented request budget per hour for a keyless client, per host (docs/service-terms.md). The
+   * poll delay is raised so one cycle never exceeds it (budget.ts). Absent: no limit is documented.
+   */
+  maxRequestsPerHour?: number;
 }
 
 function unusable(): never {
@@ -87,6 +92,10 @@ function blockcypher(
     asset,
     baseUrl: "https://api.blockcypher.com",
     missingIsZero: true,
+    // https://www.blockcypher.com/dev/bitcoin/ (Rate Limits and Tokens): the free tier allows 3
+    // requests per second and 100 per hour, counted per IP with or without a token.
+    minIntervalMs: 400,
+    maxRequestsPerHour: 100,
     address,
     path: (a) => `/v1/${chain}/main/addrs/${seg(a)}/balance`,
     parse: (body) => amount(scaledUnits(expectObject(body).balance, 8)),
@@ -139,6 +148,9 @@ export const NETWORKS: readonly NetworkSpec[] = [
     },
     missingIsZero: true,
     tokens: xrplTokens,
+    // https://docs.xrpscan.com/api-documentation/pricing.md: the free tier is 10,000 requests a day.
+    // Licence CC BY-NC-SA 4.0 (introduction page): personal, non-commercial display only.
+    maxRequestsPerHour: Math.floor(10_000 / 24),
   },
   {
     id: "xlm",
@@ -155,6 +167,10 @@ export const NETWORKS: readonly NetworkSpec[] = [
     },
     missingIsZero: true,
     tokens: stellarTokens,
+    // https://developers.stellar.org/docs/data/apis/horizon/api-reference/structure/rate-limiting: the
+    // default per-IP limit is 3,600 requests an hour. The mainnet instance's own limit is not stated on
+    // the pages read, so the default is assumed.
+    maxRequestsPerHour: 3600,
   },
   {
     id: "algo",

@@ -45,3 +45,5 @@ The Overview shows the latest deployments with their state (address shown as a h
 ## Unverified
 
 Written from Vercel's public API documentation (field names, paths, auth). **Nothing has been run against the real Vercel API**; the mock in `testing/mock-vercel.ts` encodes my reading of the docs, so a difference between the docs and the service would not show up in the tests. The redeploy request body in particular (`name`, `deploymentId`, `target`, `forceNew`) should be checked against a real project before relying on it.
+
+Poll defaults and floors are checked against the vendor's documented request limit by `test/service-limits.test.ts` (limits and terms read on 2026-11-10: [docs/service-terms.md](../../docs/service-terms.md); not legal advice).

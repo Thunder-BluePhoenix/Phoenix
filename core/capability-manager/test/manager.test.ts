@@ -389,6 +389,117 @@ describe("configuration", () => {
   });
 });
 
+describe("configuration reload (onConfig)", () => {
+  const schema = {
+    type: "object",
+    properties: { level: { type: "string" }, tag: { type: "string" } },
+    additionalProperties: false,
+  };
+  const reloadable = (over: Partial<CapabilityModule> = {}) =>
+    builtin(over, manifest({ config_schema: schema }));
+  const levelOf = async (manager: CapabilityManager) => {
+    return (await manager.invokeAndWait("demo", "status")).result;
+  };
+
+  it("hands an enabled capability a fresh frozen copy of the new config", async () => {
+    const { manager } = setup();
+    const seen: Record<string, unknown>[] = [];
+    let initCtxConfig: Readonly<Record<string, unknown>> | undefined;
+    manager.registerBuiltin(
+      reloadable({
+        init: (ctx) => void (initCtxConfig = ctx.config),
+        onConfig: (ctx) => void seen.push(ctx.config as Record<string, unknown>),
+        commands: { status: (_i, ctx) => ({ level: ctx.config.level }), deploy: () => "x" },
+      }),
+    );
+    manager.configure("demo", { level: "a" });
+    await manager.enable("demo");
+    expect(seen).toEqual([]);
+    manager.configure("demo", { level: "b" });
+    expect(seen).toEqual([{ level: "b" }]);
+    expect(Object.isFrozen(seen[0])).toBe(true);
+    expect(initCtxConfig).toEqual({ level: "a" });
+    expect(await levelOf(manager)).toEqual({ level: "b" });
+  });
+
+  it("does not call the hook for a capability that is not enabled", () => {
+    const { manager } = setup();
+    const onConfig = vi.fn();
+    manager.registerBuiltin(reloadable({ onConfig }));
+    manager.configure("demo", { level: "b" });
+    expect(onConfig).not.toHaveBeenCalled();
+  });
+
+  it("does not call the hook after the capability was disabled", async () => {
+    const { manager } = setup();
+    const onConfig = vi.fn();
+    manager.registerBuiltin(reloadable({ onConfig }));
+    await manager.enable("demo");
+    await manager.disable("demo");
+    manager.configure("demo", { level: "b" });
+    expect(onConfig).not.toHaveBeenCalled();
+  });
+
+  it("leaves modules without the hook as they were: the running config is the one at enable", async () => {
+    const { manager } = setup();
+    manager.registerBuiltin(
+      reloadable({
+        commands: { status: (_i, ctx) => ({ level: ctx.config.level }), deploy: () => "x" },
+      }),
+    );
+    manager.configure("demo", { level: "a" });
+    await manager.enable("demo");
+    manager.configure("demo", { level: "b" });
+    expect(await levelOf(manager)).toEqual({ level: "a" });
+    expect(manager.get("demo").health.status).not.toBe("unhealthy");
+  });
+
+  it("contains a throwing hook: configure still returns, the capability turns unhealthy, the audit has no config values", async () => {
+    const { manager, permissions } = setup();
+    const SECRET_LIKE = ["zq", "plm", "7731", "wxv"].join("-");
+    manager.registerBuiltin(
+      reloadable({
+        onConfig: (ctx) => {
+          throw new Error(`cannot use ${String(ctx.config.tag)}`);
+        },
+      }),
+    );
+    await manager.enable("demo");
+    expect(manager.configure("demo", { tag: SECRET_LIKE }).config).toEqual({ tag: SECRET_LIKE });
+    await vi.waitFor(() => expect(manager.get("demo").health.status).toBe("unhealthy"));
+    expect(manager.get("demo").status).toBe("enabled");
+    const rows = permissions.audit
+      .list({ limit: 100 })
+      .filter((e) => e.action === "capability.config_reload_failed");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ capabilityId: "demo", details: { error: "Error" } });
+    expect(JSON.stringify(permissions.audit.list({ limit: 100 }))).not.toContain(SECRET_LIKE);
+  });
+
+  it("contains a rejecting async hook and recovers when a later reload succeeds", async () => {
+    const { manager, permissions } = setup();
+    let fail = true;
+    manager.registerBuiltin(
+      reloadable({
+        onConfig: async () => {
+          if (fail) throw new Error("nope");
+        },
+      }),
+    );
+    await manager.enable("demo");
+    manager.configure("demo", { level: "x" });
+    await vi.waitFor(() => expect(manager.get("demo").health.status).toBe("unhealthy"));
+    expect(
+      permissions.audit
+        .list({ limit: 100 })
+        .filter((e) => e.action === "capability.config_reload_failed"),
+    ).toHaveLength(1);
+    fail = false;
+    manager.configure("demo", { level: "y" });
+    await vi.waitFor(() => expect(manager.get("demo").health.status).toBe("healthy"));
+  });
+});
+
 describe("events from capabilities", () => {
   it("only declared event types under the capability's own source are accepted", async () => {
     const { manager } = setup();

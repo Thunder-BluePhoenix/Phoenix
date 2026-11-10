@@ -96,6 +96,8 @@ init(ctx) {
 
 A builtin may also define `stopping(ctx, reason)`. Disable (`reason` is why: `user`, `kill_switch`, `uninstall`, …) and Core exit (`shutdown`) call it synchronously **before** `ctx.signal` is aborted, so `ctx.emit` still publishes there (after the abort it does not). Use it to announce that live work was cut short; still release the real resource on abort and in `shutdown`. A throw is logged and ignored.
 
+A builtin may also define `onConfig(ctx)` (optional, additive). When a configuration is saved for an **enabled** capability (`POST /api/capabilities/:id/config`), Core calls it with a fresh context whose frozen `ctx.config` is the new copy, so the capability can apply it without a disable/enable cycle. Contexts captured earlier (for example in `init`) keep the old `config`, so keep a reference you replace in the hook. A throw or timeout is contained: `configure` still succeeds, the failure is audited as `capability.config_reload_failed` (error class only, never config values or messages) and the capability reports unhealthy until a later reload succeeds or it is disabled. Capabilities without the hook, external capabilities and disabled capabilities behave as before: the config is read when the capability is enabled.
+
 ## 4. Test it
 
 `@phoenix/sdk-testing` gives you an in-memory Phoenix:

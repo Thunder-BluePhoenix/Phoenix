@@ -32,6 +32,11 @@ export const SOLANA_ASSET = "SOL";
 /** Largest response read (64 KiB): a getBalance answer is well under 200 bytes. */
 export const SOLANA_MAX_BYTES = 64 * 1024;
 export const SOLANA_TIMEOUT_MS = 15_000;
+/**
+ * Gap between getBalance calls. The public endpoint allows 40 requests per 10 s per IP for a single
+ * method (https://solana.com/docs/references/clusters, read 2026-11-10); 300 ms is about 33 per 10 s.
+ */
+export const SOLANA_MIN_INTERVAL_MS = 300;
 export const LAMPORTS_PER_SOL = 1_000_000_000n;
 
 const SERVICE = SOLANA_NAME;

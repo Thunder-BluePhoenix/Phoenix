@@ -126,6 +126,11 @@ export function createAgentsCapability(options: AgentsCapabilityOptions = {}) {
   let sessions: Record<string, Session> = {};
   /** Present while the capability is enabled and Core supplied its services. */
   let orchestrator: Orchestrator | undefined;
+  /**
+   * The context background work (the sweep timer, launcher announcements) reads
+   * `silent_after_min` and `include_prompt_title` from: `init`'s, replaced by `onConfig`.
+   */
+  let live: CapabilityContext | undefined;
 
   /** The orchestration half; without Core's services (a bare harness) it is unavailable. */
   function connected(): Orchestrator {
@@ -519,9 +524,10 @@ export function createAgentsCapability(options: AgentsCapabilityOptions = {}) {
     },
     init(ctx) {
       sessions = {};
+      live = ctx;
       const timer = setInterval(() => {
         try {
-          sweep(ctx);
+          sweep(live ?? ctx);
         } catch (err) {
           ctx.logger.warn("agent session sweep failed", { error: (err as Error).message });
         }
@@ -538,7 +544,7 @@ export function createAgentsCapability(options: AgentsCapabilityOptions = {}) {
             now,
             announce: (report) => {
               try {
-                record(report, ctx);
+                record(report, live ?? ctx);
               } catch (err) {
                 ctx.logger.warn("could not announce an agent session", { error: String(err) });
               }
@@ -546,7 +552,13 @@ export function createAgentsCapability(options: AgentsCapabilityOptions = {}) {
           })
         : undefined;
     },
+    onConfig(ctx) {
+      // Only the two settings this capability reads per use change here; launcher configuration
+      // (`launchers`, `grace_ms`) is still read when the capability is enabled.
+      live = ctx;
+    },
     async shutdown() {
+      live = undefined;
       const closing = orchestrator;
       orchestrator = undefined;
       await closing?.close("shutdown");

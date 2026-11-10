@@ -31,3 +31,5 @@ The Overview shows a read-only glance (`ResendGlance`, apps/web) built from the 
 ## Not verified
 
 The mock (`testing/mock-resend.ts`) was written from Resend's public API reference. **Nothing was tested against the real Resend API.** Unconfirmed: the exact `created_at` format variants, whether `last_event` can hold values other than the ones documented, and rate-limit headers.
+
+Poll defaults and floors are checked against the vendor's documented request limit by `test/service-limits.test.ts` (limits and terms read on 2026-11-10: [docs/service-terms.md](../../docs/service-terms.md); not legal advice).

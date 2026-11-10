@@ -33,3 +33,5 @@ The Overview shows a read-only glance (`NotionGlance`, apps/web) built from the 
 ## Not verified
 
 The mock (`testing/mock-notion.ts`) was written from Notion's public API reference. **Nothing was tested against the real Notion API.** Unconfirmed: that `last_edited_time` of a page changes for every kind of edit Notion considers one (it is minute-granular in Notion), and the exact shape of `in_trash`.
+
+Poll defaults and floors are checked against the vendor's documented request limit by `test/service-limits.test.ts` (limits and terms read on 2026-11-10: [docs/service-terms.md](../../docs/service-terms.md); not legal advice).

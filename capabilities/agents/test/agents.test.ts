@@ -278,6 +278,42 @@ describe("prompt titles", () => {
   });
 });
 
+describe("config reload (onConfig, Phase 25)", () => {
+  it("silent_after_min applies to a saved change without disable and enable", async () => {
+    await ready({ silent_after_min: 1_000 });
+    await report({ state: "waiting", reason: "input" });
+    at(40);
+    expect(await listed()).toHaveLength(1);
+    h!.manager.configure("agents", { silent_after_min: 30 });
+    expect(await listed()).toEqual([]);
+  });
+
+  it("the background sweep timer also uses the reloaded silent_after_min", async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ["Date", "setInterval"] });
+    vi.setSystemTime(T0);
+    await ready({ silent_after_min: 1_000 });
+    await report({ state: "waiting", reason: "input" });
+    h!.manager.configure("agents", { silent_after_min: 30 });
+    at(40);
+    vi.advanceTimersByTime(60_000);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(h!.events.some((e) => e.event_type === "agent.ended")).toBe(true);
+  });
+
+  it("include_prompt_title applies to a saved change without disable and enable", async () => {
+    await ready({});
+    await report({ state: "working", task: "before" });
+    expect((await listed())[0]).not.toHaveProperty("task");
+    h!.manager.configure("agents", { include_prompt_title: true });
+    await report({ state: "waiting", reason: "input", task: "after the change" });
+    expect((await listed())[0]).toMatchObject({ task: "after the change" });
+    h!.manager.configure("agents", { include_prompt_title: false });
+    await report({ state: "working", task: "ignored" });
+    expect((await listed())[0]).toMatchObject({ task: "after the change" });
+  });
+});
+
 describe("hostile reports", () => {
   it.each([
     ["relative workspace", { workspace: "relative/dir" }],

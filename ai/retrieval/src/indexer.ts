@@ -19,6 +19,16 @@ import {
 } from "./embedder";
 import type { VectorStore } from "./vectors";
 
+/** Settings key holding the epoch ms until which a persisted outage cooldown lasts. */
+export const INDEXER_COOLDOWN_KEY = ["memory", "indexer", "cooldown_until"].join(".");
+
+/** The part of the settings store the indexer needs; `SettingsStore` satisfies it. */
+export interface CooldownStore {
+  get<T>(key: string, fallback: T): T;
+  set(key: string, value: unknown): void;
+  delete(key: string): void;
+}
+
 export interface IndexerOptions {
   vectors: VectorStore;
   embedder: Embedder;
@@ -37,6 +47,11 @@ export interface IndexerOptions {
   now?: () => number;
   /** A live permission check, including after provider responses but before any database write. */
   canIndex?: () => boolean;
+  /**
+   * Where an outage cooldown survives a restart. Optional: without it the cooldown is in memory
+   * only. A store that throws never stops indexing; the cooldown then just stays in memory.
+   */
+  cooldownStore?: CooldownStore;
 }
 
 export interface IndexReport {
@@ -62,7 +77,7 @@ interface Pending {
 export class VectorIndexer {
   private running: Promise<IndexReport> | null = null;
   private lastCallAt = Number.NEGATIVE_INFINITY;
-  /** In-memory only: after an outage, no provider call until this time. */
+  /** After an outage, no provider call until this time (also kept in `cooldownStore`). */
   private cooldownUntil = Number.NEGATIVE_INFINITY;
   private outages = 0;
   /** True once a call succeeded and no outage has been seen since. */
@@ -83,6 +98,41 @@ export class VectorIndexer {
     this.backoff = options.backoffMs ?? DEFAULT_BACKOFF_MS;
     this.sleep = options.sleep ?? defaultSleep;
     this.now = options.now ?? Date.now;
+    this.cooldownUntil = this.loadCooldown();
+  }
+
+  /** The persisted cooldown if it is still running; an expired or unreadable one is cleared. */
+  private loadCooldown(): number {
+    const store = this.options.cooldownStore;
+    if (!store) return Number.NEGATIVE_INFINITY;
+    try {
+      const stored = store.get<unknown>(INDEXER_COOLDOWN_KEY, null);
+      if (typeof stored === "number" && Number.isFinite(stored) && this.now() < stored) {
+        return stored;
+      }
+      if (stored !== null) store.delete(INDEXER_COOLDOWN_KEY);
+    } catch {
+      // A broken store only costs the restart survival of the cooldown.
+    }
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  private startCooldown(): void {
+    this.cooldownUntil = this.now() + this.backoff(++this.outages);
+    try {
+      this.options.cooldownStore?.set(INDEXER_COOLDOWN_KEY, this.cooldownUntil);
+    } catch {
+      // The cooldown still holds in memory.
+    }
+  }
+
+  private clearCooldown(): void {
+    this.cooldownUntil = Number.NEGATIVE_INFINITY;
+    try {
+      this.options.cooldownStore?.delete(INDEXER_COOLDOWN_KEY);
+    } catch {
+      // Nothing to do: an old value is ignored once it has expired.
+    }
   }
 
   /** Items parked after repeated failures become eligible again. */
@@ -126,6 +176,8 @@ export class VectorIndexer {
       report.remaining = vectors.unembeddedCount(model);
       return report;
     }
+    // The cooldown has run out: forget it here too, so a stale value never outlives its use.
+    if (this.cooldownUntil !== Number.NEGATIVE_INFINITY) this.clearCooldown();
     let budget = this.maxItems;
     // Least sensitive first: if the provider is only allowed for some classes, those get done.
     for (const privacy of PRIVACY_CLASSES) {
@@ -191,13 +243,13 @@ export class VectorIndexer {
       bad.push({ item, error: one.error });
       if (succeeded === 0 && consecutive >= 2) {
         this.providerSeenUp = false;
-        this.cooldownUntil = this.now() + this.backoff(++this.outages);
+        this.startCooldown();
         return "provider_unavailable";
       }
     }
     if (succeeded === 0 && !this.providerSeenUp) {
       // A lone failing item cannot be told from an outage unless the provider answered earlier.
-      this.cooldownUntil = this.now() + this.backoff(++this.outages);
+      this.startCooldown();
       return "provider_unavailable";
     }
     for (const b of bad) this.fail([b.item], b.error, report);
@@ -244,6 +296,7 @@ export class VectorIndexer {
         batch.map((b, i) => ({ id: b.id, text: b.text, vector: embeddings[i] ?? [] })),
       );
       this.outages = 0;
+      if (this.cooldownUntil !== Number.NEGATIVE_INFINITY) this.clearCooldown();
       this.providerSeenUp = true;
       return { kind: "stored", stored };
     } catch (err) {

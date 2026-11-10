@@ -8,6 +8,7 @@
 import { createHash } from "node:crypto";
 import { defineCapability, type CapabilityContext, type HealthResult } from "@phoenix/sdk";
 import { ServiceError, nextDelay, realSleep, startPolling, type Sleep } from "@phoenix/service-kit";
+import { minCycleMs } from "./budget";
 import { collect } from "./collect";
 import { EXCHANGES, exchangeSecretNames, type Credentials, type ExchangeSpec } from "./exchanges";
 import { NETWORKS, networkById, type NetworkSpec } from "./networks";
@@ -30,6 +31,7 @@ import {
 } from "./tokens";
 
 export * from "./amount";
+export * from "./budget";
 export * from "./coinbase-jwt";
 export * from "./collect";
 export * from "./exchanges";
@@ -116,7 +118,10 @@ function settings(ctx: CapabilityContext): Settings {
     exchanges: EXCHANGES.filter((e) => wanted.has(e.id)),
     endpoints: urls,
     priceUrl: typeof price_url === "string" ? price_url : DEFAULT_PRICE_URL,
-    pollMs: typeof poll_ms === "number" ? Math.max(poll_ms, MIN_POLL_MS) : DEFAULT_POLL_MS,
+    pollMs: Math.max(
+      typeof poll_ms === "number" ? Math.max(poll_ms, MIN_POLL_MS) : DEFAULT_POLL_MS,
+      minCycleMs(chosen, watched, urls),
+    ),
   };
 }
 
