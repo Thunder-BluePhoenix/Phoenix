@@ -1,0 +1,695 @@
+{
+  "env": {
+    "Date": "2026-11-11",
+    "Command": "PHOENIX_REAL_DICTATION=1 PHOENIX_REAL_WHISPER_MODEL=/tmp/whisper-models/ggml-tiny.en.bin node ./node_modules/vitest/vitest.mjs run core/runtime/test/real-voice-e2e.test.ts --testTimeout=60000",
+    "Node": "v22.19.0",
+    "Platform": "darwin/arm64; macOS 27.0.1",
+    "whisper-cli path": "/opt/homebrew/bin/whisper-cli",
+    "whisper.cpp / ggml (brew list --versions)": "ggml 0.13.1\nwhisper.cpp 1.8.6",
+    "Model path": "/tmp/whisper-models/ggml-tiny.en.bin",
+    "Model size (bytes)": 77704715,
+    "Model sha1": "c78c86eb1a8faa21b369bcd33207cc90d64ae9df",
+    "Model sha1 equals the one recorded when downloaded": true,
+    "git": "git version 2.51.0",
+    "Repository (real git, 3 commits, one modified and one untracked file)": "/private/var/folders/cr/kqvq6m_11tdc48k112d7xdsw0000gn/T/phoenix-real-voice-repo-XoODHW",
+    "Repository `git status --porcelain`": "M a.txt\n?? c.txt",
+    "Tools in the registry (name [side effect])": [
+      "git.recent_commits [read]",
+      "git.status [read]",
+      "writer.write [write]"
+    ],
+    "say voices used": "Daniel (English (UK)) en_GB # Hello! My name is Daniel. | Daniel (English (UK)) en_GB # Hello! My name is Daniel. | Fred en_US # Hello! My name is Fred. | Karen en_AU # Hello! My name is Karen. | Moira en_IE # Hello! My name is Moira. | Rishi (English (India)) en_IN # Hello! My name is Rishi. | Rishi (English (India)) en_IN # Hello! My name is Rishi. | Samantha (English (US)) en_US # Hello! My name is Samantha. | Samantha (English (US)) en_US # Hello! My name is Samantha.",
+    "Sample generation dir (deleted afterwards)": "/tmp/phoenix-real-voice-drlaR2",
+    "Watched roots": [
+      "os.tmpdir() = /var/folders/cr/kqvq6m_11tdc48k112d7xdsw0000gn/T (depth 1)",
+      "/tmp = /tmp (depth 1)",
+      "/var/tmp = /var/tmp (depth 1)",
+      "process.cwd() = /Users/bluephoenix/projs/Phoenix (depth 1)",
+      "<repo>/.phoenix = /Users/bluephoenix/projs/Phoenix/.phoenix (depth 4)",
+      "~/.phoenix = /Users/bluephoenix/.phoenix (depth 4)",
+      "Core data dir of this run = /var/folders/cr/kqvq6m_11tdc48k112d7xdsw0000gn/T/phoenix-core-NpfIfG (depth 4)"
+    ],
+    "Frames": "1600 samples (100 ms), paced at 1x real time over the real WebSocket"
+  },
+  "runs": [
+    {
+      "id": "R1-Samantha",
+      "voice": "Samantha",
+      "reference": "OK Fawkes, git status",
+      "expectedIntent": "tool",
+      "audioMs": 3518,
+      "recognitions": [
+        {
+          "samples": 43200,
+          "ms": 613,
+          "text": "OK Fox, get status."
+        }
+      ],
+      "wakeMatcherOnEachText": [
+        false
+      ],
+      "wakeAccepted": false,
+      "intentChosen": null,
+      "intentMatchesExpected": false,
+      "gatewayCalls": [],
+      "policyDecisionRows": [],
+      "voiceAuditRows": [
+        {
+          "action": "voice.start",
+          "details": {
+            "session": "voi_5a48fc0eb4dd47c6af08510b37e3cc05"
+          }
+        },
+        {
+          "action": "voice.stop",
+          "details": {
+            "session": "voi_5a48fc0eb4dd47c6af08510b37e3cc05",
+            "reason": "stopped"
+          }
+        }
+      ],
+      "reply": null,
+      "stateMessages": [
+        "thinking",
+        "waiting"
+      ],
+      "busEvents": [],
+      "resolveConfirmationCalls": [],
+      "pendingConfirmationsAfter": 0,
+      "fs": {
+        "created": 0,
+        "changed": 0,
+        "flagged": []
+      },
+      "sessionEndedBy": "socket closed 1000",
+      "elapsedMs": 13412
+    },
+    {
+      "id": "R1-Daniel",
+      "voice": "Daniel",
+      "reference": "OK Fawkes, git status",
+      "expectedIntent": "tool",
+      "audioMs": 3800,
+      "recognitions": [
+        {
+          "samples": 49600,
+          "ms": 568,
+          "text": "OK forks, good status."
+        }
+      ],
+      "wakeMatcherOnEachText": [
+        false
+      ],
+      "wakeAccepted": false,
+      "intentChosen": null,
+      "intentMatchesExpected": false,
+      "gatewayCalls": [],
+      "policyDecisionRows": [],
+      "voiceAuditRows": [
+        {
+          "action": "voice.start",
+          "details": {
+            "session": "voi_00b1c6105c114efe8661d08e4951f9cd"
+          }
+        },
+        {
+          "action": "voice.stop",
+          "details": {
+            "session": "voi_00b1c6105c114efe8661d08e4951f9cd",
+            "reason": "stopped"
+          }
+        }
+      ],
+      "reply": null,
+      "stateMessages": [
+        "thinking",
+        "waiting"
+      ],
+      "busEvents": [],
+      "resolveConfirmationCalls": [],
+      "pendingConfirmationsAfter": 0,
+      "fs": {
+        "created": 0,
+        "changed": 0,
+        "flagged": []
+      },
+      "sessionEndedBy": "socket closed 1000",
+      "elapsedMs": 10662
+    },
+    {
+      "id": "R1-Karen",
+      "voice": "Karen",
+      "reference": "OK Fawkes, git status",
+      "expectedIntent": "tool",
+      "audioMs": 3620,
+      "recognitions": [
+        {
+          "samples": 46400,
+          "ms": 570,
+          "text": "OK, forks, get stages."
+        }
+      ],
+      "wakeMatcherOnEachText": [
+        false
+      ],
+      "wakeAccepted": false,
+      "intentChosen": null,
+      "intentMatchesExpected": false,
+      "gatewayCalls": [],
+      "policyDecisionRows": [],
+      "voiceAuditRows": [
+        {
+          "action": "voice.start",
+          "details": {
+            "session": "voi_ca15c226549d48ba847076461b85959f"
+          }
+        },
+        {
+          "action": "voice.stop",
+          "details": {
+            "session": "voi_ca15c226549d48ba847076461b85959f",
+            "reason": "stopped"
+          }
+        }
+      ],
+      "reply": null,
+      "stateMessages": [
+        "thinking",
+        "waiting"
+      ],
+      "busEvents": [],
+      "resolveConfirmationCalls": [],
+      "pendingConfirmationsAfter": 0,
+      "fs": {
+        "created": 0,
+        "changed": 0,
+        "flagged": []
+      },
+      "sessionEndedBy": "socket closed 1000",
+      "elapsedMs": 10315
+    },
+    {
+      "id": "R2-Samantha",
+      "voice": "Samantha",
+      "reference": "OK Fawkes, what is the status of my services",
+      "expectedIntent": "tool",
+      "audioMs": 4621,
+      "recognitions": [
+        {
+          "samples": 60800,
+          "ms": 570,
+          "text": "OK Fox, what is the status of my services?"
+        }
+      ],
+      "wakeMatcherOnEachText": [
+        false
+      ],
+      "wakeAccepted": false,
+      "intentChosen": null,
+      "intentMatchesExpected": false,
+      "gatewayCalls": [],
+      "policyDecisionRows": [],
+      "voiceAuditRows": [
+        {
+          "action": "voice.start",
+          "details": {
+            "session": "voi_765b113dbb664a379660fecf87c4a13f"
+          }
+        },
+        {
+          "action": "voice.stop",
+          "details": {
+            "session": "voi_765b113dbb664a379660fecf87c4a13f",
+            "reason": "stopped"
+          }
+        }
+      ],
+      "reply": null,
+      "stateMessages": [
+        "thinking",
+        "waiting"
+      ],
+      "busEvents": [],
+      "resolveConfirmationCalls": [],
+      "pendingConfirmationsAfter": 0,
+      "fs": {
+        "created": 0,
+        "changed": 0,
+        "flagged": []
+      },
+      "sessionEndedBy": "socket closed 1000",
+      "elapsedMs": 11429
+    },
+    {
+      "id": "R2-Daniel",
+      "voice": "Daniel",
+      "reference": "OK Fawkes, what is the status of my services",
+      "expectedIntent": "tool",
+      "audioMs": 5008,
+      "recognitions": [
+        {
+          "samples": 68800,
+          "ms": 592,
+          "text": "OK forks, what is the status of my services?"
+        }
+      ],
+      "wakeMatcherOnEachText": [
+        false
+      ],
+      "wakeAccepted": false,
+      "intentChosen": null,
+      "intentMatchesExpected": false,
+      "gatewayCalls": [],
+      "policyDecisionRows": [],
+      "voiceAuditRows": [
+        {
+          "action": "voice.start",
+          "details": {
+            "session": "voi_49536d1cc3a44e9f96d43da85ef0be33"
+          }
+        },
+        {
+          "action": "voice.stop",
+          "details": {
+            "session": "voi_49536d1cc3a44e9f96d43da85ef0be33",
+            "reason": "stopped"
+          }
+        }
+      ],
+      "reply": null,
+      "stateMessages": [
+        "thinking",
+        "waiting"
+      ],
+      "busEvents": [],
+      "resolveConfirmationCalls": [],
+      "pendingConfirmationsAfter": 0,
+      "fs": {
+        "created": 0,
+        "changed": 0,
+        "flagged": []
+      },
+      "sessionEndedBy": "socket closed 1000",
+      "elapsedMs": 11709
+    },
+    {
+      "id": "R2-Karen",
+      "voice": "Karen",
+      "reference": "OK Fawkes, what is the status of my services",
+      "expectedIntent": "tool",
+      "audioMs": 4746,
+      "recognitions": [
+        {
+          "samples": 64000,
+          "ms": 575,
+          "text": "OK, folks, what is the status of my services?"
+        }
+      ],
+      "wakeMatcherOnEachText": [
+        false
+      ],
+      "wakeAccepted": false,
+      "intentChosen": null,
+      "intentMatchesExpected": false,
+      "gatewayCalls": [],
+      "policyDecisionRows": [],
+      "voiceAuditRows": [
+        {
+          "action": "voice.start",
+          "details": {
+            "session": "voi_4bafa3036ee84921a6495935d49ff00d"
+          }
+        },
+        {
+          "action": "voice.stop",
+          "details": {
+            "session": "voi_4bafa3036ee84921a6495935d49ff00d",
+            "reason": "stopped"
+          }
+        }
+      ],
+      "reply": null,
+      "stateMessages": [
+        "thinking",
+        "waiting"
+      ],
+      "busEvents": [],
+      "resolveConfirmationCalls": [],
+      "pendingConfirmationsAfter": 0,
+      "fs": {
+        "created": 0,
+        "changed": 0,
+        "flagged": []
+      },
+      "sessionEndedBy": "socket closed 1000",
+      "elapsedMs": 11392
+    },
+    {
+      "id": "R3-Samantha",
+      "voice": "Samantha",
+      "reference": "OK Fawkes, is anything happening",
+      "expectedIntent": "tool",
+      "audioMs": 3878,
+      "recognitions": [
+        {
+          "samples": 51200,
+          "ms": 566,
+          "text": "OK Fox, is anything happening?"
+        }
+      ],
+      "wakeMatcherOnEachText": [
+        false
+      ],
+      "wakeAccepted": false,
+      "intentChosen": null,
+      "intentMatchesExpected": false,
+      "gatewayCalls": [],
+      "policyDecisionRows": [],
+      "voiceAuditRows": [
+        {
+          "action": "voice.start",
+          "details": {
+            "session": "voi_def7c9e916da45ac8d70cbfc443d9c1e"
+          }
+        },
+        {
+          "action": "voice.stop",
+          "details": {
+            "session": "voi_def7c9e916da45ac8d70cbfc443d9c1e",
+            "reason": "stopped"
+          }
+        }
+      ],
+      "reply": null,
+      "stateMessages": [
+        "thinking",
+        "waiting"
+      ],
+      "busEvents": [],
+      "resolveConfirmationCalls": [],
+      "pendingConfirmationsAfter": 0,
+      "fs": {
+        "created": 0,
+        "changed": 0,
+        "flagged": []
+      },
+      "sessionEndedBy": "socket closed 1000",
+      "elapsedMs": 10523
+    },
+    {
+      "id": "R3-Daniel",
+      "voice": "Daniel",
+      "reference": "OK Fawkes, is anything happening",
+      "expectedIntent": "tool",
+      "audioMs": 4044,
+      "recognitions": [
+        {
+          "samples": 52800,
+          "ms": 591,
+          "text": "O.K. forks. Is anything happening?"
+        }
+      ],
+      "wakeMatcherOnEachText": [
+        false
+      ],
+      "wakeAccepted": false,
+      "intentChosen": null,
+      "intentMatchesExpected": false,
+      "gatewayCalls": [],
+      "policyDecisionRows": [],
+      "voiceAuditRows": [
+        {
+          "action": "voice.start",
+          "details": {
+            "session": "voi_f2bc852692f2420890084313c61568eb"
+          }
+        },
+        {
+          "action": "voice.stop",
+          "details": {
+            "session": "voi_f2bc852692f2420890084313c61568eb",
+            "reason": "stopped"
+          }
+        }
+      ],
+      "reply": null,
+      "stateMessages": [
+        "thinking",
+        "waiting"
+      ],
+      "busEvents": [],
+      "resolveConfirmationCalls": [],
+      "pendingConfirmationsAfter": 0,
+      "fs": {
+        "created": 0,
+        "changed": 0,
+        "flagged": []
+      },
+      "sessionEndedBy": "socket closed 1000",
+      "elapsedMs": 10732
+    },
+    {
+      "id": "R3-Karen",
+      "voice": "Karen",
+      "reference": "OK Fawkes, is anything happening",
+      "expectedIntent": "tool",
+      "audioMs": 3875,
+      "recognitions": [
+        {
+          "samples": 51200,
+          "ms": 565,
+          "text": "OK Forks, is anything happening?"
+        }
+      ],
+      "wakeMatcherOnEachText": [
+        false
+      ],
+      "wakeAccepted": false,
+      "intentChosen": null,
+      "intentMatchesExpected": false,
+      "gatewayCalls": [],
+      "policyDecisionRows": [],
+      "voiceAuditRows": [
+        {
+          "action": "voice.start",
+          "details": {
+            "session": "voi_e0aced89d72e481196f8e9820296da16"
+          }
+        },
+        {
+          "action": "voice.stop",
+          "details": {
+            "session": "voi_e0aced89d72e481196f8e9820296da16",
+            "reason": "stopped"
+          }
+        }
+      ],
+      "reply": null,
+      "stateMessages": [
+        "thinking",
+        "waiting"
+      ],
+      "busEvents": [],
+      "resolveConfirmationCalls": [],
+      "pendingConfirmationsAfter": 0,
+      "fs": {
+        "created": 0,
+        "changed": 0,
+        "flagged": []
+      },
+      "sessionEndedBy": "socket closed 1000",
+      "elapsedMs": 10654
+    },
+    {
+      "id": "D1-Moira",
+      "voice": "Moira",
+      "reference": "OK Fawkes, delete the branch",
+      "expectedIntent": "refuse",
+      "audioMs": 3978,
+      "recognitions": [
+        {
+          "samples": 52800,
+          "ms": 567,
+          "text": "OK, Fox, delete the branch."
+        }
+      ],
+      "wakeMatcherOnEachText": [
+        false
+      ],
+      "wakeAccepted": false,
+      "intentChosen": null,
+      "intentMatchesExpected": false,
+      "gatewayCalls": [],
+      "policyDecisionRows": [],
+      "voiceAuditRows": [
+        {
+          "action": "voice.start",
+          "details": {
+            "session": "voi_27e1afff064f46878017f781627c2072"
+          }
+        },
+        {
+          "action": "voice.stop",
+          "details": {
+            "session": "voi_27e1afff064f46878017f781627c2072",
+            "reason": "stopped"
+          }
+        }
+      ],
+      "reply": null,
+      "stateMessages": [
+        "thinking",
+        "waiting"
+      ],
+      "busEvents": [],
+      "resolveConfirmationCalls": [],
+      "pendingConfirmationsAfter": 0,
+      "fs": {
+        "created": 0,
+        "changed": 0,
+        "flagged": []
+      },
+      "sessionEndedBy": "socket closed 1000",
+      "elapsedMs": 10946
+    },
+    {
+      "id": "A1-Rishi",
+      "voice": "Rishi",
+      "reference": "OK Fawkes, approve the request",
+      "expectedIntent": "refuse",
+      "audioMs": 3898,
+      "recognitions": [
+        {
+          "samples": 49600,
+          "ms": 572,
+          "text": "O.K. Fox, approve the request."
+        }
+      ],
+      "wakeMatcherOnEachText": [
+        false
+      ],
+      "wakeAccepted": false,
+      "intentChosen": null,
+      "intentMatchesExpected": false,
+      "gatewayCalls": [],
+      "policyDecisionRows": [],
+      "voiceAuditRows": [
+        {
+          "action": "voice.start",
+          "details": {
+            "session": "voi_e986f98b72084d7287287f3e2c249613"
+          }
+        },
+        {
+          "action": "voice.stop",
+          "details": {
+            "session": "voi_e986f98b72084d7287287f3e2c249613",
+            "reason": "stopped"
+          }
+        }
+      ],
+      "reply": null,
+      "stateMessages": [
+        "thinking",
+        "waiting"
+      ],
+      "busEvents": [],
+      "resolveConfirmationCalls": [],
+      "pendingConfirmationsAfter": 1,
+      "fs": {
+        "created": 0,
+        "changed": 0,
+        "flagged": []
+      },
+      "sessionEndedBy": "socket closed 1000",
+      "elapsedMs": 10701,
+      "note": "a write confirmation was pending while this was said"
+    },
+    {
+      "id": "A2-Fred",
+      "voice": "Fred",
+      "reference": "OK Fawkes, deny",
+      "expectedIntent": "deny",
+      "audioMs": 3155,
+      "recognitions": [
+        {
+          "samples": 43200,
+          "ms": 571,
+          "text": "Okay, Fox, do not lie."
+        }
+      ],
+      "wakeMatcherOnEachText": [
+        false
+      ],
+      "wakeAccepted": false,
+      "intentChosen": null,
+      "intentMatchesExpected": false,
+      "gatewayCalls": [],
+      "policyDecisionRows": [],
+      "voiceAuditRows": [
+        {
+          "action": "voice.start",
+          "details": {
+            "session": "voi_17eaaf0ad5ab4223851c832edb39d79c"
+          }
+        },
+        {
+          "action": "voice.stop",
+          "details": {
+            "session": "voi_17eaaf0ad5ab4223851c832edb39d79c",
+            "reason": "stopped"
+          }
+        }
+      ],
+      "reply": null,
+      "stateMessages": [
+        "thinking",
+        "waiting"
+      ],
+      "busEvents": [],
+      "resolveConfirmationCalls": [],
+      "pendingConfirmationsAfter": 1,
+      "fs": {
+        "created": 0,
+        "changed": 0,
+        "flagged": []
+      },
+      "sessionEndedBy": "socket closed 1000",
+      "elapsedMs": 10109,
+      "note": "the same write confirmation was still pending"
+    }
+  ],
+  "extra": {
+    "matchIntent on the reference texts (text only, no audio)": {
+      "OK Fawkes, git status": {
+        "kind": "tool",
+        "tool": "git.status"
+      },
+      "OK Fawkes, what is the status of my services": {
+        "kind": "tool",
+        "tool": "git.status"
+      },
+      "OK Fawkes, is anything happening": {
+        "kind": "tool",
+        "tool": "git.status"
+      },
+      "OK Fawkes, delete the branch": {
+        "kind": "refuse",
+        "message": "Voice can read information, but it cannot perform an action or approve one. Use the Pet Panel for that."
+      },
+      "OK Fawkes, approve the request": {
+        "kind": "refuse",
+        "message": "Voice can read information, but it cannot perform an action or approve one. Use the Pet Panel for that."
+      },
+      "OK Fawkes, deny": {
+        "kind": "deny"
+      }
+    },
+    "Pending confirmation created by another actor": {
+      "id": "conf_mwb5uztc036ea1417",
+      "summary": "Writer: Write something"
+    },
+    "Confirmation resolved by the test itself because the voice deny run did not": true,
+    "The write operation's final status": "failed"
+  }
+}

@@ -32,7 +32,7 @@ Talk to Fawkes hands-free and have it answer and act through Phoenix's capabilit
 ## Exit criteria
 
 - [ ] CPU budget measured and documented. Not met. Only the VAD gate was measured, by a per-component microbenchmark (`scripts/bench-voice-vad.ts`): about 0.008–0.02 ms of CPU per second of audio on Apple Silicon, documented in [voice-assistant.md](../voice-assistant.md). Whole-app idle CPU (the < 1 % target) with the webview `ScriptProcessorNode` microphone path, the WebSocket, and a whisper pass was **not** measured, and the threshold itself is an open owner decision.
-- [ ] A voice request runs a read-only capability action end to end. Not met. It was shown only with a `FakeRecognizer` through the real `ToolGateway` against a real temporary git repository (`git.status`). No real microphone, whisper pass, wake recognition or speech synthesis took part.
+- [ ] A voice request runs a read-only capability action end to end. Not met. It was shown only with a `FakeRecognizer` through the real `ToolGateway` against a real temporary git repository (`git.status`). No real microphone, wake recognition or speech synthesis took part. A later real-recogniser run (`core/runtime/test/real-voice-e2e.test.ts`, [evidence](../evidence/phase-66-real-voice-e2e-2026-11-11.md)) pushed 12 system-voice (synthetic) renderings through the real Core WebSocket, VAD and whisper-cli with tiny.en: whisper heard "Fawkes" as "Fox", "forks" or "folks" in all 12, so the wake matcher accepted 0 of 12 and no capability call or reply happened (matcher not tuned afterwards). Because the wake never matched, the spoken "delete the branch" / "approve the request" never reached the intent matcher, so refusal and no-voice-approval were not exercised through real audio (a pending write confirmation merely stayed pending). Speech synthesis could not run.
 
 ## Implementation notes
 
@@ -68,3 +68,7 @@ What was not done or not run: any real microphone, whisper pass, wake recognitio
 
 ---
 Back to [TRACKER](TRACKER.md)
+
+## Measured wake quality (2026-11-11, synthetic voices, one run)
+
+`ai/multimodal/test/real-wake.test.ts` ran the shipped gate, recogniser (`whisper-cli` 1.8.6, `ggml-tiny.en.bin`) and `matchWake` on 191 clips (five macOS `say` voices, which are not people, plus `jfk.wav`, overlaps and synthetic noise). Wake false rejects 80/80 (all recognition misses: "Fox", "Forks", "Folks"), false accepts 0/95 on non-wake `say` clips, VAD gate never opened on 1/191 (the 20 dB noise clip). Numbers, intervals and limits: `docs/voice-assistant.md` ("Measured wake quality") and `docs/evidence/phase-66-real-wake-2026-11-11.md`. The matcher and thresholds were not changed. The exit criterion stays unmet.

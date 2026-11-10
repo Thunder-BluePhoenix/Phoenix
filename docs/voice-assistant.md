@@ -40,7 +40,7 @@ so in a room where people talk, a recogniser pass runs per utterance. Consequenc
 - A name like "Fawkes" depends on the model's vocabulary. The matcher accepts "ok/okay" followed by
   "fawkes", a few whisper spellings ("fawks", "fawkis", …) and anything one edit away from "fawkes"
   (five letters or more). It rejects "ok", "fawkes" alone, "ok google", "ok folks", "ok fake".
-- It can miss the phrase or mishear a similar one; it was never run with a real voice here.
+- It can miss the phrase or mishear a similar one; with real audio (macOS system voices, one run) whisper tiny.en heard the name as "Fox", "forks" or "folks" and the matcher did not wake (see "Real speech end to end" below). A 191-clip measurement (see "Measured wake quality" below) found the same: 0 of 80 wake clips woke.
 - Only the start of the utterance counts (at most two lead words, e.g. "hey OK Fawkes").
 - There is **no speaker verification**: any audio source in the room (a person, a video, a hostile
   speaker) that says the wake phrase can trigger the read-only requests below (and "deny"). It can
@@ -50,6 +50,26 @@ so in a room where people talk, a recogniser pass runs per utterance. Consequenc
   fields (repository, branch, track title, artist, container names) is removed before it is spoken.
 - "OK Fawkes, what is my git status" in one breath works; "OK Fawkes" alone opens an 8-second awake
   window in which the next utterance is the request.
+
+## Measured wake quality (Phase 66): synthetic voices, one run, exit criterion NOT met
+
+Evidence: `docs/evidence/phase-66-real-wake-2026-11-11.md` (+ `-raw.json`; test `ai/multimodal/test/real-wake.test.ts`, gated by `PHOENIX_REAL_DICTATION=1`). Fixtures and the scoring rule are in the test header and were fixed before the first run. The chain was the shipped one: `UtteranceGate` (default energy VAD, 4096-sample frames) → real `WhisperStdinRecognizer` with `whisper-cli` (whisper.cpp 1.8.6) and `ggml-tiny.en.bin` → `matchWake`. 191 clips: 185 from five macOS `say` voices (Samantha, Daniel, Karen, Moira, Rishi; 37 fixtures × 5; **synthetic, not people**), the whisper.cpp `jfk.wav` recording, 3 two-voice overlaps and 2 clips with synthetic pink-ish noise at 20 dB SNR. Intervals are Wilson 95%.
+
+| measure                                                                                                                                                                   | result                                                                                |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| wake false reject, "OK/Okay Fawkes …" (70 clips: 14 fixtures × 5 voices)                                                                                                  | 70/70 = 100% [94.8, 100]                                                              |
+| wake false reject, "Hey/Hi Fawkes …" (10 clips; not a documented form: "hey" is only allowed before "ok")                                                                 | 10/10 = 100% [72.2, 100]                                                              |
+| false accept, non-wake `say` clips (95 clips: near-folks, near-fox, near-fork, "Fawkes" mid-sentence, news, bird, command-without-wake, "OK Google/OK fine", long speech) | 0/95 = 0% [0, 3.9]                                                                    |
+| false accept, jfk.wav (one recording, three utterances)                                                                                                                   | 0/1 [0, 79.3]                                                                         |
+| borderline "Hey Fowkes" / "OK Fowkes" (reported separately, not an error)                                                                                                 | 1/10 accepted (Rishi: "Okfauks, geese status.")                                       |
+| VAD gate never opened                                                                                                                                                     | 1/191 [0.1, 2.9]: the 20 dB-SNR noise clip                                            |
+| every wake miss: recognition or matcher                                                                                                                                   | 80/80 recognition: `tiny.en` wrote "Fox", "Forks", "Folks" or "vlogs", never "Fawkes" |
+
+By voice, the wake false-reject rate was 16/16 for each of the five voices and the non-wake false accept 0/19 for each. Recognition took about 0.6 s per utterance on this machine.
+
+What it means: on this model, with these voices, the documented wake phrase did not work, and the matcher cannot fix that from the text alone ("OK Fox, get status" has the same shape as the near-miss "Okay fox, what does the fox say"). The matcher refused every near miss it was given, but since the recogniser never wrote the name this is a weak test of its selectivity. Another model, a vocabulary hint for the recogniser or a different engine might change this; none was tried. The matcher and thresholds were not changed. In the noise clip the noise (RMS 0.0139 of full scale) was above the gate's `stopRms` 0.012, so the gate never saw the end of the utterance [inference from a separate render of the same sentence].
+
+Limits: synthetic voices (not people) except one recording; one English-only tiny model; quiet clean clips (digital silence around each, two with synthetic noise); English only, five system voices; no live microphone; no speaker echo of Fawkes's own voice; `VoiceSessions` itself (socket, timers, intent dispatch) was not in the loop, only its gate, recogniser and matcher; one machine, one run (a second identical run gave identical text for all 191 clips).
 
 ## What it can do (and cannot)
 
@@ -178,6 +198,26 @@ What exists (`apps/desktop/src-tauri/src/voice_window.rs`, `apps/web/voice.html`
 - **Emergency stop from the shell.** Tray "Stop voice listening" destroys the window, which takes the web engine, the capture stream, the audio thread and the socket to Core with it, whatever the page is doing; Core ends the session when its socket closes (and its own kill switch still ends sessions from the Core side). It never asks Core or the page. In the mock runtime only the shell's bookkeeping (indicator cleared, destroy requested) is observable.
 - **`Info.plist`.** `NSMicrophoneUsageDescription` now says that the microphone is used for dictation and, if switched on, for the OK Fawkes assistant; that it listens for the wake phrase on this device, the audio is processed locally, and nothing is sent anywhere until a command is understood (the only thing that can leave is the text of a web search you approve); that audio is not stored; and that LISTENING is shown and "Stop voice listening" ends it. A Rust test reads the file. **It takes effect only in a built macOS bundle** (`tauri build`); `tauri dev` and the tests never show it, and the wording was never seen in a real prompt. It was kept truthful with the code as it stands: an optional recogniser engine (`audio_on_disk`) can use a short-lived temporary file, which the text says.
 - **Not done:** no run on a real microphone or OS prompt; no packaged app; Windows and Linux permission behaviour (WebView2, WebKitGTK) was only read from the Tauri sources, not run; no always-on global hotkey for voice; the on-screen tray icon does not change colour (tooltip and window title only).
+
+## Real speech end to end (one run, 2026-11-11): the wake phrase was NOT recognised
+
+Test: `core/runtime/test/real-voice-e2e.test.ts` (gated `PHOENIX_REAL_DICTATION=1`), evidence
+[phase-66-real-voice-e2e-2026-11-11.md](evidence/phase-66-real-voice-e2e-2026-11-11.md) (+ `-raw.json`). It starts a real in-process
+Core with voice on and a real temporary git repository (3 commits, one modified and one untracked file), renders
+requests with macOS `say` (**synthetic voices, not people**), and feeds the 16 kHz PCM, paced at real time in 100 ms frames,
+through the real `/api/voice/stream` WebSocket, the VAD gate, the production recogniser chain with the real `whisper-cli` 1.8.6 and
+`ggml-tiny.en.bin`, wake and intent matching, the real `ToolGateway`, policy engine and audit log. Requests, voices and what is
+recorded were fixed in the test header before the first run. **Speech synthesis did not run** (the browser's `speechSynthesis` is out
+of reach here); no live microphone, no browser page, no person.
+
+**Result of that one run, recorded without tuning:** 12 renderings (9 read-only: "git status", "what is the status of my services",
+"is anything happening" × Samantha, Daniel, Karen; plus "delete the branch", "approve the request", "deny"). The tiny model heard the
+name as "Fox", "forks" or "folks" in every one of the 12 (for example "OK Fox, get status.", "OK forks, good status."), which the wake
+matcher rejects **by design** (see above), so **wake was accepted 0 of 12 times**, no intent was chosen, **no capability call was
+made, and no reply came back**. This is the wake-phrase limitation above shown with real audio: with this model and these voices the
+assistant did not wake. The matcher was not changed afterwards. What the run does show: real whisper recognition of the utterances
+worked and finished (about 0.6 s each), the structural properties held trivially (no gateway call, no `resolveConfirmation` call, a pending write confirmation was still pending after "approve the request" was said, no audio-like file created in the watched roots in these 12 runs). Because the wake never matched, the speech never reached the intent matcher, so the "voice cannot approve" and "delete is refused" claims were **not** tested through real audio by this run (they stay shown by the fake-recogniser tests and by `matchIntent` on the reference text, recorded in the evidence file). The path "wake accepted → intent → `git.status` → reply" with real recognised text was therefore **not**
+exercised by this run; it stays shown only with the fake recogniser.
 
 ## Protocol
 

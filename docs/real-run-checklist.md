@@ -26,6 +26,7 @@ The notetaker refuses to start in the normal `pnpm dev:core` workflow, by design
 3. Try to start a recording. Expect a native dialog with Cancel as the default button. Choose Cancel: expect nothing recorded. Repeat and choose Record: expect the recording to be allowed.
 4. Try answering with only the session token (`curl -H "Authorization: Bearer …" -X POST …/api/notetaker/consent/answer`). Expect 401.
 5. Quit the shell. Expect Core to exit too.
+6. Record a real call with a real person and a real microphone (and, once wired, system audio), then read the transcript, the summary and the to-dos, and list the temp dir, the working directory, the data dir and the Core database for audio-like files. Not done by anyone yet. The only run so far (2026-11-11, `core/runtime/test/real-notetaker.test.ts`, [evidence](evidence/phase-65-real-notetaker-2026-11-11.md)) used two synthetic macOS voices, the test answering the consent over the managed-Core routes itself (no human, no native dialog), real whisper-cli tiny.en and a real llama3.2: it is not this step.
 
 Known limit: capture start is not wired to the grant, so a granted consent will not capture system audio yet.
 
