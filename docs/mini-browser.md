@@ -309,13 +309,19 @@ control characters in the URLs. Validation happens before the tab is looked at a
 URL, else `page_changed`, and this happens before any script runs. A snapshot is `page_changed` when the host URL (or the
 active tab) differs before and after the script, or when the page's own `location.href` (fragment stripped) differs from
 the host URL. For the scripted kinds the host first runs the fixed `URL_SCRIPT` (returns `location.href`, no input) and
-refuses if it is not the approved page, re-checks the host state, then runs the action script, which reports the page it
-started on; that must match too. This narrows, and cannot close, the gap between the check and the click: a page can still
-navigate between the last check and the script's first statement.
+refuses if it is not the approved page, re-checks the host state, then runs the action script. The action script takes the
+approved URL (fragment stripped) as a third slot, `__EXPECTED__`, and compares it with `location.href` (fragment stripped)
+BEFORE its first DOM access: on a mismatch it returns `page_changed` and has done nothing (no lookup, no click, no typing).
+The host still compares the page the script reports. A test runs the generated script in Node against a stub `location` and
+DOM (skipped with a message when `node` is not installed; the guard-before-first-DOM-access check on the script text always
+runs). What stays open: the script runs inside the page's own JS world, so a hostile page can replace builtins the script
+uses (see the find-in-page notes), and a navigation that the page started but that has not committed yet is not visible to
+`location.href`.
 
 **Fixed scripts.** `SNAPSHOT_SCRIPT` and `URL_SCRIPT` have no input. The action scripts are `const &str` text with two
 placeholders; the ONLY values that ever enter one are the selector and (for `type`) the text, each as ONE serde_json
-string literal with U+2028/U+2029 additionally escaped. Substitution is a single pass over the template, so a value that
+string literal with U+2028/U+2029 additionally escaped. (The approved URL is a third slot, `__EXPECTED__`, filled the same way
+from the host-parsed, fragment-free `expectedUrl`; it is the host's own value, not page data.) Substitution is a single pass over the template, so a value that
 contains a placeholder name is never substituted again. No other field (`destination`, `expectedUrl`, anything a page
 returned) can reach a script. Tests parse the declaration line back as JSON and check a hostile text (quotes,
 `</script>`, backslashes, U+2028/2029, `${}`, backticks, control characters) appears exactly once, only as that literal.
@@ -470,7 +476,7 @@ Resolves `{ok:true, found, count}` or `{ok:false, reason}`; reasons `bad_query`,
 page), `timeout`, `failed`. A refusal is a resolved value.
 
 - The query is at most 200 characters (code points), with no control character, no bidi control (U+061C, U+200E/F,
-  U+202A-E, U+2066-9) and no U+2028/9. Checked in Rust before any script exists (`find_query_ok`).
+  U+202A-E, U+2066-9), no zero-width format character (U+200B-D, U+2060, U+FEFF) and no U+2028/9. Checked in Rust before any script exists (`find_query_ok`).
 - It runs ONE fixed script (`browser_page::FIND_HEAD` + `FIND_BODY`, or `FIND_CLEAR_SCRIPT` for the empty query). The query
   enters only as one JSON string literal (`js_string_literal`, also escaping U+2028/9) and the direction as `true`/`false`; a
   test replaces the literal and compares the rest to the fixed text. The script has no `eval`, no selector engine, no
@@ -491,7 +497,11 @@ not a never-grantable kind), raises a Phoenix-owned prompt:
 
 1. Event `browser://permission-request` to the chrome: `{requestId, tabId, origin, permission}` (`permission` is a
    `PERMISSION_KINDS` id; `origin` is the HOST's view of the tab's origin, capped at 256 characters). At most 4 prompts are
-   open at once and one per exact (tab, origin, permission); a request beyond that is denied unasked.
+   open at once and one per exact (tab, origin, permission); a request beyond that is denied unasked. After the person presses
+   Deny, the same (tab, origin, permission) is denied unasked for 5 minutes (injected clock; at most 64 denials are
+   remembered, and closing the tab forgets its own). Frame ambiguity is NOT resolved: the webview API does not say which
+   frame asked, so a cross-origin iframe's request is shown as the top-level origin and an Allow once is consumed by the
+   next same-tab, same-permission request from any frame. The prompt payload has no field to say so and was left unchanged.
 2. **The page that asked is answered `Deny` now.** The prompt offers Allow once and Deny only; "always for this site" is not
    offered and no command records a session grant.
 3. `answer_permission { requestId, allow }` (chrome only; any other window gets `forbidden`). Allow records ONE "allow

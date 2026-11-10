@@ -265,6 +265,9 @@ importers:
       '@phoenix/ai-models':
         specifier: workspace:*
         version: link:../models
+      '@phoenix/capability-youtube-music':
+        specifier: workspace:*
+        version: link:../../capabilities/youtube-music
 
   ai/orchestrator:
     dependencies:

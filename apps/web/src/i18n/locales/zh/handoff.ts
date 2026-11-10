@@ -74,6 +74,16 @@ export const handoff: Record<keyof typeof enhandoff, string> = {
   "handoff.attach.issueCreated": "已在 {repository} 中创建 issue #{number}。",
   "handoff.attach.issueExisting": "{repository} 中的 issue #{number} 已存在。",
   "handoff.attach.issueAddress": "地址：{url}",
+  "handoff.attach.prRepositoryLabel": "GitHub 仓库（owner/name），仅用于在拉取请求下评论",
+  "handoff.attach.prNumberLabel": "拉取请求编号（两项都留空则只复制）",
+  "handoff.attach.prInvalid":
+    "请同时填写 owner/name 形式的仓库和拉取请求编号，或两项都留空以仅复制。",
+  "handoff.attach.delivery.prComment":
+    "Phoenix 将通过 github 能力，把这段文字作为一条新评论发布到 {repository} 的拉取请求 #{number}。它从不编辑描述，也不检查该编号是否属于拉取请求。系统会再次请你确认，需要写入令牌，关注该拉取请求的人会收到通知。",
+  "handoff.attach.prDetails":
+    "仓库 {repository}，拉取请求 #{number}，文本 SHA-256 {hash}，{chars} 个字符",
+  "handoff.attach.prTick": "我确认：把这段文字作为新评论发布到 {repository} #{number}",
+  "handoff.attach.prCommented": "已在 {repository} 的拉取请求 #{number} 下发布评论。",
 
   "handoff.guard.title": "机密防护",
   "handoff.guard.intro":

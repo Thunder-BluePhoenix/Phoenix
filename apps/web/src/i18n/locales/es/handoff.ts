@@ -82,6 +82,19 @@ export const handoff: Record<keyof typeof enhandoff, string> = {
   "handoff.attach.issueCreated": "Se creó la issue #{number} en {repository}.",
   "handoff.attach.issueExisting": "La issue #{number} en {repository} ya existía.",
   "handoff.attach.issueAddress": "Dirección: {url}",
+  "handoff.attach.prRepositoryLabel":
+    "Repositorio de GitHub (owner/name), solo para comentar en una pull request",
+  "handoff.attach.prNumberLabel": "Número de la pull request (deja ambos vacíos para solo copiar)",
+  "handoff.attach.prInvalid":
+    "Introduce el repositorio como owner/name y el número de la pull request, o deja ambos vacíos para solo copiar.",
+  "handoff.attach.delivery.prComment":
+    "Phoenix publicará este texto como UN comentario nuevo en la pull request #{number} de {repository} con la capacidad github. Nunca edita la descripción y no comprueba que el número sea una pull request. Se te pedirá confirmar una vez más, necesita el token de escritura y se avisa a quienes siguen la pull request.",
+  "handoff.attach.prDetails":
+    "Repositorio {repository}, pull request #{number}, SHA-256 del texto {hash}, {chars} caracteres",
+  "handoff.attach.prTick":
+    "Confirmo: publicar este texto como comentario nuevo en {repository} #{number}",
+  "handoff.attach.prCommented":
+    "Se publicó un comentario en la pull request #{number} de {repository}.",
 
   "handoff.guard.title": "Guardián de secretos",
   "handoff.guard.intro":

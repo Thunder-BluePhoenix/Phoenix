@@ -168,23 +168,26 @@ pub fn js_string_literal(value: &str) -> String {
 
 const SELECTOR_SLOT: &str = "__SELECTOR__";
 const TEXT_SLOT: &str = "__TEXT__";
+const EXPECTED_SLOT: &str = "__EXPECTED__";
 
-/// Fills the two slots of `template` in ONE pass over the template. A value that happens to
-/// contain a slot name (`input#__TEXT__` is a valid selector) is never scanned again.
-fn fill(template: &str, selector: &str, text: Option<&str>) -> String {
-    let selector = js_string_literal(selector);
-    let text = text.map(js_string_literal);
-    let mut out = String::with_capacity(template.len() + selector.len() + 16);
+/// Fills the slots of `template` in ONE pass over the template. A value that happens to
+/// contain a slot name (`input#__TEXT__` is a valid selector) is never scanned again. `text` is
+/// `None` for the kinds that type nothing: their template has no text slot.
+fn fill(template: &str, selector: &str, text: Option<&str>, expected: &str) -> String {
+    let mut slots: Vec<(&str, String)> = vec![
+        (SELECTOR_SLOT, js_string_literal(selector)),
+        (EXPECTED_SLOT, js_string_literal(expected)),
+    ];
+    if let Some(text) = text {
+        slots.push((TEXT_SLOT, js_string_literal(text)));
+    }
+    let mut out = String::with_capacity(template.len() + 128);
     let mut rest = template;
-    loop {
-        let sel_at = rest.find(SELECTOR_SLOT);
-        let text_at = text.as_ref().and_then(|_| rest.find(TEXT_SLOT));
-        let (at, slot, value) = match (sel_at, text_at) {
-            (Some(s), Some(t)) if t < s => (t, TEXT_SLOT, text.as_deref().unwrap_or("")),
-            (Some(s), _) => (s, SELECTOR_SLOT, selector.as_str()),
-            (None, Some(t)) => (t, TEXT_SLOT, text.as_deref().unwrap_or("")),
-            (None, None) => break,
-        };
+    while let Some((at, slot, value)) = slots
+        .iter()
+        .filter_map(|(slot, value)| rest.find(slot).map(|at| (at, *slot, value)))
+        .min_by_key(|(at, _, _)| *at)
+    {
         out.push_str(&rest[..at]);
         out.push_str(value);
         rest = &rest[at + slot.len()..];
@@ -231,6 +234,7 @@ pub const URL_SCRIPT: &str = r##"(function () {
 const SCRIPT_HEAD: &str = r##"(function () {
   "use strict";
   var SEL = __SELECTOR__;
+  var EXPECTED = __EXPECTED__;
 "##;
 
 const SCRIPT_TEXT_LINE: &str = "  var TXT = __TEXT__;\n";
@@ -252,7 +256,10 @@ const SCRIPT_LIB: &str = r##"  var FORBID = /(?:passw(?:or)?d|passkey|(?:^|[^a-z
   if (FORBID.test(SEL)) return fail("protected");
   var parts = /^(input|button|form|select|textarea)(?:#([A-Za-z0-9_:.\-]{1,80})|\[name="([A-Za-z0-9_:.\-]{1,80})"\])$/.exec(SEL);
   if (!parts) return fail("failed");
+  // The approved page, fragment aside, is checked BEFORE the first DOM access and before any
+  // effect: a page that navigated after the host's own check is refused here.
   var START = String(location.href);
+  if (START.split("#")[0] !== EXPECTED) return fail("page_changed");
   function find() {
     var list = document.getElementsByTagName(parts[1]);
     var hit = null;
@@ -432,12 +439,14 @@ pub fn plan(request: &ActionRequest) -> Result<Plan, &'static str> {
         (_, Some(_)) => return Err("bad_text"),
         (_, None) => {}
     }
-    let script = action_script(kind, selector, text);
+    let script = action_script(kind, selector, text, &request.expected_url);
     Ok(Plan::Script { script })
 }
 
-/// The fixed script of a scripted kind. Callers pass a selector that [`selector_ok`] accepted.
-pub fn action_script(kind: Kind, selector: &str, text: Option<&str>) -> String {
+/// The fixed script of a scripted kind. Callers pass a selector that [`selector_ok`] accepted and
+/// the approved page's URL. The script compares `location.href` (fragment aside) with it before
+/// it touches the DOM; a URL that does not parse becomes the empty string, which never matches.
+pub fn action_script(kind: Kind, selector: &str, text: Option<&str>, expected: &str) -> String {
     let body = match kind {
         Kind::Click | Kind::Download => BODY_CLICK,
         Kind::Type => BODY_TYPE,
@@ -452,7 +461,8 @@ pub fn action_script(kind: Kind, selector: &str, text: Option<&str>) -> String {
     template.push_str("  try {\n");
     template.push_str(body);
     template.push_str(SCRIPT_TAIL);
-    fill(&template, selector, text)
+    let expected = strip_fragment(expected).unwrap_or_default();
+    fill(&template, selector, text, &expected)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -539,6 +549,7 @@ pub fn parse_action(raw: &str) -> ActionReply {
                 "ambiguous" => "ambiguous",
                 "protected" => "protected",
                 "unsupported" => "unsupported",
+                "page_changed" => "page_changed",
                 _ => "failed",
             },
             _ => "failed",
@@ -563,13 +574,18 @@ fn is_bidi(c: char) -> bool {
     matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
 }
 
+/// Zero-width format (Cf) characters: invisible, so they would hide in a query.
+fn is_zero_width(c: char) -> bool {
+    matches!(c, '\u{200B}'..='\u{200D}' | '\u{2060}' | '\u{FEFF}')
+}
+
 /// Whether `query` is acceptable: at most [`MAX_FIND_CHARS`] characters, no control character, no
-/// bidi control, no line or paragraph separator. The empty query is valid (it clears).
+/// bidi control, no zero-width character, no line or paragraph separator. The empty query is valid (it clears).
 pub fn find_query_ok(query: &str) -> bool {
     query.chars().count() <= MAX_FIND_CHARS
-        && !query
-            .chars()
-            .any(|c| c.is_control() || is_bidi(c) || matches!(c, '\u{2028}' | '\u{2029}'))
+        && !query.chars().any(|c| {
+            c.is_control() || is_bidi(c) || is_zero_width(c) || matches!(c, '\u{2028}' | '\u{2029}')
+        })
 }
 
 /// Clears the highlight. No input.
@@ -685,6 +701,11 @@ mod find_tests {
             "a\u{061C}b",
             "a\u{2028}b",
             "a\u{2029}b",
+            "a\u{200B}b",
+            "a\u{200C}b",
+            "a\u{200D}b",
+            "a\u{2060}b",
+            "a\u{FEFF}b",
         ] {
             assert!(!find_query_ok(bad), "{bad:?}");
             assert!(find_script(bad, true).is_none(), "{bad:?}");
@@ -777,6 +798,8 @@ mod find_tests {
 mod tests {
     use super::*;
 
+    const EXPECTED: &str = "https://example.com/a";
+
     fn request(kind: &str, selector: Option<&str>, text: Option<&str>) -> ActionRequest {
         ActionRequest {
             kind: kind.into(),
@@ -853,7 +876,7 @@ mod tests {
     fn a_hostile_text_enters_the_script_only_as_one_json_string_literal() {
         let hostile =
             "a\"b'c\\d</script><!--\u{2028}\u{2029}${x}`\n\r\t\u{0}\u{7f}é😀 __SELECTOR__ __TEXT__";
-        let script = action_script(Kind::Type, "input#q", Some(hostile));
+        let script = action_script(Kind::Type, "input#q", Some(hostile), EXPECTED);
         // The text appears exactly once (as a literal), nowhere raw.
         let literal = js_string_literal(hostile);
         assert_eq!(script.matches(&literal).count(), 1);
@@ -873,20 +896,24 @@ mod tests {
         // A slot name inside a value is not substituted again.
         assert_eq!(script.matches("var SEL = \"input#q\";").count(), 1);
         assert_eq!(
-            action_script(Kind::Click, "input#__TEXT__", None)
+            action_script(Kind::Click, "input#__TEXT__", None, EXPECTED)
                 .matches("input#__TEXT__")
                 .count(),
             1
         );
         // The fixed text of the other kinds never mentions the typed text.
-        assert!(!action_script(Kind::Click, "input#q", None).contains("var TXT"));
+        assert!(!action_script(Kind::Click, "input#q", None, EXPECTED).contains("var TXT"));
     }
 
     #[test]
     fn the_fixed_scripts_take_no_other_input_and_never_use_query_selector_or_eval() {
         for kind in [Kind::Click, Kind::Download, Kind::Type, Kind::Submit] {
-            let script = action_script(kind, "input#q", Some("x"));
-            assert!(!script.contains("__SELECTOR__") && !script.contains("__TEXT__"));
+            let script = action_script(kind, "input#q", Some("x"), EXPECTED);
+            assert!(
+                !script.contains("__SELECTOR__")
+                    && !script.contains("__TEXT__")
+                    && !script.contains("__EXPECTED__")
+            );
             for forbidden in [
                 "querySelector",
                 "eval(",
@@ -900,6 +927,95 @@ mod tests {
         }
         assert!(!SNAPSHOT_SCRIPT.contains("__"));
         assert!(!URL_SCRIPT.contains("__"));
+    }
+
+    /// Runs `script` in a bare Node `vm` context whose `location.href` is `href` and whose
+    /// `document` holds one `button#go`. Returns the script's reply, how many times the DOM was
+    /// asked for elements and how many times the button was clicked. `None` when Node is absent
+    /// (the guard is then only checked by the text test below).
+    fn run_in_node(script: &str, href: &str) -> Option<(String, u32, u32)> {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+        const DRIVER: &str = r#"
+const vm = require("vm");
+let input = "";
+process.stdin.on("data", (d) => (input += d));
+process.stdin.on("end", () => {
+  const { script, href } = JSON.parse(input);
+  let touched = 0, clicks = 0;
+  const button = {
+    tagName: "BUTTON", type: "button", disabled: false, form: null, labels: null,
+    getAttribute: (n) => (n === "id" ? "go" : null),
+    click: () => { clicks++; },
+  };
+  const ctx = {
+    location: { href },
+    document: { getElementsByTagName: () => { touched++; return [button]; } },
+  };
+  const reply = vm.runInNewContext(script, ctx);
+  process.stdout.write(JSON.stringify({ reply, touched, clicks }));
+});
+"#;
+        let mut child = Command::new("node")
+            .args(["-e", DRIVER])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        let payload = serde_json::json!({ "script": script, "href": href }).to_string();
+        child.stdin.take()?.write_all(payload.as_bytes()).ok()?;
+        let out = child.wait_with_output().ok()?;
+        assert!(
+            out.status.success(),
+            "the generated script must run in Node"
+        );
+        let v: Value = serde_json::from_slice(&out.stdout).ok()?;
+        Some((
+            v["reply"].as_str()?.to_string(),
+            v["touched"].as_u64()? as u32,
+            v["clicks"].as_u64()? as u32,
+        ))
+    }
+
+    #[test]
+    fn the_script_refuses_a_page_other_than_the_approved_one_before_any_effect() {
+        let script = action_script(Kind::Click, "button#go", None, "https://example.com/a#frag");
+        // Text check (always runs): the guard sits ahead of the first DOM access.
+        let guard = script.find("fail(\"page_changed\")").expect("guard");
+        let first_dom = script.find("getElementsByTagName").expect("find()");
+        assert!(guard < first_dom);
+        assert!(
+            script.contains("\"https://example.com/a\""),
+            "fragment-free slot"
+        );
+        // Behaviour: run the generated script against a stub `location` and DOM.
+        let Some(same) = run_in_node(&script, "https://example.com/a#other") else {
+            eprintln!("node not found: only the text check ran");
+            return;
+        };
+        assert_eq!(
+            same,
+            (
+                r#"{"ok":true,"u":"https://example.com/a#other"}"#.into(),
+                1,
+                1
+            )
+        );
+        for moved in [
+            "https://evil.test/a",
+            "https://example.com/b",
+            "https://example.com/a?x=1",
+            "http://example.com/a",
+        ] {
+            let (reply, touched, clicks) = run_in_node(&script, moved).unwrap();
+            assert_eq!(reply, r#"{"ok":false,"reason":"page_changed"}"#, "{moved}");
+            assert_eq!(
+                (touched, clicks),
+                (0, 0),
+                "no DOM access, no effect: {moved}"
+            );
+        }
     }
 
     #[test]
@@ -1058,6 +1174,7 @@ mod tests {
             "ambiguous",
             "protected",
             "unsupported",
+            "page_changed",
             "failed",
         ] {
             let raw = format!("{{\"ok\":false,\"reason\":\"{known}\"}}");

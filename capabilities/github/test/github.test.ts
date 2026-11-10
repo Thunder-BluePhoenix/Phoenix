@@ -126,7 +126,7 @@ const rawPull = (number: number, over: Record<string, unknown> = {}) => ({
 });
 
 describe("manifest and configuration", () => {
-  it("asks for network + external_api, keeps tokens out of config; only issue.create writes", async () => {
+  it("asks for network + external_api, keeps tokens out of config; only issue.create, ci.rerun_failed and pr.comment write", async () => {
     await ready();
     const view = h!.manager.get("github");
     expect(view.permissions.map((p) => p.permission)).toEqual(["network", "external_api"]);
@@ -140,6 +140,7 @@ describe("manifest and configuration", () => {
       expect.objectContaining({ name: "ci.failure_details", side_effect: "read" }),
       expect.objectContaining({ name: "issue.create", side_effect: "external" }),
       expect.objectContaining({ name: "ci.rerun_failed", side_effect: "external" }),
+      expect.objectContaining({ name: "pr.comment", side_effect: "external" }),
     ]);
     expect(JSON.stringify(view)).not.toContain(MOCK_TOKEN);
     expect(() =>

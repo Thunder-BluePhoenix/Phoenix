@@ -36,7 +36,7 @@ const OK_PLAN = {
   plan: {
     page_url: PAGE,
     actions: [
-      { kind: "type", selector: "input#qty", text: "2" },
+      { kind: "type", selector: "input#qty", text: "2", model_written: true },
       { kind: "click", selector: "button#add" },
       { kind: "submit", selector: "form#checkout" },
     ],
@@ -156,6 +156,10 @@ describe("answer parsing (pure)", () => {
       bad((p) => ({ ...p, actions: [{ kind: "click", selector: "div:nth-of-type(2)" }] })),
     ).toBeNull();
     expect(bad((p) => ({ ...p, actions: [{ kind: "type", selector: "input#a" }] }))).toBeNull();
+    // A typed text that Core did not mark as model-written is not an answer we trust.
+    expect(
+      bad((p) => ({ ...p, actions: [{ kind: "type", selector: "input#a", text: "x" }] })),
+    ).toBeNull();
     expect(
       bad((p) => ({ ...p, actions: [{ kind: "click", selector: "button#a", text: "x" }] })),
     ).toBeNull();
@@ -222,7 +226,12 @@ describe("assistant panel", () => {
       plan: {
         ...OK_PLAN.plan,
         actions: [
-          { kind: "type", selector: "input#qty", text: "<img src=x onerror=alert(1)>\u202e2" },
+          {
+            kind: "type",
+            selector: "input#qty",
+            text: "<img src=x onerror=alert(1)>\u202e2",
+            model_written: true,
+          },
         ],
       },
     };
@@ -243,6 +252,7 @@ describe("assistant panel", () => {
     expect(panel.textContent).toContain("<img src=x onerror=alert(1)>");
     expect(panel.textContent).not.toContain("\u202e");
     expect(panel.textContent).toContain("input#qty");
+    expect(panel.textContent).toContain("(written by the local model, not by you)");
     expect(panel.textContent).toContain("1 model suggestion was refused");
     // Proposing alone runs nothing.
     expect(commandPosts(api)).toHaveLength(0);

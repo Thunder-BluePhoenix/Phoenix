@@ -17,6 +17,8 @@ export const HANDOFF_TARGETS: readonly HandoffTarget[] = [
 ];
 export const MAX_ISSUE_TITLE = 256;
 export const MAX_ISSUE_BODY = 10_000;
+/** The github capability's `pr.comment` limit (capabilities/github/src/comments.ts). */
+export const MAX_PR_COMMENT_BODY = 60_000;
 const SUBJECT_MAX = 72;
 
 /** "owner/name", the same shape the github capability accepts. */
@@ -46,11 +48,20 @@ export function issueTitle(note: HandoffNoteView): string {
   return clip(`Agent handoff: ${note.project} (${note.agent})`, MAX_ISSUE_TITLE);
 }
 
-export function attachText(note: HandoffNoteView, target: HandoffTarget): string {
+/**
+ * What the note becomes at a destination. A pull request description is the full note when it is
+ * only copied; once it is posted as a comment it is cut to what `pr.comment` accepts.
+ */
+export function attachText(note: HandoffNoteView, target: HandoffTarget, comment = false): string {
   if (target === "commit_message") return commitMessage(note);
   const markdown = renderNote(note);
-  return target === "task" ? clip(markdown, MAX_ISSUE_BODY) : markdown;
+  if (target === "task") return clip(markdown, MAX_ISSUE_BODY);
+  return comment ? clip(markdown, MAX_PR_COMMENT_BODY) : markdown;
 }
+
+/** SHA-256 (hex) of a comment body: the value the GitHub confirmation card shows. */
+export const commentBodyHash = (text: string): string =>
+  createHash("sha256").update(text, "utf8").digest("hex");
 
 /** The idempotency key of an issue made from a note: the same note never makes two issues. */
 export const issueKey = (noteId: string): string => `handoff-${noteId}`;
@@ -73,6 +84,8 @@ export function attachHash(parts: {
   target: HandoffTarget;
   repository: string | undefined;
   title: string | undefined;
+  /** The pull request number of a comment; absent for every other attach. */
+  number?: number | undefined;
   text: string;
 }): string {
   return createHash("sha256")
@@ -82,6 +95,7 @@ export function attachHash(parts: {
         parts.target,
         parts.repository ?? "",
         parts.title ?? "",
+        parts.number ?? 0,
         parts.text,
       ]),
     )

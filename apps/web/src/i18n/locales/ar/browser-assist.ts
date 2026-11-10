@@ -30,6 +30,7 @@ export const browserAssist: Record<keyof typeof enBrowserAssist, string> = {
   "browser.assist.kind.type": "اكتب في",
   "browser.assist.kind.submit": "أرسل النموذج",
   "browser.assist.typeText": "النص: {text}",
+  "browser.assist.modelWritten": "كتبه النموذج المحلي، وليس أنت",
   "browser.assist.run": "شغّل هذه الخطوة",
   "browser.assist.step.running": "بانتظار موافقتك…",
   "browser.assist.step.done": "تم. لم يتم تشغيل أي شيء آخر.",

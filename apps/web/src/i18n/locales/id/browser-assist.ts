@@ -29,6 +29,7 @@ export const browserAssist: Record<keyof typeof enBrowserAssist, string> = {
   "browser.assist.kind.type": "Ketik di",
   "browser.assist.kind.submit": "Kirim formulir",
   "browser.assist.typeText": "teks: {text}",
+  "browser.assist.modelWritten": "ditulis oleh model lokal, bukan oleh Anda",
   "browser.assist.run": "Jalankan langkah ini",
   "browser.assist.step.running": "Menunggu persetujuan Anda…",
   "browser.assist.step.done": "Selesai. Tidak ada yang lain dijalankan.",

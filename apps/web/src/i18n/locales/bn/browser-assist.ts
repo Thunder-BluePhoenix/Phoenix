@@ -30,6 +30,7 @@ export const browserAssist: Record<keyof typeof enBrowserAssist, string> = {
   "browser.assist.kind.type": "এখানে লিখুন",
   "browser.assist.kind.submit": "ফর্ম জমা দিন",
   "browser.assist.typeText": "লেখা: {text}",
+  "browser.assist.modelWritten": "স্থানীয় মডেল লিখেছে, আপনি নয়",
   "browser.assist.run": "এই ধাপটি চালান",
   "browser.assist.step.running": "আপনার অনুমোদনের অপেক্ষায়…",
   "browser.assist.step.done": "হয়েছে। আর কিছুই চালানো হয়নি।",

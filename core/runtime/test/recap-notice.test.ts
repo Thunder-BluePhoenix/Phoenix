@@ -232,6 +232,34 @@ describe("weekly recap notice (Core)", () => {
     expect(notices(core)).toEqual([]);
   });
 
+  it("counts exactly the previous Monday-to-Sunday week, not the week before or the current one", async () => {
+    const { core } = await boot(); // 2026-11-02..08 already holds 2 sessions, 9 steps, 4 commits
+    // Edges of the previous week count; the Sunday before it and the Monday after it do not.
+    core.runtime.recap.bump(at("2026-11-02T00:00:00Z"), [{ metric: "steps", value: 100 }]);
+    core.runtime.recap.bump(at("2026-11-08T23:59:59Z"), [{ metric: "commits", value: 10 }]);
+    core.runtime.recap.bump(at("2026-11-01T23:59:59Z"), [{ metric: "steps", value: 1000 }]);
+    core.runtime.recap.bump(at("2026-11-09T00:00:00Z"), [{ metric: "steps", value: 10000 }]);
+    const asked: unknown[] = [];
+    const real = core.runtime.recap.recap.bind(core.runtime.recap);
+    const spy = vi
+      .spyOn(core.runtime.recap, "recap")
+      .mockImplementation((week: string | undefined) => {
+        asked.push(week);
+        return real(week);
+      });
+    await enable(core);
+    clock.now = at("2026-11-12T15:00:00Z"); // Thursday of the CURRENT week (11-09..15)
+    expect(core.runtime.recapNotice.tick()).toBe(true);
+    spy.mockRestore();
+    // A day key accepted by `recap(week)`: the Monday of the previous week.
+    expect(asked).toEqual(["2026-11-02"]);
+    const view = real("2026-11-02");
+    expect(view.week).toMatchObject({ start: "2026-11-02", end: "2026-11-08", current: false });
+    expect(notices(core)[0]).toMatchObject({
+      body: "Last week: 2 sessions, 109 steps, 14 commits, 0 permissions granted, 0 denied. Open Recap to see it.",
+    });
+  });
+
   it("waits for Proactive quiet hours to end, then sends", async () => {
     const { core } = await boot();
     core.runtime.proactive.setPreferences({

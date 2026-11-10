@@ -49,6 +49,13 @@ describe("pages sent from the browser", () => {
     expect(s.getByText(/<script>alert\(1\)<\/script>/)).toBeTruthy();
   });
 
+  it("shows origin and path only, even for a note stored with a query before", async () => {
+    open([{ ...hostile, url: "https://example.com/cb?code=plain-oauth-code&sid=1#frag" }]);
+    const s = await section();
+    expect(await s.findByText("https://example.com/cb")).toBeTruthy();
+    expect(s.queryByText(/plain-oauth-code/)).toBeNull();
+  });
+
   it("shows an empty list, and deletes a page through the API", async () => {
     const { api } = open([hostile]);
     const s = await section();

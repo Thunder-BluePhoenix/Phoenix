@@ -16,6 +16,12 @@ interface PageNote {
 
 const LIST_PATH = "/api/companion/pages";
 
+/** Origin and path only: a note stored before Core dropped the query still shows none of it. */
+function withoutQuery(url: string): string {
+  const cut = url.search(/[?#]/);
+  return cut === -1 ? url : url.slice(0, cut);
+}
+
 /** A server answer reduced to the fields this list shows; anything else is ignored. */
 function readPages(body: unknown): PageNote[] {
   const pages = (body as { pages?: unknown } | null)?.pages;
@@ -27,7 +33,7 @@ function readPages(body: unknown): PageNote[] {
       {
         id: p.id,
         received_at: typeof p.received_at === "string" ? p.received_at : "",
-        url: p.url,
+        url: withoutQuery(p.url),
         title: typeof p.title === "string" ? p.title : "",
         selected_text: typeof p.selected_text === "string" ? p.selected_text : null,
       },

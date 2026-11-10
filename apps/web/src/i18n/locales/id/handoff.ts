@@ -81,6 +81,18 @@ export const handoff: Record<keyof typeof enhandoff, string> = {
   "handoff.attach.issueCreated": "Issue #{number} dibuat di {repository}.",
   "handoff.attach.issueExisting": "Issue #{number} di {repository} sudah ada.",
   "handoff.attach.issueAddress": "Alamat: {url}",
+  "handoff.attach.prRepositoryLabel":
+    "Repositori GitHub (owner/name), hanya untuk berkomentar di pull request",
+  "handoff.attach.prNumberLabel": "Nomor pull request (kosongkan keduanya untuk hanya menyalin)",
+  "handoff.attach.prInvalid":
+    "Isi repositori sebagai owner/name dan nomor pull request, atau kosongkan keduanya untuk hanya menyalin.",
+  "handoff.attach.delivery.prComment":
+    "Phoenix akan memposting teks ini sebagai SATU komentar baru di pull request #{number} di {repository} dengan kapabilitas github. Phoenix tidak pernah mengubah deskripsi dan tidak memeriksa apakah nomor itu pull request. Anda akan diminta konfirmasi sekali lagi, perlu token tulis, dan orang yang mengikuti pull request akan diberi tahu.",
+  "handoff.attach.prDetails":
+    "Repositori {repository}, pull request #{number}, SHA-256 teks {hash}, {chars} karakter",
+  "handoff.attach.prTick":
+    "Saya konfirmasi: posting teks ini sebagai komentar baru di {repository} #{number}",
+  "handoff.attach.prCommented": "Komentar diposting di pull request #{number} di {repository}.",
 
   "handoff.guard.title": "Penjaga rahasia",
   "handoff.guard.intro":

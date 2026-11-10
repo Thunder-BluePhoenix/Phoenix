@@ -986,9 +986,11 @@ paths:
   /api/handoff/notes/{id}/attach:
     post:
       summary: >-
-        Attach a note to commit_message, pr_description (both copy only, not wired) or task (a GitHub
-        issue through the permission gateway). Without confirm_hash it is a preview and writes
-        nothing; with the preview's hash it applies. A stale or foreign hash is refused.
+        Attach a note to commit_message (copy only), pr_description (copy only, or with both
+        repository and number ONE comment on that pull request through the github pr.comment command,
+        which asks for its own confirmation) or task (a GitHub issue through the permission gateway).
+        Without confirm_hash it is a preview and writes nothing; with the preview's hash it applies.
+        A stale or foreign hash is refused.
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:

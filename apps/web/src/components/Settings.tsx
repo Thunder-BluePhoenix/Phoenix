@@ -52,6 +52,7 @@ import { ShieldsSection } from "./ShieldsSettings";
 import { AwakeSettingsSection } from "./AwakeSettings";
 import { ScheduledAwakeSection } from "./ScheduledAwakeSettings";
 import { StatusLightsSection } from "./StatusLightsSettings";
+import { ChatApprovalsSection } from "./ChatApprovalsSettings";
 import { TeamSettingsSection } from "./TeamSettings";
 import { TeamWebhooksSection } from "./TeamWebhooks";
 import { FawkesAppearanceSection } from "./Wardrobe";
@@ -101,6 +102,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <EngineeringSignals />
       <ScheduledAwakeSection />
       <StatusLightsSection />
+      <ChatApprovalsSection />
       <TeamSettingsSection />
       <TeamWebhooksSection />
       <BrowserProfilesSection />

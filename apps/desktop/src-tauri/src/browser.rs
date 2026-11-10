@@ -88,6 +88,11 @@ const MAX_LIST_RESPONSE: u64 = 12 * 1024 * 1024;
 const PERMISSION_TTL: Duration = Duration::from_secs(30);
 /// Prompts waiting for an answer at most; a page asking for more is denied unasked.
 const MAX_PENDING_PERMISSIONS: usize = 4;
+/// After the person DENIES a prompt, the same (tab, origin, permission) is denied unasked for this
+/// long, so a page cannot raise the same prompt again and again.
+const PERMISSION_DENY_COOLDOWN: Duration = Duration::from_secs(5 * 60);
+/// Denials remembered at most (the oldest is forgotten first).
+const MAX_REMEMBERED_DENIALS: usize = 64;
 
 // ---------------------------------------------------------------------------------------------
 // What differs between the real app and tests
@@ -331,6 +336,14 @@ struct OnceGrant {
     until: Instant,
 }
 
+/// A prompt the person denied: no new prompt for the same triple until `until`.
+struct DeniedPrompt {
+    tab: u64,
+    origin: String,
+    kind: &'static str,
+    until: Instant,
+}
+
 /// What the webview callback must do for one permission request.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PromptRequest {
@@ -351,6 +364,8 @@ struct Inner {
     /// "Allow once" answers: each lets ONE later request of the same (tab, origin, permission)
     /// through, and only until it expires.
     once: Vec<OnceGrant>,
+    /// Denied prompts, remembered for [`PERMISSION_DENY_COOLDOWN`].
+    denied: Vec<DeniedPrompt>,
     next_prompt: u64,
     dns: HashMap<(String, bool), (Instant, Result<(), Denial>)>,
     pending_radar: Vec<(String, Instant)>,
@@ -436,6 +451,7 @@ impl Host {
                 permissions: SitePermissions::default(),
                 prompts: Vec::new(),
                 once: Vec::new(),
+                denied: Vec::new(),
                 next_prompt: 1,
                 dns: HashMap::new(),
                 pending_radar: Vec::new(),
@@ -847,7 +863,13 @@ impl Host {
     /// never-grantable kind), at most [`MAX_PENDING_PERMISSIONS`] prompts at a time, one per exact
     /// triple. The webview callback cannot wait (it runs on the UI thread), so the page that asked
     /// is denied this time; if the person allows, the page's next request of the same permission
-    /// within [`PERMISSION_TTL`] is the one that gets `Allow`.
+    /// within [`PERMISSION_TTL`] is the one that gets `Allow`. After the person DENIED a prompt,
+    /// the same triple is denied without a new prompt for [`PERMISSION_DENY_COOLDOWN`].
+    ///
+    /// Frame ambiguity (not fixable here): the prompt names the top-level origin, but a
+    /// cross-origin iframe may be the asker, and an allow-once is consumed by the next same-tab,
+    /// same-kind request from ANY frame. The prompt payload has no field for this (see the
+    /// Phase 93 gaps row), so the chrome cannot say it.
     pub fn ask_permission(
         &self,
         id: u64,
@@ -881,6 +903,15 @@ impl Host {
         {
             inner.once.remove(at);
             return (PermissionResponse::Allow, None);
+        }
+        inner.denied.retain(|d| d.until > now);
+        if inner
+            .denied
+            .iter()
+            .any(|d| d.tab == id && d.kind == kind && d.origin == origin)
+        {
+            // The person said no a moment ago: the page is not allowed to ask again yet.
+            return (PermissionResponse::Deny, None);
         }
         inner
             .prompts
@@ -928,6 +959,17 @@ impl Host {
                 kind: prompt.kind,
                 until: now + PERMISSION_TTL,
             });
+        } else {
+            inner.denied.retain(|d| d.until > now);
+            if inner.denied.len() >= MAX_REMEMBERED_DENIALS {
+                inner.denied.remove(0);
+            }
+            inner.denied.push(DeniedPrompt {
+                tab: prompt.tab,
+                origin: prompt.origin,
+                kind: prompt.kind,
+                until: now + PERMISSION_DENY_COOLDOWN,
+            });
         }
         true
     }
@@ -951,6 +993,7 @@ impl Host {
     fn drop_prompts(&self, id: u64) -> Vec<String> {
         let mut inner = self.inner.lock();
         inner.once.retain(|g| g.tab != id);
+        inner.denied.retain(|d| d.tab != id);
         let mut gone = Vec::new();
         inner.prompts.retain(|p| {
             if p.tab == id {
@@ -1047,6 +1090,7 @@ impl Host {
         inner.permissions.clear();
         inner.prompts.clear();
         inner.once.clear();
+        inner.denied.clear();
         inner.dns.clear();
         inner.pending_radar.clear();
         inner.chrome_height = DEFAULT_CHROME_HEIGHT;
@@ -2839,6 +2883,57 @@ mod tests {
     }
 
     #[test]
+    fn a_denied_prompt_is_not_raised_again_for_five_minutes() {
+        let (h, _) = host();
+        let t0 = Instant::now();
+        let a = h.add_tab("https://example.com/", None).unwrap();
+        let b = h.add_tab("https://example.com/", None).unwrap();
+        let prompt = h.ask_permission(a, "camera", t0).1.unwrap();
+        assert!(h.answer_permission(&prompt.id, false, t0));
+        // The same (tab, origin, permission) raises no prompt during the cooldown.
+        for secs in [0, 1, 31, 299] {
+            let at = t0 + Duration::from_secs(secs);
+            assert_eq!(
+                h.ask_permission(a, "camera", at),
+                (PermissionResponse::Deny, None),
+                "{secs}s"
+            );
+        }
+        // Another permission, and another tab, are asked as usual.
+        assert!(h.ask_permission(a, "microphone", t0).1.is_some());
+        assert!(h.ask_permission(b, "camera", t0).1.is_some());
+        // After five minutes the page may ask again.
+        let later = t0 + PERMISSION_DENY_COOLDOWN;
+        assert!(h.ask_permission(a, "camera", later).1.is_some());
+        // An allow is not a denial: nothing is remembered against the page.
+        let (h, _) = host();
+        let a = h.add_tab("https://example.com/", None).unwrap();
+        let prompt = h.ask_permission(a, "camera", t0).1.unwrap();
+        assert!(h.answer_permission(&prompt.id, true, t0));
+        assert_eq!(
+            h.ask_permission(a, "camera", t0).0,
+            PermissionResponse::Allow
+        );
+        assert!(h.ask_permission(a, "camera", t0).1.is_some());
+        // An unanswered (expired) prompt is not a denial either.
+        let (h, _) = host();
+        let a = h.add_tab("https://example.com/", None).unwrap();
+        h.ask_permission(a, "camera", t0).1.unwrap();
+        h.expire_prompts(t0 + PERMISSION_TTL);
+        assert!(h
+            .ask_permission(a, "camera", t0 + PERMISSION_TTL)
+            .1
+            .is_some());
+        // Closing the tab forgets its denials.
+        let (h, _) = host();
+        let a = h.add_tab("https://example.com/", None).unwrap();
+        let prompt = h.ask_permission(a, "camera", t0).1.unwrap();
+        assert!(h.answer_permission(&prompt.id, false, t0));
+        h.drop_prompts(a);
+        assert!(h.inner.lock().denied.is_empty());
+    }
+
+    #[test]
     fn nothing_is_asked_that_policy_would_never_grant_and_asks_are_bounded() {
         let (h, _) = host();
         let t0 = Instant::now();
@@ -3561,7 +3656,7 @@ mod page_tests {
                 &request(kind, selector, text, "https://example.com/a#frag"),
             );
             assert_eq!(out, ActionOutcome::done(PAGE.into()), "{kind}");
-            let want = page::action_script(k, selector.unwrap(), text);
+            let want = page::action_script(k, selector.unwrap(), text, "https://example.com/a");
             assert_eq!(
                 rig.scripts(),
                 [page::URL_SCRIPT.to_string(), want],

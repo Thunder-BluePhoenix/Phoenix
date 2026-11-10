@@ -38,6 +38,7 @@ import { browserChrome } from "./browser-chrome";
 import { browserAssist } from "./browser-assist";
 import { awakeSchedule } from "./awake-schedule";
 import { statusLights } from "./status-lights";
+import { chatApprovals } from "./chat-approvals";
 import { awakeSettings } from "./awake-settings";
 import { teamStatus } from "./team-status";
 import { teamWebhooks } from "./team-webhooks";
@@ -80,6 +81,7 @@ export const en = {
   ...browserAssist,
   ...awakeSchedule,
   ...statusLights,
+  ...chatApprovals,
   ...awakeSettings,
   ...teamStatus,
   ...teamWebhooks,

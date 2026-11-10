@@ -157,6 +157,14 @@ export function AssistPanel({
                           {t("browser.assist.typeText", {
                             text: displayText(step.text ?? "", 300),
                           })}
+                          {step.modelWritten && (
+                            <>
+                              {" "}
+                              <strong className="browser-assist-written">
+                                ({t("browser.assist.modelWritten")})
+                              </strong>
+                            </>
+                          )}
                         </>
                       )}
                     </span>

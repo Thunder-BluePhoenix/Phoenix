@@ -11,7 +11,10 @@
 //
 // Attaching a note: preview, then a confirmation that must repeat the preview's hash.
 //   commit message      the text is handed back to be copied; Phoenix never runs `git commit`.
-//   pull request text   Phoenix has no command that edits a pull request, so: copy only.
+//   pull request text   without a repository and number: copy only. With both, ONE comment on that
+//                       pull request through the github capability's `pr.comment` (its own
+//                       confirmation card shows repository, number, a hash and the size of the text;
+//                       it needs the user's write token). Phoenix never edits the description.
 //   task                an existing command: the github capability's `issue.create`, which asks for
 //                       its own confirmation through the permission gateway and needs the user's
 //                       write token. Nothing else writes anywhere.
@@ -36,6 +39,7 @@ import {
   assertNoSecret,
   attachHash,
   attachText,
+  commentBodyHash,
   HANDOFF_TARGETS,
   issueKey,
   issueTitle,
@@ -52,6 +56,44 @@ const MAX_GOALS = 200;
 const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/;
 const AGENT_SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
 const HISTORY_ROWS = 200;
+
+/** What `pr.comment` returns (capabilities/github/src/comments.ts PrCommentResult). */
+export interface PostedPrComment {
+  repository: string;
+  number: number;
+  id: number;
+  html_url: string;
+}
+
+/**
+ * The capability's reply, checked again here: a malformed or off-site reply is an error, never a
+ * link shown to the user.
+ */
+export function postedCommentFrom(result: unknown): PostedPrComment {
+  if (typeof result === "object" && result !== null) {
+    const repository: unknown = Reflect.get(result, "repository");
+    const number: unknown = Reflect.get(result, "number");
+    const id: unknown = Reflect.get(result, "id");
+    const url: unknown = Reflect.get(result, "html_url");
+    if (
+      typeof repository === "string" &&
+      REPOSITORY.test(repository) &&
+      typeof number === "number" &&
+      Number.isSafeInteger(number) &&
+      typeof id === "number" &&
+      Number.isSafeInteger(id) &&
+      typeof url === "string" &&
+      url.length <= 500 &&
+      url.startsWith("https://github.com/")
+    ) {
+      return { repository, number, id, html_url: url };
+    }
+  }
+  throw new PhoenixError(
+    ErrorCode.CAPABILITY_UNAVAILABLE,
+    "GitHub answered, but the reply could not be read; check the pull request on GitHub",
+  );
+}
 
 /** What `issue.create` returns (capabilities/github/src/issues.ts IssueResult). */
 export interface CreatedIssue {
@@ -77,6 +119,14 @@ export interface HandoffDeps {
     body: string;
     idempotency_key: string;
   }): Promise<CreatedIssue>;
+  /** `github.pr.comment` through the capability path (asks for its own confirmation). */
+  commentOnPr(input: {
+    repository: string;
+    number: number;
+    body: string;
+    body_sha256: string;
+    body_chars: number;
+  }): Promise<PostedPrComment>;
   isKillSwitchEngaged: () => boolean;
   now?: () => number;
 }
@@ -262,7 +312,7 @@ export class HandoffNotes implements HandoffApi {
     id: string,
     body: unknown,
   ): Promise<HandoffAttachPreviewView | HandoffAttachAppliedView> {
-    const input = object(body, ["target", "repository", "confirm_hash"]);
+    const input = object(body, ["target", "repository", "number", "confirm_hash"]);
     const note = this.store.get(id);
     if (!note) throw notFound();
     const target = input.target;
@@ -274,24 +324,48 @@ export class HandoffNotes implements HandoffApi {
       if (typeof input.repository !== "string" || !REPOSITORY.test(input.repository))
         throw invalid('"repository" must be "owner/name"');
       repository = input.repository;
+    } else if (kind === "pr_description" && input.repository !== undefined) {
+      if (typeof input.repository !== "string" || !REPOSITORY.test(input.repository))
+        throw invalid('"repository" must be "owner/name"');
+      repository = input.repository;
     } else if (input.repository !== undefined) {
-      throw invalid('"repository" is only for the task target');
+      throw invalid('"repository" is only for the task and pr_description targets');
     }
+    // A pull request is commented on only when both the repository and the number are given;
+    // neither means copy only. Half of the pair is refused rather than guessed.
+    let number: number | undefined;
+    if (kind === "pr_description") {
+      if (input.number !== undefined) {
+        if (
+          typeof input.number !== "number" ||
+          !Number.isSafeInteger(input.number) ||
+          input.number < 1
+        )
+          throw invalid('"number" must be a positive pull request number');
+        number = input.number;
+      }
+      if ((repository === undefined) !== (number === undefined))
+        throw invalid('"repository" and "number" go together: give both or neither');
+    } else if (input.number !== undefined) {
+      throw invalid('"number" is only for the pr_description target');
+    }
+    const comment = kind === "pr_description" && number !== undefined;
     const title = kind === "task" ? issueTitle(note) : undefined;
-    const text = attachText(note, kind);
+    const text = attachText(note, kind, comment);
     assertNoSecret(text, title);
-    const hash = attachHash({ noteId: id, target: kind, repository, title, text });
+    const hash = attachHash({ noteId: id, target: kind, repository, title, number, text });
 
     if (input.confirm_hash === undefined) {
       return {
         mode: "preview",
         target: kind,
-        delivery: kind === "task" ? "github_issue" : "copy",
-        wired: kind === "task",
+        delivery: kind === "task" ? "github_issue" : comment ? "github_pr_comment" : "copy",
+        wired: kind === "task" || comment,
         ...(title === undefined ? {} : { title }),
+        ...(comment ? { number, body_sha256: commentBodyHash(text), body_chars: text.length } : {}),
         text,
         hash,
-        notes: previewNotes(kind),
+        notes: previewNotes(kind, comment),
       };
     }
     if (typeof input.confirm_hash !== "string" || !/^[0-9a-f]{64}$/.test(input.confirm_hash))
@@ -304,6 +378,44 @@ export class HandoffNotes implements HandoffApi {
     if (this.d.isKillSwitchEngaged())
       throw new PhoenixError(ErrorCode.SECURITY_POLICY_BLOCKED, "Emergency stop is engaged");
 
+    if (comment) {
+      // The github capability asks for its own confirmation (repository, number, hash and size of
+      // the text) before it writes; a refusal throws and nothing is posted.
+      const posted = await this.d.commentOnPr({
+        repository: repository!,
+        number: number!,
+        body: text,
+        body_sha256: commentBodyHash(text),
+        body_chars: text.length,
+      });
+      this.d.audit.record({
+        actor: "user",
+        action: "handoff.note.attached",
+        capabilityId: "handoff",
+        decision: "allowed",
+        details: {
+          id,
+          target: kind,
+          delivery: "github_pr_comment",
+          repository,
+          number,
+          comment_id: posted.id,
+        },
+      });
+      return {
+        mode: "applied",
+        target: kind,
+        delivery: "github_pr_comment",
+        text,
+        copy_only: false,
+        comment: {
+          repository: posted.repository,
+          number: posted.number,
+          id: posted.id,
+          url: posted.html_url,
+        },
+      };
+    }
     if (kind !== "task") {
       this.d.audit.record({
         actor: "user",
@@ -394,12 +506,16 @@ export class HandoffNotes implements HandoffApi {
   }
 }
 
-function previewNotes(target: HandoffTarget): string[] {
+function previewNotes(target: HandoffTarget, comment: boolean): string[] {
   if (target === "commit_message")
     return ["Phoenix never runs git commit for you. Confirming gives you this text to paste."];
+  if (target === "pr_description" && comment)
+    return [
+      "Phoenix posts this text as ONE new comment on the pull request with the github capability; it never edits the description. It notifies the people watching it, asks you to confirm again, needs the capability's write token, and confirming twice posts two comments.",
+    ];
   if (target === "pr_description")
     return [
-      "Phoenix has no command that edits a pull request description yet. Confirming gives you this text to paste; nothing is written to GitHub.",
+      "Without a repository and pull request number Phoenix writes nothing to GitHub. Confirming gives you this text to paste.",
     ];
   return [
     "Phoenix creates one GitHub issue with the github capability. It asks you to confirm again, needs the capability's write token, and creating it twice returns the same issue.",

@@ -67,12 +67,20 @@ export interface HandoffSettingsView {
 export interface HandoffAttachPreviewView {
   mode: "preview";
   target: HandoffTarget;
-  /** `github_issue`: Phoenix writes through the github capability after a second confirmation. `copy`: you paste it yourself. */
-  delivery: "copy" | "github_issue";
+  /**
+   * `github_issue` / `github_pr_comment`: Phoenix writes through the github capability after a
+   * second confirmation. `copy`: you paste it yourself.
+   */
+  delivery: "copy" | "github_issue" | "github_pr_comment";
   /** False when Phoenix has no write command for the target (copy only). */
   wired: boolean;
   /** Issue title; only for the `task` target. */
   title?: string;
+  /** Pull request number; only for the `pr_description` target. */
+  number?: number;
+  /** SHA-256 and length of the text a pull request comment will carry; only for `pr_description`. */
+  body_sha256?: string;
+  body_chars?: number;
   /** Exactly what will be attached or copied. */
   text: string;
   /** SHA-256 the confirmation must repeat. */
@@ -83,11 +91,13 @@ export interface HandoffAttachPreviewView {
 export interface HandoffAttachAppliedView {
   mode: "applied";
   target: HandoffTarget;
-  delivery: "copy" | "github_issue";
+  delivery: "copy" | "github_issue" | "github_pr_comment";
   text: string;
   /** The text is for you to paste; Phoenix wrote it nowhere. */
   copy_only: boolean;
   issue?: { repository: string; number: number; url: string; status: "created" | "existing" };
+  /** The one comment posted on the pull request. */
+  comment?: { repository: string; number: number; id: number; url: string };
 }
 
 /** Handoff notes (Phase 79). Reached only through session-token routes; no capability or tool can call it. */

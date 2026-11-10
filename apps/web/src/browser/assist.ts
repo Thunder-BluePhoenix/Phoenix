@@ -43,6 +43,8 @@ export interface AssistStep {
   selector: string;
   /** Only for `type`. */
   text?: string;
+  /** Only for `type`: Core marked the text as written by the local model, not by the person. */
+  modelWritten?: true;
 }
 
 export type FailureStatus = "no_local_model" | "local_model_failed" | "no_browser";
@@ -76,8 +78,10 @@ function parseStep(value: unknown): AssistStep | null {
   )
     return null;
   if (kind === "type") {
+    // Core marks every typed text as model-written; an answer without the mark is not trusted.
     if (typeof text !== "string" || text.length > MAX_TYPED_CHARS) return null;
-    return { kind, selector, text };
+    if (field(value, "model_written") !== true) return null;
+    return { kind, selector, text, modelWritten: true };
   }
   return text === undefined ? { kind, selector } : null;
 }

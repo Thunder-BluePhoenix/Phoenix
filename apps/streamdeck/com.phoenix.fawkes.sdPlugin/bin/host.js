@@ -14,7 +14,7 @@
 //                              permission gateway then asks the person on screen; the host never
 //                              reads or resolves a confirmation, so no key can approve anything.
 // A message carrying any other field (a duration, a path, a confirmation id) is refused.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { encodeFrame, readFrame } from "./frame.js";
@@ -22,6 +22,7 @@ import { encodeFrame, readFrame } from "./frame.js";
 /** The most the plugin may send in one frame; its two messages are a few dozen bytes. */
 export const MAX_FRAME_BYTES = 1024;
 export const SESSION_TOKEN_FILE = "session.token";
+export const CORE_INFO_FILE = "core.json";
 export const DEFAULT_CORE_URL = "http://127.0.0.1:4870";
 /** The only duration a key can ask for. It is not part of the message, so a plugin cannot change it. */
 export const KEEP_AWAKE_MINUTES = 30;
@@ -86,6 +87,40 @@ export function findSessionToken(env, cwd, home) {
   }
 }
 
+/**
+ * Core's own statement of where it listens: `<data dir>/core.json`, `{ "url": "http://127.0.0.1:<port>" }`,
+ * written next to the session token. Returns `{ url }` (url may be null when the file holds no usable
+ * address), `{ unsafe: true }` when the file is not a regular file private to the current user
+ * (the token must not follow an address someone else could have written), or `null` when there is
+ * no such file (an older Core, or one that stopped): the caller then keeps the default address.
+ */
+export function findCoreInfo(env, cwd, home) {
+  const phoenixEnv = env.PHOENIX_ENV ?? "dev";
+  if (!ENVIRONMENTS.includes(phoenixEnv)) return null;
+  const files = [
+    env.PHOENIX_DATA_DIR,
+    join(cwd, ".phoenix", phoenixEnv),
+    join(home, ".phoenix", phoenixEnv),
+  ]
+    .filter((dir) => typeof dir === "string" && dir !== "")
+    .map((dir) => join(resolve(cwd, dir), CORE_INFO_FILE));
+  const file = files.find((candidate) => existsSync(candidate));
+  if (file === undefined) return null;
+  try {
+    const info = lstatSync(file);
+    if (!info.isFile()) return { unsafe: true };
+    if (process.platform !== "win32") {
+      if (info.mode & 0o077) return { unsafe: true };
+      if (typeof process.getuid === "function" && info.uid !== process.getuid())
+        return { unsafe: true };
+    }
+    const parsed = JSON.parse(readFileSync(file, "utf8"));
+    return { url: typeof parsed?.url === "string" ? parseCoreUrl(parsed.url) : null };
+  } catch {
+    return { unsafe: true };
+  }
+}
+
 /** The message kinds, each with the exact keys it may carry (only `kind`). */
 function parseMessage(message) {
   if (typeof message !== "object" || message === null || Array.isArray(message)) return null;
@@ -103,9 +138,19 @@ export async function handleMessage(message, deps = {}) {
   const kind = parseMessage(message);
   if (kind === null) return { ok: false, error: "invalid_message" };
 
-  const base = parseCoreUrl(env.PHOENIX_CORE_URL ?? DEFAULT_CORE_URL);
+  const cwd = deps.cwd ?? process.cwd();
+  const home = deps.home ?? homedir();
+  let address = env.PHOENIX_CORE_URL ?? null;
+  if (address === null) {
+    // Without an explicit address, Core's own info file says where the token's owner listens.
+    const info = findCoreInfo(env, cwd, home);
+    if (info?.unsafe === true || (info !== null && info.url === null))
+      return { ok: false, error: "bad_core_url" };
+    address = info === null ? DEFAULT_CORE_URL : info.url;
+  }
+  const base = parseCoreUrl(address);
   if (base === null) return { ok: false, error: "bad_core_url" };
-  const token = findSessionToken(env, deps.cwd ?? process.cwd(), deps.home ?? homedir());
+  const token = findSessionToken(env, cwd, home);
   if (token === null) return { ok: false, error: "token_missing" };
 
   const headers = {

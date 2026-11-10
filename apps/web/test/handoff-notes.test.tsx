@@ -395,6 +395,159 @@ describe("Settings: Handoff notes", () => {
       ).toBeTruthy();
     });
 
+    describe("pull request comment (second explicit step)", () => {
+      const HASH = "ab".repeat(32);
+      const commentPreview = () =>
+        previewOf({
+          target: "pr_description",
+          delivery: "github_pr_comment",
+          wired: true,
+          number: 12,
+          body_sha256: HASH,
+          body_chars: 33,
+        });
+      const prRoutes = (url = "https://github.com/acme/app/pull/12#issuecomment-9") => ({
+        "POST /api/handoff/notes/hn_1/attach": (body: unknown) =>
+          has(body, "confirm_hash")
+            ? appliedOf({
+                target: "pr_description",
+                delivery: "github_pr_comment",
+                copy_only: false,
+                comment: { repository: "acme/app", number: 12, id: 9, url },
+              })
+            : commentPreview(),
+      });
+      const fill = (detail: ReturnType<typeof within>, repo: string, number: string) => {
+        fireEvent.change(detail.getByLabelText("Where it goes"), {
+          target: { value: "pr_description" },
+        });
+        fireEvent.change(
+          detail.getByLabelText(
+            "GitHub repository (owner/name), only to comment on a pull request",
+          ),
+          { target: { value: repo } },
+        );
+        fireEvent.change(
+          detail.getByLabelText("Pull request number (leave both empty to copy only)"),
+          { target: { value: number } },
+        );
+      };
+
+      it("shows repository, number, hash and size, and Confirm stays disabled until the box is ticked", async () => {
+        const m = mount({ routes: prRoutes() });
+        const s = await section();
+        const detail = await openFirst(s);
+        fill(detail, "acme/app", "12");
+        fireEvent.click(detail.getByRole("button", { name: "Preview" }));
+
+        expect(
+          await s.findByText(
+            `Repository acme/app, pull request #12, text SHA-256 ${HASH}, 33 characters`,
+          ),
+        ).toBeTruthy();
+        expect(s.getByText(/ONE new comment on pull request #12 in acme\/app/)).toBeTruthy();
+        expect(m.api.posts("/api/handoff/notes/hn_1/attach")[0]!.body).toEqual({
+          target: "pr_description",
+          repository: "acme/app",
+          number: 12,
+        });
+        const confirmButton = s.getByRole("button", { name: "Confirm" }) as HTMLButtonElement;
+        expect(confirmButton.disabled).toBe(true);
+        fireEvent.click(confirmButton);
+        expect(m.api.posts("/api/handoff/notes/hn_1/attach")).toHaveLength(1);
+
+        fireEvent.click(
+          s.getByRole("checkbox", {
+            name: "I confirm: post this text as a new comment on acme/app #12",
+          }),
+        );
+        expect((s.getByRole("button", { name: "Confirm" }) as HTMLButtonElement).disabled).toBe(
+          false,
+        );
+        fireEvent.click(s.getByRole("button", { name: "Confirm" }));
+
+        const status = within(await s.findByRole("status"));
+        expect(status.getByText("Posted a comment on pull request #12 in acme/app.")).toBeTruthy();
+        const link = status.getByRole("link");
+        expect(link.getAttribute("href")).toBe(
+          "https://github.com/acme/app/pull/12#issuecomment-9",
+        );
+        expect(m.api.posts("/api/handoff/notes/hn_1/attach")[1]!.body).toEqual({
+          target: "pr_description",
+          repository: "acme/app",
+          number: 12,
+          confirm_hash: "hash_1",
+        });
+      });
+
+      it("does not link a reply address that is not https", async () => {
+        mount({ routes: prRoutes("http://example.test/pull/12") });
+        const s = await section();
+        const detail = await openFirst(s);
+        fill(detail, "acme/app", "12");
+        fireEvent.click(detail.getByRole("button", { name: "Preview" }));
+        fireEvent.click(await s.findByRole("checkbox", { name: /I confirm: post this text/ }));
+        fireEvent.click(s.getByRole("button", { name: "Confirm" }));
+        const status = within(await s.findByRole("status"));
+        expect(status.getByText("Posted a comment on pull request #12 in acme/app.")).toBeTruthy();
+        expect(status.queryByRole("link")).toBeNull();
+      });
+
+      it.each([
+        ["only a repository", "acme/app", ""],
+        ["only a number", "", "12"],
+        ["a malformed repository", "acme", "12"],
+        ["a zero number", "acme/app", "0"],
+        ["a decimal number", "acme/app", "1.5"],
+        ["a number with a path", "acme/app", "1/../2"],
+        ["a huge number", "acme/app", "9".repeat(20)],
+      ])("refuses %s before any request is sent", async (_n, repo, number) => {
+        const m = mount({ routes: prRoutes() });
+        const s = await section();
+        const detail = await openFirst(s);
+        fill(detail, repo, number);
+        fireEvent.click(detail.getByRole("button", { name: "Preview" }));
+        expect((await s.findByRole("alert")).textContent).toContain("leave both empty");
+        expect(m.api.posts("/api/handoff/notes/hn_1/attach")).toHaveLength(0);
+      });
+
+      it("with both fields empty it stays the copy-only preview and sends no repository or number", async () => {
+        const m = mount({
+          routes: {
+            "POST /api/handoff/notes/hn_1/attach": () => previewOf({ target: "pr_description" }),
+          },
+        });
+        const s = await section();
+        const detail = await openFirst(s);
+        fill(detail, "", "");
+        fireEvent.click(detail.getByRole("button", { name: "Preview" }));
+        await s.findByText(/no command that edits a pull request description yet: copy only/);
+        expect(s.queryByRole("checkbox", { name: /I confirm: post this text/ })).toBeNull();
+        expect(m.api.posts("/api/handoff/notes/hn_1/attach")[0]!.body).toEqual({
+          target: "pr_description",
+        });
+      });
+
+      it("changing the number or repository drops the preview and the tick", async () => {
+        mount({ routes: prRoutes() });
+        const s = await section();
+        const detail = await openFirst(s);
+        fill(detail, "acme/app", "12");
+        fireEvent.click(detail.getByRole("button", { name: "Preview" }));
+        fireEvent.click(await s.findByRole("checkbox", { name: /I confirm: post this text/ }));
+        fireEvent.change(
+          detail.getByLabelText("Pull request number (leave both empty to copy only)"),
+          { target: { value: "13" } },
+        );
+        expect(s.queryByRole("region", { name: "Preview of what will be attached" })).toBeNull();
+        fireEvent.click(detail.getByRole("button", { name: "Preview" }));
+        const box = (await s.findByRole("checkbox", {
+          name: /I confirm: post this text/,
+        })) as HTMLInputElement;
+        expect(box.checked).toBe(false);
+      });
+    });
+
     it("asks for a valid owner/name before any preview request is sent", async () => {
       const m = mount({
         routes: {

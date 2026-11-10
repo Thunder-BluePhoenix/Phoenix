@@ -67,7 +67,7 @@ import { AgentUsageRuntime } from "./agent-usage";
 import { AgentSafety } from "./agent-safety";
 import { PhoneLink, type PhoneLinkTuning } from "./phone-link";
 import { createMcpBackends, McpServer, type McpTuning } from "./mcp";
-import { HandoffNotes, type CreatedIssue } from "./handoff-notes";
+import { HandoffNotes, postedCommentFrom, type CreatedIssue } from "./handoff-notes";
 import { SecretGuard } from "./secret-guard";
 import { AgentRelay } from "./agent-relay";
 import { AiRuntime } from "./ai";
@@ -157,6 +157,8 @@ export const PET_SETTINGS_CHANGED = "pet.settings.changed";
 
 export const PHOENIX_VERSION = "0.1.0-dev";
 export const SESSION_TOKEN_FILE = "session.token";
+/** Where Core says which loopback URL it really listens on (mode 0600, next to the session token). */
+export const CORE_INFO_FILE = "core.json";
 
 function speechEngineConfig(options: RuntimeOptions): SpeechEngineConfig {
   return {
@@ -1103,6 +1105,17 @@ export class PhoenixRuntime implements CoreServices {
         }
         return op.result as CreatedIssue;
       },
+      commentOnPr: async (input) => {
+        // The github capability asks for its own confirmation (side effect `external`).
+        const op = await this.capabilities.invokeAndWait("github", "pr.comment", input, "handoff");
+        if (op.status !== "succeeded") {
+          throw new PhoenixError(
+            ErrorCode.CAPABILITY_UNAVAILABLE,
+            op.error?.message ?? "GitHub did not post the comment",
+          );
+        }
+        return postedCommentFrom(op.result);
+      },
       isKillSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
     });
     this.voice = new VoiceRuntime({
@@ -1312,7 +1325,7 @@ export class PhoenixRuntime implements CoreServices {
     await this.scheduledAwake.start();
     await this.mcp.start();
     this.chatApprovals?.startDigest();
-    if (this.options.writeTokenFile ?? true) this.writeTokenFile();
+    if (this.options.writeTokenFile ?? true) this.writeTokenFile(address.address, address.port);
 
     this.ticker = setInterval(() => {
       this.state.tick();
@@ -1544,6 +1557,7 @@ export class PhoenixRuntime implements CoreServices {
           close: () => {
             if (this.options.writeTokenFile ?? true) {
               rmSync(join(this.config.dataDir, SESSION_TOKEN_FILE), { force: true });
+              rmSync(join(this.config.dataDir, CORE_INFO_FILE), { force: true });
             }
           },
         },
@@ -1555,10 +1569,15 @@ export class PhoenixRuntime implements CoreServices {
     return this.stopping;
   }
 
-  private writeTokenFile(): void {
+  private writeTokenFile(host: string, port: number): void {
     mkdirSync(this.config.dataDir, { recursive: true });
     const path = join(this.config.dataDir, SESSION_TOKEN_FILE);
     writeFileSync(path, this.token + "\n", { mode: 0o600 });
     chmodSync(path, 0o600);
+    // The address the session token belongs to. Local hosts read the port from here instead of
+    // guessing 4870, and refuse a file that is not private to the person running them.
+    const info = join(this.config.dataDir, CORE_INFO_FILE);
+    writeFileSync(info, JSON.stringify({ url: `http://${host}:${port}` }) + "\n", { mode: 0o600 });
+    chmodSync(info, 0o600);
   }
 }

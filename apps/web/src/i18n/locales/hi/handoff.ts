@@ -81,6 +81,18 @@ export const handoff: Record<keyof typeof enhandoff, string> = {
   "handoff.attach.issueCreated": "{repository} में इश्यू #{number} बनाया गया।",
   "handoff.attach.issueExisting": "{repository} में इश्यू #{number} पहले से मौजूद था।",
   "handoff.attach.issueAddress": "पता: {url}",
+  "handoff.attach.prRepositoryLabel":
+    "GitHub रिपॉज़िटरी (owner/name), केवल पुल रिक्वेस्ट पर टिप्पणी के लिए",
+  "handoff.attach.prNumberLabel": "पुल रिक्वेस्ट नंबर (केवल कॉपी करने के लिए दोनों खाली छोड़ें)",
+  "handoff.attach.prInvalid":
+    "रिपॉज़िटरी owner/name के रूप में और पुल रिक्वेस्ट नंबर दोनों दें, या केवल कॉपी के लिए दोनों खाली छोड़ें।",
+  "handoff.attach.delivery.prComment":
+    "Phoenix github क्षमता से इस टेक्स्ट को {repository} की पुल रिक्वेस्ट #{number} पर एक नई टिप्पणी के रूप में पोस्ट करेगा। यह विवरण कभी नहीं बदलता और यह नहीं जाँचता कि नंबर पुल रिक्वेस्ट का है। आपसे एक बार और पुष्टि माँगी जाएगी, इसे राइट टोकन चाहिए, और पुल रिक्वेस्ट देखने वालों को सूचना जाएगी।",
+  "handoff.attach.prDetails":
+    "रिपॉज़िटरी {repository}, पुल रिक्वेस्ट #{number}, टेक्स्ट का SHA-256 {hash}, {chars} अक्षर",
+  "handoff.attach.prTick":
+    "मैं पुष्टि करता/करती हूँ: इस टेक्स्ट को {repository} #{number} पर नई टिप्पणी के रूप में पोस्ट करें",
+  "handoff.attach.prCommented": "{repository} की पुल रिक्वेस्ट #{number} पर टिप्पणी पोस्ट की गई।",
 
   "handoff.guard.title": "सीक्रेट गार्ड",
   "handoff.guard.intro":

@@ -44,11 +44,17 @@ export async function askHost(message, deps = {}) {
     return FAILED;
   }
   const timer = setTimeout(() => child.kill(), deps.timeoutMs ?? TIMEOUT_MS);
+  // An asynchronous spawn failure (ENOENT, EACCES) is an `error` event on the child. With no
+  // listener it would crash the plugin process, so it settles the call with the fixed reply.
+  const spawnFailed = new Promise((resolveFailed) =>
+    child.on("error", () => resolveFailed(FAILED)),
+  );
   try {
     const reading = readFrame(child.stdout, MAX_REPLY_BYTES);
+    reading.catch(() => {});
     child.stdin.on("error", () => {});
     child.stdin.end(encodeFrame(message));
-    const reply = await reading;
+    const reply = await Promise.race([reading, spawnFailed]);
     return typeof reply === "object" && reply !== null && typeof reply.ok === "boolean"
       ? reply
       : FAILED;

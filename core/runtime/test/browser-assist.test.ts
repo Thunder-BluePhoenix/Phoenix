@@ -134,7 +134,7 @@ describe("POST /api/browser/assist", () => {
       plan: {
         page_url: PAGE_URL,
         actions: [
-          { kind: "type", selector: "input#q", text: "red shoes" },
+          { kind: "type", selector: "input#q", text: "red shoes", model_written: true },
           { kind: "click", selector: "button#go" },
         ],
       },

@@ -218,9 +218,34 @@ lifecycle test with Tauri's mock runtime calling `open_links`, and web tests aga
 - A `phoenix://` handler on Windows and Linux, and any run against a real macOS URL open; the handler does
   not call `openTeamsLink` and does not select a particular approval.
 - Teams inbound approval (Teams stays notify-only).
-- A real Slack/Discord workspace; DM digests (only the configured channel is used); a Settings UI for
-  `digest_schedule` (it is config only).
-- A UI to enter the secrets.
+- A real Slack/Discord/Teams workspace; DM digests (only the configured channel is used; a decision row,
+  because a per-user destination needs a consent model).
+
+## Settings UI
+
+Settings → **Chat approvals** (`apps/web/src/components/ChatApprovalsSettings.tsx`, logic in
+`apps/web/src/core/chat-approvals.ts`). Everything starts off.
+
+- **Per provider:** an enable switch, notify and digest switches; Slack and Discord also take the
+  workspace id, channel id and approver list as plain fields, checked with the capability's own
+  pattern (`[A-Za-z0-9]{1,24}`, at most 20 approvers). A "ready / not ready" line mirrors
+  `providerReady` (switched on, both ids, at least one approver).
+- **Projects:** a plain list of names (no project picker exists in the web app to reuse), 1 to 120
+  characters, at most 200.
+- **Digest schedule:** off by default; the interval must be a whole number of minutes from 60 to 10080 (the
+  capability's floor and ceiling). Quiet hours, `phoenix_confirmations` and `token_ttl_seconds` are not
+  edited here and are carried over unchanged when the form is saved.
+- **Saving** posts the whole config to `POST /api/capabilities/chat-approvals/config`, the same route
+  other capability settings use; Core's schema still decides. The capability is not enabled by saving;
+  a separate button turns it on.
+- **Secrets** (Slack bot token and signing secret, Discord bot token and public key, Teams webhook URL
+  and link key) go to `POST /api/capabilities/chat-approvals/secrets/:name`, one field each, type
+  `password`. The typed value is cleared from the page before the request is made, so it is gone whether
+  Core accepts it or not; it is never read back or placed in the DOM. The "Stored / Not stored" mark
+  comes from the `secrets[].set` list in `GET /api/capabilities` (names only). A stored secret can be
+  removed (`DELETE`). Errors are fixed translated texts; Core's message is dropped.
+- **Tests:** `apps/web/test/chat-approvals-settings.test.tsx` (14, fake Core). Not exercised: a real
+  browser, Core's real secret store, or any real chat provider.
 
 ## Limitations
 

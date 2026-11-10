@@ -14,6 +14,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -33,7 +34,7 @@ import { createEvent, ErrorCode, PhoenixError } from "@phoenix/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { setImmediate } from "node:timers/promises";
 import { FAKE_GITHUB_TOKEN, FAKE_OPENAI_KEY } from "../../../protocol/testing/fake-secrets";
-import { HandoffNotes, type CreatedIssue } from "../src/handoff-notes";
+import { HandoffNotes, postedCommentFrom, type CreatedIssue } from "../src/handoff-notes";
 import { MAX_NOTES } from "../src/handoff-notes/store";
 
 const T0 = Date.parse("2026-10-21T10:00:00Z");
@@ -154,6 +155,7 @@ interface Rig {
   audit: AuditLog;
   dataDir: string;
   issues: Record<string, unknown>[];
+  comments: Record<string, unknown>[];
   live: { detail: LiveSessionDetailView | null };
   local: Local;
   cloud: Local;
@@ -191,6 +193,7 @@ function rig(over: { localDown?: boolean } = {}): Rig {
     auditCloudSend: () => {},
   });
   const issues: Record<string, unknown>[] = [];
+  const comments: Record<string, unknown>[] = [];
   const killed = { on: false };
   const notes = new HandoffNotes({
     dataDir,
@@ -215,10 +218,19 @@ function rig(over: { localDown?: boolean } = {}): Rig {
         url: "https://github.com/o/r/issues/7",
       };
     },
+    commentOnPr: async (input) => {
+      comments.push(input);
+      return {
+        repository: input.repository,
+        number: input.number,
+        id: 9001,
+        html_url: `https://github.com/${input.repository}/pull/${input.number}#issuecomment-9001`,
+      };
+    },
     isKillSwitchEngaged: () => killed.on,
     now: () => T0 + 120_000,
   });
-  return { notes, bus, settings, audit, dataDir, issues, live, local, cloud, ai, killed };
+  return { notes, bus, settings, audit, dataDir, issues, comments, live, local, cloud, ai, killed };
 }
 
 const noteFiles = (dir: string) =>
@@ -508,6 +520,9 @@ describe("the model summary is local unless cloud is allowed for handoffs", () =
       createIssue: async () => {
         throw new Error("unused");
       },
+      commentOnPr: async () => {
+        throw new Error("unused");
+      },
       isKillSwitchEngaged: () => false,
     });
     await expect(notes.summarize(note.id)).rejects.toMatchObject({
@@ -547,7 +562,7 @@ describe("attaching a note needs a preview and its hash", () => {
     expect(r.issues).toEqual([]);
   });
 
-  it("pull request description is copy only: Phoenix has no command that edits one", async () => {
+  it("pull request description without a repository and number is copy only", async () => {
     const r = rig();
     const note = await r.notes.generate({ session_id: SESSION });
     const preview = await r.notes.attach(note.id, { target: "pr_description" });
@@ -559,6 +574,144 @@ describe("attaching a note needs a preview and its hash", () => {
     });
     expect(applied).toMatchObject({ copy_only: true });
     expect(r.issues).toEqual([]);
+    expect(r.comments).toEqual([]);
+  });
+
+  it("pull request with repository and number: ONE comment through pr.comment, only with the preview's hash", async () => {
+    const r = rig();
+    const note = await r.notes.generate({ session_id: SESSION });
+    const body = { target: "pr_description", repository: "octo/shop", number: 12 };
+    const preview = await r.notes.attach(note.id, body);
+    expect(preview).toMatchObject({
+      mode: "preview",
+      delivery: "github_pr_comment",
+      wired: true,
+      number: 12,
+    });
+    expect(r.comments).toEqual([]); // a preview writes nothing
+    if (preview.mode !== "preview") throw new Error("expected a preview");
+    expect(preview.body_sha256).toBe(createHash("sha256").update(preview.text).digest("hex"));
+    expect(preview.body_chars).toBe(preview.text.length);
+    await expect(
+      r.notes.attach(note.id, { ...body, confirm_hash: "0".repeat(64) }),
+    ).rejects.toMatchObject({ code: "ACTION_REQUIRES_CONFIRMATION" });
+    expect(r.comments).toEqual([]);
+    const applied = await r.notes.attach(note.id, { ...body, confirm_hash: preview.hash });
+    expect(applied).toMatchObject({
+      delivery: "github_pr_comment",
+      copy_only: false,
+      comment: {
+        repository: "octo/shop",
+        number: 12,
+        id: 9001,
+        url: "https://github.com/octo/shop/pull/12#issuecomment-9001",
+      },
+    });
+    expect(r.comments).toEqual([
+      {
+        repository: "octo/shop",
+        number: 12,
+        body: preview.text,
+        body_sha256: preview.body_sha256,
+        body_chars: preview.text.length,
+      },
+    ]);
+    expect(r.issues).toEqual([]);
+    const row = r.audit
+      .list({ capabilityId: "handoff" })
+      .find((e) => e.action === "handoff.note.attached")!;
+    expect(row.details).toEqual({
+      id: note.id,
+      target: "pr_description",
+      delivery: "github_pr_comment",
+      repository: "octo/shop",
+      number: 12,
+      comment_id: 9001,
+    });
+  });
+
+  it("a hash for one pull request number does not confirm another, and the kill switch stops the post", async () => {
+    const r = rig();
+    const note = await r.notes.generate({ session_id: SESSION });
+    const p = await r.notes.attach(note.id, {
+      target: "pr_description",
+      repository: "octo/shop",
+      number: 12,
+    });
+    if (p.mode !== "preview") throw new Error("expected a preview");
+    await expect(
+      r.notes.attach(note.id, {
+        target: "pr_description",
+        repository: "octo/shop",
+        number: 13,
+        confirm_hash: p.hash,
+      }),
+    ).rejects.toMatchObject({ code: "ACTION_REQUIRES_CONFIRMATION" });
+    r.killed.on = true;
+    await expect(
+      r.notes.attach(note.id, {
+        target: "pr_description",
+        repository: "octo/shop",
+        number: 12,
+        confirm_hash: p.hash,
+      }),
+    ).rejects.toMatchObject({ code: "SECURITY_POLICY_BLOCKED" });
+    expect(r.comments).toEqual([]);
+  });
+
+  it("a refused or failed comment is not reported as attached and is not audited as attached", async () => {
+    const r = rig();
+    const note = await r.notes.generate({ session_id: SESSION });
+    const body = { target: "pr_description", repository: "octo/shop", number: 12 };
+    const p = await r.notes.attach(note.id, body);
+    if (p.mode !== "preview") throw new Error("expected a preview");
+    const refusing = new HandoffNotes({
+      dataDir: r.dataDir,
+      settings: r.settings,
+      bus: new EventBus(),
+      audit: r.audit,
+      logger: silentLogger,
+      live: { session: async () => detail() },
+      approvals: { list: () => [], history: () => [] },
+      ai: {
+        run: async () => {
+          throw new Error("unused");
+        },
+      },
+      createIssue: async () => {
+        throw new Error("unused");
+      },
+      commentOnPr: async () => {
+        throw new PhoenixError(ErrorCode.CAPABILITY_UNAVAILABLE, "refused");
+      },
+      isKillSwitchEngaged: () => false,
+    });
+    await expect(refusing.attach(note.id, { ...body, confirm_hash: p.hash })).rejects.toMatchObject(
+      { code: "CAPABILITY_UNAVAILABLE" },
+    );
+    expect(
+      r.audit.list({ capabilityId: "handoff" }).some((e) => e.action === "handoff.note.attached"),
+    ).toBe(false);
+  });
+
+  it("postedCommentFrom accepts only a github.com reply and refuses anything else", () => {
+    const ok = {
+      repository: "o/r",
+      number: 1,
+      id: 2,
+      html_url: "https://github.com/o/r/pull/1#issuecomment-2",
+    };
+    expect(postedCommentFrom(ok)).toEqual(ok);
+    for (const bad of [
+      null,
+      "x",
+      { ...ok, html_url: "https://evil.invalid/o/r/pull/1" },
+      { ...ok, html_url: "http://github.com/o/r/pull/1" },
+      { ...ok, html_url: "https://github.com.evil.invalid/o/r/pull/1" },
+      { ...ok, id: "2" },
+      { ...ok, repository: "../x" },
+    ])
+      expect(() => postedCommentFrom(bad)).toThrow();
   });
 
   it("task: creates an issue through the github command only with the preview's hash, keyed by the note", async () => {
@@ -624,6 +777,19 @@ describe("attaching a note needs a preview and its hash", () => {
     ["no repository for a task", { target: "task" }],
     ["a malformed repository", { target: "task", repository: "../etc" }],
     ["a repository for a copy target", { target: "commit_message", repository: "o/r" }],
+    ["a number for a task", { target: "task", repository: "o/r", number: 1 }],
+    ["a pull request repository without a number", { target: "pr_description", repository: "o/r" }],
+    ["a pull request number without a repository", { target: "pr_description", number: 3 }],
+    ["a zero pull request number", { target: "pr_description", repository: "o/r", number: 0 }],
+    [
+      "a fractional pull request number",
+      { target: "pr_description", repository: "o/r", number: 1.5 },
+    ],
+    ["a string pull request number", { target: "pr_description", repository: "o/r", number: "3" }],
+    [
+      "a malformed pull request repository",
+      { target: "pr_description", repository: "../x", number: 3 },
+    ],
     ["an unknown target", { target: "email" }],
     ["an unknown field", { target: "commit_message", cc: "x" }],
   ])("rejects %s", async (_n, body) => {

@@ -80,6 +80,19 @@ export const handoff: Record<keyof typeof enhandoff, string> = {
   "handoff.attach.issueCreated": "{repository}-এ ইস্যু #{number} তৈরি হয়েছে।",
   "handoff.attach.issueExisting": "{repository}-এ ইস্যু #{number} আগে থেকেই ছিল।",
   "handoff.attach.issueAddress": "ঠিকানা: {url}",
+  "handoff.attach.prRepositoryLabel":
+    "GitHub রিপোজিটরি (owner/name), শুধু পুল রিকোয়েস্টে মন্তব্য করার জন্য",
+  "handoff.attach.prNumberLabel": "পুল রিকোয়েস্ট নম্বর (শুধু কপি করতে দুটোই ফাঁকা রাখুন)",
+  "handoff.attach.prInvalid":
+    "রিপোজিটরি owner/name আকারে এবং পুল রিকোয়েস্ট নম্বর দুটোই দিন, অথবা শুধু কপির জন্য দুটোই ফাঁকা রাখুন।",
+  "handoff.attach.delivery.prComment":
+    "Phoenix github সক্ষমতা দিয়ে {repository}-এর পুল রিকোয়েস্ট #{number}-এ এই লেখাটি একটি নতুন মন্তব্য হিসেবে পোস্ট করবে। এটি বর্ণনা কখনো সম্পাদনা করে না, আর নম্বরটি পুল রিকোয়েস্ট কি না তা যাচাই করে না। আপনাকে আরও একবার নিশ্চিত করতে বলা হবে, রাইট টোকেন লাগবে এবং পুল রিকোয়েস্ট যাঁরা অনুসরণ করছেন তাঁদের জানানো হবে।",
+  "handoff.attach.prDetails":
+    "রিপোজিটরি {repository}, পুল রিকোয়েস্ট #{number}, লেখার SHA-256 {hash}, {chars} অক্ষর",
+  "handoff.attach.prTick":
+    "আমি নিশ্চিত করছি: এই লেখাটি {repository} #{number}-এ নতুন মন্তব্য হিসেবে পোস্ট করুন",
+  "handoff.attach.prCommented":
+    "{repository}-এর পুল রিকোয়েস্ট #{number}-এ একটি মন্তব্য পোস্ট করা হয়েছে।",
 
   "handoff.guard.title": "সিক্রেট গার্ড",
   "handoff.guard.intro":

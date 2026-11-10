@@ -31,6 +31,8 @@ interface OpenPreview {
   noteId: string;
   target: HandoffTarget;
   repository: string | undefined;
+  /** Pull request number of a comment preview. */
+  number: number | undefined;
   data: HandoffAttachPreviewView;
   /** The note changed after the preview, so its hash can no longer be confirmed. */
   stale: boolean;
@@ -40,7 +42,8 @@ interface OpenPreview {
 type Outcome =
   | { kind: "copied" }
   | { kind: "by-hand"; text: string }
-  | { kind: "issue"; issue: NonNullable<HandoffAttachAppliedView["issue"]> };
+  | { kind: "issue"; issue: NonNullable<HandoffAttachAppliedView["issue"]> }
+  | { kind: "comment"; comment: NonNullable<HandoffAttachAppliedView["comment"]> };
 
 /** Settings section: handoff notes (write, summarise, attach) and the secret guard's results. */
 export function HandoffNotesSection() {
@@ -60,6 +63,9 @@ export function HandoffNotesSection() {
   const [sessionId, setSessionId] = useState("");
   const [target, setTarget] = useState<HandoffTarget>("commit_message");
   const [repository, setRepository] = useState("");
+  const [prNumber, setPrNumber] = useState("");
+  /** The explicit tick a pull request comment needs before Confirm is enabled. */
+  const [ticked, setTicked] = useState(false);
   const [preview, setPreview] = useState<OpenPreview | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const inFlight = useRef(false);
@@ -183,15 +189,43 @@ export function HandoffNotesSection() {
       setError(t("handoff.attach.repositoryInvalid"));
       return;
     }
-    const repositoryField = target === "task" ? repo : undefined;
+    // A pull request comment needs the repository AND the number; neither means copy only.
+    const numberText = prNumber.trim();
+    const numberField =
+      target === "pr_description" && numberText !== "" ? Number(numberText) : undefined;
+    if (target === "pr_description" && (repo === "") !== (numberText === "")) {
+      setError(t("handoff.attach.prInvalid"));
+      return;
+    }
+    if (
+      target === "pr_description" &&
+      repo !== "" &&
+      (!REPOSITORY_PATTERN.test(repo) ||
+        !/^[1-9][0-9]{0,14}$/.test(numberText) ||
+        !Number.isSafeInteger(numberField))
+    ) {
+      setError(t("handoff.attach.prInvalid"));
+      return;
+    }
+    const repositoryField =
+      target === "task" || (target === "pr_description" && repo !== "") ? repo : undefined;
     setOutcome(null);
+    setTicked(false);
     const res = await call("POST", `/api/handoff/notes/${encodeURIComponent(note.id)}/attach`, {
       target,
       ...(repositoryField ? { repository: repositoryField } : {}),
+      ...(numberField !== undefined ? { number: numberField } : {}),
     });
     const data = res && readPreview(res.value);
     if (data) {
-      setPreview({ noteId: note.id, target, repository: repositoryField, data, stale: false });
+      setPreview({
+        noteId: note.id,
+        target,
+        repository: repositoryField,
+        number: numberField,
+        data,
+        stale: false,
+      });
     }
   };
 
@@ -202,6 +236,7 @@ export function HandoffNotesSection() {
       {
         target: open.target,
         ...(open.repository ? { repository: open.repository } : {}),
+        ...(open.number !== undefined ? { number: open.number } : {}),
         confirm_hash: open.data.hash,
       },
       () => setPreview({ ...open, stale: true }),
@@ -209,6 +244,11 @@ export function HandoffNotesSection() {
     const applied = res && readApplied(res.value);
     if (!applied) return;
     setPreview(null);
+    setTicked(false);
+    if (applied.comment) {
+      setOutcome({ kind: "comment", comment: applied.comment });
+      return;
+    }
     if (applied.issue) {
       setOutcome({ kind: "issue", issue: applied.issue });
       void notes.reload();
@@ -232,16 +272,27 @@ export function HandoffNotesSection() {
     setTarget(next);
     setPreview(null);
     setOutcome(null);
+    setTicked(false);
+  };
+
+  const changePrNumber = (next: string) => {
+    setPrNumber(next);
+    setPreview(null);
+    setOutcome(null);
+    setTicked(false);
   };
 
   const changeRepository = (next: string) => {
     setRepository(next);
     setPreview(null);
     setOutcome(null);
+    setTicked(false);
   };
 
   const summary = detail?.summary ?? null;
   const issueUrl = outcome?.kind === "issue" ? safeHttpsUrl(outcome.issue.url) : null;
+  const commentUrl = outcome?.kind === "comment" ? safeHttpsUrl(outcome.comment.url) : null;
+  const commentPreview = preview?.data.delivery === "github_pr_comment" && preview.data.wired;
 
   return (
     <section aria-labelledby="handoff-notes-h" className="card handoff-notes">
@@ -388,18 +439,37 @@ export function HandoffNotesSection() {
                   ))}
                 </select>
               </label>
-              {target === "task" && (
+              {(target === "task" || target === "pr_description") && (
                 <label className="field" htmlFor={`${ids}-repo`}>
-                  {t("handoff.attach.repositoryLabel")}
+                  {t(
+                    target === "task"
+                      ? "handoff.attach.repositoryLabel"
+                      : "handoff.attach.prRepositoryLabel",
+                  )}
                   <input
                     id={`${ids}-repo`}
                     type="text"
                     value={repository}
                     disabled={busy}
-                    required
+                    required={target === "task"}
                     autoComplete="off"
                     spellCheck={false}
                     onChange={(e) => changeRepository(e.target.value)}
+                  />
+                </label>
+              )}
+              {target === "pr_description" && (
+                <label className="field" htmlFor={`${ids}-prn`}>
+                  {t("handoff.attach.prNumberLabel")}
+                  <input
+                    id={`${ids}-prn`}
+                    type="text"
+                    inputMode="numeric"
+                    value={prNumber}
+                    disabled={busy}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={(e) => changePrNumber(e.target.value)}
                   />
                 </label>
               )}
@@ -432,8 +502,37 @@ export function HandoffNotesSection() {
                     </ul>
                   )}
                   <p className="small">
-                    {t(deliveryKey(preview.data), { repository: preview.repository ?? "" })}
+                    {t(deliveryKey(preview.data), {
+                      repository: preview.repository ?? "",
+                      number: preview.number ?? 0,
+                    })}
                   </p>
+                  {commentPreview && preview.repository && preview.number !== undefined && (
+                    <>
+                      <p className="small">
+                        {t("handoff.attach.prDetails", {
+                          repository: preview.repository,
+                          number: preview.number,
+                          hash: preview.data.body_sha256 ?? "",
+                          chars: preview.data.body_chars ?? 0,
+                        })}
+                      </p>
+                      {!preview.stale && (
+                        <label className="choice">
+                          <input
+                            type="checkbox"
+                            checked={ticked}
+                            disabled={busy}
+                            onChange={(e) => setTicked(e.target.checked)}
+                          />
+                          {t("handoff.attach.prTick", {
+                            repository: preview.repository,
+                            number: preview.number,
+                          })}
+                        </label>
+                      )}
+                    </>
+                  )}
                   {preview.stale && (
                     <p className="small handoff-warning">{t("handoff.attach.stale")}</p>
                   )}
@@ -451,7 +550,7 @@ export function HandoffNotesSection() {
                       <button
                         type="button"
                         className="btn"
-                        disabled={busy}
+                        disabled={busy || (commentPreview && !ticked)}
                         onClick={() => void confirm(preview)}
                       >
                         {t("handoff.attach.confirm")}
@@ -469,6 +568,27 @@ export function HandoffNotesSection() {
                   <pre className="memory-text" tabIndex={0}>
                     {outcome.text}
                   </pre>
+                </div>
+              )}
+              {outcome?.kind === "comment" && (
+                <div role="status">
+                  <p className="small">
+                    {t("handoff.attach.prCommented", {
+                      number: outcome.comment.number,
+                      repository: outcome.comment.repository,
+                    })}
+                  </p>
+                  <p className="small">
+                    {t.rich("handoff.attach.issueAddress", {
+                      url: commentUrl ? (
+                        <a href={commentUrl} target="_blank" rel="noreferrer">
+                          {outcome.comment.url}
+                        </a>
+                      ) : (
+                        outcome.comment.url
+                      ),
+                    })}
+                  </p>
                 </div>
               )}
               {outcome?.kind === "issue" && (

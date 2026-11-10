@@ -210,6 +210,68 @@ describe("parsing what the script prints", () => {
     );
   });
 
+  describe("a hostile title cannot break the line (script cleaning, then the strict parser)", () => {
+    // The script's own clean step, rebuilt from the pattern and limit it contains (the test reads
+    // them out of WINDOWS_SCRIPT, so changing the script changes what is exercised here).
+    const m =
+      /function Clean\(\$s\) \{ \$t = \[regex\]::Replace\(\[string\]\$s, '([^']+)', ' '\); if \(\$t\.Length -gt (\d+)\)/.exec(
+        WINDOWS_SCRIPT,
+      );
+    const clean = (s: string): string => {
+      if (!m) throw new Error("the script has no Clean step");
+      const t = s.replace(new RegExp(m[1]!, "g"), " ");
+      return t.length > Number(m[2]) ? t.slice(0, Number(m[2])) : t;
+    };
+    const scriptLine = (title: string, artist = "Artist", album = "Album") =>
+      [
+        "Playing",
+        clean(title),
+        clean(artist),
+        clean(album),
+        String(215 * TICKS),
+        String(30 * TICKS),
+        "False",
+        "None",
+      ].join(SEP);
+
+    it("the script cleans each of Title, Artist and AlbumTitle before the join", () => {
+      expect(m).not.toBeNull();
+      expect(m![2]).toBe("200");
+      for (const prop of ["Title", "Artist", "AlbumTitle"]) {
+        expect(WINDOWS_SCRIPT).toContain(`(Clean $props.${prop})`);
+      }
+      expect(WINDOWS_SCRIPT).not.toMatch(/\[string\]\$props\./);
+    });
+
+    it("a title with U+001F parses with its fields intact", () => {
+      const np = parseWindowsNowPlaying(scriptLine("Intro" + SEP + "Outro", "A" + SEP + "B"));
+      expect(np.title).toBe("Intro Outro");
+      expect(np.artist).toBe("A B");
+      expect(np.album).toBe("Album");
+      expect(np.duration_s).toBe(215);
+      expect(np.position_s).toBe(30);
+    });
+
+    it("the same title without the clean step is an unexpected answer (the F9 failure)", () => {
+      const raw = nowLine({ 1: "Intro" + SEP + "Outro" });
+      expect(() => parseWindowsNowPlaying(raw)).toThrow(/unexpected answer/);
+    });
+
+    it("a very long title is cut to 200 characters and the line stays small", () => {
+      const line = scriptLine("x".repeat(200_000), "y".repeat(50_000), "z".repeat(50_000));
+      expect(Buffer.byteLength(line, "utf8")).toBeLessThan(2048);
+      const np = parseWindowsNowPlaying(line);
+      expect(np.title).toBe("x".repeat(200));
+      expect(np.artist).toBe("y".repeat(200));
+      expect(np.album).toBe("z".repeat(200));
+    });
+
+    it("controls, line breaks and bidi marks become spaces", () => {
+      const np = parseWindowsNowPlaying(scriptLine("a\r\nb\u0000c\u202ed\u2028e"));
+      expect(np.title).toBe("a  b c d e");
+    });
+  });
+
   it.each([
     ["too few fields", "Playing" + SEP + "x"],
     ["too many fields", nowLine() + SEP + "extra"],

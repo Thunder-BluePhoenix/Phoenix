@@ -41,8 +41,9 @@ export function cleanSelection(value) {
 
 /**
  * The page address, or `null` when it must not be sent: http(s) only, no sign-in details, no
- * whitespace or control characters, at most MAX_URL characters. The fragment is dropped (an OAuth
- * implicit grant keeps its token there and Phoenix has no use for it).
+ * whitespace or control characters, at most MAX_URL characters. Only origin and path are sent: the
+ * query and the fragment are dropped (an OAuth code, a session id or a magic-link key can sit in
+ * either under a name no filter would recognise, and Phoenix has no use for them).
  */
 export function cleanUrl(value) {
   if (typeof value !== "string" || value === "" || Array.from(value).length > MAX_URL) return null;
@@ -55,8 +56,8 @@ export function cleanUrl(value) {
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") return null;
   if (url.username !== "" || url.password !== "") return null;
-  url.hash = "";
-  return Array.from(url.href).length > MAX_URL ? null : url.href;
+  const address = `${url.origin}${url.pathname}`;
+  return Array.from(address).length > MAX_URL ? null : address;
 }
 
 /**

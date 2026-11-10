@@ -589,7 +589,7 @@ describe("BrowsingAssistant.propose (Phase 95)", () => {
     });
     const proposal = await h.assistant.propose("find shoes");
     expect(proposal.actions).toEqual([
-      { kind: "type", selector: 'input[name="q"]', text: "shoes" },
+      { kind: "type", selector: 'input[name="q"]', text: "shoes", model_written: true },
       { kind: "click", selector: "button#go" },
     ]);
     expect(proposal.dropped).toBe(4);
@@ -618,5 +618,65 @@ describe("BrowsingAssistant.propose (Phase 95)", () => {
     expect(seen?.messages[0]?.content).not.toContain("ZZ-PAGE");
     const data = JSON.parse(seen?.messages[1]?.content ?? "{}") as { goal: string };
     expect(data.goal).toHaveLength(500);
+  });
+
+  it("marks every proposed type step as model-written, and no other step", async () => {
+    const h = harness(scriptedPages(livePage()), {
+      reply: reply(
+        JSON.stringify({
+          actions: [
+            { kind: "type", selector: 'input[name="q"]', text: "shoes", model_written: false },
+            { kind: "click", selector: "button#go", model_written: true },
+          ],
+        }),
+      ),
+    });
+    const { actions } = await h.assistant.propose("find shoes");
+    expect(actions[0]).toMatchObject({ kind: "type", model_written: true });
+    expect(actions[1]).toEqual({ kind: "click", selector: "button#go" });
+  });
+
+  it("bounds the title and field labels and redacts payment numbers in them", async () => {
+    let seen: GenerateRequest | undefined;
+    const card = "4111 1111 1111 1111";
+    const h = harness(
+      scriptedPages(
+        page(SHOP, {
+          title: `${card} ${"t".repeat(5000)}`,
+          fields: [{ ...FIELDS[0]!, label: `${card} ${"l".repeat(5000)}` }],
+        }),
+      ),
+      {
+        reply: (r) => {
+          seen = r;
+          return reply("{}")();
+        },
+      },
+    );
+    await h.assistant.propose("find shoes");
+    const user = seen?.messages[1]?.content ?? "";
+    const data = JSON.parse(user) as {
+      pageData: { title: string; fields: { label: string }[] };
+    };
+    expect(data.pageData.title.length).toBeLessThanOrEqual(200);
+    expect(data.pageData.fields[0]!.label.length).toBeLessThanOrEqual(200);
+    expect(data.pageData.title).toContain("[payment number removed]");
+    expect(data.pageData.fields[0]!.label).toContain("[payment number removed]");
+    expect(user).not.toContain("4111");
+  });
+
+  it("bounds the title in an answer too", async () => {
+    let seen: GenerateRequest | undefined;
+    const h = harness(scriptedPages(page(SHOP, { title: "T".repeat(5000) })), {
+      reply: (r) => {
+        seen = r;
+        return reply("ok")();
+      },
+    });
+    await h.assistant.answer("what is this?");
+    const data = JSON.parse(seen?.messages[1]?.content ?? "{}") as {
+      pageData: { title: string };
+    };
+    expect(data.pageData.title).toHaveLength(200);
   });
 });

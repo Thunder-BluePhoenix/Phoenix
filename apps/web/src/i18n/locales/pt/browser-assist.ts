@@ -31,6 +31,7 @@ export const browserAssist: Record<keyof typeof enBrowserAssist, string> = {
   "browser.assist.kind.type": "Digitar em",
   "browser.assist.kind.submit": "Enviar o formulário",
   "browser.assist.typeText": "o texto: {text}",
+  "browser.assist.modelWritten": "escrito pelo modelo local, não por você",
   "browser.assist.run": "Executar este passo",
   "browser.assist.step.running": "Aguardando a sua aprovação…",
   "browser.assist.step.done": "Concluído. Nada mais foi executado.",

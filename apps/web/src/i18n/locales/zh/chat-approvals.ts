@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+import type { chatApprovals as enChatApprovals } from "../../en/chat-approvals";
+
+/** Machine-translated; unreviewed. */
+export const chatApprovals: Record<keyof typeof enChatApprovals, string> = {
+  "chatApprovals.title": "聊天审批",
+  "chatApprovals.notAvailable": "此 Phoenix Core 不提供聊天审批。",
+  "chatApprovals.intro":
+    "在 Slack 或 Discord 中回复待处理的智能体或 Phoenix 审批，并在 Teams 中接收通知。在此开启之前一切均为关闭，按提供方和项目分别设置。",
+  "chatApprovals.limits":
+    "从未在真实的 Slack、Discord 或 Teams 工作区中使用过：代码仅用模拟回调测试过。Teams 仅用于通知（一个指向 Phoenix 的链接，绝不提供“允许”按钮）。按钮点击会用提供方签名和你的审批人列表校验，决定会被审计。",
+  "chatApprovals.noDm": "摘要和通知只发送到下面设置的频道。不支持向个人发送私信。",
+  "chatApprovals.capabilityOff": "聊天审批功能已关闭，因此不会发送任何内容。",
+  "chatApprovals.enable": "开启此功能",
+  "chatApprovals.ready": "就绪：此提供方可以发布卡片。",
+  "chatApprovals.notReady": "未就绪：需要开启，并填写工作区 ID、频道 ID 和至少一位审批人。",
+  "chatApprovals.teamsNote": "Teams 仅用于通知。其 Webhook 地址和链接密钥保存在下方。",
+  "chatApprovals.save": "保存聊天审批",
+  "chatApprovals.saved": "已保存。",
+  "chatApprovals.provider.slack": "Slack",
+  "chatApprovals.provider.discord": "Discord",
+  "chatApprovals.provider.teams": "Microsoft Teams",
+  "chatApprovals.enabledNamed": "启用 {name}",
+  "chatApprovals.notifyNamed": "在 {name} 发送通用通知",
+  "chatApprovals.digestNamed": "将 {name} 加入摘要",
+  "chatApprovals.notify": "对未开启聊天审批的请求发送通知（不含详情）",
+  "chatApprovals.digest.send": "接收摘要",
+  "chatApprovals.workspace.slack": "Slack 工作区（团队）ID",
+  "chatApprovals.workspace.discord": "Discord 服务器（guild）ID",
+  "chatApprovals.channel.slack": "Slack 频道 ID",
+  "chatApprovals.channel.discord": "Discord 频道 ID",
+  "chatApprovals.approvers.label": "可做决定的 {name} 用户 ID（每行一个）",
+  "chatApprovals.approvers.hint":
+    "仅限字母和数字，每个最多 24 个字符，最多 20 个。列表为空表示无人可以做决定。",
+  "chatApprovals.projects.title": "允许的项目",
+  "chatApprovals.projects.hint": "只有这些项目的智能体审批可以在聊天中回复。为空：没有。",
+  "chatApprovals.projects.label": "项目名称（每行一个）",
+  "chatApprovals.digest.title": "定时摘要",
+  "chatApprovals.digest.intro":
+    "默认关闭。向上方频道发送计数和简短审批 ID，仅发给接收摘要的提供方，静默时段不发，没有任何事情时不发。",
+  "chatApprovals.digest.enabled": "发送定时摘要",
+  "chatApprovals.digest.interval": "摘要间隔（分钟）",
+  "chatApprovals.digest.hint": "从 {min}（一小时）到 {max} 分钟（一周）。",
+  "chatApprovals.cred.title": "凭据",
+  "chatApprovals.cred.writeOnly":
+    "只写。你输入的内容会发送到 Core 的凭据存储，并立即从此页面清除。已保存的值不会再次显示。",
+  "chatApprovals.cred.save": "保存",
+  "chatApprovals.cred.stored": "已存储",
+  "chatApprovals.cred.notStored": "未存储",
+  "chatApprovals.cred.remove": "删除",
+  "chatApprovals.cred.removeNamed": "删除已存储的{name}",
+  "chatApprovals.field.slackBot": "Slack 机器人令牌",
+  "chatApprovals.field.slackSigning": "Slack 签名密钥",
+  "chatApprovals.field.discordBot": "Discord 机器人令牌",
+  "chatApprovals.field.discordKey": "Discord 应用公钥",
+  "chatApprovals.field.teamsWebhook": "Teams Webhook 地址",
+  "chatApprovals.field.teamsKey": "Teams 链接密钥",
+  "chatApprovals.error.ids": "工作区和频道 ID 仅限字母和数字，最多 24 个字符。",
+  "chatApprovals.error.approvers": "审批人 ID 仅限字母和数字，每个最多 24 个字符，最多 20 个。",
+  "chatApprovals.error.projects": "项目名称须为 1 到 120 个可见字符，最多 200 个项目。",
+  "chatApprovals.error.interval": "摘要间隔必须是 60 到 10080 之间的整数分钟。",
+  "chatApprovals.error.save": "无法保存聊天审批设置。",
+  "chatApprovals.error.capability": "无法更改聊天审批功能。",
+  "chatApprovals.error.unavailable": "此 Phoenix Core 没有操作系统凭据存储，因此无法保存凭据。",
+  "chatApprovals.error.cred": "凭据未保存或未删除。",
+  "chatApprovals.error.credShape": "该值不适合此字段，因此未发送。请检查后重试。",
+};

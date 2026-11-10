@@ -32,6 +32,7 @@ export const browserAssist: Record<keyof typeof enBrowserAssist, string> = {
   "browser.assist.kind.type": "Ввести в",
   "browser.assist.kind.submit": "Отправить форму",
   "browser.assist.typeText": "текст: {text}",
+  "browser.assist.modelWritten": "написано локальной моделью, а не вами",
   "browser.assist.run": "Выполнить этот шаг",
   "browser.assist.step.running": "Ожидание вашего подтверждения…",
   "browser.assist.step.done": "Готово. Больше ничего не выполнено.",

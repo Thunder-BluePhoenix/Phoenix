@@ -29,6 +29,7 @@ export const browserAssist = {
   "browser.assist.kind.type": "Type into",
   "browser.assist.kind.submit": "Submit the form",
   "browser.assist.typeText": "the text: {text}",
+  "browser.assist.modelWritten": "written by the local model, not by you",
   "browser.assist.run": "Run this step",
   "browser.assist.step.running": "Waiting for your approval…",
   "browser.assist.step.done": "Done. Nothing else was run.",

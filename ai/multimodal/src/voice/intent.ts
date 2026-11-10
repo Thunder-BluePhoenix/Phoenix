@@ -17,7 +17,7 @@ import {
   routePlayRequest,
   type PlayRouteRefusal,
   type PlayService,
-} from "../../../../capabilities/youtube-music/src/index";
+} from "@phoenix/capability-youtube-music";
 
 export type VoiceSideEffect = "none" | "read" | "write" | "execute" | "external" | "production";
 

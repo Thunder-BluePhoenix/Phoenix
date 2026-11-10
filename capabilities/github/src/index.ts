@@ -25,6 +25,12 @@ import {
   type PrSeen,
 } from "./events";
 import { ciFailureDetails } from "./ci-failure";
+import {
+  MAX_PR_COMMENT_BODY,
+  parsePrCommentInput,
+  postPrComment,
+  SHA256_PATTERN,
+} from "./comments";
 import { CI_WRITE_TOKEN_SECRET, parseCiRerunInput, rerunFailedJobs, verifyRerun } from "./rerun";
 import {
   createIssue,
@@ -50,6 +56,7 @@ import {
 } from "./parse";
 
 export * from "./ci-failure";
+export * from "./comments";
 export * from "./rerun";
 export * from "./client";
 export * from "./events";
@@ -388,7 +395,7 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
       name: "GitHub",
       version: "0.1.0",
       description:
-        "Pull requests, review requests, GitHub Actions runs and deployments from the repositories you pick, plus failure details of any run on request. Watching is read-only (GET only). Two commands write, only when you confirm, each with its own secret: issue.create (write_token) creates an issue; ci.rerun_failed (ci_write_token) re-runs the failed jobs of one run on api.github.com. The read token is optional: without one only public repositories work, at 60 requests per hour.",
+        "Pull requests, review requests, Actions runs and deployments of the repositories you pick, plus run failure details on request. Watching is read-only (GET only). Three commands write, only when you confirm: issue.create and pr.comment (write_token) create an issue or post one pull request comment; ci.rerun_failed (ci_write_token) re-runs failed jobs. The read token is optional: without one only public repositories work, at 60 requests per hour.",
       license: "GPL-3.0-or-later",
       homepage: "https://github.com/Thunder-BluePhoenix/Phoenix",
       events: ["github.*"],
@@ -412,7 +419,7 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
         {
           name: WRITE_TOKEN_SECRET,
           description:
-            "GitHub token that may create issues (fine-grained: Issues read and write). Used only by issue.create after you confirm; the read token is never used for writing. Leave empty and Phoenix cannot write to GitHub.",
+            "GitHub token that may create issues (fine-grained: Issues read and write). Used only by issue.create and pr.comment after you confirm (Issues, or Pull requests, read and write for comments); the read token is never used for writing. Leave empty and Phoenix cannot write to GitHub.",
         },
         {
           name: CI_WRITE_TOKEN_SECRET,
@@ -501,6 +508,41 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
                 type: "integer",
                 minimum: 1,
                 maximum: Number.MAX_SAFE_INTEGER,
+                "x-phoenix-confirm": true,
+              },
+            },
+          },
+        },
+        {
+          name: "pr.comment",
+          description:
+            "Posts ONE comment on a pull request (POST /repos/{owner}/{repo}/issues/{number}/comments on api.github.com). WRITES to GitHub, notifies the people watching it, and always asks for your confirmation, showing the repository, the number, the SHA-256 of the text and its length. Needs the write_token secret. Not idempotent: running it twice posts two comments. Nothing calls it automatically.",
+          side_effect: "external",
+          permissions: ["network", "external_api"],
+          timeout_ms: 60_000,
+          input_schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["repository", "number", "body", "body_sha256", "body_chars"],
+            properties: {
+              // Flagged so the confirmation card names where the comment goes and which text it is.
+              repository: {
+                type: "string",
+                pattern: REPOSITORY_PATTERN,
+                "x-phoenix-confirm": true,
+              },
+              number: {
+                type: "integer",
+                minimum: 1,
+                maximum: Number.MAX_SAFE_INTEGER,
+                "x-phoenix-confirm": true,
+              },
+              body: { type: "string", minLength: 1, maxLength: MAX_PR_COMMENT_BODY },
+              body_sha256: { type: "string", pattern: SHA256_PATTERN, "x-phoenix-confirm": true },
+              body_chars: {
+                type: "integer",
+                minimum: 1,
+                maximum: MAX_PR_COMMENT_BODY,
                 "x-phoenix-confirm": true,
               },
             },
@@ -655,6 +697,19 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
         } catch (err) {
           if (err instanceof GithubError) throw err;
           throw new GithubError("http", "Unexpected error while re-running the GitHub CI run");
+        }
+      },
+      async "pr.comment"(input, ctx) {
+        // Strict validation first: a bad input never reaches the secret store or the network.
+        parsePrCommentInput(input);
+        try {
+          return await postPrComment(input, {
+            token: await ctx.secret(WRITE_TOKEN_SECRET),
+            signal: ctx.signal,
+          });
+        } catch (err) {
+          if (err instanceof GithubError) throw err;
+          throw new GithubError("http", "Unexpected error while commenting on the pull request");
         }
       },
     },

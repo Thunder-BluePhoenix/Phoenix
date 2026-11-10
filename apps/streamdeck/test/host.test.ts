@@ -5,7 +5,7 @@
 // routes (startCore with the keep-awake capability on a fake machine: no caffeinate ever runs).
 // No Stream Deck app started the host.
 import { createAwakeCapability, type AwakeModule } from "../../../capabilities/awake/src/index";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -122,6 +122,14 @@ describe("framing and the child process", () => {
       ok: false,
       error: "host_failed",
     });
+  });
+
+  it("the client settles with the fixed reply when the spawn fails asynchronously", async () => {
+    const reply = await askHost(
+      { kind: "state" },
+      { execPath: "/nonexistent/node-binary", timeoutMs: 20_000 },
+    );
+    expect(reply).toEqual({ ok: false, error: "host_failed" });
   });
 
   it("the client hands the child only the variables it needs: no session token", async () => {
@@ -333,5 +341,60 @@ describe("against a real in-process Core", () => {
         { env: { PHOENIX_SESSION_TOKEN: TOKEN, PHOENIX_CORE_URL: core.base } },
       ),
     ).toEqual({ ok: false, error: "rejected" });
+  });
+});
+
+describe("Core's address file (core.json)", () => {
+  const setup = (mode: number, content: unknown = { url: "http://127.0.0.1:5123" }) => {
+    const dir = mkdtempSync(join(tmpdir(), "sd-info-"));
+    writeFileSync(join(dir, "session.token"), "from-file-0123456789\n");
+    const info = join(dir, "core.json");
+    writeFileSync(info, JSON.stringify(content));
+    chmodSync(info, mode);
+    return dir;
+  };
+  const run = async (dir: string, extra: Record<string, string> = {}) => {
+    const urls: string[] = [];
+    const reply = await handleMessage(
+      { kind: "state" },
+      {
+        env: { PHOENIX_DATA_DIR: dir, ...extra },
+        cwd: dir,
+        home: dir,
+        fetch: async (url: string) => {
+          urls.push(url);
+          return new Response(JSON.stringify({ state: "IDLE" }), { status: 200 });
+        },
+      },
+    );
+    return { reply, urls };
+  };
+
+  it("takes the port from the private file instead of guessing 4870", async () => {
+    const { urls } = await run(setup(0o600));
+    expect(urls[0]).toMatch(/^http:\/\/127\.0\.0\.1:5123\//);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "sends the token nowhere when the file is readable by others",
+    async () => {
+      const { reply, urls } = await run(setup(0o644));
+      expect(reply).toEqual({ ok: false, error: "bad_core_url" });
+      expect(urls).toEqual([]);
+    },
+  );
+
+  it("sends the token nowhere when the file names a non-loopback address", async () => {
+    const { reply, urls } = await run(setup(0o600, { url: "http://evil.example:80" }));
+    expect(reply).toEqual({ ok: false, error: "bad_core_url" });
+    expect(urls).toEqual([]);
+  });
+
+  it("keeps the default address when there is no file, and an explicit PHOENIX_CORE_URL wins", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sd-nofile-"));
+    writeFileSync(join(dir, "session.token"), "from-file-0123456789\n");
+    expect((await run(dir)).urls[0]).toMatch(/^http:\/\/127\.0\.0\.1:4870\//);
+    const explicit = await run(setup(0o600), { PHOENIX_CORE_URL: "http://127.0.0.1:6001" });
+    expect(explicit.urls[0]).toMatch(/^http:\/\/127\.0\.0\.1:6001\//);
   });
 });

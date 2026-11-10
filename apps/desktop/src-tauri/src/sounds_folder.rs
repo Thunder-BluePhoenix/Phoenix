@@ -82,6 +82,14 @@ pub fn folder_in(data_dir: &Path) -> PathBuf {
 fn open_file(path: &Path) -> std::io::Result<File> {
     let mut options = OpenOptions::new();
     options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // O_NONBLOCK: opening a FIFO swapped in after the check returns at once instead of
+        // blocking this thread until a writer shows up (the opened file is then re-checked and
+        // refused as not a regular file). O_NOFOLLOW: a symlink swapped in is not followed.
+        options.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
+    }
     #[cfg(windows)]
     {
         use std::os::windows::fs::OpenOptionsExt;
@@ -190,7 +198,10 @@ mod tests {
 
     #[test]
     fn the_allow_list_is_the_seven_sound_ids() {
-        assert_eq!(SOUND_IDS.len(), 7);
+        assert_eq!(
+            SOUND_IDS,
+            ["greet", "poke", "dizzy", "recover", "jump", "waiting", "error"]
+        );
     }
 
     #[test]
@@ -309,6 +320,38 @@ mod tests {
             .expect("mkfifo");
         assert!(status.success());
         assert_eq!(read_override(&folder, "greet"), Ok(None));
+    }
+
+    /// The window between the metadata check and the open: `open_file` itself must neither block
+    /// on a FIFO (no writer) nor follow a symlink, whatever the check saw.
+    #[cfg(unix)]
+    #[test]
+    fn open_file_neither_blocks_on_a_fifo_nor_follows_a_symlink() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+        let d = dir();
+        let fifo = d.path().join("greet.wav");
+        let status = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .expect("mkfifo");
+        assert!(status.success());
+        let (tx, rx) = mpsc::channel();
+        let path = fifo.clone();
+        // Detached on purpose: without O_NONBLOCK this thread blocks forever and the test fails
+        // by timeout instead of hanging the run.
+        std::thread::spawn(move || {
+            let opened = open_file(&path).map(|f| f.metadata().map(|m| m.is_file()));
+            let _ = tx.send(opened.is_ok());
+        });
+        let returned = rx.recv_timeout(Duration::from_secs(5));
+        assert_eq!(returned, Ok(true), "opening a FIFO must return at once");
+
+        let target = d.path().join("elsewhere.wav");
+        fs::write(&target, b"target bytes").unwrap();
+        let link = d.path().join("poke.wav");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(open_file(&link).is_err(), "a symlink is not followed");
     }
 
     #[test]

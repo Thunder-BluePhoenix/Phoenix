@@ -147,6 +147,41 @@ describe("OllamaProvider.generate", () => {
     expect(e).toMatchObject({ kind: "network", retryable: true });
     expect((e as Error).message).not.toMatch(/secret-host/);
   });
+
+  it("sends every request with redirect: error, so a loopback server cannot bounce it elsewhere", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const inner = fakeFetch(() =>
+      json({ message: { role: "assistant", content: "ok" }, done: true }),
+    );
+    const p = new OllamaProvider({
+      fetch: (url, init) => {
+        inits.push(init);
+        return inner.fetch(url, init);
+      },
+    });
+    await p.generate(req);
+    expect(inits.length).toBeGreaterThan(0);
+    for (const init of inits) expect(init?.redirect).toBe("error");
+  });
+});
+
+describe("OllamaProvider trustedLocal", () => {
+  it("is only ever true for a provider whose base URL passed the loopback check", () => {
+    // trustedLocal is a constant of the class: the only way to hold one is to pass the constructor.
+    expect(new OllamaProvider({ baseUrl: "http://127.0.0.1:11434" }).trustedLocal).toBe(true);
+    for (const url of [
+      "http://example.com:11434",
+      "http://10.0.0.5:11434",
+      "http://0.0.0.0:11434",
+      "http://127.0.0.1@evil.test:11434",
+      "http://localhost.evil.test:11434",
+      "http://[::ffff:10.0.0.5]:11434",
+      "unix:///var/run/ollama.sock",
+      "https://localhost:11434",
+    ]) {
+      expect(() => new OllamaProvider({ baseUrl: url }), url).toThrow();
+    }
+  });
 });
 
 describe("OllamaProvider.stream", () => {

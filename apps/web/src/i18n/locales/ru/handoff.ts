@@ -82,6 +82,19 @@ export const handoff: Record<keyof typeof enhandoff, string> = {
   "handoff.attach.issueCreated": "Создана задача #{number} в {repository}.",
   "handoff.attach.issueExisting": "Задача #{number} в {repository} уже существовала.",
   "handoff.attach.issueAddress": "Адрес: {url}",
+  "handoff.attach.prRepositoryLabel":
+    "Репозиторий GitHub (owner/name), только чтобы прокомментировать pull request",
+  "handoff.attach.prNumberLabel":
+    "Номер pull request (оставьте оба поля пустыми, чтобы только скопировать)",
+  "handoff.attach.prInvalid":
+    "Введите репозиторий в виде owner/name и номер pull request либо оставьте оба поля пустыми, чтобы только скопировать.",
+  "handoff.attach.delivery.prComment":
+    "Phoenix опубликует этот текст как ОДИН новый комментарий к pull request #{number} в {repository} через возможность github. Описание он никогда не редактирует и не проверяет, что номер относится к pull request. Вас попросят подтвердить ещё раз, нужен токен записи, а подписчики pull request получат уведомление.",
+  "handoff.attach.prDetails":
+    "Репозиторий {repository}, pull request #{number}, SHA-256 текста {hash}, символов: {chars}",
+  "handoff.attach.prTick":
+    "Подтверждаю: опубликовать этот текст новым комментарием в {repository} #{number}",
+  "handoff.attach.prCommented": "Комментарий опубликован в pull request #{number} в {repository}.",
 
   "handoff.guard.title": "Защита секретов",
   "handoff.guard.intro":

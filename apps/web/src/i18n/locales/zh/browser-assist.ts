@@ -29,6 +29,7 @@ export const browserAssist: Record<keyof typeof enBrowserAssist, string> = {
   "browser.assist.kind.type": "输入到",
   "browser.assist.kind.submit": "提交表单",
   "browser.assist.typeText": "文本：{text}",
+  "browser.assist.modelWritten": "由本地模型撰写，而非你本人",
   "browser.assist.run": "执行此步骤",
   "browser.assist.step.running": "正在等待你的批准…",
   "browser.assist.step.done": "完成。未执行其他任何操作。",

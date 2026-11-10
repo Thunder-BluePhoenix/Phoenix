@@ -5,7 +5,7 @@
 | Stage | Stage 14 — Phoenix originals |
 | Release target | Post-v2.0 track |
 | Priority | Medium |
-| Status | 🟨 Built, exit criteria not met: a secret-guard hook for Claude Code and Codex, a deterministic handoff-note generator, an attach-with-approval flow and a Settings screen exist; tested only with simulated hook payloads, fake secrets, scripted model providers and a fake GitHub command; never run inside a real agent; the Codex `PreToolUse` wiring and the deny shape come from published docs and are unverified; PR attach is copy-only; the guard fails open on a crash or timeout and aliases or scripts evade it; both exit criteria are unmet |
+| Status | 🟨 Built, exit criteria not met: a secret-guard hook for Claude Code and Codex, a deterministic handoff-note generator, an attach-with-approval flow and a Settings screen exist; tested only with simulated hook payloads, fake secrets, scripted model providers and a fake GitHub command; never run inside a real agent; the Codex `PreToolUse` wiring and the deny shape come from published docs and are unverified; PR attach posts one comment through a new `github.pr.comment` command but was only tested with a fake `fetch`; the guard fails open on a crash or timeout and aliases or scripts evade it; both exit criteria are unmet |
 | Depends on | [Phase 58 — Live Agent Sessions, Diffs & Plan Usage](phase-58-live-sessions-diffs-plan-usage.md) |
 | Unblocks | — |
 
@@ -16,7 +16,7 @@ What an agent did travels with its work, and secrets never leave through an agen
 ## Tasks
 
 - [ ] Handoff note at session end: goal, what changed, commands run, open questions; local model by default. Built: a deterministic generator (goal from the reported task title, files changed, redacted commands, open questions) with an optional model summary through a **local provider only** (cloud refused unless `allow_cloud`; the reply is re-checked); notes are stored in `<dataDir>/handoff` (mode 0600, 50 notes, 64 KiB each) (`core/runtime/src/handoff-notes/**`, `core/runtime/test/handoff-notes.test.ts`, `handoff-api.test.ts`). Unticked because no real session ended into a note: the goal is often "Unknown" and automatic notes depend on `agent.ended` events from source `agents`.
-- [ ] Attach the note to the commit message, PR description or task with approval. Built as preview plus approval (`attach.ts`): the commit message and PR description are **copy-only** (Phoenix never runs `git commit`; PR attach is "not wired"); the task path creates a GitHub issue through the existing `issue.create` command with an idempotency key, tested only with a fake. Unticked because nothing was attached to a real PR or a real issue.
+- [ ] Attach the note to the commit message, PR description or task with approval. Built as preview plus approval (`attach.ts`): the commit message is **copy-only** (Phoenix never runs `git commit`); a pull request description with a repository and number becomes ONE new comment through the separate `external` command `github.pr.comment` (existing `write_token`, pinned host, hash and size on the confirmation card, second explicit tick in the web UI; it never edits the description); without them it stays copy-only; the task path creates a GitHub issue through the existing `issue.create` command with an idempotency key, tested only with a fake. Unticked because nothing was attached to a real PR or a real issue (the PR comment was tested only with a fake `fetch`).
 - [x] Secret guard: block an agent tool call, commit or push that contains a secret (Phoenix's detector), with an explanation and override by approval. The hook (`capabilities/agents/src/guard-hook.ts`, `relay/guard-scan.ts`, `relay/guard-git.ts`) scans tool-call input and, for `git commit` and `git push`, the staged diff or the unpushed range with the `protocol/src/secrets.ts` patterns; a block names the pattern kind and location only, never the secret; an override needs an approval card bound to the content hash and decided by the user (Core re-checks against the audit log); installed for Claude Code and Codex through the existing relay installer with preview, hash, repair and uninstall that preserve the user's hooks (`capabilities/agents/test/guard-hook.test.ts`, `guard-install.test.ts`, `core/runtime/test/secret-guard-*.test.ts`). Simulated payloads and fake secrets only; the hook has never run in a real agent. Ticked as built with those limits; see the open items in the notes.
 - [x] Guard results in the audit log. Results are posted to `POST /api/secret-guard/result` (it rejects payloads that contain secrets; rate-limited; the override proof is single-use) and audited (`core/runtime/test/secret-guard-api.test.ts`). No real agent posted one.
 
@@ -28,7 +28,7 @@ What an agent did travels with its work, and secrets never leave through an agen
 ## Exit criteria
 
 - [ ] A planted test secret in an agent's commit is blocked. **Unmet.** Covered with a simulated hook payload in a temporary git repository, not by a real agent attempting a commit. The Codex `PreToolUse` wiring and the deny shape come from published docs and are unverified.
-- [ ] A handoff note is attached to a real PR. **Unmet.** PR attach is copy-only and the task path was tested with a fake GitHub command; nothing was attached to a real pull request.
+- [ ] A handoff note is attached to a real PR. **Unmet.** PR attach (`github.pr.comment`) and the task path were tested only with a fake GitHub `fetch`; nothing was attached to a real pull request and no real token was used.
 
 ## Implementation notes
 
@@ -41,7 +41,7 @@ What an agent did travels with its work, and secrets never leave through an agen
 
 ### Deviations
 
-- Commit-message and PR attach are copy-only: Phoenix does not edit a commit or a pull request.
+- Commit-message attach is copy-only. PR attach adds one comment (it never edits a commit or a pull request description); without a repository and number it is copy-only.
 - The goal comes from the reported task title, so it is often "Unknown".
 
 ### Security review
@@ -52,7 +52,7 @@ An independent static review (read-only, not a human audit) was followed by fixe
 
 ### What was not built
 
-Attaching to a real commit or PR (copy-only); a fail-closed mode. Added later: detector patterns for Stripe live keys, GitLab personal access tokens, npm tokens and JWTs, and the guard in the `claude-hooks` and `codex-hooks` printers (`--no-guard` omits it). Both are tested with fake secrets only.
+Attaching to a real commit; editing a PR description; attaching to a real PR (the comment path is fake-tested only); a fail-closed mode. Added later: detector patterns for Stripe live keys, GitLab personal access tokens, npm tokens and JWTs, and the guard in the `claude-hooks` and `codex-hooks` printers (`--no-guard` omits it). Both are tested with fake secrets only.
 
 ### What was not run
 

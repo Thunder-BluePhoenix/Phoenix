@@ -12,8 +12,11 @@ import {
 const BIDI = "\u202e\u2066\u200f";
 
 describe("what the extension may send", () => {
-  it("sends only http and https addresses, without credentials or a fragment", () => {
-    expect(cleanUrl("https://example.com/a?b=1#frag")).toBe("https://example.com/a?b=1");
+  it("sends only http and https addresses: origin and path, no credentials, query or fragment", () => {
+    expect(cleanUrl("https://example.com/a?b=1#frag")).toBe("https://example.com/a");
+    expect(cleanUrl("https://example.com:8443/a/b?code=x&sid=y")).toBe(
+      "https://example.com:8443/a/b",
+    );
     expect(cleanUrl("http://example.com/")).toBe("http://example.com/");
     for (const bad of [
       "chrome://settings",
@@ -94,6 +97,7 @@ describe("the host's strict parse of a message", () => {
       { ...good, __proto__x: 1 },
       { ...good, url: "javascript:1" },
       { ...good, url: "https://example.com/#frag" },
+      { ...good, url: "https://example.com/?code=plain" },
       { ...good, title: `a${BIDI}` },
       { ...good, title: "x".repeat(300) },
       { ...good, title: 5 },

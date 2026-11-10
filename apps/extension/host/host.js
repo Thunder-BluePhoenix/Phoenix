@@ -9,7 +9,7 @@
 // the way the `phoenix` CLI does (apps/phoenix-cli/src/token.ts), sends it only to the loopback
 // address, and never writes it to a log, a reply or an error. It exposes exactly one message kind,
 // `page`; anything else is refused without reading further.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { endianness, homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { MESSAGE_KIND, parsePageMessage } from "../src/page.js";
@@ -17,6 +17,7 @@ import { MESSAGE_KIND, parsePageMessage } from "../src/page.js";
 /** The most the browser may send in one frame. Chrome allows 4 GiB; a page note is far smaller. */
 export const MAX_FRAME_BYTES = 64 * 1024;
 export const SESSION_TOKEN_FILE = "session.token";
+export const CORE_INFO_FILE = "core.json";
 export const DEFAULT_CORE_URL = "http://127.0.0.1:4870";
 const CLIENT_LABEL = "browser-extension";
 const TIMEOUT_MS = 10_000;
@@ -120,6 +121,40 @@ export function findSessionToken(env, cwd, home) {
 }
 
 /**
+ * Core's own statement of where it listens: `<data dir>/core.json`, `{ "url": "http://127.0.0.1:<port>" }`,
+ * written next to the session token. Returns `{ url }` (url may be null when the file holds no usable
+ * address), `{ unsafe: true }` when the file is not a regular file private to the current user
+ * (the token must not follow an address someone else could have written), or `null` when there is
+ * no such file (an older Core, or one that stopped): the caller then keeps the default address.
+ */
+export function findCoreInfo(env, cwd, home) {
+  const phoenixEnv = env.PHOENIX_ENV ?? "dev";
+  if (!ENVIRONMENTS.includes(phoenixEnv)) return null;
+  const files = [
+    env.PHOENIX_DATA_DIR,
+    join(cwd, ".phoenix", phoenixEnv),
+    join(home, ".phoenix", phoenixEnv),
+  ]
+    .filter((dir) => typeof dir === "string" && dir !== "")
+    .map((dir) => join(resolve(cwd, dir), CORE_INFO_FILE));
+  const file = files.find((candidate) => existsSync(candidate));
+  if (file === undefined) return null;
+  try {
+    const info = lstatSync(file);
+    if (!info.isFile()) return { unsafe: true };
+    if (process.platform !== "win32") {
+      if (info.mode & 0o077) return { unsafe: true };
+      if (typeof process.getuid === "function" && info.uid !== process.getuid())
+        return { unsafe: true };
+    }
+    const parsed = JSON.parse(readFileSync(file, "utf8"));
+    return { url: typeof parsed?.url === "string" ? parseCoreUrl(parsed.url) : null };
+  } catch {
+    return { unsafe: true };
+  }
+}
+
+/**
  * Handles one decoded message. Always resolves to `{ ok: true, id }` or `{ ok: false, error }`; the
  * reply never holds the token, the page text or Core's own wording.
  */
@@ -128,9 +163,19 @@ export async function handleMessage(message, deps = {}) {
   const page = parsePageMessage(message);
   if (page === null) return { ok: false, error: "invalid_message" };
 
-  const base = parseCoreUrl(env.PHOENIX_CORE_URL ?? DEFAULT_CORE_URL);
+  const cwd = deps.cwd ?? process.cwd();
+  const home = deps.home ?? homedir();
+  let address = env.PHOENIX_CORE_URL ?? null;
+  if (address === null) {
+    // Without an explicit address, Core's own info file says where the token's owner listens.
+    const info = findCoreInfo(env, cwd, home);
+    if (info?.unsafe === true || (info !== null && info.url === null))
+      return { ok: false, error: "bad_core_url" };
+    address = info === null ? DEFAULT_CORE_URL : info.url;
+  }
+  const base = parseCoreUrl(address);
   if (base === null) return { ok: false, error: "bad_core_url" };
-  const token = findSessionToken(env, deps.cwd ?? process.cwd(), deps.home ?? homedir());
+  const token = findSessionToken(env, cwd, home);
   if (token === null) return { ok: false, error: "token_missing" };
 
   const { kind: _kind, ...note } = page;

@@ -1,6 +1,6 @@
 # capabilities/github
 
-Brings GitHub pull requests, review requests, Actions runs and deployments into Fawkes ([Phase 22](../../docs/phases/phase-22-github-and-cicd-capability.md)). Watching is read-only: the poller only sends `GET` requests. Two commands write, each only after you confirm it: `issue.create` and `ci.rerun_failed` (below). Issues are otherwise not covered here; the issue-tracker capability ([Phase 26](../../docs/phases/phase-26-issue-tracker-capabilities.md)) owns them.
+Brings GitHub pull requests, review requests, Actions runs and deployments into Fawkes ([Phase 22](../../docs/phases/phase-22-github-and-cicd-capability.md)). Watching is read-only: the poller only sends `GET` requests. Three commands write, each only after you confirm it: `issue.create`, `pr.comment` and `ci.rerun_failed` (below). Issues are otherwise not covered here; the issue-tracker capability ([Phase 26](../../docs/phases/phase-26-issue-tracker-capabilities.md)) owns them.
 
 | Event                                                                | When                                                     | Fawkes                                             |
 | -------------------------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------- |
@@ -77,3 +77,15 @@ Tool name `github.ci.rerun_failed`. Re-runs the **failed jobs** of one workflow 
 - **Result and verify step.** `{ status: "requested", repository, run_id, verification }`. `verification` comes from one `GET /repos/{owner}/{repo}/actions/runs/{run_id}` with the read token (if any): `run_status`, `run_conclusion`, `attempt`, `rerun_observed` (true when the run is no longer `completed`). GitHub can lag, so `rerun_observed: false` means "not seen yet". A failed re-read gives `checked: false` and never turns an accepted request into an error. Only validated fields reach the result.
 - **Agent path.** The `ci_rerun` agent kind (`ai/agents/src/ci-rerun.ts`) is submitted by a person with `{ repository, run_id }` (run id required): plan = this one write, approval through the normal confirmation flow, verify = a re-read via `github.ci.failure_details`. The `ci_failure` agent stays read-only and advisory and never creates this task; no model is involved; nothing schedules it.
 - **Evidence level.** Tested only against a fake `fetch` and the local mock: no real repository, token or GitHub response was used. Real-GitHub behaviour (permissions, status codes, lag before the run shows as queued) is unverified.
+
+## `pr.comment` command (WRITES; Phase 79)
+
+Tool name `github.pr.comment`. Posts **one** comment on a pull request so a handoff note can be attached to it: `POST https://api.github.com/repos/{owner}/{repo}/issues/{number}/comments` ([GitHub REST docs](https://docs.github.com/en/rest/issues/comments#create-an-issue-comment), read 2026-11-10; pull requests are issues. The page documents the `body` field and the statuses 201, 403, 404, 410 and 422; the 401, 429 and redirect mappings are defensive choices).
+
+- **Input** (`additionalProperties: false`, all required): `repository` (`owner/name`), `number` (positive integer), `body` (1 to 60000 characters), `body_sha256` (hex SHA-256 of `body`) and `body_chars` (`body.length`). The handler recomputes the hash and length and refuses a mismatch, so the confirmation card, which shows repository, number, hash and length, cannot describe a different text than the one posted.
+- **Credential.** The existing `write_token` secret (the one `issue.create` uses; a fine-grained token needs Issues or Pull requests: read and write). The read `token` and `ci_write_token` are never used; with no `write_token` the call fails before any request.
+- **Pinned host.** Always `https://api.github.com`; `api_url` is ignored. No redirects, 15 s timeout, 256 KiB reply cap.
+- **Body.** Control characters removed and secret-looking text masked with the logging redactor before sending.
+- **Result.** `{ status: "commented", repository, number, id, html_url }`: only the comment id and an `https://github.com/` link that passed validation; nothing else GitHub wrote. Errors are fixed texts.
+- **Not idempotent.** Confirming twice posts two comments; the endpoint notifies the people watching the pull request. It does not check that the number is a pull request. Nothing calls it automatically; the only caller is Core's handoff attach after the user's preview, tick and this command's own confirmation.
+- **Evidence level.** Tested only against a fake `fetch`: no real pull request, repository, token or GitHub response was used.

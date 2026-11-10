@@ -41,6 +41,13 @@ const MAX_TEXT = 200;
 const TICKS_PER_SECOND = 10_000_000;
 /** ASCII unit separator, between the fields of the `now_playing` line. */
 const SEP = "\u001f";
+/**
+ * Characters the script turns into a space inside Title/Artist/AlbumTitle before joining: every C0
+ * and C1 control (U+001F, the separator, is one), U+2028/2029 and the bidi embeddings/isolates.
+ * One .NET regex pattern that is also a valid JavaScript one, so a test can run it.
+ */
+export const WINDOWS_CLEAN_PATTERN =
+  "[\\x00-\\x1f\\x7f-\\x9f\\u2028\\u2029\\u202a-\\u202e\\u2066-\\u2069]";
 
 /** The words PHOENIX_MEDIA_COMMAND may hold. The script's `switch` has exactly these arms. */
 export const WINDOWS_COMMANDS = [
@@ -90,11 +97,12 @@ export const WINDOWS_SCRIPT: string = [
   "    $info = $session.GetPlaybackInfo()",
   "    $timeline = $session.GetTimelineProperties()",
   "    $sep = [string][char]31",
+  `    function Clean($s) { $t = [regex]::Replace([string]$s, '${WINDOWS_CLEAN_PATTERN}', ' '); if ($t.Length -gt ${MAX_TEXT}) { $t.Substring(0, ${MAX_TEXT}) } else { $t } }`,
   "    $fields = @(",
   "      [string]$info.PlaybackStatus,",
-  "      [string]$props.Title,",
-  "      [string]$props.Artist,",
-  "      [string]$props.AlbumTitle,",
+  "      (Clean $props.Title),",
+  "      (Clean $props.Artist),",
+  "      (Clean $props.AlbumTitle),",
   "      [string](($timeline.EndTime - $timeline.StartTime).Ticks),",
   "      [string]$timeline.Position.Ticks,",
   "      [string]$info.IsShuffleActive,",

@@ -71,6 +71,11 @@ non-Windows machine. **No PowerShell, WinRT type or media session was ever invol
 - `powershell.exe` is taken from `%SystemRoot%\System32\WindowsPowerShell\v1.0` (not PATH), with an argument
   list and no shell: `-NoProfile -NonInteractive -EncodedCommand`, 5 s timeout, 16 KiB output cap; stderr and
   the exit code are not forwarded.
+- Title, Artist and AlbumTitle are cleaned **inside the script, before the join**: every control, U+2028/2029
+  and bidi override/isolate (U+001F, the field separator, is one) becomes a space, and each is cut to 200
+  characters. A hostile title therefore cannot change the field count or push the line past the output cap.
+  The TypeScript parser stays strict (exactly eight fields). The test applies the script's own pattern and limit
+  to realistic outputs; the PowerShell itself was never run.
 - WinRT `IAsyncOperation`s are awaited through `WindowsRuntimeSystemExtensions.AsTask` found by reflection,
   with a 3 s bound. This is the part that cannot be trusted until it has run on Windows.
 - Only the **current session** is addressed: a `player` name (in a command or the settings) is refused, not

@@ -3,7 +3,7 @@
 //
 // The native-messaging host: framing, the 64 KiB cap, hostile messages, and the real Core route
 // (startCore). No browser started the host.
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -247,5 +247,57 @@ describe("host against a real in-process Core", () => {
     });
     expect(reply).toEqual({ ok: false, error: "token_rejected" });
     expect((await core.api("GET", "/api/companion/pages")).json.pages).toHaveLength(0);
+  });
+});
+
+describe("Core's address file (core.json)", () => {
+  const setup = (mode: number, content: unknown = { url: "http://127.0.0.1:5123" }) => {
+    const dir = mkdtempSync(join(tmpdir(), "phoenix-host-info-"));
+    writeFileSync(join(dir, "session.token"), "from-file-0123456789\n");
+    const info = join(dir, "core.json");
+    writeFileSync(info, JSON.stringify(content));
+    chmodSync(info, mode);
+    return dir;
+  };
+  const run = async (dir: string, extra: Record<string, string> = {}) => {
+    const urls: string[] = [];
+    const reply = await handleMessage(good, {
+      env: { PHOENIX_DATA_DIR: dir, ...extra },
+      cwd: dir,
+      home: dir,
+      fetch: async (url: string) => {
+        urls.push(url);
+        return new Response(JSON.stringify({ id: "pn_x" }), { status: 200 });
+      },
+    });
+    return { reply, urls };
+  };
+
+  it("takes the port from the private file instead of guessing 4870", async () => {
+    const { urls } = await run(setup(0o600));
+    expect(urls[0]).toMatch(/^http:\/\/127\.0\.0\.1:5123\//);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "sends the token nowhere when the file is readable by others",
+    async () => {
+      const { reply, urls } = await run(setup(0o644));
+      expect(reply).toEqual({ ok: false, error: "bad_core_url" });
+      expect(urls).toEqual([]);
+    },
+  );
+
+  it("sends the token nowhere when the file names a non-loopback address", async () => {
+    const { reply, urls } = await run(setup(0o600, { url: "http://evil.example:80" }));
+    expect(reply).toEqual({ ok: false, error: "bad_core_url" });
+    expect(urls).toEqual([]);
+  });
+
+  it("keeps the default address when there is no file, and an explicit PHOENIX_CORE_URL wins", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "phoenix-host-nofile-"));
+    writeFileSync(join(dir, "session.token"), "from-file-0123456789\n");
+    expect((await run(dir)).urls[0]).toMatch(/^http:\/\/127\.0\.0\.1:4870\//);
+    const explicit = await run(setup(0o600), { PHOENIX_CORE_URL: "http://127.0.0.1:6001" });
+    expect(explicit.urls[0]).toMatch(/^http:\/\/127\.0\.0\.1:6001\//);
   });
 });

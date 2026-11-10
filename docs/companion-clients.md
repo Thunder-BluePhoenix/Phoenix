@@ -27,6 +27,10 @@ For programs on the machine that runs Core (the CLI, a future native-messaging h
 - `http://127.0.0.1:<port>` only; the token travels as `Authorization: Bearer <token>`; Core checks
   `Host` and `Origin` (requests without an `Origin` are allowed, browsers need an allow-listed one).
 - The token is `<data dir>/session.token`, mode `0600`, new on every Core start, deleted on stop.
+  Core also writes `<data dir>/core.json` (`{ "url": "http://127.0.0.1:<port>" }`, mode `0600`, deleted
+  on stop). The browser-extension host and the Stream Deck host read the address from it when
+  `PHOENIX_CORE_URL` is not set, and send nothing (`bad_core_url`) if the file is not a regular file
+  owned by the current user with no group/other access; with no file they keep the default port 4870.
   Never print it, log it, put it in a URL, or send it to anything but the loopback interface.
 - Routes a companion needs: `GET /api/health`, `GET /api/pet/state`, `GET /api/events`,
   `GET/POST /api/confirmations[/:id]`, `GET /api/agent-approvals`, `POST /api/agent-approvals/:id/decision`,
@@ -82,7 +86,7 @@ against a real Core, and has had no store review.** The Phase 89 exit criterion 
   the only trigger. On that click it reads the tab's address and title (`activeTab`) and runs one
   `scripting.executeScript` for the selection, never in a password field. It sends exactly
   `{ kind: "page", url, title, selection? }` through `chrome.runtime.sendNativeMessage`.
-  `url` is http or https only, without credentials or fragment, at most 2048 characters. `title` is
+  `url` is http or https only: origin and path, with no credentials, query or fragment (a query can hold a sign-in code or session id under a name no filter recognises), at most 2048 characters. `title` is
   one line, control and bidi characters stripped, 200 characters at most. `selection` is present only
   when the person selected text, cleaned the same way, 2000 characters at most. The button shows a
   badge and hover text for each result, including "host not installed" and "Phoenix not running".
@@ -104,7 +108,7 @@ against a real Core, and has had no store review.** The Phase 89 exit criterion 
 - **Windows (never run on Windows):** `install` writes the manifest under `%LOCALAPPDATA%\Phoenix\NativeMessagingHosts\<browser>`, a `phoenix-host.cmd` launcher (`@echo off` plus the quoted node and `main.js` paths), and registers it per user by spawning the system `reg.exe` with an argument array and no shell: `reg add HKCU\Software\Google\Chrome\NativeMessagingHosts\dev.phoenix.companion /ve /d <manifest> /f`, and the Chromium (`Software\Chromium`), Edge (`Software\Microsoft\Edge`) and Mozilla (`Software\Mozilla`) equivalents. `uninstall` runs `reg query` then `reg delete ... /f` for each key and removes the files. Before anything is written, every path (node, host, launcher, manifest) must be an absolute drive path of ASCII letters, digits, spaces and `. _ + -`; a quote, `%`, `& | < > ^ ( ) ! ; , = ' `` ` ``, a UNC or relative path, a trailing dot or space, or a path over 240 characters is refused. Evidence is only an injected fake runner and file system plus a table of good and hostile paths; the real `reg.exe`, a real browser reading the key, and cmd.exe running the launcher were never exercised. Chromium falls back to the Chrome key, so the Chromium key is written in addition to it, not instead.
 - **Firefox build:** `node apps/extension/scripts/build-firefox.js` writes `apps/extension/dist/firefox/` (the same `src/` and `icons/`, plus a derived manifest). The only differences from the Chrome manifest are `background.scripts` in place of `background.service_worker` (Firefox does not support service workers for extensions) and `browser_specific_settings.gecko` with `id` `phoenix-send-page@phoenix.invalid` (the id `install-host.js --firefox-id` must be given) and `strict_min_version` `115.0`. Permissions, CSP and everything else are identical, and Chrome's `manifest.json` is unchanged. No `browser`/`chrome` shim was added: Mozilla documents that Firefox implements the `chrome` namespace with callbacks, so the existing code is expected to run there as is, and a shim would have changed Chrome-side call shape without a proven need. The AMO-required `data_collection_permissions` is not declared (a submission decision).
 - Core: `POST /api/companion/page` (session token) validates again (same limits, unknown fields
-  refused, 256 KiB body cap), masks secrets found in the text, and stores a **page note** in the
+  refused, 256 KiB body cap), masks secrets found in the text, keeps only origin and path of the address (the query is dropped; a stored note from before that change is shown without its query), and stores a **page note** in the
   `page_notes` table, with audit entry `companion.page.received` (host name and selection length
   only). At most 200 notes: a full list refuses new ones rather than deleting the person's. No
   existing inbox or capture concept was fit for untrusted page text, so this is a new bounded list.

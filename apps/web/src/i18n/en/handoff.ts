@@ -80,6 +80,17 @@ export const handoff = {
   "handoff.attach.issueCreated": "Created issue #{number} in {repository}.",
   "handoff.attach.issueExisting": "Issue #{number} in {repository} already existed.",
   "handoff.attach.issueAddress": "Address: {url}",
+  "handoff.attach.prRepositoryLabel":
+    "GitHub repository (owner/name), only to comment on a pull request",
+  "handoff.attach.prNumberLabel": "Pull request number (leave both empty to copy only)",
+  "handoff.attach.prInvalid":
+    "Enter both the repository as owner/name and a pull request number, or leave both empty to copy only.",
+  "handoff.attach.delivery.prComment":
+    "Phoenix will post this text as ONE new comment on pull request #{number} in {repository} with the github capability. It never edits the description, and it does not check that the number is a pull request. You will be asked to confirm once more, it needs the write token, and the people watching the pull request are notified.",
+  "handoff.attach.prDetails":
+    "Repository {repository}, pull request #{number}, text SHA-256 {hash}, {chars} characters",
+  "handoff.attach.prTick": "I confirm: post this text as a new comment on {repository} #{number}",
+  "handoff.attach.prCommented": "Posted a comment on pull request #{number} in {repository}.",
 
   "handoff.guard.title": "Secret guard",
   "handoff.guard.intro":

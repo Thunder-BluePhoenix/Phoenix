@@ -71,3 +71,10 @@ Any real watch; the extension was never loaded in a real browser, the host was n
 
 ---
 Back to [TRACKER](TRACKER.md)
+
+## Review fixes (page notes, hosts)
+
+- Page notes keep origin and path only. The extension's `cleanUrl` and Core's `pageUrl` drop the query and the fragment (an OAuth `code`, `sid` or magic-link `k` has no name a secret filter would catch); the Settings list also hides the query of a note stored earlier. If the owner wants queries kept, that is a decision (an allow-list of parameter names).
+- `pageUrl` takes the audit host from the validated `URL`, never from redacted text (`redactSecrets("http://cookie:8080/x")` is not an address), and the insert and its audit row are one transaction, so an audit failure stores no note.
+- Core writes `<data dir>/core.json` (mode 0600, `{ "url": "http://127.0.0.1:<port>" }`, deleted on stop). The extension host and the Stream Deck host read the address from it when `PHOENIX_CORE_URL` is unset and refuse to send the token if the file is not a regular file owned by the current user without group/other access. With no file they keep port 4870. This narrows, but does not remove, the "something else bound the port" risk: a process running as the same user can still write `core.json` or the port. Never run on Windows (the mode/owner check is skipped there).
+- The Stream Deck `askHost` settles with `host_failed` on a child `error` event instead of crashing the plugin.

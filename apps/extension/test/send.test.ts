@@ -63,7 +63,7 @@ describe("Send page to Phoenix (click handler)", () => {
         host: "dev.phoenix.companion",
         message: {
           kind: "page",
-          url: "https://example.com/p?q=1",
+          url: "https://example.com/p",
           title: "Hello world",
           selection: "picked text",
         },

@@ -103,6 +103,10 @@ describe("find in page", () => {
     for (const mark of ["\u202e", "\u202a", "\u2066", "\u2069", "\u200f", "\u061c"]) {
       expect(findQueryProblem(`a${mark}b`)).toBe("bidi");
     }
+    // Zero-width format characters are invisible in a query: refused like the shell does.
+    for (const mark of ["\u200b", "\u200c", "\u200d", "\u2060", "\ufeff"]) {
+      expect(findQueryProblem(`a${mark}b`)).toBe("control");
+    }
   });
 
   it("opens with Ctrl/Cmd+F on the active tab, searches while typing and steps with Enter / Shift+Enter", async () => {

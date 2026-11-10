@@ -154,6 +154,7 @@ describe("manifest", () => {
       "ci.failure_details",
       "issue.create",
       "ci.rerun_failed",
+      "pr.comment",
     ]);
   });
 

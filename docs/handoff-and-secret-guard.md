@@ -146,18 +146,42 @@ Every attach is a preview first. Confirming needs the preview's hash, which cove
 so a changed note (for example a summary added after the preview) makes it stale. The text is scanned for secrets
 again before it is shown or handed back.
 
-| Target                   | What confirm does                                                                                                                                                                        |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Commit message           | Hands the text back to copy. Phoenix never runs `git commit`.                                                                                                                            |
-| Pull request description | Copy only, shown as **not wired**: Phoenix has no command that edits a PR.                                                                                                               |
-| Task                     | Creates a GitHub issue through the existing `github` `issue.create` command and the permission gateway (it confirms and needs the write token), with idempotency key `handoff-<noteId>`. |
+| Target                   | What confirm does                                                                                                                                                                                  |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Commit message           | Hands the text back to copy. Phoenix never runs `git commit`.                                                                                                                                      |
+| Pull request description | With a repository **and** a pull request number: posts ONE new comment through the separate `github` `pr.comment` command (see below). With neither: copy only. Phoenix never edits a description. |
+| Task                     | Creates a GitHub issue through the existing `github` `issue.create` command and the permission gateway (it confirms and needs the write token), with idempotency key `handoff-<noteId>`.           |
 
 The approval card for the task target is the github capability's own `issue.create` card. Its schema flags
 `repository` and `title` with `x-phoenix-confirm`, so the card names the repository and the issue title (clipped to
 80 characters from the front). The **body is not shown on the card**; it was shown in full in the attach preview whose
 hash the confirmation is bound to.
 
-Each attach is audited with the note id, target and delivery, never the text.
+### Pull request comment (second explicit step)
+
+The web flow for a pull request has two explicit steps before anything is written, and Core asks a third time:
+
+1. **Preview.** The user enters `owner/name` and the pull request number and previews. The preview shows the exact text
+   (the note, cut to 60000 characters), the repository, the number, the SHA-256 and the length of the text. The hash
+   the confirmation repeats now also covers the number.
+2. **Tick and confirm.** The user ticks "I confirm: post this text as a new comment on `owner/name` #N"; Confirm stays
+   disabled until then. A repository without a number (or the reverse) is refused, never guessed.
+3. **Core asks again.** Core calls `github.pr.comment` through the capability manager, which raises its own approval
+   card (side effect `external`) showing the repository, the number, the full SHA-256 of the text and its length
+   (`x-phoenix-confirm`); the handler recomputes the hash and length from the body and refuses a mismatch. Declining
+   writes nothing and is not audited as attached.
+
+`pr.comment` is `POST https://api.github.com/repos/{owner}/{repo}/issues/{number}/comments`
+([GitHub REST: Create an issue comment](https://docs.github.com/en/rest/issues/comments#create-an-issue-comment)). It
+uses the existing write-only `write_token` secret (the same one `issue.create` uses; the read token and
+`ci_write_token` are never used), the host is pinned (the `api_url` setting is ignored), redirects are refused, there
+is a 15 s timeout and a 256 KiB reply cap, secret-looking text is masked again with the logging redactor, errors are
+fixed texts, and only the comment id and a validated `https://github.com/` link are returned. It is **not idempotent**:
+confirming twice posts two comments (the endpoint notifies the people watching the pull request). It does not check
+that the number is a pull request; the card and the preview name the number so the user can.
+
+Each attach is audited with the note id, target and delivery, never the text (a pull request comment also records
+the repository, number and comment id).
 
 ### Web
 
@@ -171,8 +195,9 @@ as text.
   the published docs and are unverified.
 - The exit criterion "a planted test secret in an agent's commit is blocked" is **unmet**: it is covered with a
   simulated hook payload in a temp git repository, not by a real agent attempting a commit.
-- The exit criterion "a note is attached to a real PR" is **unmet**: PR attach is copy-only, the task path is a
-  fake `issue.create`.
+- The exit criterion "a note is attached to a real PR" is **unmet**: the PR path (`pr.comment`) and the task path
+  (`issue.create`) were tested only with a fake `fetch`; no real pull request or token was used, and the real
+  endpoint's behaviour (token permissions, rate limits, a number that is an issue) was never observed.
 - Detectors are heuristics. The guard is a safety net, not a guarantee, and it is bypassed by a command run outside
   an agent with the hook installed.
 - **The guard is not tamper-resistant.** An agent that can edit its own hook configuration (for example

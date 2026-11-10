@@ -3,17 +3,20 @@
 //
 // Phase 93: find in page, the chrome's half. The shell (`find_in_page`) is the enforcement point and
 // refuses a bad query with `bad_query`; this check is for feedback while the person types, and mirrors
-// the shell's limits: at most 200 characters, no control character, no bidirectional-control character.
+// the shell's limits: at most 200 characters, no control character, no zero-width character, no bidirectional-control character.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FIND_MAX_QUERY, type BrowserShell } from "./shell";
 import { BIDI, CONTROL } from "./unsafe-text";
 
 export type FindQueryProblem = "too_long" | "control" | "bidi";
 
+/** Zero-width format characters (ZWSP, ZWNJ, ZWJ, word joiner, BOM): invisible, so they hide in a query. Mirrors the shell. */
+const ZERO_WIDTH = /[\u200b-\u200d\u2060\ufeff]/;
+
 /** `null` when the query may be sent (the empty query clears the highlight and is allowed). */
 export function findQueryProblem(query: string): FindQueryProblem | null {
   if ([...query].length > FIND_MAX_QUERY) return "too_long";
-  if (CONTROL.test(query)) return "control";
+  if (CONTROL.test(query) || ZERO_WIDTH.test(query)) return "control";
   if (BIDI.test(query)) return "bidi";
   return null;
 }

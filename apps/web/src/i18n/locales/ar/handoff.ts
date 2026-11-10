@@ -77,6 +77,16 @@ export const handoff: Record<keyof typeof enhandoff, string> = {
   "handoff.attach.issueCreated": "أُنشئت المشكلة #{number} في {repository}.",
   "handoff.attach.issueExisting": "المشكلة #{number} في {repository} موجودة مسبقًا.",
   "handoff.attach.issueAddress": "العنوان: {url}",
+  "handoff.attach.prRepositoryLabel": "مستودع GitHub (owner/name)، فقط للتعليق على طلب سحب",
+  "handoff.attach.prNumberLabel": "رقم طلب السحب (اتركه والمستودع فارغين للنسخ فقط)",
+  "handoff.attach.prInvalid":
+    "أدخل المستودع بصيغة owner/name ورقم طلب السحب معًا، أو اتركهما فارغين للنسخ فقط.",
+  "handoff.attach.delivery.prComment":
+    "سينشر Phoenix هذا النص كتعليق جديد واحد على طلب السحب #{number} في {repository} عبر قدرة github. لا يعدّل الوصف أبدًا، ولا يتحقق من أن الرقم هو طلب سحب. ستُسأل للتأكيد مرة أخرى، ويحتاج إلى رمز الكتابة، ويُخطَر المتابعون لطلب السحب.",
+  "handoff.attach.prDetails":
+    "المستودع {repository}، طلب السحب #{number}، SHA-256 للنص {hash}، {chars} حرفًا",
+  "handoff.attach.prTick": "أؤكد: انشر هذا النص كتعليق جديد على {repository} #{number}",
+  "handoff.attach.prCommented": "تم نشر تعليق على طلب السحب #{number} في {repository}.",
 
   "handoff.guard.title": "حارس الأسرار",
   "handoff.guard.intro":

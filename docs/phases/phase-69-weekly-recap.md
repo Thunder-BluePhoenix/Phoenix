@@ -35,6 +35,8 @@ A second proactive source, deliberately separate from the Kage `ProactiveRuntime
 - **Fixed translated template with five whole numbers** (sessions, steps, commits, permissions granted, denied for the previous week). No title, name, path, project, agent or stored text; the numbers are clamped to whole non-negative integers. No model call and no network request (tests assert the fake network saw none). The text is in `recap-notice.ts` in all ten locales (machine-translated, unreviewed; Core chooses it from `ui.locale`) and follows the interface language at send time.
 - It does not use the Kage rate limit, delivered counter or dismissal state: `NotificationService.deliverLocal` stores a local notice without touching `ProactiveNotificationPolicy`. `core/runtime/test/recap-notice.test.ts` asserts the Kage rules are unchanged (the `recap` source cannot be opted into or given a cadence through `/api/proactive/preferences`, the Kage noise counters do not move, quiet hours still suppress and count a Kage insight).
 
+Previous week: the notice asks `recap(previous)` with the Monday day key of the previous week (`YYYY-MM-DD`, what `recap(week)` takes), and a test seeds the last day of the week before, both edges of the previous week and the first moment of the current week and asserts exactly the in-week counts.
+
 What was not done: it never ran across a real Monday, a real clock change or a real person; it was tested with a fake clock and in-process timers only. There is no OS-level notification, so a person who never opens Phoenix sees nothing.
 
 ## Deliverables

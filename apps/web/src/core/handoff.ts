@@ -57,12 +57,18 @@ export interface HandoffSettingsView {
   allow_cloud: boolean;
 }
 
+export type HandoffDelivery = "copy" | "github_issue" | "github_pr_comment";
+
 export interface HandoffAttachPreviewView {
   mode: "preview";
   target: HandoffTarget;
-  delivery: "copy" | "github_issue";
+  delivery: HandoffDelivery;
   wired: boolean;
   title?: string;
+  /** Pull request comment only: what the GitHub confirmation card will also show. */
+  number?: number;
+  body_sha256?: string;
+  body_chars?: number;
   text: string;
   hash: string;
   notes: string[];
@@ -71,10 +77,11 @@ export interface HandoffAttachPreviewView {
 export interface HandoffAttachAppliedView {
   mode: "applied";
   target: HandoffTarget;
-  delivery: "copy" | "github_issue";
+  delivery: HandoffDelivery;
   text: string;
   copy_only: boolean;
   issue?: { repository: string; number: number; url: string; status: "created" | "existing" };
+  comment?: { repository: string; number: number; id: number; url: string };
 }
 
 export interface SecretGuardFindingView {
@@ -118,6 +125,9 @@ export function outcomeKey(outcome: SecretGuardRecentView["outcome"]): MessageKe
 /** The sentence that tells the user what confirming a preview will do. */
 export function deliveryKey(preview: HandoffAttachPreviewView): MessageKey {
   if (preview.delivery === "github_issue" && preview.wired) return "handoff.attach.delivery.issue";
+  if (preview.delivery === "github_pr_comment" && preview.wired) {
+    return "handoff.attach.delivery.prComment";
+  }
   return preview.target === "pr_description"
     ? "handoff.attach.delivery.copyPr"
     : "handoff.attach.delivery.copy";
@@ -133,6 +143,9 @@ const num = (value: unknown): number =>
 const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 const records = (value: unknown): Json[] => (Array.isArray(value) ? value.filter(isRecord) : []);
+
+const readDelivery = (value: unknown): HandoffDelivery =>
+  value === "github_issue" || value === "github_pr_comment" ? value : "copy";
 
 const isTarget = (value: unknown): value is HandoffTarget =>
   value === "commit_message" || value === "pr_description" || value === "task";
@@ -201,9 +214,14 @@ export function readPreview(raw: unknown): HandoffAttachPreviewView | null {
   return {
     mode: "preview",
     target: raw.target,
-    delivery: raw.delivery === "github_issue" ? "github_issue" : "copy",
+    delivery: readDelivery(raw.delivery),
     wired: raw.wired === true,
     ...(typeof raw.title === "string" ? { title: raw.title } : {}),
+    ...(typeof raw.number === "number" && Number.isSafeInteger(raw.number)
+      ? { number: raw.number }
+      : {}),
+    ...(typeof raw.body_sha256 === "string" ? { body_sha256: raw.body_sha256 } : {}),
+    ...(typeof raw.body_chars === "number" ? { body_chars: raw.body_chars } : {}),
     text: str(raw.text),
     hash: str(raw.hash),
     notes: strings(raw.notes),
@@ -220,13 +238,22 @@ export function readApplied(raw: unknown): HandoffAttachAppliedView | null {
         status: raw.issue.status === "existing" ? ("existing" as const) : ("created" as const),
       }
     : undefined;
+  const comment = isRecord(raw.comment)
+    ? {
+        repository: str(raw.comment.repository),
+        number: num(raw.comment.number),
+        id: num(raw.comment.id),
+        url: str(raw.comment.url),
+      }
+    : undefined;
   return {
     mode: "applied",
     target: raw.target,
-    delivery: raw.delivery === "github_issue" ? "github_issue" : "copy",
+    delivery: readDelivery(raw.delivery),
     text: str(raw.text),
     copy_only: raw.copy_only === true,
     ...(issue ? { issue } : {}),
+    ...(comment ? { comment } : {}),
   };
 }
 

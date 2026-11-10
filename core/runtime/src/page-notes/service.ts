@@ -65,25 +65,31 @@ function multiLine(text: string): string {
     .trim();
 }
 
-/** The page address: http(s) only, no credentials, no fragment, at most MAX_PAGE_URL characters. */
-function pageUrl(value: unknown): string {
+/**
+ * The page address: http(s) only, no credentials, and only origin + path. The query and the fragment
+ * are dropped: a query can hold a sign-in code, a session id or a magic-link key under a name no
+ * secret filter would recognise, and Phoenix has no use for it. `host` comes from the validated
+ * URL, never from the redacted text (redaction can turn "cookie:8080" into text that is no address).
+ */
+function pageUrl(value: unknown): { url: string; host: string } {
   if (typeof value !== "string" || value === "") throw invalid('"url" must be text');
   if (codePoints(value) > MAX_PAGE_URL) throw invalid(`"url" is longer than ${MAX_PAGE_URL}`);
   if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\s]/u.test(value)) throw invalid('"url" has unsafe characters');
-  let url: URL;
+  let parsed: URL;
   try {
-    url = new URL(value);
+    parsed = new URL(value);
   } catch {
     throw invalid('"url" is not an address');
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:")
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
     throw invalid('"url" must be http or https');
-  if (url.username !== "" || url.password !== "") throw invalid('"url" must not carry credentials');
-  // A fragment can hold a sign-in token (an OAuth implicit grant); the page itself does not need it.
-  url.hash = "";
-  const text = redactSecrets(url.href);
+  if (parsed.username !== "" || parsed.password !== "")
+    throw invalid('"url" must not carry credentials');
+  const host = parsed.host;
+  // Only the path is redacted; the origin was validated above and stays as it is.
+  const text = `${parsed.origin}${redactSecrets(parsed.pathname)}`;
   if (codePoints(text) > MAX_PAGE_URL) throw invalid(`"url" is longer than ${MAX_PAGE_URL}`);
-  return text;
+  return { url: text, host };
 }
 
 function pageTitle(value: unknown): string {
@@ -134,7 +140,7 @@ export class PageNotesService {
     for (const key of Object.keys(body)) {
       if (!Object.hasOwn(ALLOWED_KEYS, key)) throw invalid(`Unexpected field "${key}"`);
     }
-    const url = pageUrl(body.url);
+    const { url, host } = pageUrl(body.url);
     const title = pageTitle(body.title);
     const selected = pageSelection(body.selection);
     if (this.count() >= MAX_PAGE_NOTES)
@@ -146,22 +152,30 @@ export class PageNotesService {
       title,
       selected_text: selected,
     };
-    this.d.db
-      .prepare(
-        "INSERT INTO page_notes (id, received_at, url, title, selected_text) VALUES (?, ?, ?, ?, ?)",
-      )
-      .run(view.id, view.received_at, view.url, view.title, view.selected_text);
-    this.d.audit.record({
-      actor: "companion",
-      action: "companion.page.received",
-      decision: "info",
-      // The host name only: a full address can carry a query the person did not mean to share.
-      details: {
-        id: view.id,
-        host: new URL(url).host,
-        selection_chars: selected === null ? 0 : codePoints(selected),
-      },
-    });
+    // The row and its audit entry commit together: a failure in either leaves nothing behind.
+    this.d.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.d.db
+        .prepare(
+          "INSERT INTO page_notes (id, received_at, url, title, selected_text) VALUES (?, ?, ?, ?, ?)",
+        )
+        .run(view.id, view.received_at, view.url, view.title, view.selected_text);
+      this.d.audit.record({
+        actor: "companion",
+        action: "companion.page.received",
+        decision: "info",
+        // The host name only, taken from the validated address.
+        details: {
+          id: view.id,
+          host,
+          selection_chars: selected === null ? 0 : codePoints(selected),
+        },
+      });
+      this.d.db.exec("COMMIT");
+    } catch (error) {
+      this.d.db.exec("ROLLBACK");
+      throw error;
+    }
     return view;
   }
 
