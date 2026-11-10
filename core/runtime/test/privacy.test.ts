@@ -205,6 +205,7 @@ describe("derived data in the inventory (Phases 35-45)", () => {
       "browser_profiles",
       "scheduled_awake",
       "team_status",
+      "dictation_stats",
       "page_notes",
     ]);
     expect(inv.derived).toEqual([
@@ -234,6 +235,7 @@ describe("derived data in the inventory (Phases 35-45)", () => {
       expect.objectContaining({ id: "browser_profiles", count: 0 }),
       expect.objectContaining({ id: "scheduled_awake", count: 0 }),
       expect.objectContaining({ id: "team_status", count: 0 }),
+      expect.objectContaining({ id: "dictation_stats", count: 0, retention_days: null }),
       expect.objectContaining({ id: "page_notes", count: 0 }),
     ]);
     // With AI off the sentence is unchanged: nothing is sent anywhere.

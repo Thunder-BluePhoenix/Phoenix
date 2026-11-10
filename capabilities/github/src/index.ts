@@ -25,6 +25,7 @@ import {
   type PrSeen,
 } from "./events";
 import { ciFailureDetails } from "./ci-failure";
+import { CI_WRITE_TOKEN_SECRET, parseCiRerunInput, rerunFailedJobs, verifyRerun } from "./rerun";
 import {
   createIssue,
   IDEMPOTENCY_KEY_PATTERN,
@@ -49,6 +50,7 @@ import {
 } from "./parse";
 
 export * from "./ci-failure";
+export * from "./rerun";
 export * from "./client";
 export * from "./events";
 export * from "./issues";
@@ -386,7 +388,7 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
       name: "GitHub",
       version: "0.1.0",
       description:
-        "Pull requests, review requests, GitHub Actions runs and deployments from the repositories you pick, plus failure details (failed jobs, steps, log tail) of any run on request. Watching is read-only (GET only). The one command that writes, issue.create, creates a GitHub issue only when you confirm it, using a separate write_token. The read token is optional: without one only public repositories work, at GitHub's low unauthenticated rate limit (60 requests per hour).",
+        "Pull requests, review requests, GitHub Actions runs and deployments from the repositories you pick, plus failure details of any run on request. Watching is read-only (GET only). Two commands write, only when you confirm, each with its own secret: issue.create (write_token) creates an issue; ci.rerun_failed (ci_write_token) re-runs the failed jobs of one run on api.github.com. The read token is optional: without one only public repositories work, at 60 requests per hour.",
       license: "GPL-3.0-or-later",
       homepage: "https://github.com/Thunder-BluePhoenix/Phoenix",
       events: ["github.*"],
@@ -411,6 +413,11 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
           name: WRITE_TOKEN_SECRET,
           description:
             "GitHub token that may create issues (fine-grained: Issues read and write). Used only by issue.create after you confirm; the read token is never used for writing. Leave empty and Phoenix cannot write to GitHub.",
+        },
+        {
+          name: CI_WRITE_TOKEN_SECRET,
+          description:
+            "GitHub token that may re-run workflow runs (fine-grained: Actions read and write). Used only by ci.rerun_failed after you confirm; neither the read token nor the issue write_token is ever used for it. Leave empty and Phoenix cannot re-run CI.",
         },
       ],
       commands: [
@@ -468,6 +475,34 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
                 items: { type: "string", minLength: 1, maxLength: MAX_LABEL },
               },
               idempotency_key: { type: "string", pattern: IDEMPOTENCY_KEY_PATTERN },
+            },
+          },
+        },
+        {
+          name: "ci.rerun_failed",
+          description:
+            "Re-runs the FAILED jobs of one GitHub Actions run (POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs on api.github.com). WRITES to GitHub and always asks for your confirmation, showing the repository and run id. Needs the ci_write_token secret. Afterwards it re-reads the run and reports its status. Nothing calls it automatically.",
+          side_effect: "external",
+          permissions: ["network", "external_api"],
+          timeout_ms: 60_000,
+          input_schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["repository", "run_id"],
+            properties: {
+              // Flagged so the confirmation card names the repository; `run_id` ends in _id,
+              // which the manager already shows.
+              repository: {
+                type: "string",
+                pattern: REPOSITORY_PATTERN,
+                "x-phoenix-confirm": true,
+              },
+              run_id: {
+                type: "integer",
+                minimum: 1,
+                maximum: Number.MAX_SAFE_INTEGER,
+                "x-phoenix-confirm": true,
+              },
             },
           },
         },
@@ -599,6 +634,27 @@ export function createGithubCapability(options: GithubCapabilityOptions = {}) {
         } catch (err) {
           if (err instanceof GithubError) throw err;
           throw new GithubError("http", "Unexpected error while creating the GitHub issue");
+        }
+      },
+      async "ci.rerun_failed"(input, ctx) {
+        // Strict validation first: a bad input never reaches the secret store or the network.
+        const { owner, repo, runId } = parseCiRerunInput(input);
+        const repository = `${owner}/${repo}`;
+        try {
+          const requested = await rerunFailedJobs(input, {
+            token: await ctx.secret(CI_WRITE_TOKEN_SECRET),
+            signal: ctx.signal,
+          });
+          // Verify: a GET with the READ token (if any) against the same pinned host. A missing or
+          // unreadable read token only makes the re-read unauthenticated; it never fails the call.
+          const http = new GithubClient({
+            token: await ctx.secret("token").catch(() => undefined),
+            signal: ctx.signal,
+          });
+          return { ...requested, verification: await verifyRerun(http, repository, runId) };
+        } catch (err) {
+          if (err instanceof GithubError) throw err;
+          throw new GithubError("http", "Unexpected error while re-running the GitHub CI run");
         }
       },
     },

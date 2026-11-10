@@ -28,6 +28,7 @@ import {
   localDay,
   patchSettings,
   readSettings,
+  realTimers,
   summarise,
   type DictationSettings,
   type FinishedSession,
@@ -44,6 +45,23 @@ import { ErrorCode, PhoenixError, createEvent } from "@phoenix/protocol";
 import type { MappingRule, StateEngine } from "@phoenix/state-engine";
 
 export const DICTATION_SETTINGS_KEY = "dictation.settings";
+/** The user's retention for `dictation_stats` (its own key: the dictation settings stay untouched). */
+export const DICTATION_STATS_RETENTION_KEY = ["dictation", "stats_retention"].join(".");
+/** Days a statistics row may be kept. `null` (the default) keeps rows until the user deletes them. */
+export const DICTATION_STATS_RETENTION_CHOICES = [30, 90, 365] as const;
+export type DictationStatsRetentionDays = (typeof DICTATION_STATS_RETENTION_CHOICES)[number] | null;
+/** How often the pruning pass runs after Core starts. */
+export const DICTATION_STATS_PRUNE_INTERVAL_MS = 86_400_000;
+
+/**
+ * The first local day that is still kept: rows with a `day` before it are older than `days` days.
+ * A row dated exactly `days` calendar days ago is kept; one more day is deleted. Calendar
+ * arithmetic at noon, so a daylight-saving shift never moves the boundary.
+ */
+export function statsRetentionCutoffDay(nowMs: number, days: number): string {
+  const [y, m, d] = localDay(nowMs).split("-").map(Number) as [number, number, number];
+  return localDay(new Date(y, m - 1, d - days, 12).getTime());
+}
 
 /**
  * How Fawkes shows a dictation. No timeout on purpose: the indicator must not disappear while
@@ -117,6 +135,8 @@ export class DictationRuntime implements DictationApi {
   private readonly now: () => number;
   private readonly rules: readonly MappingRule[];
   private readonly offKill: () => void;
+  private cancelPrune: (() => void) | null = null;
+  private closed = false;
 
   constructor(private readonly d: DictationRuntimeDeps) {
     this.now = d.now ?? Date.now;
@@ -143,6 +163,9 @@ export class DictationRuntime implements DictationApi {
 
   /** Ends any session (shutdown): audio zeroed, `dictation.idle` published, rules removed. */
   close(): void {
+    this.closed = true;
+    this.cancelPrune?.();
+    this.cancelPrune = null;
     this.sessions.abortAll("shutdown");
     this.offKill();
     this.d.state.removeRules(this.rules);
@@ -296,6 +319,78 @@ export class DictationRuntime implements DictationApi {
       rows,
       this.load().typing_wpm ?? DEFAULT_DICTATION_SETTINGS.typing_wpm,
       localDay(this.now()),
+    );
+  }
+
+  /** The saved retention for statistics rows; `null` (the default, and any stored value that is not a choice) keeps them until deleted. */
+  statsRetention(): { retention_days: DictationStatsRetentionDays } {
+    const stored = this.d.settings.get<unknown>(DICTATION_STATS_RETENTION_KEY, null);
+    const known = DICTATION_STATS_RETENTION_CHOICES.find((days) => days === stored);
+    return { retention_days: known ?? null };
+  }
+
+  /** Saves the retention. It is applied by the next pruning pass (Core start or the daily timer), not now. */
+  setStatsRetention(input: unknown): { retention_days: DictationStatsRetentionDays } {
+    const bad = (message: string) => new PhoenixError(ErrorCode.INVALID_REQUEST, message);
+    if (typeof input !== "object" || input === null || Array.isArray(input))
+      throw bad("The body must be an object");
+    const keys = Object.keys(input);
+    if (keys.length !== 1 || keys[0] !== "retention_days")
+      throw bad("Only `retention_days` is accepted");
+    const value = (input as { retention_days: unknown }).retention_days;
+    const choice =
+      value === null ? null : DICTATION_STATS_RETENTION_CHOICES.find((days) => days === value);
+    if (choice === undefined) throw bad("`retention_days` must be null, 30, 90 or 365");
+    this.d.settings.set(DICTATION_STATS_RETENTION_KEY, choice);
+    void this.d.permissions.audit.record({
+      actor: "user",
+      action: "dictation.stats.retention",
+      decision: "info",
+      details: { retention_days: choice },
+    });
+    return { retention_days: choice };
+  }
+
+  /** How many statistics rows exist (for the privacy inventory). */
+  statsRowCount(): number {
+    return (this.d.db.prepare("SELECT COUNT(*) AS n FROM dictation_stats").get() as { n: number })
+      .n;
+  }
+
+  /**
+   * Deletes `dictation_stats` rows older than the saved retention, by their `day`; no other table
+   * is touched. With no retention set (the default) nothing is deleted. The audit entry carries the
+   * count only. Returns how many rows were deleted.
+   */
+  pruneStats(): number {
+    const { retention_days: days } = this.statsRetention();
+    if (days === null) return 0;
+    const cutoff = statsRetentionCutoffDay(this.now(), days);
+    const deleted = Number(
+      this.d.db.prepare("DELETE FROM dictation_stats WHERE day < ?").run(cutoff).changes,
+    );
+    if (deleted > 0)
+      void this.d.permissions.audit.record({
+        actor: "core",
+        action: "dictation.stats.retention_prune",
+        decision: "info",
+        details: { retention_days: days, rows: deleted },
+      });
+    return deleted;
+  }
+
+  /** Runs the pruning pass now, then once a day on the injected timers until `close()`. */
+  startStatsRetention(): void {
+    if (this.closed) return;
+    this.cancelPrune?.();
+    try {
+      this.pruneStats();
+    } catch (err) {
+      this.d.logger.warn("dictation statistics pruning failed", { error: String(err) });
+    }
+    this.cancelPrune = (this.d.timers ?? realTimers).after(
+      () => this.startStatsRetention(),
+      DICTATION_STATS_PRUNE_INTERVAL_MS,
     );
   }
 

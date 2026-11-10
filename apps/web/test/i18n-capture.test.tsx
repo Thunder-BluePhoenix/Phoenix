@@ -138,6 +138,7 @@ function screenIn(locale: ActiveLocale) {
     "GET /api/dictation/status": () => DICTATION_STATUS,
     "GET /api/dictation/settings": () => DICTATION_SETTINGS,
     "GET /api/dictation/stats": () => DICTATION_STATS,
+    "GET /api/dictation/stats/retention": () => ({ retention_days: null }),
     "GET /api/notetaker/status": () => NOTETAKER_STATUS,
     "GET /api/voice/status": () => VOICE_STATUS,
     "GET /api/multimodal/status": () => CAPTURE_STATUS,

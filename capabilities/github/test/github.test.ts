@@ -133,11 +133,13 @@ describe("manifest and configuration", () => {
     expect(view.secrets).toEqual([
       expect.objectContaining({ name: "token", set: true }),
       expect.objectContaining({ name: "write_token", set: false }),
+      expect.objectContaining({ name: "ci_write_token", set: false }),
     ]);
     expect(view.commands).toEqual([
       expect.objectContaining({ name: "status", side_effect: "read" }),
       expect.objectContaining({ name: "ci.failure_details", side_effect: "read" }),
       expect.objectContaining({ name: "issue.create", side_effect: "external" }),
+      expect.objectContaining({ name: "ci.rerun_failed", side_effect: "external" }),
     ]);
     expect(JSON.stringify(view)).not.toContain(MOCK_TOKEN);
     expect(() =>

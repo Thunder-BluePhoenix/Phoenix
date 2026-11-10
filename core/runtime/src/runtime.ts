@@ -78,7 +78,7 @@ import { GraphRuntime } from "./graph";
 import { MeetingReviewRuntime } from "./meeting-review";
 import { PlanningRuntime } from "./planning";
 import { MultimodalRuntime } from "./multimodal";
-import { DictationRuntime } from "./dictation";
+import { DictationRuntime, type DictationRuntimeDeps } from "./dictation";
 import { VoiceRuntime, type VoiceRuntimeDeps } from "./voice";
 import { NotetakerRuntime, type NotetakerConsentChannel } from "./notetaker";
 import { ConsentChannel } from "./consent-channel";
@@ -121,6 +121,7 @@ import { FawkesRebirthService } from "./fawkes-rebirth/service";
 import { BrowserProfilesService } from "./browser-profiles/service";
 import { MusicConnectorsService } from "./music-connectors/service";
 import { PageNotesService } from "./page-notes/service";
+import { BrowserAssistService } from "./browser-assist";
 import { FilterListsService, type FilterListsTuning } from "./filter-lists/service";
 import type { BrowserRelay } from "@phoenix/capability-browser";
 import { QuitCheckService } from "./quit-check";
@@ -233,6 +234,8 @@ export interface RuntimeOptions {
   gitExec?: GitExec;
   /** Speech recogniser for dictation (tests inject a fake). Default: whisper.cpp over stdin when a Whisper model is set, else none. */
   dictationRecognizer?: SpeechRecognizer;
+  /** Dictation clock and timers (tests inject a fake clock and hand-driven timers for the statistics retention pass). */
+  dictation?: Pick<DictationRuntimeDeps, "now" | "timers">;
   /** Speech recogniser for the voice assistant (tests inject a fake). Default: the dictation one. */
   voiceRecognizer?: SpeechRecognizer;
   /** Voice timing and gate overrides (tests inject timers and a small utterance gate). */
@@ -423,6 +426,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly filterLists: FilterListsService;
   /** Phase 95: served to the Phoenix browser's chrome page through `/api/browser/relay/*`; absent in runtimes without a browser. */
   readonly browserRelay: BrowserRelay | undefined;
+  /** Phase 95: proposes browser steps from the person's words with an on-device model only. */
+  readonly browserAssist: BrowserAssistService;
   /** The sharing choices and teammate view of {@link teamLink}, as the routes see them. */
   readonly teamStatus: TeamLinkService | undefined;
   /** Phoenix MCP server (Phase 76): off by default; a separate loopback listener with per-client tokens. */
@@ -618,6 +623,8 @@ export class PhoenixRuntime implements CoreServices {
       aiEnabled: () => this.ai.aiSettings().enabled,
       recognizer: options.dictationRecognizer ?? buildSpeechRecognizer(speechEngineConfig(options)),
       logger: this.logger.child("dictation"),
+      ...(options.dictation?.now ? { now: options.dictation.now } : {}),
+      ...(options.dictation?.timers ? { timers: options.dictation.timers } : {}),
     });
     this.notetakerConsent =
       options.consentSecret && !options.notetakerConsent
@@ -950,6 +957,11 @@ export class PhoenixRuntime implements CoreServices {
     });
     this.pageNotes = new PageNotesService({ db: this.db, audit: this.permissions.audit });
     this.browserRelay = options.browserRelay;
+    this.browserAssist = new BrowserAssistService({
+      ai: this.ai.service,
+      relay: options.browserRelay,
+      audit: this.permissions.audit,
+    });
     this.filterLists = new FilterListsService({
       settings: this.settings,
       audit: this.permissions.audit,
@@ -1309,6 +1321,7 @@ export class PhoenixRuntime implements CoreServices {
     }, this.options.tickMs ?? 1_000);
     this.ticker.unref();
     this.privacy.prune();
+    this.dictation.startStatsRetention();
     this.recap.maintain();
     void this.agentSafety.maintain();
     // Not awaited: reading a large docs folder must not delay the API coming up.

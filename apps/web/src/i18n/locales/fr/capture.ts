@@ -289,13 +289,19 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.dictation.stats.appWords":
     "{app} ({n, plural, one {# mot} many {# de mots} other {# mots}})",
   "capture.dictation.stats.note":
-    "Il s’agit uniquement de compteurs. Les noms d’applications vous restent privés et ne sont envoyés nulle part. Core les conserve jusqu’à ce que vous les supprimiez.",
+    "Il s’agit uniquement de compteurs. Les noms d’applications vous restent privés et ne sont envoyés nulle part.",
   "capture.dictation.stats.confirmGroup": "Confirmer la suppression des statistiques",
   "capture.dictation.stats.confirmText":
     "Supprimer toutes les statistiques de dictée ? Cette action est irréversible.",
   "capture.dictation.stats.confirmYes": "Oui, tout supprimer",
   "capture.dictation.stats.confirmKeep": "Les conserver",
   "capture.dictation.stats.delete": "Supprimer toutes les statistiques de dictée",
+  "capture.dictation.stats.retention.label": "Conserver les statistiques pendant",
+  "capture.dictation.stats.retention.none": "Jusqu’à ce que je les supprime",
+  "capture.dictation.stats.retention.help":
+    "Les statistiques plus anciennes sont supprimées au démarrage de Core et une fois par jour, pas au moment du choix. Seules les statistiques de dictée sont concernées. « Jusqu’à ce que je les supprime » conserve tout, comme avant.",
+  "capture.dictation.saved.statsRetention":
+    "La durée de conservation des statistiques a été enregistrée.",
   "capture.pill.waiting": "En attente du microphone…",
   "capture.pill.listening": "À l’écoute : votre microphone est activé",
   "capture.pill.recognising": "Reconnaissance…",

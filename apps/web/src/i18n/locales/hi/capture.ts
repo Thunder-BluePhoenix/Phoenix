@@ -278,13 +278,18 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.dictation.stats.unknownApp": "अज्ञात ऐप",
   "capture.dictation.stats.appWords": "{app} ({n, plural, one {# शब्द} other {# शब्द}})",
   "capture.dictation.stats.note":
-    "ये केवल गिनतियाँ हैं। ऐप के नाम केवल आपके लिए निजी हैं और कहीं नहीं भेजे जाते। Core उन्हें तब तक रखता है जब तक आप उन्हें हटा नहीं देते।",
+    "ये केवल गिनतियाँ हैं। ऐप के नाम केवल आपके लिए निजी हैं और कहीं नहीं भेजे जाते।",
   "capture.dictation.stats.confirmGroup": "आँकड़े हटाने की पुष्टि करें",
   "capture.dictation.stats.confirmText":
     "डिक्टेशन के सभी आँकड़े हटाएँ? इसे पूर्ववत नहीं किया जा सकता।",
   "capture.dictation.stats.confirmYes": "हाँ, सब हटाएँ",
   "capture.dictation.stats.confirmKeep": "रहने दें",
   "capture.dictation.stats.delete": "डिक्टेशन के सभी आँकड़े हटाएँ",
+  "capture.dictation.stats.retention.label": "आँकड़े कितने समय रखें",
+  "capture.dictation.stats.retention.none": "जब तक मैं हटा न दूँ",
+  "capture.dictation.stats.retention.help":
+    "पुराने आँकड़े Core शुरू होने पर और दिन में एक बार हटाए जाते हैं, चुनते ही नहीं। केवल डिक्टेशन के आँकड़े प्रभावित होते हैं। “जब तक मैं हटा न दूँ” पहले की तरह सब रखता है।",
+  "capture.dictation.saved.statsRetention": "आँकड़े रखने की अवधि सहेजी गई।",
   "capture.pill.waiting": "माइक्रोफ़ोन की प्रतीक्षा है…",
   "capture.pill.listening": "सुन रहा है: आपका माइक्रोफ़ोन चालू है",
   "capture.pill.recognising": "पहचान हो रही है…",

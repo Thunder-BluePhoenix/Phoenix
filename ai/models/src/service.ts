@@ -18,6 +18,7 @@ import {
   AiDisabledError,
   AllProvidersFailedError,
   ModelError,
+  NoLocalModelError,
   NoProviderError,
   type Attempt,
 } from "./errors";
@@ -186,6 +187,13 @@ interface RoutingHints {
 export interface GenerateTask extends RoutingHints {
   kind: "generate";
   request: GenerateRequest;
+  /**
+   * Pin this generate call to one vetted on-device provider (`locality: "local"` AND `trustedLocal`).
+   * Any other provider, cloud or an unvetted loopback server, is refused by the router and again
+   * right before the call. Set only through `AiService.generateLocal`, which also refuses before
+   * anything is routed.
+   */
+  localProvider?: string;
 }
 export interface StreamTask extends RoutingHints {
   kind: "stream";
@@ -426,6 +434,49 @@ export class AiService {
     };
   }
 
+  /** The id of the vetted on-device provider `generateLocal` would use, if any. Makes no network call. */
+  localGenerateProvider(): string | undefined {
+    return this.pickLocal()?.id;
+  }
+
+  private pickLocal(provider?: string): ModelProvider | undefined {
+    const settings = this.requireEnabled();
+    const eligible = this.deps.registry
+      .list()
+      .filter((p) => p.locality === "local" && p.trustedLocal === true && p.capabilities.generate)
+      .sort((a, b) => a.id.localeCompare(b.id));
+    if (provider !== undefined) return eligible.find((p) => p.id === provider);
+    return eligible.find((p) => p.id === settings.preferred) ?? eligible[0];
+  }
+
+  /**
+   * Generate with a vetted on-device provider ONLY (`locality: "local"` and `trustedLocal`). It
+   * never falls back to a cloud provider or an unvetted loopback server, whatever the settings,
+   * the routing, the AI_external_processing grant or the opt-ins say. If no such provider exists
+   * (or the named one is not one) it throws `NoLocalModelError` BEFORE the request is routed or
+   * serialized, so nothing in `request` reaches any provider. Use it for text that must never leave
+   * this device, for example the words of a web page.
+   */
+  async generateLocal(
+    request: GenerateRequest,
+    options: { provider?: string; signal?: AbortSignal; timeoutMs?: number } = {},
+  ): Promise<GenerateOutcome> {
+    const chosen = this.pickLocal(options.provider);
+    if (!chosen) throw new NoLocalModelError();
+    const outcome = await this.run({
+      kind: "generate",
+      request,
+      localProvider: chosen.id,
+      preferred: chosen.id,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+    if (outcome.provenance.locality !== "local") {
+      throw new ModelError("config", outcome.provider, "a non-local provider answered");
+    }
+    return outcome;
+  }
+
   run(task: GenerateTask): Promise<GenerateOutcome>;
   run(task: StreamTask): Promise<StreamOutcome>;
   run(task: EmbedTask): Promise<EmbedOutcome>;
@@ -436,7 +487,7 @@ export class AiService {
     // A route beats the global `preferred`, and then the route is the ONLY provider tried. The
     // gate below still applies to it exactly as to any other provider.
     const routed =
-      task.preferred === undefined
+      task.preferred === undefined && pinnedLocal(task) === undefined
         ? this.routeFor(task.kind, task.request.purpose, settings)
         : undefined;
     if (routed !== undefined && !this.deps.registry.get(routed.provider)) {
@@ -460,8 +511,8 @@ export class AiService {
       settings,
       task.request.purpose,
       // A routed task talks to its route only: no other provider is even health-checked.
-      routed?.provider ?? (task.kind === "embed" ? task.localProvider : undefined),
-      task.kind === "embed",
+      routed?.provider ?? pinnedLocal(task),
+      task.kind === "embed" || pinnedLocal(task) !== undefined,
       [routed?.provider, task.preferred ?? settings.preferred],
     );
     const plan = route(
@@ -473,7 +524,7 @@ export class AiService {
         maxCostTier: task.maxCostTier,
         preferred: task.preferred ?? settings.preferred,
         ...(routed ? { routedProvider: routed.provider } : {}),
-        localProvider: task.kind === "embed" ? task.localProvider : undefined,
+        localProvider: pinnedLocal(task),
       },
       this.routerState(settings, this.deps.auditCloudSend !== undefined),
     );
@@ -593,6 +644,20 @@ export class AiService {
     for (let n = 1; ; n++) {
       if (task.signal?.aborted)
         throw new ModelError("aborted", provider.id, "The request was cancelled");
+      // A pinned local call never reaches any other provider, whatever the router decided.
+      if (
+        task.kind === "generate" &&
+        task.localProvider !== undefined &&
+        (provider.id !== task.localProvider ||
+          provider.locality !== "local" ||
+          provider.trustedLocal !== true)
+      ) {
+        throw new ModelError(
+          "config",
+          provider.id,
+          "this call may only use a vetted local provider",
+        );
+      }
       // Re-checked before every call: the grant may have been revoked while we backed off.
       const gate = this.gateFor(
         provider,
@@ -653,6 +718,11 @@ async function openStream(
     yield* remainder;
   }
   return { stream: chunks(), provenance: first.value.provenance };
+}
+
+/** The local provider a generate or embed task is pinned to, if any. */
+function pinnedLocal(task: AiTask): string | undefined {
+  return task.kind === "stream" ? undefined : task.localProvider;
 }
 
 /** Provider errors we did not write (custom providers, bugs) are shown generically: no raw text. */

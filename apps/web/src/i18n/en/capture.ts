@@ -278,12 +278,17 @@ export const capture = {
   "capture.dictation.stats.unknownApp": "unknown app",
   "capture.dictation.stats.appWords": "{app} ({n, plural, one {# word} other {# words}})",
   "capture.dictation.stats.note":
-    "These are counts only. App names are private to you and are not sent anywhere. Core keeps them until you delete them.",
+    "These are counts only. App names are private to you and are not sent anywhere.",
   "capture.dictation.stats.confirmGroup": "Confirm deleting statistics",
   "capture.dictation.stats.confirmText": "Delete every dictation statistic? This cannot be undone.",
   "capture.dictation.stats.confirmYes": "Yes, delete all",
   "capture.dictation.stats.confirmKeep": "Keep them",
   "capture.dictation.stats.delete": "Delete all dictation statistics",
+  "capture.dictation.stats.retention.label": "Keep statistics for",
+  "capture.dictation.stats.retention.none": "Until I delete them",
+  "capture.dictation.stats.retention.help":
+    "Older statistics are deleted when Core starts and once a day, never at the moment you choose. Only dictation statistics are affected. “Until I delete them” keeps everything, as before.",
+  "capture.dictation.saved.statsRetention": "Statistics retention saved.",
   "capture.pill.waiting": "Waiting for the microphone…",
   "capture.pill.listening": "Listening: your microphone is on",
   "capture.pill.recognising": "Recognising…",

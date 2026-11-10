@@ -14,6 +14,7 @@ import {
   type DictationSettings,
   type DictationStarted,
   type DictationStats,
+  type DictationStatsRetention,
   type DictationStatus,
   type DictationVocabulary,
 } from "../core/dictation";
@@ -247,6 +248,8 @@ export function DictateButton({
 
 // ── Settings ─────────────────────────────────────────────────────────────────────────────────────
 
+const STATS_RETENTION_DAYS = [30, 90, 365] as const;
+
 const emptyVocabulary: DictationVocabulary = { dictionary: [], replacements: [], snippets: [] };
 
 /** Settings > Dictation: consent, clean-up modes, vocabulary and statistics. Off by default. */
@@ -257,6 +260,7 @@ export function DictationSettingsSection() {
   const [status, setStatus] = useState<DictationStatus | null>(null);
   const [settings, setSettings] = useState<DictationSettings | null>(null);
   const [stats, setStats] = useState<DictationStats | null>(null);
+  const [retention, setRetention] = useState<DictationStatsRetention | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [vocabulary, setVocabulary] = useState<DictationVocabulary>(emptyVocabulary);
@@ -264,14 +268,16 @@ export function DictationSettingsSection() {
 
   const reload = useCallback(async () => {
     try {
-      const [st, se, ss] = await Promise.all([
+      const [st, se, ss, re] = await Promise.all([
         client.request<DictationStatus>("GET", "/api/dictation/status"),
         client.request<DictationSettings>("GET", "/api/dictation/settings"),
         client.request<DictationStats>("GET", "/api/dictation/stats"),
+        client.request<DictationStatsRetention>("GET", "/api/dictation/stats/retention"),
       ]);
       setStatus(st);
       setSettings(se);
       setStats(ss);
+      setRetention(re);
       setVocabulary(se.vocabulary);
       setLoadError(null);
     } catch {
@@ -422,6 +428,39 @@ export function DictationSettingsSection() {
           }
         }}
       />
+      <div className="field">
+        <label htmlFor="dictation-stats-retention">
+          {t("capture.dictation.stats.retention.label")}
+        </label>
+        <select
+          id="dictation-stats-retention"
+          value={
+            retention?.retention_days === null || !retention ? "none" : retention.retention_days
+          }
+          disabled={busy || !retention}
+          onChange={async (e) => {
+            setSaved(null);
+            const retention_days = e.target.value === "none" ? null : Number(e.target.value);
+            const next = await run<DictationStatsRetention>(
+              "POST",
+              "/api/dictation/stats/retention",
+              { retention_days },
+            );
+            if (next) {
+              setRetention(next);
+              setSaved(t("capture.dictation.saved.statsRetention"));
+            }
+          }}
+        >
+          <option value="none">{t("capture.dictation.stats.retention.none")}</option>
+          {STATS_RETENTION_DAYS.map((n) => (
+            <option key={n} value={n}>
+              {t("capture.dictation.stats.days", { n })}
+            </option>
+          ))}
+        </select>
+        <p className="muted small">{t("capture.dictation.stats.retention.help")}</p>
+      </div>
     </section>
   );
 }

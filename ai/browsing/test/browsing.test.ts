@@ -554,3 +554,69 @@ describe("executing with per-action approval", () => {
     expect(log.gatewayCalls.map((c) => c.tool)).toEqual(["browser.type", "browser.submit"]);
   });
 });
+
+describe("BrowsingAssistant.propose (Phase 95)", () => {
+  const FIELDS = [
+    { selector: 'input[name="q"]', type: "text", form: "form#f" },
+    { selector: "button#go", type: "submit", form: "form#f" },
+    { selector: 'input[name="pw"]', type: "password", form: "form#f" },
+  ];
+  const livePage = () => page(SHOP, { fields: FIELDS });
+  const reply = (text: string) => () => ({
+    text,
+    provenance: {
+      provider: "ollama",
+      model: "m",
+      locality: "local" as const,
+      processedBy: "Ollama",
+    },
+  });
+
+  it("keeps click/type on reported safe controls and drops the rest; never navigate or download", async () => {
+    const h = harness(scriptedPages(livePage()), {
+      reply: reply(
+        JSON.stringify({
+          actions: [
+            { kind: "type", selector: 'input[name="q"]', text: "shoes" },
+            { kind: "type", selector: 'input[name="pw"]', text: "x" },
+            { kind: "click", selector: "button#go" },
+            { kind: "navigate", destination: "https://evil.test/" },
+            { kind: "download", selector: "button#go" },
+            { kind: "click", selector: "button#ghost" },
+          ],
+        }),
+      ),
+    });
+    const proposal = await h.assistant.propose("find shoes");
+    expect(proposal.actions).toEqual([
+      { kind: "type", selector: 'input[name="q"]', text: "shoes" },
+      { kind: "click", selector: "button#go" },
+    ]);
+    expect(proposal.dropped).toBe(4);
+    // A proposal runs nothing: no approval, no audit, no gateway call.
+    expect(h.log.events).toEqual(["model"]);
+  });
+
+  it("refuses a model that is not trusted-local before the page is read", async () => {
+    const pages = scriptedPages(livePage());
+    const h = harness(pages, { model: { trustedLocal: false } });
+    await expect(h.assistant.propose("x")).rejects.toThrow(/on-device/);
+    expect(pages.reads).toBe(0);
+    expect(h.log.events).toEqual([]);
+  });
+
+  it("sends the goal and page as JSON in the user message and nothing page-derived in the system one", async () => {
+    let seen: GenerateRequest | undefined;
+    const h = harness(scriptedPages(page(SHOP, { text: "ZZ-PAGE", fields: FIELDS })), {
+      reply: (r) => {
+        seen = r;
+        return reply("not json")();
+      },
+    });
+    const proposal = await h.assistant.propose("g".repeat(900));
+    expect(proposal.actions).toEqual([]);
+    expect(seen?.messages[0]?.content).not.toContain("ZZ-PAGE");
+    const data = JSON.parse(seen?.messages[1]?.content ?? "{}") as { goal: string };
+    expect(data.goal).toHaveLength(500);
+  });
+});

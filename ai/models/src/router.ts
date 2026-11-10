@@ -136,6 +136,19 @@ export function route(task: RouteTask, state: RouterState): RoutePlan {
       });
       continue;
     }
+    // A pinned task (embeddings, or `AiService.generateLocal`) only ever uses a vetted on-device provider.
+    if (
+      task.localProvider !== undefined &&
+      task.kind !== "embed" &&
+      (p.locality !== "local" || p.trustedLocal !== true)
+    ) {
+      refused.push({
+        ...base,
+        reasons: [],
+        refusedBecause: "this call may only use a vetted on-device provider",
+      });
+      continue;
+    }
     if (task.localProvider !== undefined && p.id !== task.localProvider) {
       refused.push({
         ...base,

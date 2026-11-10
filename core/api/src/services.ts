@@ -30,6 +30,7 @@ import type { ScheduledAwakeApi } from "./scheduled-awake-routes";
 import type { FawkesRebirthApi } from "./fawkes-rebirth-routes";
 import type { BrowserProfilesApi } from "./browser-profile-routes";
 import type { BrowserRelayApi } from "./browser-relay-routes";
+import type { BrowserAssistApi } from "./browser-assist-routes";
 import type { MusicConnectorsApi } from "./music-connector-routes";
 import type { FilterListsApi } from "./filter-list-routes";
 import type { ChatApprovalsApi } from "./chat-approval-routes";
@@ -1345,6 +1346,8 @@ export interface CoreServices {
   filterLists?: FilterListsApi;
   /** Phoenix browser relay (Phase 95): the chrome page long-polls it for page reads and approved actions. */
   browserRelay?: BrowserRelayApi;
+  /** Fawkes browsing assistant (Phase 95): builds a proposed plan with an on-device model only; never runs an action. */
+  browserAssist?: BrowserAssistApi;
   /** Chat approvals (Phase 86): the provider callback door; the capability is off until enabled. */
   chatApprovals?: ChatApprovalsApi;
   /** Remote access relay (Phase 87): off by default; absent without an OS secret store. */

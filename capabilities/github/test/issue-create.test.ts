@@ -76,7 +76,7 @@ describe("manifest", () => {
     );
     const spec = createGithubCapability().manifest.commands.find((c) => c.name === "issue.create");
     expect(spec?.permissions).toEqual(["network", "external_api"]);
-    expect(view.secrets.map((s) => s.name)).toEqual(["token", "write_token"]);
+    expect(view.secrets.map((s) => s.name)).toEqual(["token", "write_token", "ci_write_token"]);
     expect(view.permissions.map((p) => p.permission)).toEqual(["network", "external_api"]);
   });
 });

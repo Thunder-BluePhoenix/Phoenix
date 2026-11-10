@@ -22,7 +22,7 @@ import { PermissionGateway } from "@phoenix/permissions";
 import { EventStore, MemorySecretStore, openDatabase, type Database } from "@phoenix/persistence";
 import { PolicyEngine, PolicyStore } from "@phoenix/policy";
 import { StateEngine } from "@phoenix/state-engine";
-import { createCiFailureAgent, type ModelCall } from "../src";
+import { createCiFailureAgent, createCiRerunAgent, type ModelCall } from "../src";
 
 // The github test mock server is a test helper of that package.
 import { startMockGithub, type MockGithub } from "../../../capabilities/github/testing/mock-github";
@@ -77,10 +77,13 @@ export interface RigOptions {
   githubData?: (g: MockGithub) => void;
   /** Replaces the fake model (used by a throwaway script that talks to a real Ollama). */
   model?: ModelCall;
+  /** Also register the CI re-run agent (Phase 31). */
+  withRerun?: boolean;
 }
 
 export interface Rig {
   orchestrator: Orchestrator;
+  manager: CapabilityManager;
   permissions: PermissionGateway;
   gh: MockGithub;
   repoDir: string;
@@ -239,6 +242,7 @@ export async function makeRig(options: RigOptions = {}): Promise<Rig> {
         context: { engine, viewer: ownerViewer("me") },
         nonce: () => "NONCE",
       }),
+      ...(options.withRerun ? [createCiRerunAgent()] : []),
     ],
   });
 
@@ -267,6 +271,7 @@ export async function makeRig(options: RigOptions = {}): Promise<Rig> {
     pointRun,
     hasCommits,
     orchestrator,
+    manager,
     permissions,
     gh,
     repoDir,

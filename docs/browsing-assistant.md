@@ -7,8 +7,9 @@ No browser, network, model or device is touched, and no real test site has been 
 **Phase 95 host pieces (fakes only; nothing ran in a real webview, window, browser, site or model):**
 the browser capability (`capabilities/browser`), the relay between Core and the Phoenix browser's chrome page,
 the Rust commands `page_snapshot` / `page_action`, the chrome-page relay loop and an approval card. Details in
-[Phoenix browser actions](#phoenix-browser-actions-phase-95). **`BrowsingAssistant` itself is still NOT wired into
-Core**: it is a library (see [Why the assistant is not wired](#why-the-assistant-is-not-wired-into-core)).
+[Phoenix browser actions](#phoenix-browser-actions-phase-95). **`BrowsingAssistant.propose` is now reachable through
+`POST /api/browser/assist`** (see [Core entry point](#core-entry-point-post-apibrowserassist)). That route has only run
+against fakes: never with a real model, page or browser.
 
 Earlier, built (simulated): a pure page reader (`page-snapshot.ts`) that turns an HTML snapshot into a `PublicPage`, and an injection suite (`ai/evaluation/test/browsing-injection.test.ts`). **Still unbuilt:** any measurement of a real model and any real-site flow.
 
@@ -157,26 +158,46 @@ exists. `Approvals.tsx` renders it (action, page, control/destination, full type
 confirmation is also what the phone link and chat approvals list (they show only the summary, which never holds
 typed text, and the card details as Core serialises them).
 
-### Why the assistant is not wired into Core
+### Core entry point: `POST /api/browser/assist`
 
-A safe seam does not exist yet. `BrowsingAssistant` needs a `LocalPageModel`, and the pieces Core has
-(`AiService.run`) restrict an embedding to one local provider but offer **no local-only mode for `generate`**: with
-cloud opt-in on, `internal` data (page text) can route to a cloud provider, and the assistant would only notice
-afterwards from the result's provenance. Sending the page first and checking later is exactly what the rules forbid.
-Wiring needs a local-only task option in `ai/models` (a `generate` analogue of `localProvider`) and a user-facing
-entry point (a chat command or route) that builds the plan from the person's own words. Neither was built. Until
-then the assistant is a library: an integration builds `new BrowsingAssistant({ page: createRelayPageReader(relay),
-gateway: <ToolGateway>, tools: BROWSER_TOOL_NAMES, approval, audit, model, ... })`. The capability and relay ARE
-wired into Core (`builtinCapabilities`, `PhoenixRuntime.browserRelay`, `/api/browser/relay/*`), installed and not
-enabled like every other built-in.
+Session-token route. Body `{ "goal": string }`: 1-500 characters after trimming (longer is clipped), control,
+bidi and zero-width characters are rejected with 400, other fields are rejected.
+
+- **Local model only, by construction.** `AiService.generateLocal` (`ai/models`) is the `generate` analogue of the
+  embedding `localProvider` pin. It considers only providers that are `locality: "local"` AND `trustedLocal` (today
+  the built-in Ollama adapter; an unvetted loopback server does not count). With none, it throws `NoLocalModelError`
+  **before** the request is routed or serialized. A cloud preference, a per-purpose route, the
+  `AI_external_processing` grant and the cloud opt-ins do not matter: the router refuses every other provider and
+  `callProvider` refuses again right before the call. The route checks for a local model before it reads the page,
+  so with no model no page text is even fetched.
+- **Answer is data.** `{ status: "ok", plan: { page_url, actions }, dropped, processed_by }`. `propose` parses the
+  model's reply strictly: only `click`, `type`, `submit`, at most 5, each on a control the reader reported, through
+  the same `checkAction` as a hand-written plan (protected fields, forms with protected controls, typed text limit).
+  `navigate` and `download` are never proposed (an address or file chosen by a model that read attacker text is the
+  way page data could be carried out). Anything else the model says, including tool-call text, is discarded and
+  counted in `dropped`.
+- **Nothing runs.** The route has no gateway, no approval and no way to dispatch. A step is run only when a client
+  calls `POST /api/capabilities/browser/commands/<kind>`, which raises the existing approval card, and the capability
+  re-reads the page and re-checks the action after approval.
+- **Fails closed.** Statuses: `no_local_model` (none configured, AI off, or the router found the local model
+  unavailable), `local_model_failed` (the local model errored mid-call), `no_browser` (no relay in this Core). None
+  falls back to a cloud provider.
+- **Audit.** `browser.assist.proposed` with the page (query stripped) and counts; never the goal, page text or plan text.
+- **Page text stays untrusted:** it goes through `readPageSnapshot`, the payment-number redaction and the user-message
+  JSON envelope exactly as `answer` does; the system message holds no page text.
+
+Tests: `ai/models/test/local-generate.test.ts`, `ai/browsing/test/browsing.test.ts` (`propose`),
+`core/runtime/test/browser-assist.test.ts` (running Core, a fake Ollama behind a recording fetch, the 35 fixtures
+of `ai/evaluation/test/browsing-injection-cases.ts`). All simulated. Not built: any web UI for the route, and no
+real model has ever answered it.
 
 ## Limitations and unmet exit criteria
 
 - The phase's exit criteria (a multi-step flow on a real test site; injection tests passing) are **not
   claimed**. The injection suite exists but is simulated: no real browser, site or model was used.
 - Built with fakes only: browser tools in the gateway, the approval card and a browser source for the reader (see
-  above). Unbuilt: measurement of a real model against the visible attacker text, a local-only `generate` seam and
-  an entry point for the assistant in Core, log-in, and any run in a real webview or on a real site. Controls
+  above). Unbuilt: measurement of a real model against the visible attacker text, a web UI for `POST /api/browser/assist`,
+  log-in, and any run in a real webview or on a real site. Controls
   without a unique id or name cannot be acted on.
 - Login is only possible by the user typing credentials themselves; the assistant never fills them.
 - Field protection is lexical over the reader's metadata; a hostile page can mislabel a field. The user

@@ -410,6 +410,7 @@ function mountSettings(
   } = {},
 ) {
   let settings: DictationSettings = { ...SETTINGS, ...overrides.settings };
+  let retention: { retention_days: 30 | 90 | 365 | null } = { retention_days: null };
   const api = fakeApi({
     "GET /api/dictation/status": () => ({
       ...STATUS,
@@ -420,6 +421,9 @@ function mountSettings(
     "POST /api/dictation/settings": (body) => (settings = { ...settings, ...(body as object) }),
     "GET /api/dictation/stats": () => ({ ...STATS, ...overrides.stats }),
     "DELETE /api/dictation/stats": () => ({ deleted: 3 }),
+    "GET /api/dictation/stats/retention": () => retention,
+    "POST /api/dictation/stats/retention": (body) =>
+      (retention = body as { retention_days: 30 | 90 | 365 | null }),
   });
   const client = new PhoenixClient({
     token: "tok",
@@ -587,6 +591,26 @@ describe("Settings: Dictation", () => {
       ).toBe(true),
     );
     await screen.findByText("All dictation statistics were deleted.");
+  });
+
+  it("shows keep-until-deleted by default and saves a chosen statistics retention", async () => {
+    const api = mountSettings({ settings: { enabled: true } });
+    const select = (await screen.findByLabelText("Keep statistics for")) as HTMLSelectElement;
+    expect(select.value).toBe("none");
+    fireEvent.change(select, { target: { value: "90" } });
+    await screen.findByText("Statistics retention saved.");
+    const post = api.calls.find(
+      (c) => c.method === "POST" && c.path === "/api/dictation/stats/retention",
+    );
+    expect(post?.body).toEqual({ retention_days: 90 });
+    fireEvent.change(select, { target: { value: "none" } });
+    await waitFor(() =>
+      expect(
+        api.calls.filter(
+          (c) => c.method === "POST" && c.path === "/api/dictation/stats/retention",
+        )[1]?.body,
+      ).toEqual({ retention_days: null }),
+    );
   });
 
   it("reports an unavailable Core instead of an empty form", async () => {

@@ -1035,6 +1035,9 @@ importers:
       '@phoenix/ai-agents':
         specifier: workspace:*
         version: link:../../ai/agents
+      '@phoenix/ai-browsing':
+        specifier: workspace:*
+        version: link:../../ai/browsing
       '@phoenix/ai-context':
         specifier: workspace:*
         version: link:../../ai/context

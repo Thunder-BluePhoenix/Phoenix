@@ -277,13 +277,18 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.dictation.stats.unknownApp": "aplikasi tidak dikenal",
   "capture.dictation.stats.appWords": "{app} ({n, plural, other {# kata}})",
   "capture.dictation.stats.note":
-    "Ini hanya hitungan. Nama aplikasi bersifat pribadi bagi Anda dan tidak dikirim ke mana pun. Core menyimpannya sampai Anda menghapusnya.",
+    "Ini hanya hitungan. Nama aplikasi bersifat pribadi bagi Anda dan tidak dikirim ke mana pun.",
   "capture.dictation.stats.confirmGroup": "Konfirmasi penghapusan statistik",
   "capture.dictation.stats.confirmText":
     "Hapus semua statistik dikte? Tindakan ini tidak dapat dibatalkan.",
   "capture.dictation.stats.confirmYes": "Ya, hapus semua",
   "capture.dictation.stats.confirmKeep": "Simpan saja",
   "capture.dictation.stats.delete": "Hapus semua statistik dikte",
+  "capture.dictation.stats.retention.label": "Simpan statistik selama",
+  "capture.dictation.stats.retention.none": "Sampai saya menghapusnya",
+  "capture.dictation.stats.retention.help":
+    "Statistik yang lebih lama dihapus saat Core dimulai dan sekali sehari, bukan saat Anda memilih. Hanya statistik dikte yang terpengaruh. “Sampai saya menghapusnya” menyimpan semuanya, seperti sebelumnya.",
+  "capture.dictation.saved.statsRetention": "Masa penyimpanan statistik disimpan.",
   "capture.pill.waiting": "Menunggu mikrofon…",
   "capture.pill.listening": "Mendengarkan: mikrofon Anda aktif",
   "capture.pill.recognising": "Mengenali…",

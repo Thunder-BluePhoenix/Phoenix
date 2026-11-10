@@ -5,6 +5,7 @@
 // RunContext the orchestrator hands them.
 export * from "./ci-data";
 export * from "./ci-failure";
+export * from "./ci-rerun";
 export * from "./ci-specialist";
 export * from "./grounding";
 export * from "./meeting-review";

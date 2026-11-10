@@ -276,13 +276,17 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.dictation.stats.unknownApp": "تطبيق غير معروف",
   "capture.dictation.stats.appWords":
     "{app} ({n, plural, zero {# كلمة} one {كلمة واحدة} two {كلمتان} few {# كلمات} many {# كلمة} other {# كلمة}})",
-  "capture.dictation.stats.note":
-    "هذه أعداد فقط. أسماء التطبيقات خاصة بك ولا تُرسل إلى أي مكان. يحتفظ بها Core إلى أن تحذفها.",
+  "capture.dictation.stats.note": "هذه أعداد فقط. أسماء التطبيقات خاصة بك ولا تُرسل إلى أي مكان.",
   "capture.dictation.stats.confirmGroup": "تأكيد حذف الإحصاءات",
   "capture.dictation.stats.confirmText": "هل تحذف كل إحصاءات الإملاء؟ لا يمكن التراجع عن ذلك.",
   "capture.dictation.stats.confirmYes": "نعم، احذف الكل",
   "capture.dictation.stats.confirmKeep": "أبقِها",
   "capture.dictation.stats.delete": "حذف كل إحصاءات الإملاء",
+  "capture.dictation.stats.retention.label": "الاحتفاظ بالإحصاءات لمدة",
+  "capture.dictation.stats.retention.none": "إلى أن أحذفها",
+  "capture.dictation.stats.retention.help":
+    "تُحذف الإحصاءات الأقدم عند بدء Core ومرة كل يوم، وليس لحظة الاختيار. يقتصر الأمر على إحصاءات الإملاء. خيار «إلى أن أحذفها» يُبقي كل شيء كما كان.",
+  "capture.dictation.saved.statsRetention": "تم حفظ مدة الاحتفاظ بالإحصاءات.",
   "capture.pill.waiting": "في انتظار الميكروفون…",
   "capture.pill.listening": "يستمع: الميكروفون يعمل",
   "capture.pill.recognising": "جارٍ التعرّف…",

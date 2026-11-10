@@ -54,6 +54,10 @@
 //   GET    /api/dictation/settings  POST /api/dictation/settings {enabled?, typing_wpm?, default_mode?, app_modes?, vocabulary?}
 //   GET    /api/dictation/stats     aggregates + words, time saved, average WPM, streak, top apps
 //   DELETE /api/dictation/stats     delete every statistics row ("delete all dictation statistics")
+//   GET    /api/dictation/stats/retention  POST /api/dictation/stats/retention {retention_days: null|30|90|365}
+//        How long statistics rows are kept. null (the default) keeps them until deleted. A number deletes
+//        rows whose day is more than that many days ago, at Core start and once a day; the body is exactly
+//        that one field. The audit log records the count deleted, never content.
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
 import { expectObject, route, type Route } from "./http";
 import type { CoreServices } from "./services";
@@ -116,6 +120,8 @@ export interface DictationStatsView {
   top_apps: { app: string; words: number; sessions: number }[];
 }
 
+export type DictationStatsRetentionView = { retention_days: 30 | 90 | 365 | null };
+
 export interface DictationStartedView {
   id: string;
   max_seconds: number;
@@ -151,6 +157,8 @@ export interface DictationApi {
   cancel(id: string): void;
   stats(): DictationStatsView;
   deleteStats(): { deleted: number };
+  statsRetention(): DictationStatsRetentionView;
+  setStatsRetention(input: unknown): DictationStatsRetentionView;
   /** True when the session exists, takes audio and no stream was opened for it yet. */
   streamAvailable(id: string): boolean;
   openStream(id: string, onEnded: (reason: string) => void): DictationStreamHandle;
@@ -188,5 +196,9 @@ export function dictationRoutes(s: CoreServices): Route[] {
     }),
     route("GET", "/api/dictation/stats", () => dictation().stats()),
     route("DELETE", "/api/dictation/stats", () => dictation().deleteStats()),
+    route("GET", "/api/dictation/stats/retention", () => dictation().statsRetention()),
+    route("POST", "/api/dictation/stats/retention", async ({ body }) =>
+      dictation().setStatsRetention(await body()),
+    ),
   ];
 }

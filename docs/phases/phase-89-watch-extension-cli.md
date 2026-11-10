@@ -47,13 +47,17 @@ Phoenix from the wrist, the browser and the terminal.
 
 A static read-only review by tools (not a human audit) found that `--json` output did not escape format and bidirectional characters; it now does (fixed, with a test).
 
+### Follow-up: Windows registration and Firefox build
+
+`apps/extension/scripts/install-host.js` now has a Windows branch (per-user manifest folder, `.cmd` launcher, `reg add`/`reg query`/`reg delete` under HKCU for Chrome, Chromium, Edge and Mozilla, spawned with argv and no shell, paths validated first) and `scripts/build-firefox.js` emits `dist/firefox/` with `background.scripts` and `browser_specific_settings.gecko` (id, `strict_min_version` 115.0) and no other change. Registry layouts and Firefox manifest requirements are cited in the script comments (MDN and Chromium/Edge docs). Tests: `test/windows.test.ts` (fake runner, fake fs, path tables, spawn arguments) and `test/firefox.test.ts`. The `browser ?? chrome` shim was not added because Firefox supports `chrome.*` callbacks and nothing proved it necessary. **Never run on Windows; never loaded in Firefox.**
+
 ### What was not built
 
 The Apple Watch app, the extension's PR-page Fawkes and Meet record button. `phoenix ask` answers only from memory and was never run against a real model.
 
 ### What was not run
 
-Any real watch; the extension was never loaded in a real browser, the host was never started by one, never run against a real Core process (only an in-process test Core), no store review, no Windows host registration. Any use of the CLI beyond tests against fakes and loopback servers. Open items are in the [gap register](../gaps.md).
+Any real watch; the extension was never loaded in a real browser, the host was never started by one, never run against a real Core process (only an in-process test Core), no store review, the Windows registration was never run on Windows (fake runner only), the Firefox build was never loaded in Firefox. Any use of the CLI beyond tests against fakes and loopback servers. Open items are in the [gap register](../gaps.md).
 
 ## Notes & risks
 

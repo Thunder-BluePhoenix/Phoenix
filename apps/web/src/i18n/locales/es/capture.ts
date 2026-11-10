@@ -285,13 +285,19 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.dictation.stats.unknownApp": "aplicación desconocida",
   "capture.dictation.stats.appWords": "{app} ({n, plural, one {# palabra} other {# palabras}})",
   "capture.dictation.stats.note":
-    "Son solo recuentos. Los nombres de las aplicaciones son privados y no se envían a ninguna parte. Core los conserva hasta que los elimines.",
+    "Son solo recuentos. Los nombres de las aplicaciones son privados y no se envían a ninguna parte.",
   "capture.dictation.stats.confirmGroup": "Confirmar la eliminación de las estadísticas",
   "capture.dictation.stats.confirmText":
     "¿Eliminar todas las estadísticas de dictado? Esta acción no se puede deshacer.",
   "capture.dictation.stats.confirmYes": "Sí, eliminar todo",
   "capture.dictation.stats.confirmKeep": "Conservarlas",
   "capture.dictation.stats.delete": "Eliminar todas las estadísticas de dictado",
+  "capture.dictation.stats.retention.label": "Conservar las estadísticas durante",
+  "capture.dictation.stats.retention.none": "Hasta que las elimine",
+  "capture.dictation.stats.retention.help":
+    "Las estadísticas más antiguas se eliminan cuando Core se inicia y una vez al día, no en el momento de elegir. Solo afecta a las estadísticas de dictado. «Hasta que las elimine» lo conserva todo, como antes.",
+  "capture.dictation.saved.statsRetention":
+    "Se guardó el periodo de conservación de las estadísticas.",
   "capture.pill.waiting": "Esperando el micrófono…",
   "capture.pill.listening": "Escuchando: tu micrófono está activado",
   "capture.pill.recognising": "Reconociendo…",

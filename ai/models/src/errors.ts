@@ -84,6 +84,20 @@ export interface Attempt {
   calls: number;
 }
 
+/**
+ * A call that may only use a vetted on-device model found none. Thrown before the request is
+ * routed or serialized: nothing was sent anywhere, and it is never retried against another provider.
+ */
+export class NoLocalModelError extends PhoenixError {
+  constructor() {
+    super(
+      ErrorCode.CAPABILITY_UNAVAILABLE,
+      "No local model is configured; this request is never sent to a cloud or unvetted provider",
+    );
+    this.name = "NoLocalModelError";
+  }
+}
+
 /** Nothing was allowed to run the task (privacy, missing grant, offline, ...). */
 export class NoProviderError extends PhoenixError {
   readonly attempts: readonly Attempt[];

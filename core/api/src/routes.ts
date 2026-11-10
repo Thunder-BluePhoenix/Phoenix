@@ -40,6 +40,7 @@ import { pageNoteRoutes } from "./page-note-routes";
 import { browserProfileRoutes } from "./browser-profile-routes";
 import { musicConnectorRoutes } from "./music-connector-routes";
 import { browserRelayRoutes } from "./browser-relay-routes";
+import { browserAssistRoutes } from "./browser-assist-routes";
 import { filterListRoutes } from "./filter-list-routes";
 import { chatApprovalRoutes } from "./chat-approval-routes";
 import { remoteRelayRoutes } from "./remote-relay-routes";
@@ -453,6 +454,7 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...(s.musicConnectors ? musicConnectorRoutes(s.musicConnectors) : []),
     ...(s.filterLists ? filterListRoutes(s.filterLists) : []),
     ...(s.browserRelay ? browserRelayRoutes(s.browserRelay) : []),
+    ...(s.browserAssist ? browserAssistRoutes(s.browserAssist) : []),
     ...(s.chatApprovals ? chatApprovalRoutes(s.chatApprovals) : []),
     ...(s.remoteRelay ? remoteRelayRoutes(s.remoteRelay) : []),
     ...(s.pageNotes ? pageNoteRoutes(s.pageNotes) : []),

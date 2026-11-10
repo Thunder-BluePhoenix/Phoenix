@@ -5,7 +5,7 @@
 | Stage | Stage 15 — Phoenix browser |
 | Release target | Post-v2.0 track |
 | Priority | Medium |
-| Status | 🟨 Built as code with fakes; every check is simulated. Gateway browser tools (`capabilities/browser`), a relay to the Phoenix browser's chrome page, Rust `page_snapshot`/`page_action` commands, a real-source `PageReader` (`createRelayPageReader`) and an approval card exist, tested against fakes and Tauri's mock runtime only. **`BrowsingAssistant` is not wired into Core**: Core has no local-only `generate` mode, so page text could reach a cloud provider before the assistant noticed. No real webview, page, site or model was used; neither exit criterion is met |
+| Status | 🟨 Built as code with fakes; every check is simulated. Gateway browser tools (`capabilities/browser`), a relay to the Phoenix browser's chrome page, Rust `page_snapshot`/`page_action` commands, a real-source `PageReader` (`createRelayPageReader`) and an approval card exist, tested against fakes and Tauri's mock runtime only. **`BrowsingAssistant.propose` is reachable through `POST /api/browser/assist`** (local-only `AiService.generateLocal`, fakes only; no web UI). No real webview, page, site or model was used; neither exit criterion is met |
 | Depends on | [Phase 93 — Phoenix Mini Browser](phase-93-phoenix-mini-browser.md), [Phase 30 — Policy Gateway & Tool Gateway](phase-30-policy-and-tool-gateway.md) |
 | Unblocks | — |
 
@@ -23,17 +23,18 @@ Fawkes can read and act on web pages, only with your approval.
 
 ## Deliverables
 
-- `ai/browsing` (`@phoenix/ai-browsing`): page-as-data prompting, approval and audit flow, protected-field refusal. Built, not wired; simulated evidence only. See [browsing-assistant.md](../browsing-assistant.md).
+- `ai/browsing` (`@phoenix/ai-browsing`): page-as-data prompting, approval and audit flow, protected-field refusal. Built; `propose` is wired to `POST /api/browser/assist` with a local-only generate; simulated evidence only. See [browsing-assistant.md](../browsing-assistant.md).
 - `ai/browsing/src/page-snapshot.ts`: pure reader (hidden/script/comment/form-value removal, field descriptions, safe links, character hygiene, size limits) and an untrusted-content envelope helper. Simulated.
 - `ai/evaluation/test/browsing-injection.test.ts`: 35 injection cases against the reader and the real assistant with a gullible scripted model. Simulated; not part of `ALL_SCENARIOS`.
 - `capabilities/browser` (`@phoenix/capability-browser`): tools `browser.click|type|submit|navigate|download`, side effect `external`, approved page URL carried and re-checked, strict selector allow-pattern, relay to the chrome page. Fakes only.
 - `core/permissions/src/browser-card.ts`, `Approvals.tsx`: approval card with action, page (host+path), selector/destination and the full typed text. Fakes only.
 - Rust `page_snapshot` / `page_action` (chrome window only), `apps/web/src/browser/relay.ts`, `/api/browser/relay/*`: the real browser source and executor; mock runtime and fakes only.
-- Not built: wiring `BrowsingAssistant` into Core (needs a local-only generate seam and an entry point), log-in, anything run in a real webview.
+- `ai/models` `AiService.generateLocal` (vetted on-device providers only; throws `NoLocalModelError` before anything is serialized) and `core/runtime/src/browser-assist.ts` + `POST /api/browser/assist` (goal <= 500 chars, control/bidi rejected; returns a proposed plan as data; nothing executes without the per-action approval card). Fake local model only.
+- Not built: a web UI for the assist route, log-in, anything run in a real webview or with a real model.
 
 ## Exit criteria
 
-- [ ] A multi-step flow on a test site completes with an approval per side effect. **Unmet.** Tools, relay, reader source and approval card exist against fakes, but no real site, webview or approval click was used, and the assistant is not wired into Core.
+- [ ] A multi-step flow on a test site completes with an approval per side effect. **Unmet.** Tools, relay, reader source and approval card exist against fakes, but no real site, webview or approval click was used, and the assist route has never run with a real model or page.
 - [ ] Injection tests pass. **Unmet.** A simulated suite exists and passes, but it uses a scripted model and no real browser or site; real-model resistance was not measured.
 
 ## Implementation notes
@@ -53,7 +54,7 @@ A static read-only review by tools (not a human audit) found that a page could c
 
 ### What was not built
 
-Wiring `BrowsingAssistant` into Core (no local-only generate seam, no entry point), log-in, any run in a real webview, and any measurement of a real model against visible attacker text. The reader cannot see class-hidden or white-on-white text.
+A web UI for `/api/browser/assist`, log-in, any run in a real webview, and any measurement of a real model against visible attacker text. The reader cannot see class-hidden or white-on-white text.
 
 ### What was not run
 

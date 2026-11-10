@@ -277,13 +277,18 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.dictation.stats.unknownApp": "অজানা অ্যাপ",
   "capture.dictation.stats.appWords": "{app} ({n, plural, one {# শব্দ} other {# শব্দ}})",
   "capture.dictation.stats.note":
-    "এগুলো শুধু গণনা। অ্যাপের নাম শুধু আপনার জন্য গোপন থাকে এবং কোথাও পাঠানো হয় না। আপনি না মোছা পর্যন্ত Core এগুলো রেখে দেয়।",
+    "এগুলো শুধু গণনা। অ্যাপের নাম শুধু আপনার জন্য গোপন থাকে এবং কোথাও পাঠানো হয় না।",
   "capture.dictation.stats.confirmGroup": "পরিসংখ্যান মোছার নিশ্চিতকরণ",
   "capture.dictation.stats.confirmText":
     "ডিক্টেশনের সব পরিসংখ্যান মুছে ফেলবেন? এটি আর ফেরানো যাবে না।",
   "capture.dictation.stats.confirmYes": "হ্যাঁ, সব মুছুন",
   "capture.dictation.stats.confirmKeep": "রেখে দিন",
   "capture.dictation.stats.delete": "ডিক্টেশনের সব পরিসংখ্যান মুছুন",
+  "capture.dictation.stats.retention.label": "পরিসংখ্যান রাখার সময়",
+  "capture.dictation.stats.retention.none": "আমি মোছা পর্যন্ত",
+  "capture.dictation.stats.retention.help":
+    "পুরনো পরিসংখ্যান Core চালু হওয়ার সময় এবং দিনে একবার মোছা হয়, বেছে নেওয়ার মুহূর্তেই নয়। শুধু ডিক্টেশনের পরিসংখ্যান প্রভাবিত হয়। “আমি মোছা পর্যন্ত” আগের মতোই সব রেখে দেয়।",
+  "capture.dictation.saved.statsRetention": "পরিসংখ্যান রাখার সময় সংরক্ষিত হয়েছে।",
   "capture.pill.waiting": "মাইক্রোফোনের অপেক্ষায়…",
   "capture.pill.listening": "শুনছে: আপনার মাইক্রোফোন চালু আছে",
   "capture.pill.recognising": "শনাক্ত করা হচ্ছে…",

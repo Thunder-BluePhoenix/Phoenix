@@ -8,8 +8,12 @@ import {
   buildManifest,
   hostDirectory,
   install,
+  isSafeWindowsPath,
   launcherScript,
+  makeRegRunner,
+  registryKey,
   uninstall,
+  windowsLauncherScript,
 } from "../scripts/install-host.js";
 
 const CHROME = "abcdefghijklmnopabcdefghijklmnop";
@@ -83,12 +87,16 @@ describe("native-messaging host manifest", () => {
     expect(existsSync(launcher)).toBe(false);
   });
 
-  it("has a per-user directory on macOS and Linux only", () => {
+  it("has a per-user directory on macOS and Linux, and Phoenix's own on Windows", () => {
     expect(hostDirectory("chrome", "darwin", "/h")).toBe(
       "/h/Library/Application Support/Google/Chrome/NativeMessagingHosts",
     );
     expect(hostDirectory("firefox", "linux", "/h")).toBe("/h/.mozilla/native-messaging-hosts");
-    expect(hostDirectory("chrome", "win32", "/h")).toBeNull();
+    expect(hostDirectory("chrome", "freebsd", "/h")).toBeNull();
+    expect(hostDirectory("edge", "win32", "C:\\Users\\a", "C:\\Users\\a\\AppData\\Local")).toBe(
+      "C:\\Users\\a\\AppData\\Local\\Phoenix\\NativeMessagingHosts\\edge",
+    );
+    expect(hostDirectory("nope", "win32", "C:\\Users\\a")).toBeNull();
   });
 
   it("quotes a path with an apostrophe in the launcher", () => {

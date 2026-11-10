@@ -622,6 +622,37 @@ paths:
         "200": { description: "{ deleted: number }" }
         "400": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /api/dictation/stats/retention:
+    get:
+      summary: How long dictation statistics rows are kept (null = until deleted, the default)
+      responses:
+        "200":
+          description: Retention
+          content:
+            application/json:
+              schema:
+                {
+                  type: object,
+                  required: [retention_days],
+                  properties: { retention_days: { enum: [null, 30, 90, 365] } },
+                }
+        "409": { $ref: "#/components/responses/Error" }
+    post:
+      summary: "Set how long dictation statistics rows (day, app, counts; no text or audio) are kept. Rows whose day is more than this many days ago are deleted when Core starts and once a day, not at once. The body is exactly one field; the audit log records the count deleted."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                required: [retention_days],
+                additionalProperties: false,
+                properties: { retention_days: { enum: [null, 30, 90, 365] } },
+              }
+      responses:
+        "200": { description: "{ retention_days }" }
+        "400": { $ref: "#/components/responses/Error" }
   /api/notifications:
     get:
       summary: Recent notifications, newest first, with the unread count

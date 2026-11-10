@@ -286,13 +286,18 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.dictation.stats.appWords":
     "{app} ({n, plural, one {# palavra} many {# de palavras} other {# palavras}})",
   "capture.dictation.stats.note":
-    "São apenas contagens. Os nomes dos apps são privados e não são enviados a lugar nenhum. O Core os mantém até você excluí-los.",
+    "São apenas contagens. Os nomes dos apps são privados e não são enviados a lugar nenhum.",
   "capture.dictation.stats.confirmGroup": "Confirmar a exclusão das estatísticas",
   "capture.dictation.stats.confirmText":
     "Excluir todas as estatísticas de ditado? Isso não pode ser desfeito.",
   "capture.dictation.stats.confirmYes": "Sim, excluir tudo",
   "capture.dictation.stats.confirmKeep": "Manter",
   "capture.dictation.stats.delete": "Excluir todas as estatísticas de ditado",
+  "capture.dictation.stats.retention.label": "Manter as estatísticas por",
+  "capture.dictation.stats.retention.none": "Até eu excluí-las",
+  "capture.dictation.stats.retention.help":
+    "As estatísticas mais antigas são excluídas quando o Core inicia e uma vez por dia, não no momento da escolha. Afeta apenas as estatísticas de ditado. “Até eu excluí-las” mantém tudo, como antes.",
+  "capture.dictation.saved.statsRetention": "O período de retenção das estatísticas foi salvo.",
   "capture.pill.waiting": "Aguardando o microfone…",
   "capture.pill.listening": "Ouvindo: seu microfone está ligado",
   "capture.pill.recognising": "Reconhecendo…",

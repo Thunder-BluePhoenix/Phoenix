@@ -30,6 +30,7 @@ type InventorySources = Pick<
   | "teamLink"
   | "chatApprovals"
   | "capabilities"
+  | "dictation"
 >;
 
 export class RuntimeInventory {
@@ -240,6 +241,15 @@ export class RuntimeInventory {
         count: this.runtime.teamLink?.memberCount() ?? 0,
         deleted_with:
           "remove a teammate (DELETE /api/team/members/:id), or leave the team (DELETE /api/team/link), which forgets the identity, route and roster",
+      },
+      {
+        id: "dictation_stats",
+        description:
+          "Dictation statistics (Phase 64): per day and app, the number of words, speech time and sessions. No text and no audio. Kept until you delete them unless you choose a period (30, 90 or 365 days); older rows are then deleted when Core starts and once a day, and the audit log records only how many.",
+        count: this.runtime.dictation.statsRowCount(),
+        retention_days: this.runtime.dictation.statsRetention().retention_days,
+        deleted_with:
+          "DELETE /api/dictation/stats, or the retention setting (POST /api/dictation/stats/retention)",
       },
       {
         id: "page_notes",

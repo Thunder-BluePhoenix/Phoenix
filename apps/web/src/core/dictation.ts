@@ -70,6 +70,11 @@ export interface DictationStats {
   top_apps: { app: string; words: number; sessions: number }[];
 }
 
+/** How long statistics rows are kept; null keeps them until the user deletes them (the default). */
+export interface DictationStatsRetention {
+  retention_days: 30 | 90 | 365 | null;
+}
+
 export interface DictationStarted {
   id: string;
   max_seconds: number;

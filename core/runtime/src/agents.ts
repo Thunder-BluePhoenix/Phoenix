@@ -10,6 +10,7 @@ import {
   CI_FAILURE_AGENT_ID,
   CI_FAILURE_SYSTEM_PROMPT,
   createCiFailureAgent,
+  createCiRerunAgent,
   createMeetingReviewAgent,
   createPlanningReviewAgent,
   parseCiFailureInput,
@@ -67,6 +68,8 @@ export interface AgentRuntimeDeps {
 const cleanTitle = (task: { kind: string; input: Record<string, unknown> }): string => {
   if (task.kind === "ci_failure" && typeof task.input.repository === "string")
     return `CI failure in ${task.input.repository}`;
+  if (task.kind === "ci_rerun" && typeof task.input.repository === "string")
+    return `CI re-run in ${task.input.repository}`;
   if (task.kind === "meeting_decision_review") return "Meeting review";
   if (task.kind === "planning_review") return "Planning review";
   return TITLE_FALLBACK;
@@ -96,6 +99,8 @@ export class AgentRuntime implements AgentApi {
           aiEnabled: d.aiEnabled,
           context: d.memory.agentContext(),
         }),
+        // Only runs when a person submits a ci_rerun task; the write still needs a fresh approval.
+        createCiRerunAgent(),
         createMeetingReviewAgent(),
         createPlanningReviewAgent(),
         ...(d.extraAgents ?? []),

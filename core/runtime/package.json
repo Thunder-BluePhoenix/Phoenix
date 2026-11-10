@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@phoenix/ai-agents": "workspace:*",
+    "@phoenix/ai-browsing": "workspace:*",
     "@phoenix/ai-context": "workspace:*",
     "@phoenix/ai-evaluation": "workspace:*",
     "@phoenix/ai-knowledge-graph": "workspace:*",

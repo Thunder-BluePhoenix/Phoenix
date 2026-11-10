@@ -287,12 +287,17 @@ export const capture: Record<keyof typeof encapture, string> = {
   "capture.dictation.stats.appWords":
     "{app} ({n, plural, one {# слово} few {# слова} many {# слов} other {# слова}})",
   "capture.dictation.stats.note":
-    "Это только показатели. Названия приложений доступны только вам и никуда не отправляются. Core хранит их, пока вы их не удалите.",
+    "Это только показатели. Названия приложений доступны только вам и никуда не отправляются.",
   "capture.dictation.stats.confirmGroup": "Подтвердить удаление статистики",
   "capture.dictation.stats.confirmText": "Удалить всю статистику диктовки? Это нельзя отменить.",
   "capture.dictation.stats.confirmYes": "Да, удалить всё",
   "capture.dictation.stats.confirmKeep": "Оставить",
   "capture.dictation.stats.delete": "Удалить всю статистику диктовки",
+  "capture.dictation.stats.retention.label": "Хранить статистику",
+  "capture.dictation.stats.retention.none": "Пока я её не удалю",
+  "capture.dictation.stats.retention.help":
+    "Более старая статистика удаляется при запуске Core и раз в сутки, а не в момент выбора. Затрагивается только статистика диктовки. «Пока я её не удалю» хранит всё, как раньше.",
+  "capture.dictation.saved.statsRetention": "Срок хранения статистики сохранён.",
   "capture.pill.waiting": "Ожидание микрофона…",
   "capture.pill.listening": "Слушает: ваш микрофон включён",
   "capture.pill.recognising": "Распознавание…",
