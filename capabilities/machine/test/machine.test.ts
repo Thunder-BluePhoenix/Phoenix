@@ -153,6 +153,45 @@ describe("machine through permission gateway", () => {
   });
 });
 
+describe("cloud-backed Ollama models are not local models", () => {
+  const tags = {
+    models: [
+      { name: "llama3.2:latest", size: 2 * GIB },
+      { name: "kimi-k2.5:cloud", size: 340, remote_host: "https://ollama.com:443" },
+      { name: "gpt-oss:120b-cloud", size: 384 },
+      { name: "mystery:latest", size: 10, remote_model: "mystery" },
+    ],
+  };
+  it("list_models and suggest_cleanup leave them out", async () => {
+    const calls: string[] = [];
+    const client: ModelClient = {
+      request: async (provider, method, path) => {
+        calls.push(`${provider}:${method}:${path}`);
+        return path === "/api/tags" ? tags : { models: [] };
+      },
+    };
+    h = createHarness({ modules: [createMachineCapability({ client })] });
+    await h.enable("machine");
+    const listed = await h.run("machine", "list_models", { provider: "ollama" });
+    expect(listed.result).toEqual([
+      { provider: "ollama", name: "llama3.2:latest", sizeBytes: 2 * GIB, loaded: false },
+    ]);
+    const cleanup = await h.run("machine", "suggest_cleanup", { provider: "ollama" });
+    expect(JSON.stringify(cleanup.result)).not.toMatch(/cloud|mystery/);
+  });
+  it.each(["download_model", "run_model", "remove_model", "check_fit"])(
+    "%s refuses a :cloud or -cloud name without contacting the service",
+    async (command) => {
+      const calls = await ready();
+      for (const name of ["kimi-k2.5:cloud", "gpt-oss:120b-cloud", "X:CLOUD"]) {
+        const out = await h!.run("machine", command, { provider: "ollama", name });
+        expect(out.status).toBe("failed");
+      }
+      expect(calls).toEqual([]);
+    },
+  );
+});
+
 describe("injected host probes", () => {
   const base: ProbeEffects = {
     platform: "linux",

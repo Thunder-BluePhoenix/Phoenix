@@ -154,3 +154,7 @@ Mounted on the meeting detail page (`#/meetings/<id>`, `MeetingItems.tsx`) and t
 
 ---
 Back to [TRACKER](TRACKER.md)
+
+## Real local model (2026-11-10)
+
+A real llama3.2 ran AI extraction (3 runs x 2 executions) and ask over a synthetic transcript through a real in-process Core: all items proposed with transcript-grounded quotes, owners/dues supported, generated ask text classified as a hypothesis, facts kept apart. The model never proposed an unsupported owner or due, so the dropping side of that rule was not exercised by it. **The browser/UI is still unverified.** See [evidence](../evidence/phase-35-real-2026-11-10.md) and `core/runtime/test/real-ollama.test.ts` (gated by `PHOENIX_REAL_OLLAMA=1`).

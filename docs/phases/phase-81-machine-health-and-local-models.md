@@ -53,7 +53,7 @@ A trusted model size catalog; LM Studio removal; cache clean-up.
 
 ### What was not run
 
-Any real Ollama or LM Studio through Phoenix; the Linux and Windows health probes. Open items are in the [gap register](../gaps.md).
+Download and removal against a real Ollama or LM Studio (gated test `core/runtime/test/real-ollama-pull.test.ts`, written but never run); LM Studio at all; the Linux and Windows health probes. Read-only real checks (list, status, health, `:cloud` refusal) against a real loopback Ollama 0.15.5 were run on 2026-11-10: [evidence](../evidence/phase-81-real-readonly-2026-11-10.md). They found that `list_models` and `suggest_cleanup` listed cloud-backed `:cloud` models as local; fixed (see the evidence file). Open items are in the [gap register](../gaps.md).
 
 ## Notes & risks
 

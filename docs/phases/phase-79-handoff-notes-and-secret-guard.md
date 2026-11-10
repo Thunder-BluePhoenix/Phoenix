@@ -70,3 +70,7 @@ The guard in a real Claude Code or Codex session, the Codex `PreToolUse` wiring 
 
 ---
 Back to [TRACKER](TRACKER.md)
+
+## Real local model (2026-11-10)
+
+A real llama3.2 (Ollama 0.15.5, loopback) wrote the optional summary of a note built from a small synthetic session, 3 runs x 2 executions, through a real in-process Core: secrets stayed masked, length within the cap, local provenance, "written by ... may be wrong" heading present. The model invented results ("successfully built the project") in every run. See [evidence](../evidence/phase-79-real-2026-11-10.md) and the gated `core/runtime/test/real-ollama.test.ts` (`PHOENIX_REAL_OLLAMA=1`). Not shown: a real agent session ending into a note, a cloud-allowed summary.

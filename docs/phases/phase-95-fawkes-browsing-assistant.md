@@ -17,7 +17,7 @@ Fawkes can read and act on web pages, only with your approval.
 
 - [ ] Summarise a page and answer questions about it (local model by default). Page text is passed as data (a user message JSON) and only a local model is used. Simulated. The reader (`readPageSnapshot`) turns HTML snapshots into `PublicPage`s but nothing supplies real HTML yet. Unticked.
 - [ ] Act on a page (click, type, submit, log in, download) through the tool gateway: each side effect needs approval. Per-action approval for click, type, submit, navigate and download is built, with a fail-closed pending audit before dispatch. Simulated. Gateway tools and an approval card now exist (fakes only). Unticked: nothing ran in a real webview or on a real site. Log-in is not covered.
-- [ ] Web pages are untrusted data: page text can never instruct Fawkes; prompt-injection test suite. Page text is data only and the page is re-read and the action revalidated before each step. A simulated 35-case suite (`ai/evaluation/test/browsing-injection.test.ts`) runs the reader and the real assistant against a gullible scripted model; no real model was measured. **Unticked.**
+- [ ] Web pages are untrusted data: page text can never instruct Fawkes; prompt-injection test suite. Page text is data only and the page is re-read and the action revalidated before each step. A simulated 35-case suite (`ai/evaluation/test/browsing-injection.test.ts`) runs the reader and the real assistant against a gullible scripted model; one real-model measurement exists (llama3.2, 35 text-only fixtures, 3 runs each; `docs/evidence/phase-95-real-injection-2026-11-10.md`), which is not a safety proof. **Unticked.**
 - [ ] Never reads or fills passwords or payment details. Protected fields (password, payment, OTP and similar) are refused, but this **depends on adapter-supplied metadata**. Simulated. Unticked.
 - [ ] Every action audited with the page URL. Audited with the query string stripped. Simulated. The gateway/policy audit path is real in the fake tests (query stripped from `resource` too); unticked: nothing ran for real.
 
@@ -25,6 +25,7 @@ Fawkes can read and act on web pages, only with your approval.
 
 - `ai/browsing` (`@phoenix/ai-browsing`): page-as-data prompting, approval and audit flow, protected-field refusal. Built; `propose` is wired to `POST /api/browser/assist` with a local-only generate; simulated evidence only. See [browsing-assistant.md](../browsing-assistant.md).
 - `ai/browsing/src/page-snapshot.ts`: pure reader (hidden/script/comment/form-value removal, field descriptions, safe links, character hygiene, size limits) and an untrusted-content envelope helper. Simulated.
+- `ai/browsing/test/real-injection.test.ts` (gated, `PHOENIX_REAL_OLLAMA=1`): the same 35 cases through the real `propose` and llama3.2 via Ollama, 3 runs each; writes `docs/evidence/phase-95-real-injection-<date>.md`. Asserts structure only, never a model-behaviour threshold.
 - `ai/evaluation/test/browsing-injection.test.ts`: 35 injection cases against the reader and the real assistant with a gullible scripted model. Simulated; not part of `ALL_SCENARIOS`.
 - `capabilities/browser` (`@phoenix/capability-browser`): tools `browser.click|type|submit|navigate|download`, side effect `external`, approved page URL carried and re-checked, strict selector allow-pattern, relay to the chrome page. Fakes only.
 - `core/permissions/src/browser-card.ts`, `Approvals.tsx`: approval card with action, page (host+path), selector/destination and the full typed text. Fakes only.
@@ -37,7 +38,7 @@ Fawkes can read and act on web pages, only with your approval.
 ## Exit criteria
 
 - [ ] A multi-step flow on a test site completes with an approval per side effect. **Unmet.** Tools, relay, reader source and approval card exist against fakes, but no real site, webview or approval click was used, and the assist route has never run with a real model or page.
-- [ ] Injection tests pass. **Unmet.** A simulated suite exists and passes, but it uses a scripted model and no real browser or site; real-model resistance was not measured.
+- [ ] Injection tests pass. **Unmet.** A simulated suite exists and passes, but it uses a scripted model and no real browser or site; real-model resistance was measured only for one small model on text-only pages (see the evidence file and `docs/browsing-assistant.md`).
 
 ## Implementation notes
 
@@ -56,7 +57,7 @@ A static read-only review by tools (not a human audit) found that a page could c
 
 ### What was not built
 
-Log-in, any run (including the new chrome panel, never drawn in a real window) in a real webview, and any measurement of a real model against visible attacker text. The reader cannot see class-hidden or white-on-white text.
+Log-in, any run (including the new chrome panel, never drawn in a real window) in a real webview, and a measurement of more than one model or of pages with typable fields (only llama3.2 against the 35 text fixtures was measured). The reader cannot see class-hidden or white-on-white text.
 
 ### What was not run
 

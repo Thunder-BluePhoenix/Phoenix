@@ -7,3 +7,4 @@ dist/
 .vscode/
 THIRD_PARTY_NOTICES.md
 ai/evaluation/golden/latest-real-report.json
+docs/evidence/*-raw.json

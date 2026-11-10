@@ -117,6 +117,23 @@ export function modelName(input: unknown): string {
   }
   return input;
 }
+/**
+ * Ollama serves `name:cloud` / `name-cloud` models (and any entry with `remote_host` or
+ * `remote_model`) by forwarding the request to ollama.com. Such a model is not local: it is never
+ * listed, downloaded or run here, so nothing is sent to a remote service through the local manager.
+ */
+const REMOTE_NAME = /(^|[:\-])cloud$/i;
+export function isRemoteModelName(name: string): boolean {
+  return REMOTE_NAME.test(name);
+}
+function assertLocalModelName(name: string): string {
+  if (isRemoteModelName(name))
+    throw new MachineError(
+      "unsupported",
+      "This model runs on a remote service, not on this device; refused",
+    );
+  return name;
+}
 export function modelSize(input: unknown): number {
   if (typeof input !== "number" || !Number.isSafeInteger(input) || input <= 0 || input > 2 ** 50) {
     throw new MachineError("invalid", "A positive model size in bytes is required");
@@ -129,7 +146,7 @@ export function field(value: unknown, key: string): unknown {
 export function parseModelRequest(input: unknown): { provider: Provider; name: string } {
   return {
     provider: modelProvider(field(input, "provider")),
-    name: modelName(field(input, "name")),
+    name: assertLocalModelName(modelName(field(input, "name"))),
   };
 }
 export function checkFit(
@@ -173,6 +190,13 @@ export async function listModels(client: ModelClient, provider: Provider): Promi
     } catch {
       return [];
     }
+    // A cloud-backed entry (by name or by its remote_host/remote_model marker) is not a local model.
+    if (
+      isRemoteModelName(name) ||
+      field(entry, "remote_host") !== undefined ||
+      field(entry, "remote_model") !== undefined
+    )
+      return [];
     const loaded =
       provider === "ollama"
         ? activeNames.has(name)

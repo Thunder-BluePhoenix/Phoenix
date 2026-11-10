@@ -59,3 +59,7 @@ What was not done or not run: a real native drag onto the floating or island win
 
 ---
 Back to [TRACKER](TRACKER.md)
+
+## Real local model (2026-11-10)
+
+A real llama3.2 answered 3 questions x 3 runs about a synthetic dropped **text** file through `POST /api/attachments` and `/api/attachments/ask` on a real in-process Core (correct answers, correct "not in the file" refusal). **Images remain unverified**: no vision model is installed, none was pulled, and the image ask returned the 409 refusal only. See [evidence](../evidence/phase-62-real-2026-11-10.md) and `core/runtime/test/real-ollama.test.ts` (gated by `PHOENIX_REAL_OLLAMA=1`). No real drag was made.
