@@ -31,6 +31,7 @@ import { NotetakerSettingsSection } from "./Notetaker";
 import { Multimodal } from "./Multimodal";
 import { QuickActions } from "./Overview";
 import { ProactiveSettingsSection } from "./ProactiveSettings";
+import { RecapNoticeSettingsSection } from "./RecapNoticeSettings";
 import { RetrievalSettingsSection } from "./RetrievalSettings";
 import { RegistrySettingsSection } from "./RegistrySettings";
 import { SyncSettingsSection } from "./SyncSettings";
@@ -46,6 +47,7 @@ import { EventSourcePolicySection } from "./EventSourcePolicy";
 import { FawkesRebirthSettingsSection } from "./FawkesRebirthSettings";
 import { BrowserProfilesSection } from "./BrowserProfilesSettings";
 import { MusicSitesSection } from "./MusicSitesSettings";
+import { PageNotesSection } from "./PageNotes";
 import { ShieldsSection } from "./ShieldsSettings";
 import { AwakeSettingsSection } from "./AwakeSettings";
 import { ScheduledAwakeSection } from "./ScheduledAwakeSettings";
@@ -85,6 +87,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <AgentInstallersSection />
       <HandoffNotesSection />
       <ProactiveSettingsSection />
+      <RecapNoticeSettingsSection />
       <RegistrySettingsSection />
       <SyncSettingsSection />
       <PhoneLink />
@@ -102,6 +105,7 @@ export function SettingsPage({ state }: { state: PetState }) {
       <TeamWebhooksSection />
       <BrowserProfilesSection />
       <MusicSitesSection />
+      <PageNotesSection />
       <ShieldsSection />
       <FawkesRebirthSettingsSection />
       <EventSourcePolicySection />

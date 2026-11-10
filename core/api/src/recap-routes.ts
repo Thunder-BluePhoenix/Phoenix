@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
-import { route, type Route } from "./http";
+import { expectObject, route, type Route } from "./http";
 import type { CoreServices } from "./services";
 
 /** A name with how many steps it accounts for (an agent id, or a project's folder name). */
@@ -72,6 +72,19 @@ export interface RecapApi {
   deleteAll(): { deleted: number };
 }
 
+/** The opt-in "every Monday" recap notice. Counts-only fixed text, shown in Phoenix's own notifications. */
+export interface RecapNoticeView {
+  enabled: boolean;
+  /** ISO week (e.g. 2026-W45) the notice was last handled for; null when never. */
+  last_week: string | null;
+  time_zone: string;
+}
+
+export interface RecapNoticeApi {
+  status(): RecapNoticeView;
+  setEnabled(input: unknown): RecapNoticeView;
+}
+
 export function recapRoutes(s: CoreServices): Route[] {
   const recap = () => {
     if (!s.recap) throw new PhoenixError(ErrorCode.CAPABILITY_UNAVAILABLE, "Recap is unavailable");
@@ -85,7 +98,16 @@ export function recapRoutes(s: CoreServices): Route[] {
           `Unknown parameter "${key.slice(0, 40)}"`,
         );
   };
+  const notice = () => {
+    if (!s.recapNotice)
+      throw new PhoenixError(ErrorCode.CAPABILITY_UNAVAILABLE, "Recap notice is unavailable");
+    return s.recapNotice;
+  };
   return [
+    route("GET", "/api/recap/notice", () => notice().status()),
+    route("POST", "/api/recap/notice", async ({ body }) =>
+      notice().setEnabled(expectObject(await body())),
+    ),
     route("GET", "/api/recap", ({ url }) => {
       only(url, ["week"]);
       return recap().recap(url.searchParams.get("week") ?? undefined);

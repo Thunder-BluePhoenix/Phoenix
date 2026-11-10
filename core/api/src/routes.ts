@@ -36,6 +36,7 @@ import { quitCheckRoutes } from "./quit-check-routes";
 import { awakeStatusRoutes } from "./awake-status-routes";
 import { scheduledAwakeRoutes } from "./scheduled-awake-routes";
 import { fawkesRebirthRoutes } from "./fawkes-rebirth-routes";
+import { pageNoteRoutes } from "./page-note-routes";
 import { browserProfileRoutes } from "./browser-profile-routes";
 import { musicConnectorRoutes } from "./music-connector-routes";
 import { browserRelayRoutes } from "./browser-relay-routes";
@@ -454,5 +455,6 @@ export function buildRoutes(s: CoreServices): Route[] {
     ...(s.browserRelay ? browserRelayRoutes(s.browserRelay) : []),
     ...(s.chatApprovals ? chatApprovalRoutes(s.chatApprovals) : []),
     ...(s.remoteRelay ? remoteRelayRoutes(s.remoteRelay) : []),
+    ...(s.pageNotes ? pageNoteRoutes(s.pageNotes) : []),
   ];
 }

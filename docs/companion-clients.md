@@ -5,12 +5,12 @@ Phase 89 names three surfaces beyond the desktop app: the Apple Watch, a browser
 
 ## What is built, and what is not
 
-| Surface                              | Status in this build                                                                                                                              |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `phoenix` CLI (`apps/phoenix-cli`)   | **Built, partly**: `status`, `approvals list/approve/deny`, `events tail`, `awake`. See [phoenix-cli.md](phoenix-cli.md). `ask` is **not built**. |
-| Apple Watch app (`apps/watch`)       | **NOT BUILT.** No watchOS target, no Swift, no WatchConnectivity bridge, no complication.                                                         |
-| Browser extension (`apps/extension`) | **NOT BUILT.** No manifest, no content scripts, no PR-page Fawkes, no Meet record button, no "send page to Phoenix".                              |
-| iPhone app the watch depends on      | **NOT BUILT** (Phase 71 is Core-side only, see [phone-link.md](phone-link.md)).                                                                   |
+| Surface                              | Status in this build                                                                                                                               |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `phoenix` CLI (`apps/phoenix-cli`)   | **Built, partly**: `status`, `approvals list/approve/deny`, `events tail`, `awake`. See [phoenix-cli.md](phoenix-cli.md). `ask` is **not built**.  |
+| Apple Watch app (`apps/watch`)       | **NOT BUILT.** No watchOS target, no Swift, no WatchConnectivity bridge, no complication.                                                          |
+| Browser extension (`apps/extension`) | **Built, one action only**: "Send page to Phoenix" (see below). **Not built:** PR-page Fawkes, Meet record button. Never loaded in a real browser. |
+| iPhone app the watch depends on      | **NOT BUILT** (Phase 71 is Core-side only, see [phone-link.md](phone-link.md)).                                                                    |
 
 The Phase 89 exit criterion, "each surface performs one real action end to end", is **UNMET**: only the
 CLI performs real actions, and only against a local Core in tests. Nothing here has run on a watch, in a
@@ -29,13 +29,15 @@ For programs on the machine that runs Core (the CLI, a future native-messaging h
 - The token is `<data dir>/session.token`, mode `0600`, new on every Core start, deleted on stop.
   Never print it, log it, put it in a URL, or send it to anything but the loopback interface.
 - Routes a companion needs: `GET /api/health`, `GET /api/pet/state`, `GET /api/events`,
-  `GET/POST /api/confirmations[/:id]`, `GET /api/agent-approvals`, `POST /api/agent-approvals/:id/decision`.
+  `GET/POST /api/confirmations[/:id]`, `GET /api/agent-approvals`, `POST /api/agent-approvals/:id/decision`,
+  `POST /api/companion/page` (the native host only), `GET /api/companion/pages`, `DELETE /api/companion/pages/:id`.
 - Send `X-Phoenix-Client: <label>` (letters, digits, space, `_ . : -`, up to 40) on decisions so the
   audit trail says where it came from.
 - **A browser extension must not hold the session token.** An extension page can reach `127.0.0.1`, but
   the token would sit in extension storage readable by every script it runs. The only supported shape is
   a native-messaging host (a small local program like the CLI) that holds the token and speaks a narrow
-  message set to the extension. That host does not exist.
+  message set to the extension. That host now exists for one message kind (see
+  [Browser extension: Send page to Phoenix](#browser-extension-send-page-to-phoenix)).
 
 ### 2. Phone link (another device, paired and signed)
 
@@ -67,6 +69,71 @@ For the watch, through the iPhone: the watch never talks to Core and never holds
    not swallowed and not retried into a decision.
 6. **Phoenix's own assets only.** Nothing from Coucou's asset list (names, Mochi, sounds, icons, media).
 
+## Browser extension: Send page to Phoenix
+
+One action, built and tested only with fakes. **It has never been loaded in a real browser, never run
+against a real Core, and has had no store review.** The Phase 89 exit criterion is not met.
+
+### Pieces
+
+- `apps/extension/` is a Manifest V3 extension (plain JavaScript, no dependency). Permissions:
+  `activeTab`, `scripting`, `nativeMessaging`. No host permissions, no content script on any page, no
+  remote code, CSP `default-src 'none'; script-src 'self'; object-src 'none'`. The toolbar button is
+  the only trigger. On that click it reads the tab's address and title (`activeTab`) and runs one
+  `scripting.executeScript` for the selection, never in a password field. It sends exactly
+  `{ kind: "page", url, title, selection? }` through `chrome.runtime.sendNativeMessage`.
+  `url` is http or https only, without credentials or fragment, at most 2048 characters. `title` is
+  one line, control and bidi characters stripped, 200 characters at most. `selection` is present only
+  when the person selected text, cleaned the same way, 2000 characters at most. The button shows a
+  badge and hover text for each result, including "host not installed" and "Phoenix not running".
+- `apps/extension/host/` is the native-messaging host `dev.phoenix.companion` (node). It reads one
+  frame (4-byte length in machine byte order, 64 KiB cap checked from the length before the body),
+  accepts only the `page` kind with exactly the known keys and values already inside the limits (it
+  refuses rather than repairs), and `POST`s the three fields to `http://127.0.0.1:<port>/api/companion/page`
+  (nothing else: not `localhost`, not https, no redirects, 10 s timeout). The **host holds the token**:
+  `PHOENIX_SESSION_TOKEN`, else `<data dir>/session.token` through `PHOENIX_DATA_DIR`,
+  `./.phoenix/<env>` or `~/.phoenix/<env>`, the CLI's lookup. It never logs, prints or returns the
+  token. Replies are short codes (`core_unreachable`, `token_missing`, `token_rejected`, `rejected`,
+  `invalid_message`, `frame_too_large`, ...), never Core's wording or page text. It writes nothing to
+  stderr.
+- `apps/extension/scripts/install-host.js install --chrome-id <id> [--firefox-id <id>] [--browser ...]`
+  writes `dev.phoenix.companion.json` into the per-user directory of Chrome, Chromium, Edge and
+  Firefox on macOS and Linux, with `allowed_origins` (or `allowed_extensions`) set to exactly the id
+  given and validated (32 letters a-p; no wildcard is possible). A browser with no id given is
+  skipped. `uninstall` removes the manifests and the launcher. **Windows is not supported** (it needs
+  a registry entry the script does not write).
+- Core: `POST /api/companion/page` (session token) validates again (same limits, unknown fields
+  refused, 256 KiB body cap), masks secrets found in the text, and stores a **page note** in the
+  `page_notes` table, with audit entry `companion.page.received` (host name and selection length
+  only). At most 200 notes: a full list refuses new ones rather than deleting the person's. No
+  existing inbox or capture concept was fit for untrusted page text, so this is a new bounded list.
+  `GET /api/companion/pages` and `DELETE /api/companion/pages/:id` (audit `companion.page.deleted`)
+  serve the review list. The privacy inventory lists `page_notes`.
+- Web: Settings shows "Pages sent from your browser" (ten locales, machine-translated, unreviewed).
+  Every field is inert text, the address is not a link, and nothing is acted on or sent to a model;
+  the only actions are reading and Delete.
+
+### What this does not do
+
+- It does not make the page trustworthy: a page note is data. Nothing reads it into a prompt, a route
+  or a capability, and there is no "ask the AI about this page" path.
+- A local process that already has the session token can call `POST /api/companion/page` directly and
+  write a note. The token is the trust boundary, as for every session route; the list is labelled as
+  coming from websites, and the audit actor is `companion`, not the person.
+- A website cannot message the host: only the allow-listed extension id can (the browser enforces
+  `allowed_origins`), and the extension has no `externally_connectable` or content script. That
+  browser enforcement was not exercised here.
+- The extension id is assigned by the browser when you load it; install the host after you know it.
+  **Firefox is unverified:** the manifest declares `background.service_worker`, which Firefox's MV3
+  does not use (it expects `background.scripts`), so the Firefox host manifest is written but the
+  extension itself will probably not load there without a manifest change nobody has tried.
+
+### Run it yourself (not done by the authors)
+
+1. Load `apps/extension` unpacked in Chrome (`chrome://extensions`, developer mode) and copy its id.
+2. `node apps/extension/scripts/install-host.js install --chrome-id <id> --browser chrome`.
+3. Start Core, open a page, select some text, click the toolbar button, then open Phoenix Settings.
+
 ## What a watch and an extension would still need
 
 Stated so nobody mistakes this page for an implementation.
@@ -74,8 +141,7 @@ Stated so nobody mistakes this page for an implementation.
 - **Watch:** an iPhone app (Phase 71 client), a watchOS target and signing, WatchConnectivity, a way to
   show state without push (APNs is not set up), and a real-device test. Core already exposes what it
   needs through the phone link; nothing on the Apple side exists.
-- **Extension:** a manifest and store review, a native-messaging host holding the token, content scripts
-  for GitHub PR pages and Google Meet (their DOM changes without notice), a consent path for "send page
-  to Phoenix" that treats the page as untrusted data, and a Core route to receive a page, which does not
-  exist. The Meet record button also needs the recording consent channel Core does not have
+- **Extension:** a real-browser run of "Send page to Phoenix" and store review, Windows host
+  registration, content scripts for GitHub PR pages and Google Meet (their DOM changes without notice).
+  The Meet record button also needs the recording consent channel Core does not have
   (`CONSENT_CHANNEL_UNAVAILABLE`, Phase 65).

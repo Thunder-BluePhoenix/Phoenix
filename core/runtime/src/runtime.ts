@@ -61,6 +61,8 @@ import { AgentRuntime } from "./agents";
 import { AgentApprovals } from "./agent-approvals";
 import { AgentLive, displayName } from "./agent-live";
 import { RecapRuntime } from "./recap";
+import { RecapNoticeRuntime } from "./recap-notice-runtime";
+import { systemTimeZone } from "./recap-calendar";
 import { AgentUsageRuntime } from "./agent-usage";
 import { AgentSafety } from "./agent-safety";
 import { PhoneLink, type PhoneLinkTuning } from "./phone-link";
@@ -118,6 +120,7 @@ import { nodeDiscoverySocket } from "./status-lights/lifx-discovery";
 import { FawkesRebirthService } from "./fawkes-rebirth/service";
 import { BrowserProfilesService } from "./browser-profiles/service";
 import { MusicConnectorsService } from "./music-connectors/service";
+import { PageNotesService } from "./page-notes/service";
 import { FilterListsService, type FilterListsTuning } from "./filter-lists/service";
 import type { BrowserRelay } from "@phoenix/capability-browser";
 import { QuitCheckService } from "./quit-check";
@@ -388,6 +391,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly agentLive: AgentLive;
   /** Weekly recap (Phase 69): day counts only, kept past the events cap; local, no AI. */
   readonly recap: RecapRuntime;
+  /** The opt-in "every Monday" recap notice (Phase 69): counts only, fixed text, no AI, no network. */
+  readonly recapNotice: RecapNoticeRuntime;
   /** Agent cost meter and mission control (Phase 78): reported tokens/cost, budgets, the board. */
   readonly mission: AgentUsageRuntime;
   /** Agent safety net (Phase 77): checkpoints, rollback with approval, loop and stall warnings. */
@@ -412,6 +417,8 @@ export class PhoenixRuntime implements CoreServices {
   readonly browserProfiles: BrowserProfilesService;
   /** Music site opt-in (Phase 94): a list of allowed sites in settings; nothing is fetched or played. */
   readonly musicConnectors: MusicConnectorsService;
+  /** Pages sent from the browser extension (Phase 89): untrusted text, a list to review and delete. */
+  readonly pageNotes: PageNotesService;
   /** Ad and tracker filter lists (Phase 93): downloaded only when the user asks; no browser window applies them yet. */
   readonly filterLists: FilterListsService;
   /** Phase 95: served to the Phoenix browser's chrome page through `/api/browser/relay/*`; absent in runtimes without a browser. */
@@ -741,7 +748,10 @@ export class PhoenixRuntime implements CoreServices {
       notifications: this.notifications,
       bus: this.bus,
       killSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
-      onPreferencesChanged: () => this.engineeringSignals.consentChanged(),
+      onPreferencesChanged: () => {
+        this.engineeringSignals.consentChanged();
+        this.recapNotice.preferencesChanged();
+      },
     });
     this.calendarMacos = options.calendarMacos
       ? new MacosSnapshotService(options.calendarMacos)
@@ -938,6 +948,7 @@ export class PhoenixRuntime implements CoreServices {
       settings: this.settings,
       audit: this.permissions.audit,
     });
+    this.pageNotes = new PageNotesService({ db: this.db, audit: this.permissions.audit });
     this.browserRelay = options.browserRelay;
     this.filterLists = new FilterListsService({
       settings: this.settings,
@@ -1142,6 +1153,18 @@ export class PhoenixRuntime implements CoreServices {
       known: () => this.knownSources(),
     });
     this.uiSettings = new UiSettingsRuntime(this.settings, this.bus);
+    this.recapNotice = new RecapNoticeRuntime({
+      settings: this.settings,
+      notifications: this.notifications,
+      recap: this.recap,
+      bus: this.bus,
+      logger: this.logger.child("recap-notice"),
+      now: options.recapClock ?? Date.now,
+      timeZone: options.recapTimeZone ?? systemTimeZone(),
+      userId: () => this.memory.agentContext().viewer.id,
+      locale: () => this.uiSettings.get().locale,
+      killSwitchEngaged: () => this.permissions.isKillSwitchEngaged(),
+    });
     this.eventSourcePolicy = new EventSourcePolicy(this.settings, this.permissions.audit);
     this.sync = new SyncRuntime(this.settings, options.secrets, options.syncTransport);
     this.browserProfiles = new BrowserProfilesService({
@@ -1312,6 +1335,7 @@ export class PhoenixRuntime implements CoreServices {
     this.syncTimer.unref();
     await this.capabilities.restore();
     this.proactive.startScheduler();
+    this.recapNotice.start();
     await this.engineeringSignals.startScheduler();
     // After the capabilities are back, so the tool catalog is complete when triggers arrive.
     this.workflows.start();
@@ -1458,6 +1482,7 @@ export class PhoenixRuntime implements CoreServices {
       await shutdown([
         { name: "demo", close: () => this.demo?.stop() },
         { name: "proactive scheduler", close: () => this.proactive.stopScheduler() },
+        { name: "recap notice", close: () => this.recapNotice.stop() },
         { name: "engineering scheduler", close: () => this.engineeringSignals.stopScheduler() },
         { name: "dictation", close: () => this.dictation.close() },
         { name: "voice", close: () => this.voice.close() },

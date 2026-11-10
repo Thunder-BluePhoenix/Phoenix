@@ -1277,4 +1277,20 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX agent_usage_session ON agent_usage (agent, session_id);
     `,
   },
+  {
+    version: 33,
+    name: "page_notes",
+    // Pages the person sent from the browser extension (Phase 89). Untrusted website text: a
+    // bounded list the person reviews and deletes in the web app; nothing reads it into a prompt.
+    sql: `
+      CREATE TABLE page_notes (
+        id TEXT PRIMARY KEY,
+        received_at TEXT NOT NULL,
+        url TEXT NOT NULL CHECK (length(url) BETWEEN 1 AND 8192),
+        title TEXT NOT NULL CHECK (length(title) <= 1000),
+        selected_text TEXT CHECK (selected_text IS NULL OR length(selected_text) <= 8000)
+      );
+      CREATE INDEX page_notes_received ON page_notes (received_at);
+    `,
+  },
 ];

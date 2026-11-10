@@ -89,6 +89,8 @@ function quiet(now: number, hours: QuietHours | null): boolean {
       ? local >= start && local < end
       : local >= start || local < end;
 }
+/** True when `now` falls inside the user's proactive quiet hours (shared by every scheduled source). */
+export const inQuietHours = quiet;
 /** All decisions are local and persisted, including duplicate/rate state across restarts. */
 export class ProactiveNotificationPolicy {
   constructor(

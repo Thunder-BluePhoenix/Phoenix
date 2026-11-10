@@ -4,7 +4,7 @@ import { EventBus } from "@phoenix/event-bus";
 import { AuditLog } from "@phoenix/permissions";
 import { openDatabase } from "@phoenix/persistence";
 import { createEvent } from "@phoenix/protocol";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ChatApprovalsService } from "../src/chat-approvals/service";
 
 /**
@@ -98,5 +98,23 @@ describe("chat approvals service guards", () => {
     await open.bus.drain();
     await open.service.idle();
     expect(open.sent.length).toBeGreaterThan(0);
+  });
+
+  it("does not even look at a Teams link while the capability is off or the emergency stop is on", async () => {
+    // The capability's own checks would also refuse here, so the proof is that it is never asked.
+    for (const state of CLOSED) {
+      const { service } = rig(state);
+      const asked = vi.spyOn(service.approvals, "openTeamsLink");
+      const verdict = await service.verifyTeamsLink("s=agent&i=apr_1");
+      expect([JSON.stringify(state), verdict, asked.mock.calls.length]).toEqual([
+        JSON.stringify(state),
+        { valid: false, approval_id: null },
+        0,
+      ]);
+    }
+    const open = rig({ enabled: true, killed: false });
+    const asked = vi.spyOn(open.service.approvals, "openTeamsLink");
+    await open.service.verifyTeamsLink("s=agent&i=apr_1");
+    expect(asked).toHaveBeenCalledTimes(1);
   });
 });

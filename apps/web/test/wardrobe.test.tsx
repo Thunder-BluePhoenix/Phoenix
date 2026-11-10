@@ -8,6 +8,8 @@ import { SourcePills } from "../src/components/SourcePills";
 import { pillContrast, Wardrobe } from "../src/components/Wardrobe";
 import { PhoenixClient } from "../src/core/client";
 import { CoreProvider } from "../src/core/context";
+import { createFakeBrowserShell } from "../src/browser/fake-shell";
+import { BrowserApp } from "../src/browser/BrowserApp";
 import { FloatingApp } from "../src/floating/FloatingApp";
 import { IslandApp } from "../src/island/IslandApp";
 import type { IslandFrame, IslandShell } from "../src/island/shell";
@@ -127,6 +129,22 @@ describe("outfits render in every Fawkes view", () => {
     );
     act(() => FakeWebSocket.last.open());
     await waitFor(() => expect(outfits().length).toBeGreaterThan(0));
+  });
+
+  it("browser window corner", async () => {
+    const { client: c } = client({
+      ...routes(),
+      "GET /api/browser/shields": () => ({ shields: { enabled: true, offSites: [] } }),
+    });
+    render(
+      <CoreProvider client={c}>
+        <BrowserApp shell={createFakeBrowserShell()} schedule={() => () => {}} />
+      </CoreProvider>,
+    );
+    act(() => FakeWebSocket.last.open());
+    await waitFor(() =>
+      expect(outfits(document.querySelector(".browser-corner")!).length).toBeGreaterThan(0),
+    );
   });
 
   it("changes live when Core says fawkes.appearance.changed (no reload)", async () => {

@@ -750,6 +750,35 @@ paths:
         - { name: limit, in: query, schema: { type: integer } }
       responses:
         "200": { description: Entries }
+  /api/recap/notice:
+    get:
+      summary: >-
+        The opt-in "every Monday" recap notice (Phase 69): `enabled` (default false, a switch
+        separate from /api/proactive), `last_week` (ISO week such as 2026-W46 the notice was last
+        handled for, or null) and the IANA `time_zone` that defines Monday 09:00.
+      responses:
+        "200": { description: "{ enabled: boolean, last_week: string | null, time_zone: string }" }
+    post:
+      summary: >-
+        Turn the Monday recap notice on or off. Body is exactly `{ "enabled": boolean }`. When on, at
+        most one notice per ISO week appears in Phoenix's own notification list from Monday 09:00 local
+        time (once later that week if Core was off); it is skipped during Proactive quiet hours,
+        notification quiet mode, a muted `recap` source and the emergency stop. The text is a fixed
+        translated template with counts only (no titles, names or paths); no model call, no network.
+        Turning it on mid-week waits for the next Monday.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              additionalProperties: false
+              properties:
+                enabled: { type: boolean }
+      responses:
+        "200": { description: "{ enabled, last_week, time_zone }" }
+        "400": { $ref: "#/components/responses/Error" }
   /api/recap:
     get:
       summary: >-

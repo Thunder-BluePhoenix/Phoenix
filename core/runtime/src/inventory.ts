@@ -23,6 +23,7 @@ type InventorySources = Pick<
   | "remoteRelay"
   | "statusLights"
   | "musicConnectors"
+  | "pageNotes"
   | "filterLists"
   | "browserProfiles"
   | "scheduledAwake"
@@ -239,6 +240,14 @@ export class RuntimeInventory {
         count: this.runtime.teamLink?.memberCount() ?? 0,
         deleted_with:
           "remove a teammate (DELETE /api/team/members/:id), or leave the team (DELETE /api/team/link), which forgets the identity, route and roster",
+      },
+      {
+        id: "page_notes",
+        description:
+          "Pages sent from the browser extension (Phase 89): the address (no fragment), title and any text you had selected, for each page you chose to send, in the local database. It is text written by a website, kept as data for you to read; it is never sent to an AI provider or acted on.",
+        count: this.runtime.pageNotes.count(),
+        deleted_with:
+          "delete a page (DELETE /api/companion/pages/:id), or in the web app's pages list",
       },
     ];
   }

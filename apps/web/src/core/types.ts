@@ -1140,6 +1140,13 @@ export interface ProactiveNoise {
   dismissalRate: number;
 }
 
+/** The opt-in Monday recap notice (Phase 69). */
+export interface RecapNoticeStatus {
+  enabled: boolean;
+  last_week: string | null;
+  time_zone: string;
+}
+
 export interface ProactiveStatus {
   preferences: ProactivePreferences;
   source: { capability_id: "kage"; available: boolean; mode: "manual" };

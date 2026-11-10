@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { useMemo } from "react";
-import { FawkesAvatar } from "../components/FawkesAvatar";
+import { RebirthAvatar } from "../components/RebirthAvatar";
+import { useWornOutfit } from "../core/appearance";
 import type { PetSettings } from "../core/hooks";
 import type { PetState } from "../core/types";
 import { useT } from "../i18n";
@@ -24,6 +25,9 @@ export function CornerFawkes({
   reducedMotion: PetSettings["reduced_motion"];
 }) {
   const t = useT();
+  // The same outfit and celebration wrapper the island, the floating window and the navbar use, so
+  // the corner is the same Fawkes, not a plainer copy of it.
+  const outfit = useWornOutfit();
   const explanation = t(view.explanation, view.vars);
   const state = useMemo<PetState>(
     () => ({
@@ -37,12 +41,13 @@ export function CornerFawkes({
   );
   return (
     <div className="browser-corner" data-state={view.state}>
-      <FawkesAvatar
+      <RebirthAvatar
         state={state}
         size={CORNER_SIZE}
         actionHint=""
         interactive={false}
         reducedMotion={reducedMotion}
+        outfit={outfit}
       />
     </div>
   );

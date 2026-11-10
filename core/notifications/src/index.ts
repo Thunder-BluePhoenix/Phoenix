@@ -22,6 +22,7 @@ export {
   ProactiveNotificationPolicy,
   type ProactiveInsight,
   type ProactivePreferences,
+  inQuietHours,
   type QuietHours,
   type NoiseMetrics,
 } from "./policy";
@@ -225,15 +226,48 @@ export class NotificationService {
     isCurrent: (insight: ProactiveInsight) => boolean,
   ): Notification | null {
     if (!isCurrent(insight) || !this.proactive.allow(userId, insight)) return null;
-    const nowMs = this.now();
+    return this.storeLocal({
+      eventType: `insight.${insight.kind}`,
+      source: insight.capabilityId,
+      title: insight.title,
+      body: insight.body,
+      at: this.now(),
+    });
+  }
+
+  /**
+   * A fixed-text local notice that no event produced (the Monday recap). It honours quiet mode
+   * (`enabled: false`) and a muted source, and nothing else: the caller owns its own opt-in,
+   * quiet hours and emergency-stop checks, because none of them are the Kage policy.
+   */
+  deliverLocal(input: {
+    source: string;
+    eventType: string;
+    title: string;
+    body: string;
+    at: number;
+  }): Notification | null {
+    const prefs = this.preferences();
+    if (!prefs.enabled || prefs.muted_sources.includes(input.source)) return null;
+    return this.storeLocal(input);
+  }
+
+  private storeLocal(input: {
+    source: string;
+    eventType: string;
+    title: string;
+    body: string;
+    at: number;
+  }): Notification {
+    const nowMs = input.at;
     const n: Notification = {
       id: `ntf_${nowMs.toString(36)}${randomBytes(5).toString("hex")}`,
       eventId: null,
-      eventType: `insight.${insight.kind}`,
-      source: insight.capabilityId,
+      eventType: input.eventType,
+      source: input.source,
       severity: "info",
-      title: insight.title,
-      body: insight.body,
+      title: input.title,
+      body: input.body,
       read: false,
       createdAt: new Date(nowMs).toISOString(),
     };

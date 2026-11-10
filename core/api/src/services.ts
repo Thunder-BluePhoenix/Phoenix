@@ -12,7 +12,7 @@ import type { AgentRelayApi } from "./agent-relay-routes";
 import type { ImprovementApi } from "./improvement-routes";
 import type { DemoApi } from "./demo-routes";
 import type { VoiceApi } from "./voice-routes";
-import type { RecapApi } from "./recap-routes";
+import type { RecapApi, RecapNoticeApi } from "./recap-routes";
 import type { SafetyApi } from "./safety-routes";
 import type { MissionApi } from "./mission-routes";
 import type { McpApi } from "./mcp-routes";
@@ -34,6 +34,7 @@ import type { MusicConnectorsApi } from "./music-connector-routes";
 import type { FilterListsApi } from "./filter-list-routes";
 import type { ChatApprovalsApi } from "./chat-approval-routes";
 import type { RemoteRelayApi } from "./remote-relay-routes";
+import type { PageNotesApi } from "./page-note-routes";
 import type { FocusApi } from "./focus-routes";
 import type { PhoenixConfig } from "@phoenix/config";
 import type { EventBus } from "@phoenix/event-bus";
@@ -1305,6 +1306,7 @@ export interface CoreServices {
   uiSettings?: UiSettingsApi;
   attachments?: AttachmentsApi;
   recap?: RecapApi;
+  recapNotice?: RecapNoticeApi;
   agentSafety?: SafetyApi;
   mission?: MissionApi;
   mcp?: McpApi;
@@ -1347,6 +1349,8 @@ export interface CoreServices {
   chatApprovals?: ChatApprovalsApi;
   /** Remote access relay (Phase 87): off by default; absent without an OS secret store. */
   remoteRelay?: RemoteRelayApi;
+  /** Pages sent from the browser extension (Phase 89): untrusted text the person reviews and deletes. */
+  pageNotes?: PageNotesApi;
   /** Whether the session-token event route refuses the `terminal` source; the user's choice. */
   eventSourcePolicy?: EventSourcePolicyApi;
   petSettings?(): unknown;

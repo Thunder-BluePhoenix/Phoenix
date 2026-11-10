@@ -28,6 +28,7 @@ import { services } from "./services";
 import { settings } from "./settings";
 import { sounds } from "./sounds";
 import { musicPlay } from "./music-play";
+import { pageNotes } from "./page-notes";
 import { shell } from "./shell";
 import { signals } from "./signals";
 import { browserProfiles } from "./browser-profiles";
@@ -41,6 +42,7 @@ import { teamStatus } from "./team-status";
 import { teamWebhooks } from "./team-webhooks";
 import { teamInvite } from "./team-invite";
 import { serviceGlances } from "./service-glances";
+import { recapNotice } from "./recap-notice";
 import { serviceGlancesB } from "./service-glances-b";
 
 const messages: Messages = {
@@ -82,9 +84,11 @@ const messages: Messages = {
   ...fawkesRebirth,
   ...sounds,
   ...musicPlay,
+  ...pageNotes,
   ...follow,
   ...serviceGlances,
   ...serviceGlancesB,
+  ...recapNotice,
 };
 
 export default messages;
