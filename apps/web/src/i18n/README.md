@@ -29,6 +29,10 @@ When a reviewer signs a language off, change its row to `reviewed (name, date)`.
 - `store.ts` / `I18nProvider.tsx` — the active language, lazy loading (each language is its own chunk; English is bundled) and per-key fallback to English.
 - `pseudo.ts` — the pseudo-locale `en-XA` (accented, +30% length, bracketed). Dev and test builds only; not in the picker, not accepted from Core.
 
+## Capability labels
+
+`en/capability-labels.ts` translates the names, descriptions and configuration-field labels of Phoenix's own capabilities; `src/core/capability-text.ts` uses it only for a capability Core reports as built in. Anything from another capability's manifest is shown as sent. Adding a built-in capability or a config field to a built-in schema needs entries here (`core/runtime/test/capability-labels.test.ts` fails otherwise). Non-English entries are machine-translated and unreviewed.
+
 ## Using it
 
 ```tsx

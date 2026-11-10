@@ -43,13 +43,6 @@ export const settings: Record<keyof typeof ensettings, string> = {
   "settings.capability.done.secretRemoved": "Supprimé de votre trousseau.",
   "settings.capability.done.revoked":
     "Autorisation révoquée. Elle sera redemandée à la prochaine activation.",
-  "settings.field.baseUrl": "Adresse du serveur",
-  "settings.field.pollMs": "Vérifier toutes les (ms)",
-  "settings.field.botPath": "Chemin du bot Kage",
-  "settings.field.botName": "Nom affiché du bot",
-  "settings.field.maxDurationMin": "Durée maximale de capture (min)",
-  "settings.field.repositories": "Dépôts (un chemin absolu par ligne)",
-  "settings.field.speed": "Vitesse de lecture",
   "settings.secret.apiKey": "Clé d’API",
   "settings.secret.stored": "(stockée dans le trousseau de votre système)",
   "settings.secret.notSet": "(non définie)",

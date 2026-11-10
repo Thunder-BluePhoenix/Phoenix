@@ -43,13 +43,6 @@ export const settings: Record<keyof typeof ensettings, string> = {
   "settings.capability.done.secretRemoved": "Removido do seu chaveiro.",
   "settings.capability.done.revoked":
     "Permissão revogada. Ela será pedida de novo ao ativar novamente.",
-  "settings.field.baseUrl": "Endereço do servidor",
-  "settings.field.pollMs": "Verificar a cada (ms)",
-  "settings.field.botPath": "Caminho do bot do Kage",
-  "settings.field.botName": "Nome de exibição do bot",
-  "settings.field.maxDurationMin": "Duração máxima da captura (min)",
-  "settings.field.repositories": "Repositórios (um caminho absoluto por linha)",
-  "settings.field.speed": "Velocidade de reprodução",
   "settings.secret.apiKey": "Chave de API",
   "settings.secret.stored": "(guardada no chaveiro do seu sistema)",
   "settings.secret.notSet": "(não definida)",

@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { needsSecondStep, RISK_LABEL, SIDE_EFFECT_ACTION } from "../core/agent";
 import { formatTime, SIDE_EFFECT_LABEL } from "../core/format";
+import { confirmTargetRows } from "../core/confirm-targets";
 import { useAction, useConfirmations } from "../core/hooks";
 import type { BrowserActionDetails, Confirmation } from "../core/types";
 import { useT, type MessageKey } from "../i18n";
@@ -148,6 +149,7 @@ function ApprovalCard({
   const second = requiresUnderstanding(c);
   const effect = SIDE_EFFECT_LABEL[c.sideEffect] ?? c.sideEffect;
   const action = SIDE_EFFECT_ACTION[c.sideEffect] ?? t("agents.sideEffectAction.fallback");
+  const targetRows = confirmTargetRows(c.details?.targets);
   const expires = c.expiresAt ? formatTime(c.expiresAt) : "";
 
   const decide = async (approve: boolean) => {
@@ -185,6 +187,21 @@ function ApprovalCard({
         </dd>
         <dt>{t("agents.approvals.target")}</dt>
         <dd>{c.target ? c.target : <Missing>{t("agents.approvals.noTarget")}</Missing>}</dd>
+        {targetRows.length > 0 && (
+          <>
+            <dt>{t("agents.approvals.targets")}</dt>
+            <dd>
+              <dl className="approval-targets" data-confirm-targets="">
+                {targetRows.map(([name, value]) => (
+                  <div key={name} className="approval-target">
+                    <dt>{name}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </dd>
+          </>
+        )}
         <dt>{t("agents.approvals.risk")}</dt>
         <dd>
           {c.risk ? (

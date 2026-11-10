@@ -13,6 +13,7 @@ import {
   type PetSettings,
 } from "../core/hooks";
 import type { CapabilityView, JsonSchema, OrchestratedSessionList, PetState } from "../core/types";
+import { useCapabilityText } from "../core/capability-text";
 import { formatNumber } from "../core/format";
 import { isMessageKey, useT, type MessageKey, type Translate } from "../i18n";
 import { AgentInstallersSection } from "./AgentInstallers";
@@ -184,6 +185,7 @@ function FawkesSettings() {
 
 function NotificationSettings() {
   const t = useT();
+  const capText = useCapabilityText();
   const { data: prefs, reload } = useNotificationPreferences();
   const { data: caps } = useCapabilities();
   const { run, error } = useAction();
@@ -233,7 +235,7 @@ function NotificationSettings() {
                 checked={prefs.muted_sources.includes(c.id)}
                 onChange={() => toggleMute(c.id)}
               />
-              {c.name}
+              {capText.name(c)}
             </label>
           ))}
         </fieldset>
@@ -306,17 +308,6 @@ export function fromForm(schema: JsonSchema | undefined, form: Record<string, Fi
   return out;
 }
 
-/** Display names of the capability config fields Phoenix knows; any other field shows its key. */
-const LABELS: Record<string, MessageKey> = {
-  base_url: "settings.field.baseUrl",
-  poll_ms: "settings.field.pollMs",
-  bot_path: "settings.field.botPath",
-  bot_name: "settings.field.botName",
-  max_duration_min: "settings.field.maxDurationMin",
-  repositories: "settings.field.repositories",
-  speed: "settings.field.speed",
-};
-
 /** How a capability's state reads next to its name; an unknown state shows as Core sent it. */
 const STATUS_TEXT: Readonly<Partial<Record<string, MessageKey>>> = {
   enabled: "common.status.enabled",
@@ -353,6 +344,8 @@ function CapabilityEditor({
   onChanged: () => void;
 }) {
   const t = useT();
+  const capText = useCapabilityText();
+  const displayName = capText.name(c);
   const { run, busy, error } = useAction();
   const client = useClient();
   const guardInFlight = useRef(false);
@@ -411,7 +404,7 @@ function CapabilityEditor({
       `${base}/config`,
       { config: fromForm(c.config_schema, form) },
       enabled
-        ? t("settings.capability.done.savedRestart", { name: c.name })
+        ? t("settings.capability.done.savedRestart", { name: displayName })
         : t("settings.capability.done.saved"),
     );
   };
@@ -511,12 +504,12 @@ function CapabilityEditor({
   return (
     <details className="settings-cap">
       <summary>
-        <strong>{c.name}</strong>{" "}
+        <strong>{displayName}</strong>{" "}
         <span className={`small status status-${c.status}`}>
           {statusKey ? t(statusKey) : c.status}
         </span>
       </summary>
-      <p className="muted small">{c.description}</p>
+      <p className="muted small">{capText.description(c)}</p>
       {enabled && c.health.message && <p className="small">{c.health.message}</p>}
 
       <div className="button-row wrap">
@@ -535,8 +528,8 @@ function CapabilityEditor({
           }}
         >
           {enabled
-            ? t("settings.capability.disable", { name: c.name })
-            : t("settings.capability.enable", { name: c.name })}
+            ? t("settings.capability.disable", { name: displayName })
+            : t("settings.capability.enable", { name: displayName })}
         </button>
         {enabled && (
           <button
@@ -564,7 +557,7 @@ function CapabilityEditor({
               stopReview.action === "restart"
                 ? "settings.guard.bodyRestart"
                 : "settings.guard.bodyDisable",
-              { name: c.name, sessions: joinList(t, stopReview.sessions) },
+              { name: displayName, sessions: joinList(t, stopReview.sessions) },
             )}
           </p>
           <label className="choice">
@@ -609,7 +602,7 @@ function CapabilityEditor({
       )}
       {hasAiDeclarations && currentDisclosure && (
         <section
-          aria-label={t("settings.disclosure.region", { name: c.name })}
+          aria-label={t("settings.disclosure.region", { name: displayName })}
           className="settings-form"
         >
           <h3>
@@ -622,8 +615,8 @@ function CapabilityEditor({
           <p>{t("settings.disclosure.manifest", { version: c.version })}</p>
           <p>
             {t("settings.disclosure.summary", {
-              name: c.name,
-              description: c.description,
+              name: displayName,
+              description: capText.description(c),
               kind: c.kind,
             })}
           </p>
@@ -743,8 +736,7 @@ function CapabilityEditor({
       {fields.length > 0 && (
         <form onSubmit={saveConfig} className="settings-form">
           {fields.map(([key, p]) => {
-            const labelKey = LABELS[key];
-            const label = labelKey ? t(labelKey) : key;
+            const label = capText.field(c, key);
             const set = (v: FieldValue) => setForm((f) => ({ ...f, [key]: v }));
             if (p.type === "boolean") {
               return (

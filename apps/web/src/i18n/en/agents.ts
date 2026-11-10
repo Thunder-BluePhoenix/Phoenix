@@ -112,6 +112,7 @@ export const agents = {
   "agents.approvals.noPreview": "No preview was provided by this capability.",
   "agents.approvals.target": "Target",
   "agents.approvals.noTarget": "No target was provided by this capability.",
+  "agents.approvals.targets": "Named inputs this request will act on",
   "agents.approvals.risk": "Risk",
   "agents.approvals.noRisk": "No risk level was provided.",
   "agents.approvals.permissions": "Permissions used",

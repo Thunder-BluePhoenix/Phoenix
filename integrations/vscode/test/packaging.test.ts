@@ -54,6 +54,8 @@ describe(".vscodeignore", () => {
   it.each([
     "test/**",
     "scripts/**",
+    "types/**",
+    "tsconfig*.json",
     "**/*.test.*",
     "**/*.map",
     "**/*.ts",

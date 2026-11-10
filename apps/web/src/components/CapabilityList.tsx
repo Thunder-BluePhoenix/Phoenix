@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Phoenix contributors
 import { formatNumber } from "../core/format";
+import { useCapabilityText } from "../core/capability-text";
 import { useAction, useCapabilities } from "../core/hooks";
 import type { CapabilityView } from "../core/types";
 import { useT, type MessageKey } from "../i18n";
@@ -42,6 +43,7 @@ function CapabilityCard({
   onChanged: () => void;
 }) {
   const t = useT();
+  const capText = useCapabilityText();
   const { run, busy, error } = useAction();
   const enabled = c.status === "enabled";
   const toggle = async () => {
@@ -57,11 +59,11 @@ function CapabilityCard({
     <li className="card capability">
       <div className="card-head">
         <div>
-          <strong>{c.name}</strong>{" "}
+          <strong>{capText.name(c)}</strong>{" "}
           <span className="muted small">
             {t("services.capabilities.version", { version: c.version })}
           </span>
-          <p className="muted small">{c.description}</p>
+          <p className="muted small">{capText.description(c)}</p>
         </div>
         <button
           type="button"
@@ -70,7 +72,7 @@ function CapabilityCard({
           onClick={() => void toggle()}
           aria-label={t(
             enabled ? "services.capabilities.disableNamed" : "services.capabilities.enableNamed",
-            { name: c.name },
+            { name: capText.name(c) },
           )}
         >
           {t(enabled ? "services.capabilities.disable" : "services.capabilities.enable")}

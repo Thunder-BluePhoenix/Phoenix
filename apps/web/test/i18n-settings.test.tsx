@@ -166,7 +166,10 @@ describe("Settings in the pseudo-locale en-XA", () => {
     // Messages built from variables keep the variable, wrapped in the pseudo text.
     expect(
       await screen.findByRole("button", {
-        name: pseudoMessage(en["settings.capability.disable"]).replace("{name}", "Kage"),
+        name: pseudoMessage(en["settings.capability.disable"]).replace(
+          "{name}",
+          pseudoMessage(en["capabilityLabels.kage.name"]),
+        ),
       }),
     ).toBeTruthy();
     expect(screen.getByText("/home/me/.phoenix/dev", { selector: "code" })).toBeTruthy();

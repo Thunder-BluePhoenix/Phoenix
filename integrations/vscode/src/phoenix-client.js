@@ -75,8 +75,10 @@ function createPhoenixClient(options) {
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       redirect: "error",
     });
-    /** @type {{ message?: string, token?: string, status?: string, event_id?: string, code?: string }} */
-    const json = await res.json().catch(() => ({}));
+    const json =
+      /** @type {{ message?: string, token?: string, status?: string, event_id?: string, code?: string }} */ (
+        await res.json().catch(() => ({}))
+      );
     return { ok: res.ok, status: res.status, json };
   }
 

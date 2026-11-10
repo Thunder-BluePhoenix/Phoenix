@@ -105,6 +105,7 @@ export const agents: Record<keyof typeof enagents, string> = {
   "agents.approvals.noPreview": "Esta capacidade não forneceu pré-visualização.",
   "agents.approvals.target": "Destino",
   "agents.approvals.noTarget": "Esta capacidade não informou um destino.",
+  "agents.approvals.targets": "Entradas nomeadas sobre as quais este pedido vai agir",
   "agents.approvals.risk": "Risco",
   "agents.approvals.noRisk": "Nenhum nível de risco foi informado.",
   "agents.approvals.permissions": "Permissões usadas",

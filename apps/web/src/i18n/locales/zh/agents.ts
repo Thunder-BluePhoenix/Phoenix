@@ -104,6 +104,7 @@ export const agents: Record<keyof typeof enagents, string> = {
   "agents.approvals.noPreview": "此能力未提供预览。",
   "agents.approvals.target": "目标",
   "agents.approvals.noTarget": "此能力未提供目标。",
+  "agents.approvals.targets": "此请求将作用的具名输入",
   "agents.approvals.risk": "风险",
   "agents.approvals.noRisk": "未提供风险等级。",
   "agents.approvals.permissions": "使用的权限",

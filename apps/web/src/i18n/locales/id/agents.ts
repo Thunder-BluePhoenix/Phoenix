@@ -94,6 +94,7 @@ export const agents: Record<keyof typeof enagents, string> = {
   "agents.approvals.noPreview": "Kapabilitas ini tidak menyediakan pratinjau.",
   "agents.approvals.target": "Target",
   "agents.approvals.noTarget": "Kapabilitas ini tidak menyediakan target.",
+  "agents.approvals.targets": "Input bernama yang akan diproses permintaan ini",
   "agents.approvals.risk": "Risiko",
   "agents.approvals.noRisk": "Tingkat risiko tidak disediakan.",
   "agents.approvals.permissions": "Izin yang digunakan",

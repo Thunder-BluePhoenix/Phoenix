@@ -43,13 +43,6 @@ export const settings: Record<keyof typeof ensettings, string> = {
   "settings.capability.done.secretRemoved": "Удалено из вашей связки ключей.",
   "settings.capability.done.revoked":
     "Разрешение отозвано. При повторном включении оно будет запрошено снова.",
-  "settings.field.baseUrl": "Адрес сервера",
-  "settings.field.pollMs": "Проверять каждые (мс)",
-  "settings.field.botPath": "Путь к боту Kage",
-  "settings.field.botName": "Отображаемое имя бота",
-  "settings.field.maxDurationMin": "Максимальная длительность записи (мин)",
-  "settings.field.repositories": "Репозитории (один абсолютный путь на строку)",
-  "settings.field.speed": "Скорость воспроизведения",
   "settings.secret.apiKey": "Ключ API",
   "settings.secret.stored": "(хранится в связке ключей вашей ОС)",
   "settings.secret.notSet": "(не задан)",

@@ -110,6 +110,8 @@ export const agents: Record<keyof typeof enagents, string> = {
   "agents.approvals.noPreview": "Эта возможность не предоставила предпросмотр.",
   "agents.approvals.target": "Цель",
   "agents.approvals.noTarget": "Эта возможность не указала цель.",
+  "agents.approvals.targets":
+    "Именованные входные данные, над которыми будет выполнено это действие",
   "agents.approvals.risk": "Риск",
   "agents.approvals.noRisk": "Уровень риска не указан.",
   "agents.approvals.permissions": "Используемые разрешения",

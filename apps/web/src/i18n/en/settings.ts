@@ -46,14 +46,6 @@ export const settings = {
   "settings.capability.done.secretRemoved": "Removed from your keychain.",
   "settings.capability.done.revoked": "Permission revoked. Enabling again asks for it again.",
 
-  "settings.field.baseUrl": "Server address",
-  "settings.field.pollMs": "Check every (ms)",
-  "settings.field.botPath": "Kage bot path",
-  "settings.field.botName": "Bot display name",
-  "settings.field.maxDurationMin": "Maximum capture length (min)",
-  "settings.field.repositories": "Repositories (one absolute path per line)",
-  "settings.field.speed": "Playback speed",
-
   "settings.secret.apiKey": "API key",
   "settings.secret.stored": "(stored in your OS keychain)",
   "settings.secret.notSet": "(not set)",

@@ -105,6 +105,7 @@ export const agents: Record<keyof typeof enagents, string> = {
   "agents.approvals.noPreview": "لم تقدّم هذه القدرة أي معاينة.",
   "agents.approvals.target": "الهدف",
   "agents.approvals.noTarget": "لم تحدّد هذه القدرة أي هدف.",
+  "agents.approvals.targets": "المدخلات المسمّاة التي سينفّذ عليها هذا الطلب",
   "agents.approvals.risk": "الخطورة",
   "agents.approvals.noRisk": "لم يُحدَّد مستوى الخطورة.",
   "agents.approvals.permissions": "الأذونات المستخدمة",

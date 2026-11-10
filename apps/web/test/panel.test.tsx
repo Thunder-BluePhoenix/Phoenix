@@ -219,7 +219,11 @@ describe("Capabilities", () => {
     });
     openPanel();
     fireEvent.click(tab("Capabilities"));
-    expect(await screen.findByText("Local repository activity")).toBeTruthy();
+    expect(
+      await screen.findByText(
+        "Watches your selected local repositories for commits, branches and conflicts.",
+      ),
+    ).toBeTruthy();
     expect(screen.getByText("Not enabled")).toBeTruthy();
     expect(screen.getByText(/Access source code repositories/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Enable Git" }));

@@ -25,6 +25,7 @@ import { power } from "./power";
 import { safety } from "./safety";
 import { services } from "./services";
 import { settings } from "./settings";
+import { capabilityLabels } from "./capability-labels";
 import { sounds } from "./sounds";
 import { musicPlay } from "./music-play";
 import { pageNotes } from "./page-notes";
@@ -63,6 +64,7 @@ export const en = {
   ...power,
   ...services,
   ...settings,
+  ...capabilityLabels,
   ...mcp,
   ...safety,
   ...mission,

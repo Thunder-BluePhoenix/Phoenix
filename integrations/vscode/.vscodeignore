@@ -1,6 +1,7 @@
 # Only the runtime files ship: extension.js, src/*.js, package.json, README.md, LICENSE, media/icon.png.
 test/**
 scripts/**
+types/**
 **/*.test.*
 **/*.map
 **/*.ts

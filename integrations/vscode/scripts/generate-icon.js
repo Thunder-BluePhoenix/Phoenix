@@ -13,7 +13,11 @@ const zlib = require("node:zlib");
 const SIZE = 128;
 const SAMPLES = 4;
 
-/** Inside the rounded square background (radius 24). */
+/**
+ * Inside the rounded square background (radius 24).
+ * @param {number} x
+ * @param {number} y
+ */
 function inBackground(x, y) {
   const r = 24;
   const cx = Math.min(Math.max(x, r), SIZE - r);
@@ -21,13 +25,19 @@ function inBackground(x, y) {
   return (x - cx) ** 2 + (y - cy) ** 2 <= r * r;
 }
 
-/** Flame: a teardrop that is round at the bottom and pointed at the top, centred on x = 64. */
+/**
+ * Flame: a teardrop that is round at the bottom and pointed at the top, centred on x = 64.
+ * @param {number} y
+ * @param {number} top
+ * @param {number} bottom
+ */
 function flameWidth(y, top, bottom) {
   if (y < top || y > bottom) return 0;
   const t = (y - top) / (bottom - top); // 0 at the tip, 1 at the base
   return 34 * Math.sin((Math.PI / 2) * Math.pow(t, 0.8)) * Math.pow(t, 0.35);
 }
 
+/** @param {number} x @param {number} y @param {number} top @param {number} bottom @param {number} lean */
 function inFlame(x, y, top, bottom, lean) {
   const t = (y - top) / (bottom - top);
   const centre = 64 + lean * (1 - t) * (1 - t);
@@ -35,6 +45,11 @@ function inFlame(x, y, top, bottom, lean) {
   return w > 0 && Math.abs(x - centre) <= w;
 }
 
+/**
+ * @param {number} x
+ * @param {number} y
+ * @returns {[number, number, number, number]}
+ */
 function sample(x, y) {
   if (!inBackground(x, y)) return [0, 0, 0, 0];
   if (inFlame(x, y, 70, 104, 0)) return [255, 214, 102, 255];
@@ -42,6 +57,7 @@ function sample(x, y) {
   return [32, 28, 46, 255];
 }
 
+/** @param {Uint8Array} buf */
 function crc32(buf) {
   let c;
   let crc = 0xffffffff;
@@ -53,6 +69,7 @@ function crc32(buf) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
+/** @param {string} type @param {Buffer} data */
 function chunk(type, data) {
   const head = Buffer.alloc(8);
   head.writeUInt32BE(data.length, 0);

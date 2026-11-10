@@ -1077,6 +1077,21 @@ code.break {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.approval-targets {
+  margin: 0;
+}
+.approval-targets .approval-target {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+}
+.approval-targets dt {
+  margin-top: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.approval-targets dt::after {
+  content: ":";
+}
 /* Agent text shown whole: wrapped, monospace, whitespace and escapes visible. */
 .reveal-block {
   display: block;

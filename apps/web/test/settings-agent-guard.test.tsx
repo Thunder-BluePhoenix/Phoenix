@@ -27,7 +27,7 @@ function openAgents() {
 }
 
 async function buttons() {
-  const name = await screen.findByText("agents", { selector: "strong" });
+  const name = await screen.findByText("Coding agents", { selector: "strong" });
   return within(name.closest("details")!);
 }
 
@@ -35,7 +35,7 @@ describe("agent capability session stop acknowledgement", () => {
   it("disables idle agents without an acknowledgement", async () => {
     const { api } = openAgents();
     const panel = await buttons();
-    fireEvent.click(panel.getByRole("button", { name: "Disable agents" }));
+    fireEvent.click(panel.getByRole("button", { name: "Disable Coding agents" }));
     await waitFor(() => expect(api.posts(disablePath)).toHaveLength(1));
     expect(api.posts(listPath)).toHaveLength(1);
     expect(panel.queryByRole("region", { name: "Agent session stop acknowledgement" })).toBeNull();
@@ -71,7 +71,7 @@ describe("agent capability session stop acknowledgement", () => {
       },
     }));
     const panel = await buttons();
-    fireEvent.click(panel.getByRole("button", { name: "Disable agents" }));
+    fireEvent.click(panel.getByRole("button", { name: "Disable Coding agents" }));
     const review = await panel.findByRole("region", { name: "Agent session stop acknowledgement" });
     fireEvent.click(within(review).getByRole("button", { name: "Cancel" }));
     expect(api.posts(disablePath)).toHaveLength(0);
@@ -83,7 +83,9 @@ describe("agent capability session stop acknowledgement", () => {
     const { promise, resolve } = Promise.withResolvers<unknown>();
     api.set("GET /api/operations/check", () => promise);
     const panel = await buttons();
-    doubleClick(() => fireEvent.click(panel.getByRole("button", { name: "Disable agents" })));
+    doubleClick(() =>
+      fireEvent.click(panel.getByRole("button", { name: "Disable Coding agents" })),
+    );
     await waitFor(() => expect(api.posts(listPath)).toHaveLength(1));
     expect(api.posts(disablePath)).toHaveLength(0);
     resolve({ status: "succeeded", result: { sessions: [] } });
@@ -97,7 +99,7 @@ describe("agent capability session stop acknowledgement", () => {
       error: { message: "Session list unavailable" },
     }));
     const panel = await buttons();
-    fireEvent.click(panel.getByRole("button", { name: "Disable agents" }));
+    fireEvent.click(panel.getByRole("button", { name: "Disable Coding agents" }));
     expect((await panel.findByRole("alert")).textContent).toContain("Session list unavailable");
     fireEvent.click(panel.getByRole("button", { name: "Restart" }));
     await waitFor(() => expect(api.posts(listPath)).toHaveLength(2));
@@ -110,7 +112,7 @@ describe("agent capability session stop acknowledgement", () => {
     let sessions = [session("run-1", "running")];
     api.set("GET /api/operations/check", () => ({ status: "succeeded", result: { sessions } }));
     const panel = await buttons();
-    fireEvent.click(panel.getByRole("button", { name: "Disable agents" }));
+    fireEvent.click(panel.getByRole("button", { name: "Disable Coding agents" }));
     const review = await panel.findByRole("region", { name: "Agent session stop acknowledgement" });
     fireEvent.click(within(review).getByRole("checkbox"));
     sessions = [session("run-1", "running"), session("wait-2", "waiting")];
@@ -131,7 +133,7 @@ describe("agent capability session stop acknowledgement", () => {
       result: { sessions: [session("run-1", "running")] },
     }));
     const panel = await buttons();
-    fireEvent.click(panel.getByRole("button", { name: "Disable agents" }));
+    fireEvent.click(panel.getByRole("button", { name: "Disable Coding agents" }));
     await panel.findByRole("region", { name: "Agent session stop acknowledgement" });
     version = "0.2.0";
     sendEvent(ws, 101, "capability.updated");

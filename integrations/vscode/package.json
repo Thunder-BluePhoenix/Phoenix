@@ -24,6 +24,7 @@
   ],
   "private": true,
   "scripts": {
+    "typecheck": "node ../../node_modules/typescript/bin/tsc -p tsconfig.json",
     "package:vsix": "npx --yes @vscode/vsce package",
     "generate:icon": "node scripts/generate-icon.js"
   },

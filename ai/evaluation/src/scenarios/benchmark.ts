@@ -3,9 +3,53 @@
 //
 // Ordinary tasks with known answers. They measure correctness, grounding, relevance, latency and
 // cost on the real agent; the adversarial categories live in their own files.
-import type { Scenario } from "../types";
+import type { MemorySeed, Scenario } from "../types";
 import { opsModel, ops } from "./helpers";
 import { CI_INPUT, DOCS_COMMIT, HONEST_ANSWER, SCAN_COMMIT, ciFixture, ciModel } from "./fixtures";
+
+/**
+ * The six docs and five keyword queries of the offline relevance scenario. Exported so the
+ * hybrid (lexical + vector) relevance check (../hybrid-relevance.ts) runs over the same corpus.
+ */
+export const RELEVANCE_DOCS: MemorySeed[] = [
+  { key: "doc-license", text: "The project is licensed under GPL-3.0-or-later (ADR-0009)." },
+  { key: "doc-gateway", text: "The permission gateway confirms every write before a tool runs." },
+  {
+    key: "doc-killswitch",
+    text: "The emergency stop engages the kill switch and rejects approvals.",
+  },
+  { key: "doc-retention", text: "Retention deletes meeting transcripts after thirty days." },
+  { key: "doc-ollama", text: "Ollama runs locally on loopback and never sees the cloud." },
+  { key: "doc-audit", text: "Every policy decision is appended to the audit log." },
+];
+
+export const RELEVANCE_EXACT_QUERIES = [
+  {
+    id: "q1",
+    query: "which licence does the project use",
+    relevant: ["project-docs:doc-license"],
+  },
+  {
+    id: "q2",
+    query: "what confirms a write before a tool runs",
+    relevant: ["project-docs:doc-gateway"],
+  },
+  {
+    id: "q3",
+    query: "emergency stop kill switch",
+    relevant: ["project-docs:doc-killswitch"],
+  },
+  {
+    id: "q4",
+    query: "when are transcripts deleted",
+    relevant: ["project-docs:doc-retention"],
+  },
+  {
+    id: "q5",
+    query: "where are policy decisions recorded",
+    relevant: ["project-docs:doc-audit"],
+  },
+];
 
 export const BENCHMARK: Scenario[] = [
   {
@@ -116,53 +160,9 @@ export const BENCHMARK: Scenario[] = [
     subject: "retrieval",
     description:
       "Lexical retrieval over six docs: the right source is in the top 3 for each query.",
-    setup: {
-      memory: [
-        { key: "doc-license", text: "The project is licensed under GPL-3.0-or-later (ADR-0009)." },
-        {
-          key: "doc-gateway",
-          text: "The permission gateway confirms every write before a tool runs.",
-        },
-        {
-          key: "doc-killswitch",
-          text: "The emergency stop engages the kill switch and rejects approvals.",
-        },
-        { key: "doc-retention", text: "Retention deletes meeting transcripts after thirty days." },
-        { key: "doc-ollama", text: "Ollama runs locally on loopback and never sees the cloud." },
-        { key: "doc-audit", text: "Every policy decision is appended to the audit log." },
-      ],
-    },
+    setup: { memory: RELEVANCE_DOCS },
     task: { kind: "retrieval", input: {} },
-    retrieval: {
-      k: 3,
-      queries: [
-        {
-          id: "q1",
-          query: "which licence does the project use",
-          relevant: ["project-docs:doc-license"],
-        },
-        {
-          id: "q2",
-          query: "what confirms a write before a tool runs",
-          relevant: ["project-docs:doc-gateway"],
-        },
-        {
-          id: "q3",
-          query: "emergency stop kill switch",
-          relevant: ["project-docs:doc-killswitch"],
-        },
-        {
-          id: "q4",
-          query: "when are transcripts deleted",
-          relevant: ["project-docs:doc-retention"],
-        },
-        {
-          id: "q5",
-          query: "where are policy decisions recorded",
-          relevant: ["project-docs:doc-audit"],
-        },
-      ],
-    },
+    retrieval: { k: 3, queries: RELEVANCE_EXACT_QUERIES },
     expectations: [
       { type: "retrieval_at_least", metric: "recallAtK", value: 0.8 },
       { type: "retrieval_at_least", metric: "mrr", value: 0.6 },
