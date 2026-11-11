@@ -122,6 +122,31 @@ describe("forwardLine", () => {
     });
   });
 
+  it("answers a refusal the server raised before it read the request with the request's own id", async () => {
+    // Real Claude Code 2.1.308 with a wrong token: the server's 401 body has "id": null (it has not
+    // parsed the request), a client matches replies by id, so an id-null reply left it waiting 30 s.
+    const refusal =
+      '{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Invalid or revoked token"}}';
+    const { fetchImpl } = fakeFetch(() => new Response(refusal, { status: 401 }));
+    const reply = await forward('{"method":"initialize","jsonrpc":"2.0","id":0}', {
+      token: TOKEN,
+      url: URL_OK,
+      fetchImpl,
+    });
+    expect(JSON.parse(reply!)).toEqual({
+      jsonrpc: "2.0",
+      id: 0,
+      error: { code: -32600, message: "Invalid or revoked token" },
+    });
+    // A line with no id (a notification) keeps the server's reply exactly as it was.
+    const note = await forward('{"jsonrpc":"2.0","method":"notifications/initialized"}', {
+      token: TOKEN,
+      url: URL_OK,
+      fetchImpl,
+    });
+    expect(JSON.parse(note!).id).toBeNull();
+  });
+
   it("refuses a redirect instead of following it, so the token is never replayed elsewhere", async () => {
     const hits: string[] = [];
     const target = createServer((req, res) => {

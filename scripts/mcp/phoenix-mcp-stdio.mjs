@@ -64,8 +64,20 @@ export async function forwardLine(line, { token, url, fetchImpl }) {
   if (response.status === 202) return null;
   const text = await response.text();
   try {
+    const reply = JSON.parse(text);
+    // The server answers a refusal it raised before reading the request (bad token, Host, rate
+    // limit, ...) with "id": null. A stdio client matches replies by id and would wait for this
+    // request until it times out, so give the error the id of the request that caused it.
+    if (
+      id !== null &&
+      reply !== null &&
+      typeof reply === "object" &&
+      reply.id === null &&
+      reply.error
+    )
+      reply.id = id;
     // Re-serialised so the line is guaranteed to be one JSON value on one line.
-    return JSON.stringify(JSON.parse(text));
+    return JSON.stringify(reply);
   } catch {
     return id === null ? null : errorLine(id, -32603, `Phoenix answered HTTP ${response.status}`);
   }

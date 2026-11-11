@@ -150,3 +150,5 @@ No root path was ever run: the scripts, the sudoers rule, the launchd job and `p
 executed by the authors. "Killing Phoenix mid-session restores sleep within a minute" and "uninstall
 leaves no root rule behind" are **unmet on a real Mac**; there is simulation evidence only. The heat
 thresholds (`CPU_Speed_Limit` mapping) are a documented choice, not Apple's definition.
+
+This is separate from the no-root hold: the 2026-11-11 run in `docs/evidence/phase-72-real-awake-kill-2026-11-11.md` observed only the user-level `caffeinate -w <pid>` hold being freed within 5 s of a SIGKILL of its owner (a stand-in Node process). It ran no root path, no sudoers rule, no lid-closed session and no helper.

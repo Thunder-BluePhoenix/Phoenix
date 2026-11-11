@@ -93,7 +93,17 @@ gets `deps.session` (`active()`, `end(reason)`), `deps.env`, `deps.battery`, `de
 `pnpm vitest run capabilities/awake/test` uses recording fakes (`testing/`): no real process, timer
 or command runs. `test/real-awake.test.ts` is skipped unless `PHOENIX_REAL_AWAKE=1` on macOS: it
 starts a real `caffeinate -t 20`, checks `pmset -g assertions` (read-only) for an assertion owned by
-that pid, releases it, and checks the process and assertion are gone.
+that pid, releases it, and checks the process and assertion are gone. `test/real-awake-kill.test.ts`
+(same gate; `test/support/real-awake-child.ts` is bundled with esbuild into a temp dir) spawns a
+child Node process that runs the production `SessionController` and `createInhibitor(realEnv())`, so
+the real `caffeinate` gets `-w <child pid>` as under Core. The parent matches the assertion in
+`pmset -g assertions` on the caffeinate pid, then SIGKILLs or SIGTERMs the child (or releases,
+cancels, shuts down, lets a 2 s hold and a sped-up session expire) and polls every 50 ms, up to 5 s,
+for the process and assertion to go; it asserts only "gone within 5 s" and records the times. The
+result of the one run is in `docs/evidence/phase-72-real-awake-kill-2026-11-11.md`. The child is a
+stand-in for Core: the real Core, the app, a real quit, an idle Mac, the lid closed, Linux and
+Windows are not covered. Run it with `PHOENIX_REAL_AWAKE=1` and, optionally,
+`PHOENIX_REAL_AWAKE_EVIDENCE=<file>` for the raw JSON.
 
 ## Known limits
 

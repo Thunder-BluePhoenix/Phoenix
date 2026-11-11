@@ -6,10 +6,13 @@ same card Fawkes shows for other agents. It is **off by default**, **local only*
 gets **nothing** until you grant it.
 
 > **Status.** The server, the stdio bridge and the Settings screen are built and tested with an
-> in-repo **simulated** MCP client over real loopback HTTP. No real MCP client (Claude Code, Cursor,
-> Codex, ...) has been run against it, so the phase exit criterion "a real MCP client reads Phoenix
-> context and gets an approval decided in Phoenix" is **not met**. The client snippets below are
-> marked where their config shape is not verified.
+> in-repo **simulated** MCP client over real loopback HTTP. In addition, the real Claude Code 2.1.308
+> and Gemini CLI 0.17.0 were pointed at a real Core and their model-free commands
+> (`claude mcp add/list/get`, `gemini mcp add/list`) were run: they connect, negotiate and list tools
+> (evidence: `docs/evidence/phase-76-real-mcp-client-2026-11-11.md`). **No model was called**, so no
+> real client has yet called a tool, read Phoenix context or had an approval decided in Phoenix, and
+> the phase exit criterion "a real MCP client reads Phoenix context and gets an approval decided in
+> Phoenix" is **not met**. Cursor and Codex were not installed and have not been tried.
 
 ## Turning it on
 
@@ -23,7 +26,11 @@ Settings, "Phoenix MCP server": tick the switch. Core then listens on `127.0.0.1
    revoking one frees a place.
 2. Tick what that client may do (below). A new client has **no grants**: it can connect, and every
    tool call is refused and audited.
-3. Put the token in the client's environment as `PHOENIX_MCP_TOKEN`. Never put it on a command line.
+3. Give the client the token as `PHOENIX_MCP_TOKEN` (or in its own config). The snippets below put the
+   token on the argv of the short-lived `add` command and the client then stores it **in clear** in
+   its own config (`claude mcp get` prints it too; Gemini's project `.gemini/settings.json` is
+   mode 0644): anyone who can read those files or process lists can use the token. Treat the client's
+   config as secret, keep the grants minimal, and revoke the client when done.
 
 ## Transport
 
@@ -188,14 +195,16 @@ from being misled. Grant only what a client needs.
 
 ## Client setup snippets
 
-Replace `<path to Phoenix>` with this checkout and use your client token. **Every snippet below is
-unverified against the client**: the config shapes come from each client's public documentation as
-the author remembers it, not from running the client. If a client rejects one, the endpoint and the
+Replace `<path to Phoenix>` with this checkout and use your client token. **Verified** means the
+snippet was run with the real client in a throwaway config against a real Core and the client's own
+`mcp list`/`mcp get` reported it connected (`docs/evidence/phase-76-real-mcp-client-2026-11-11.md`);
+it does NOT mean a model used the tools (that was not run). **Unverified** snippets come from the
+client's public documentation and were not run. If a client rejects one, the endpoint and the
 environment variable above are the contract.
 
-### Claude Code (unverified against the client)
+### Claude Code (verified with 2.1.308: `claude mcp list` says Connected)
 
-HTTP, if your Claude Code version supports remote MCP servers with headers:
+HTTP:
 
 ```sh
 claude mcp add --transport http phoenix http://127.0.0.1:47822/mcp --header "Authorization: Bearer $PHOENIX_MCP_TOKEN"
@@ -206,6 +215,38 @@ stdio, through the bridge (the token comes from the environment, not argv):
 ```sh
 claude mcp add phoenix --env PHOENIX_MCP_TOKEN="$PHOENIX_MCP_TOKEN" -- node "<path to Phoenix>/scripts/mcp/phoenix-mcp-stdio.mjs"
 ```
+
+If Phoenix listens on another port than 47822, add `--env PHOENIX_MCP_URL=http://127.0.0.1:<port>/mcp`
+to the stdio command (without it the bridge talks to 47822 and `claude mcp list` says "Phoenix is not
+reachable").
+
+What the real client does: `claude mcp list` / `get` send `server/discover` (a 2026-07-28 probe with
+`MCP-Protocol-Version: 2026-07-28`; Phoenix answers `400`, which Claude Code ignores), `initialize`
+(protocolVersion `2025-11-25`; Phoenix answers `2025-06-18` and Claude Code accepts), `notifications/initialized`,
+a `GET /mcp` for the optional SSE stream (`405`, tolerated) and `tools/list`. It does not send
+`resources/list` or `prompts/list`. A wrong token shows `Failed to connect ... HTTP 401 ... Invalid or
+revoked token` (not "needs auth"). Each check writes a few `mcp.call.denied` audit rows (the
+discover probe and the GET); that is expected. `claude mcp get` prints the Authorization header in
+clear.
+
+### Gemini CLI (verified with 0.17.0: `gemini mcp list` says Connected)
+
+Run in the project directory (default scope `project` writes `.gemini/settings.json` there; add
+`-s user` for the user file). HTTP:
+
+```sh
+gemini mcp add --transport http phoenix http://127.0.0.1:47822/mcp -H "Authorization: Bearer $PHOENIX_MCP_TOKEN"
+```
+
+stdio through the bridge (add `-e PHOENIX_MCP_URL=http://127.0.0.1:<port>/mcp` when not on 47822):
+
+```sh
+gemini mcp add phoenix -e PHOENIX_MCP_TOKEN="$PHOENIX_MCP_TOKEN" node "<path to Phoenix>/scripts/mcp/phoenix-mcp-stdio.mjs"
+```
+
+`gemini mcp list` sends `initialize` (2025-06-18, clientInfo `mcp-test-client`), `notifications/initialized`,
+a `GET` (`405`, tolerated) and `ping`, and reports `Connected`; a wrong token reports `Disconnected`.
+It does not call `tools/list` there. The settings file is written with the token in clear and mode 0644.
 
 ### Cursor (unverified against the client)
 
@@ -273,10 +314,10 @@ curl -s http://127.0.0.1:47822/mcp -H "Authorization: Bearer $PHOENIX_MCP_TOKEN"
 
 ## What is and is not verified
 
-|                                                                                                                                                                                                                    |                                                                                                                                                                                                                             |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Grants, revocation (incl. in flight), Host/Origin/size/rate guards, audit, token hashing, scoped memory, approval creation and owner-only decision, notify, kill switch, delete-all, stdio bridge, Settings screen | Tested with a **simulated** client (`core/runtime/test/mcp-*.test.ts`, `apps/web/test/mcp-clients.test.tsx`).                                                                                                               |
-| Any real MCP client talking to it                                                                                                                                                                                  | **Not done.** Claude Code, Cursor and Codex were NOT run. The handshake probes above are tested only by the simulated client; a client that needs something else (for example the legacy HTTP+SSE transport) will not work. |
-| The snippets above                                                                                                                                                                                                 | **Unverified.**                                                                                                                                                                                                             |
-| Hybrid (embedding) search for MCP clients                                                                                                                                                                          | Not offered; lexical only.                                                                                                                                                                                                  |
-| Per-tool policy rules for the read tools backed by Phoenix's own data                                                                                                                                              | They are authorised by the client's grants and audited by the MCP handler; only `git.status` / `github.status` go through the tool gateway's policy engine.                                                                 |
+|                                                                                                                                                                                                                    |                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Grants, revocation (incl. in flight), Host/Origin/size/rate guards, audit, token hashing, scoped memory, approval creation and owner-only decision, notify, kill switch, delete-all, stdio bridge, Settings screen | Tested with a **simulated** client (`core/runtime/test/mcp-*.test.ts`, `apps/web/test/mcp-clients.test.tsx`).                                                                                                                                                                                                                                                                                                                               |
+| Any real MCP client talking to it                                                                                                                                                                                  | **Partly.** Claude Code 2.1.308 and Gemini CLI 0.17.0 connected, negotiated and listed tools (HTTP and stdio bridge), and were refused with a wrong token, in `mcp list`/`get` runs with no model. **Not done:** a real client calling a tool, reading Phoenix context, or getting an approval decided in Phoenix (needs a model/agent); Cursor and Codex (not installed). A client that needs the legacy HTTP+SSE transport will not work. |
+| The snippets above                                                                                                                                                                                                 | Claude Code and Gemini CLI: **run** (see their sections). Cursor and Codex: **unverified**.                                                                                                                                                                                                                                                                                                                                                 |
+| Hybrid (embedding) search for MCP clients                                                                                                                                                                          | Not offered; lexical only.                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Per-tool policy rules for the read tools backed by Phoenix's own data                                                                                                                                              | They are authorised by the client's grants and audited by the MCP handler; only `git.status` / `github.status` go through the tool gateway's policy engine.                                                                                                                                                                                                                                                                                 |

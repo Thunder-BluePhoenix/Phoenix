@@ -1,0 +1,205 @@
+{
+  "node": "v22.19.0",
+  "platform": "darwin",
+  "orphans": {
+    "before": [],
+    "after": [],
+    "leaked": []
+  },
+  "records": [
+    {
+      "case": "sigkill",
+      "rep": 1,
+      "childPid": 26259,
+      "caffeinatePid": 26296,
+      "caffeinateCommand": "caffeinate -d -i -s -t 300 -w 26259",
+      "assertionTypesWhileHeld": [
+        "PreventSystemSleep",
+        "PreventUserIdleDisplaySleep",
+        "PreventUserIdleSystemSleep"
+      ],
+      "processGoneMs": 53,
+      "assertionGoneMs": 8,
+      "emitted": [
+        "awake.session.started:null"
+      ]
+    },
+    {
+      "case": "sigkill",
+      "rep": 2,
+      "childPid": 26371,
+      "caffeinatePid": 26409,
+      "caffeinateCommand": "caffeinate -d -i -s -t 300 -w 26371",
+      "assertionTypesWhileHeld": [
+        "PreventSystemSleep",
+        "PreventUserIdleDisplaySleep",
+        "PreventUserIdleSystemSleep"
+      ],
+      "processGoneMs": 53,
+      "assertionGoneMs": 9,
+      "emitted": [
+        "awake.session.started:null"
+      ]
+    },
+    {
+      "case": "sigkill",
+      "rep": 3,
+      "childPid": 26485,
+      "caffeinatePid": 26521,
+      "caffeinateCommand": "caffeinate -d -i -s -t 300 -w 26485",
+      "assertionTypesWhileHeld": [
+        "PreventSystemSleep",
+        "PreventUserIdleDisplaySleep",
+        "PreventUserIdleSystemSleep"
+      ],
+      "processGoneMs": 53,
+      "assertionGoneMs": 8,
+      "emitted": [
+        "awake.session.started:null"
+      ]
+    },
+    {
+      "case": "sigkill",
+      "rep": 4,
+      "childPid": 26597,
+      "caffeinatePid": 26633,
+      "caffeinateCommand": "caffeinate -d -i -s -t 300 -w 26597",
+      "assertionTypesWhileHeld": [
+        "PreventSystemSleep",
+        "PreventUserIdleDisplaySleep",
+        "PreventUserIdleSystemSleep"
+      ],
+      "processGoneMs": 51,
+      "assertionGoneMs": 8,
+      "emitted": [
+        "awake.session.started:null"
+      ]
+    },
+    {
+      "case": "sigkill",
+      "rep": 5,
+      "childPid": 26707,
+      "caffeinatePid": 26745,
+      "caffeinateCommand": "caffeinate -d -i -s -t 300 -w 26707",
+      "assertionTypesWhileHeld": [
+        "PreventSystemSleep",
+        "PreventUserIdleDisplaySleep",
+        "PreventUserIdleSystemSleep"
+      ],
+      "processGoneMs": 53,
+      "assertionGoneMs": 8,
+      "emitted": [
+        "awake.session.started:null"
+      ]
+    },
+    {
+      "case": "sigterm",
+      "childPid": 26819,
+      "caffeinatePid": 26855,
+      "caffeinateCommand": "caffeinate -d -i -s -t 300 -w 26819",
+      "assertionTypesWhileHeld": [
+        "PreventSystemSleep",
+        "PreventUserIdleDisplaySleep",
+        "PreventUserIdleSystemSleep"
+      ],
+      "processGoneMs": 53,
+      "assertionGoneMs": 7,
+      "emitted": [
+        "awake.session.started:null"
+      ]
+    },
+    {
+      "case": "hold-release",
+      "childPid": 26931,
+      "caffeinatePid": 26949,
+      "caffeinateCommand": "caffeinate -d -i -s -t 300 -w 26931",
+      "assertionTypesWhileHeld": [
+        "PreventSystemSleep",
+        "PreventUserIdleDisplaySleep",
+        "PreventUserIdleSystemSleep"
+      ],
+      "processGoneMs": 24,
+      "assertionGoneMs": 32,
+      "emitted": []
+    },
+    {
+      "case": "cancel",
+      "childPid": 27095,
+      "caffeinatePid": 27133,
+      "caffeinateCommand": "caffeinate -d -i -s -t 300 -w 27095",
+      "assertionTypesWhileHeld": [
+        "PreventSystemSleep",
+        "PreventUserIdleDisplaySleep",
+        "PreventUserIdleSystemSleep"
+      ],
+      "processGoneMs": 24,
+      "assertionGoneMs": 34,
+      "emitted": [
+        "awake.session.started:null",
+        "awake.session.ended:cancelled"
+      ]
+    },
+    {
+      "case": "shutdown",
+      "childPid": 27207,
+      "caffeinatePid": 27245,
+      "caffeinateCommand": "caffeinate -d -i -s -t 300 -w 27207",
+      "assertionTypesWhileHeld": [
+        "PreventSystemSleep",
+        "PreventUserIdleDisplaySleep",
+        "PreventUserIdleSystemSleep"
+      ],
+      "processGoneMs": 23,
+      "assertionGoneMs": 31,
+      "emitted": [
+        "awake.session.started:null",
+        "awake.session.ended:shutdown"
+      ]
+    },
+    {
+      "case": "hold-expiry-2s",
+      "childPid": 27322,
+      "caffeinatePid": 27340,
+      "caffeinateCommand": "caffeinate -d -i -s -t 2 -w 27322",
+      "assertionTypesWhileHeld": [
+        "PreventSystemSleep",
+        "PreventUserIdleDisplaySleep",
+        "PreventUserIdleSystemSleep"
+      ],
+      "processGoneMs": 2104,
+      "assertionGoneMs": 2037,
+      "emitted": []
+    },
+    {
+      "case": "session-expiry-scaled",
+      "childPid": 28080,
+      "caffeinatePid": 28116,
+      "caffeinateCommand": "caffeinate -d -i -s -t 300 -w 28080",
+      "assertionTypesWhileHeld": [
+        "PreventSystemSleep",
+        "PreventUserIdleDisplaySleep",
+        "PreventUserIdleSystemSleep"
+      ],
+      "processGoneMs": 4973,
+      "assertionGoneMs": 5004,
+      "emitted": [
+        "awake.session.started:null",
+        "awake.session.ended:expired"
+      ]
+    },
+    {
+      "case": "control-no-w",
+      "childPid": 29922,
+      "caffeinatePid": 29940,
+      "caffeinateCommand": "caffeinate -d -i -t 30",
+      "assertionTypesWhileHeld": [
+        "PreventUserIdleDisplaySleep",
+        "PreventUserIdleSystemSleep"
+      ],
+      "processGoneMs": null,
+      "assertionGoneMs": null,
+      "emitted": [],
+      "note": "control, not production code: a caffeinate started without -w"
+    }
+  ]
+}
