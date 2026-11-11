@@ -225,6 +225,37 @@ describe("per-provider keys are write-only", () => {
     );
   });
 
+  it("a key that cannot be sent in an HTTP header is refused with a clear 400 that does not echo it; nothing is stored", async () => {
+    const core = await boot();
+    const bad: Record<string, string> = {
+      japanese: ["PROV", "\u65e5\u672c\u8a9e", "CANARY"].join("-"),
+      emoji: ["PROV", "\u{1f600}", "CANARY"].join("-"),
+      latin1: ["PROV", "\u00e9\u00ff", "CANARY"].join("-"),
+      space: ["PROV", "SPACE KEY", "CANARY"].join("-"),
+      surroundingSpace: ` ${KEY} `,
+      tab: ["PROV", "TAB\tKEY"].join("-"),
+      control: ["PROV", "\u0001CTRL"].join("-"),
+      delete: ["PROV", "DEL\u007f"].join("-"),
+      nbsp: ["PROV", "\u00a0NBSP"].join("-"),
+    };
+    for (const [name, value] of Object.entries(bad)) {
+      const r = await core.api("POST", "/api/ai/providers/openai/secret", { value });
+      expect(r.status, name).toBe(400);
+      const text = JSON.stringify(r.json);
+      expect(text, name).toContain("basic ASCII");
+      expect(text, name).not.toContain(value.trim());
+      expect(text, name).not.toContain("CANARY");
+    }
+    expect(await core.secrets.get("phoenix.ai.openai_api_key")).toBeUndefined();
+    // A normal key, including every printable ASCII punctuation mark, still works.
+    const punct = `${KEY}-_.~+/=!"#$%&'()*,:;<>?@[\\]^\`{|}`;
+    for (const value of [KEY, punct]) {
+      const ok = await core.api("POST", "/api/ai/providers/openai/secret", { value });
+      expect(ok.status).toBe(200);
+      expect(await core.secrets.get("phoenix.ai.openai_api_key")).toBe(value);
+    }
+  });
+
   it("the old single /api/ai/secret route is gone", async () => {
     const core = await boot();
     expect((await core.api("POST", "/api/ai/secret", { value: KEY })).status).toBe(404);

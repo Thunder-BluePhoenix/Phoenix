@@ -1,0 +1,464 @@
+{
+  "date": "2026-11-11T17:49:04.435Z",
+  "node": "v22.19.0",
+  "platform": "darwin arm64",
+  "browserPath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "scenarios": [
+    {
+      "name": "A: host manifest allows this extension id",
+      "manifestMode": "allowed",
+      "profileUnderTmp": true,
+      "args": [
+        "--user-data-dir=<temp profile>",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--remote-debugging-pipe",
+        "--enable-unsafe-extension-debugging",
+        "--window-size=700,500",
+        "about:blank"
+      ],
+      "browserPid": 63645,
+      "browserVersion": "Chrome/157.0.8103.50",
+      "loadUnpacked": {
+        "id": 2,
+        "result": {
+          "id": "bgimidembamdjimmcdhpbgcjoiagokhj"
+        }
+      },
+      "extensionId": "bgimidembamdjimmcdhpbgcjoiagokhj",
+      "pathDerivedId": "bgimidembamdjimmcdhpbgcjoiagokhj",
+      "idMatchesPathDerivation": true,
+      "manifestHasKey": false,
+      "hostManifest": {
+        "name": "dev.phoenix.companion",
+        "description": "Phoenix: send page to your local Phoenix",
+        "path": "<temp profile>/phoenix-host-launcher.sh",
+        "type": "stdio",
+        "allowed_origins": [
+          "chrome-extension://bgimidembamdjimmcdhpbgcjoiagokhj/"
+        ]
+      },
+      "launcher": "#!/bin/sh\nexport PHOENIX_DATA_DIR='<core data dir>'\n{ echo \"pid=$$ ppid=$PPID args=$*\"; ps -o pid=,ppid=,command= -p \"$PPID\"; } >> '/tmp/p89-host-63491.log' 2>&1\nexec '<node>' '<apps/extension>/host/main.js'\n",
+      "pageUrlOpened": "http://127.0.0.1:<port>/notes/page1?token=zzz&utm=distinct#frag-distinct",
+      "pageNavigate": {
+        "id": 6,
+        "result": {
+          "frameId": "A6785E188310B5388A3ADC3EE0E1FDC7",
+          "loaderId": "6F20D371CD5ED6B7A2289C996B4C573E",
+          "isDownload": false
+        },
+        "sessionId": "9D199B9CCD8157803165386BE02278CF"
+      },
+      "pageSelectionBeforeClick": "Selected sentence for Phoenix.",
+      "serviceWorkerUrl": "chrome-extension://<id>/src/background.js",
+      "extensionsPageInfo": [
+        {
+          "name": "Phoenix: send page",
+          "version": "0.1.0",
+          "state": "ENABLED",
+          "location": "UNPACKED",
+          "disableReasons": {
+            "blockedByPolicy": false,
+            "corruptInstall": false,
+            "custodianApprovalRequired": false,
+            "disabledByAnotherExtension": false,
+            "parentDisabledPermissions": false,
+            "publishedInStoreRequired": false,
+            "reloading": false,
+            "suspiciousInstall": false,
+            "unsupportedDeveloperExtension": false,
+            "unsupportedManifestVersion": false,
+            "updateRequired": false
+          },
+          "manifestErrors": [],
+          "runtimeErrors": [],
+          "installWarnings": [],
+          "permissions": [
+            "Communicate with cooperating native applications"
+          ],
+          "pinnedToToolbar": true
+        }
+      ],
+      "tabTarget": {
+        "type": "tab",
+        "url": "http://127.0.0.1:<port>/notes/page1?token=zzz&utm=distinct#frag-distinct"
+      },
+      "triggerAction": {
+        "id": 21,
+        "result": {}
+      },
+      "clickWasRealUserGesture": false,
+      "badgeAfterAction": {
+        "id": 1715273490,
+        "badge": "OK",
+        "title": "Sent to Phoenix. Review it in Phoenix, under Pages."
+      },
+      "allTabsBadge": [
+        {
+          "id": 1715273489,
+          "badge": "",
+          "title": "Send this page to Phoenix"
+        },
+        {
+          "id": 1715273490,
+          "badge": "OK",
+          "title": "Sent to Phoenix. Review it in Phoenix, under Pages."
+        }
+      ],
+      "serviceWorkerEvents": [],
+      "browserStderrNonUpdater": [
+        "Trying to load the allocator multiple times. This is *not* supported.",
+        "[64327:96472686:1111/231924.953440:VERBOSE1:chrome/updater/crash_reporter.cc:123] Crash handler launched and ready.",
+        "[64327:96472686:1111/231924.953921:VERBOSE1:chrome/updater/crash_client.cc:109] Found 0 completed crash reports",
+        "[64327:96472686:1111/231924.953971:VERBOSE1:chrome/updater/crash_client.cc:132] Found 0 pending crash reports",
+        "[64327:96472686:1111/231924.954040:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/RLZ/Crashpad/settings.dat: No such file or directory (2)",
+        "[64327:96472686:1111/231924.954051:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/consentOptions/Crashpad/settings.dat: No such file or directory (2)",
+        "[64327:96472686:1111/231924.954081:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/AndroidStudio2025.2.2/Crashpad/settings.dat: No such file or directory (2)",
+        "[64327:96472686:1111/231924.954116:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/ChromeForTesting/Crashpad/settings.dat: No such file or directory (2)",
+        "[64327:96472686:1111/231924.954123:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/Chrome-headless/Crashpad/settings.dat: No such file or directory (2)",
+        "[64330:96472704:1111/231924.972097:VERBOSE1:chrome/updater/crash_reporter.cc:123] Crash handler launched and ready.",
+        "[64330:96472704:1111/231924.972578:VERBOSE1:chrome/updater/crash_client.cc:109] Found 0 completed crash reports",
+        "[64330:96472704:1111/231924.972626:VERBOSE1:chrome/updater/crash_client.cc:132] Found 0 pending crash reports",
+        "[64330:96472704:1111/231924.972688:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/RLZ/Crashpad/settings.dat: No such file or directory (2)",
+        "[64330:96472704:1111/231924.972698:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/consentOptions/Crashpad/settings.dat: No such file or directory (2)",
+        "[64330:96472704:1111/231924.972723:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/AndroidStudio2025.2.2/Crashpad/settings.dat: No such file or directory (2)",
+        "[64330:96472704:1111/231924.972748:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/ChromeForTesting/Crashpad/settings.dat: No such file or directory (2)",
+        "[64330:96472704:1111/231924.972756:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/Chrome-headless/Crashpad/settings.dat: No such file or directory (2)",
+        "[64330:96472704:1111/231924.972907:VERBOSE1:chrome/updater/ipc/update_service_internal_proxy_mojo.cc:61] Run",
+        "Created TensorFlow Lite XNNPACK delegate for CPU.",
+        "[64330:96472704:1111/231941.415342:VERBOSE1:chrome/updater/app/app.cc:52] Shutdown: 0"
+      ],
+      "browserProcessCount": 14,
+      "processesStartedByClick": [],
+      "profileRemoved": true,
+      "hostLogNewLines": [
+        "pid=64780 ppid=63645 args=chrome-extension://<id>/",
+        "63645 63491 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=/tmp/p89-profile-B3AQm2 --no-first-run --no-default-browser-check --remote-debugging-pipe --enable-unsafe-extension-debugging --window-size=700,500 about:blank"
+      ],
+      "noteCountBefore": 0,
+      "noteCountAfter": 1,
+      "newNotes": [
+        {
+          "id": "pn_6d4fbaa2c6e95c80d7a4c871",
+          "received_at": "2026-11-11T17:49:41.238Z",
+          "url": "http://127.0.0.1:<port>/notes/page1",
+          "title": "Phoenix real-browser test page",
+          "selected_text": "Selected sentence for Phoenix."
+        }
+      ],
+      "newNoteUrlIsOriginAndPathOnly": true,
+      "newNotesContainQueryOrFragment": false
+    },
+    {
+      "name": "B: host manifest lists a different extension id (negative control)",
+      "manifestMode": "different",
+      "profileUnderTmp": true,
+      "args": [
+        "--user-data-dir=<temp profile>",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--remote-debugging-pipe",
+        "--enable-unsafe-extension-debugging",
+        "--window-size=700,500",
+        "about:blank"
+      ],
+      "browserPid": 64947,
+      "browserVersion": "Chrome/157.0.8103.50",
+      "loadUnpacked": {
+        "id": 2,
+        "result": {
+          "id": "bgimidembamdjimmcdhpbgcjoiagokhj"
+        }
+      },
+      "extensionId": "bgimidembamdjimmcdhpbgcjoiagokhj",
+      "pathDerivedId": "bgimidembamdjimmcdhpbgcjoiagokhj",
+      "idMatchesPathDerivation": true,
+      "manifestHasKey": false,
+      "hostManifest": {
+        "name": "dev.phoenix.companion",
+        "description": "Phoenix: send page to your local Phoenix",
+        "path": "<temp profile>/phoenix-host-launcher.sh",
+        "type": "stdio",
+        "allowed_origins": [
+          "chrome-extension://pppppppppppppppppppppppppppppppp/"
+        ]
+      },
+      "launcher": "#!/bin/sh\nexport PHOENIX_DATA_DIR='<core data dir>'\n{ echo \"pid=$$ ppid=$PPID args=$*\"; ps -o pid=,ppid=,command= -p \"$PPID\"; } >> '/tmp/p89-host-63491.log' 2>&1\nexec '<node>' '<apps/extension>/host/main.js'\n",
+      "pageUrlOpened": "http://127.0.0.1:<port>/notes/page1?token=zzz&utm=distinct#frag-distinct",
+      "pageNavigate": {
+        "id": 6,
+        "result": {
+          "frameId": "1B82D59F1956C0B91F09867CFD3B7492",
+          "loaderId": "5A260A2950A2ADD4652B3BBA854F1F5C",
+          "isDownload": false
+        },
+        "sessionId": "E5889B3E16B19EB8FE71A2A68CA5275B"
+      },
+      "pageSelectionBeforeClick": "Selected sentence for Phoenix.",
+      "serviceWorkerUrl": "chrome-extension://<id>/src/background.js",
+      "extensionsPageInfo": [
+        {
+          "name": "Phoenix: send page",
+          "version": "0.1.0",
+          "state": "ENABLED",
+          "location": "UNPACKED",
+          "disableReasons": {
+            "blockedByPolicy": false,
+            "corruptInstall": false,
+            "custodianApprovalRequired": false,
+            "disabledByAnotherExtension": false,
+            "parentDisabledPermissions": false,
+            "publishedInStoreRequired": false,
+            "reloading": false,
+            "suspiciousInstall": false,
+            "unsupportedDeveloperExtension": false,
+            "unsupportedManifestVersion": false,
+            "updateRequired": false
+          },
+          "manifestErrors": [],
+          "runtimeErrors": [],
+          "installWarnings": [],
+          "permissions": [
+            "Communicate with cooperating native applications"
+          ],
+          "pinnedToToolbar": true
+        }
+      ],
+      "tabTarget": {
+        "type": "tab",
+        "url": "http://127.0.0.1:<port>/notes/page1?token=zzz&utm=distinct#frag-distinct"
+      },
+      "triggerAction": {
+        "id": 21,
+        "result": {}
+      },
+      "clickWasRealUserGesture": false,
+      "badgeAfterAction": {
+        "id": 704228272,
+        "badge": "!",
+        "title": "Phoenix's native-messaging host is not installed for this browser."
+      },
+      "allTabsBadge": [
+        {
+          "id": 704228271,
+          "badge": "",
+          "title": "Send this page to Phoenix"
+        },
+        {
+          "id": 704228272,
+          "badge": "!",
+          "title": "Phoenix's native-messaging host is not installed for this browser."
+        }
+      ],
+      "directSendNativeMessage": {
+        "response": null,
+        "lastError": "Access to the specified native messaging host is forbidden."
+      },
+      "serviceWorkerEvents": [],
+      "browserStderrNonUpdater": [
+        "Trying to load the allocator multiple times. This is *not* supported.",
+        "[65609:96476766:1111/232001.527041:VERBOSE1:chrome/updater/crash_reporter.cc:123] Crash handler launched and ready.",
+        "[65609:96476766:1111/232001.527557:VERBOSE1:chrome/updater/crash_client.cc:109] Found 0 completed crash reports",
+        "[65609:96476766:1111/232001.527610:VERBOSE1:chrome/updater/crash_client.cc:132] Found 0 pending crash reports",
+        "[65609:96476766:1111/232001.527668:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/RLZ/Crashpad/settings.dat: No such file or directory (2)",
+        "[65609:96476766:1111/232001.527677:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/consentOptions/Crashpad/settings.dat: No such file or directory (2)",
+        "[65609:96476766:1111/232001.527700:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/AndroidStudio2025.2.2/Crashpad/settings.dat: No such file or directory (2)",
+        "[65609:96476766:1111/232001.527723:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/ChromeForTesting/Crashpad/settings.dat: No such file or directory (2)",
+        "[65609:96476766:1111/232001.527730:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/Chrome-headless/Crashpad/settings.dat: No such file or directory (2)",
+        "[65612:96476784:1111/232001.547250:VERBOSE1:chrome/updater/crash_reporter.cc:123] Crash handler launched and ready.",
+        "[65612:96476784:1111/232001.547729:VERBOSE1:chrome/updater/crash_client.cc:109] Found 0 completed crash reports",
+        "[65612:96476784:1111/232001.547797:VERBOSE1:chrome/updater/crash_client.cc:132] Found 0 pending crash reports",
+        "[65612:96476784:1111/232001.547871:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/RLZ/Crashpad/settings.dat: No such file or directory (2)",
+        "[65612:96476784:1111/232001.547881:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/consentOptions/Crashpad/settings.dat: No such file or directory (2)",
+        "[65612:96476784:1111/232001.547911:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/AndroidStudio2025.2.2/Crashpad/settings.dat: No such file or directory (2)",
+        "[65612:96476784:1111/232001.547943:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/ChromeForTesting/Crashpad/settings.dat: No such file or directory (2)",
+        "[65612:96476784:1111/232001.547951:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/Chrome-headless/Crashpad/settings.dat: No such file or directory (2)",
+        "[65612:96476784:1111/232001.548136:VERBOSE1:chrome/updater/ipc/update_service_internal_proxy_mojo.cc:61] Run"
+      ],
+      "browserProcessCount": 14,
+      "processesStartedByClick": [],
+      "profileRemoved": true,
+      "hostLogNewLines": [],
+      "noteCountBefore": 1,
+      "noteCountAfter": 1,
+      "newNotes": [],
+      "newNoteUrlIsOriginAndPathOnly": null,
+      "newNotesContainQueryOrFragment": false
+    },
+    {
+      "name": "C: no host manifest installed (negative control)",
+      "manifestMode": "none",
+      "profileUnderTmp": true,
+      "args": [
+        "--user-data-dir=<temp profile>",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--remote-debugging-pipe",
+        "--enable-unsafe-extension-debugging",
+        "--window-size=700,500",
+        "about:blank"
+      ],
+      "browserPid": 66152,
+      "browserVersion": "Chrome/157.0.8103.50",
+      "loadUnpacked": {
+        "id": 2,
+        "result": {
+          "id": "bgimidembamdjimmcdhpbgcjoiagokhj"
+        }
+      },
+      "extensionId": "bgimidembamdjimmcdhpbgcjoiagokhj",
+      "pathDerivedId": "bgimidembamdjimmcdhpbgcjoiagokhj",
+      "idMatchesPathDerivation": true,
+      "manifestHasKey": false,
+      "pageUrlOpened": "http://127.0.0.1:<port>/notes/page1?token=zzz&utm=distinct#frag-distinct",
+      "pageNavigate": {
+        "id": 6,
+        "result": {
+          "frameId": "B9D08BC02ED1D990043BCCA88EA175CF",
+          "loaderId": "C3ACB160AD88E770C5A4D6E449581E04",
+          "isDownload": false
+        },
+        "sessionId": "353533844FDC36701E8DF2365C5C50C7"
+      },
+      "pageSelectionBeforeClick": "Selected sentence for Phoenix.",
+      "serviceWorkerUrl": "chrome-extension://<id>/src/background.js",
+      "extensionsPageInfo": [
+        {
+          "name": "Phoenix: send page",
+          "version": "0.1.0",
+          "state": "ENABLED",
+          "location": "UNPACKED",
+          "disableReasons": {
+            "blockedByPolicy": false,
+            "corruptInstall": false,
+            "custodianApprovalRequired": false,
+            "disabledByAnotherExtension": false,
+            "parentDisabledPermissions": false,
+            "publishedInStoreRequired": false,
+            "reloading": false,
+            "suspiciousInstall": false,
+            "unsupportedDeveloperExtension": false,
+            "unsupportedManifestVersion": false,
+            "updateRequired": false
+          },
+          "manifestErrors": [],
+          "runtimeErrors": [],
+          "installWarnings": [],
+          "permissions": [
+            "Communicate with cooperating native applications"
+          ],
+          "pinnedToToolbar": true
+        }
+      ],
+      "tabTarget": {
+        "type": "tab",
+        "url": "http://127.0.0.1:<port>/notes/page1?token=zzz&utm=distinct#frag-distinct"
+      },
+      "triggerAction": {
+        "id": 21,
+        "result": {}
+      },
+      "clickWasRealUserGesture": false,
+      "badgeAfterAction": {
+        "id": 351352618,
+        "badge": "!",
+        "title": "Phoenix's native-messaging host is not installed for this browser."
+      },
+      "allTabsBadge": [
+        {
+          "id": 351352617,
+          "badge": "",
+          "title": "Send this page to Phoenix"
+        },
+        {
+          "id": 351352618,
+          "badge": "!",
+          "title": "Phoenix's native-messaging host is not installed for this browser."
+        }
+      ],
+      "directSendNativeMessage": {
+        "response": null,
+        "lastError": "Specified native messaging host not found."
+      },
+      "serviceWorkerEvents": [],
+      "browserStderrNonUpdater": [
+        "Trying to load the allocator multiple times. This is *not* supported.",
+        "[66761:96480263:1111/232035.039806:VERBOSE1:chrome/updater/crash_reporter.cc:123] Crash handler launched and ready.",
+        "[66761:96480263:1111/232035.040331:VERBOSE1:chrome/updater/crash_client.cc:109] Found 0 completed crash reports",
+        "[66761:96480263:1111/232035.040395:VERBOSE1:chrome/updater/crash_client.cc:132] Found 0 pending crash reports",
+        "[66761:96480263:1111/232035.040477:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/RLZ/Crashpad/settings.dat: No such file or directory (2)",
+        "[66761:96480263:1111/232035.040494:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/consentOptions/Crashpad/settings.dat: No such file or directory (2)",
+        "[66761:96480263:1111/232035.040520:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/AndroidStudio2025.2.2/Crashpad/settings.dat: No such file or directory (2)",
+        "[66761:96480263:1111/232035.040549:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/ChromeForTesting/Crashpad/settings.dat: No such file or directory (2)",
+        "[66761:96480263:1111/232035.040557:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/Chrome-headless/Crashpad/settings.dat: No such file or directory (2)",
+        "[66764:96480281:1111/232035.059332:VERBOSE1:chrome/updater/crash_reporter.cc:123] Crash handler launched and ready.",
+        "[66764:96480281:1111/232035.059822:VERBOSE1:chrome/updater/crash_client.cc:109] Found 0 completed crash reports",
+        "[66764:96480281:1111/232035.059872:VERBOSE1:chrome/updater/crash_client.cc:132] Found 0 pending crash reports",
+        "[66764:96480281:1111/232035.059943:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/RLZ/Crashpad/settings.dat: No such file or directory (2)",
+        "[66764:96480281:1111/232035.059954:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/consentOptions/Crashpad/settings.dat: No such file or directory (2)",
+        "[66764:96480281:1111/232035.059979:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/AndroidStudio2025.2.2/Crashpad/settings.dat: No such file or directory (2)",
+        "[66764:96480281:1111/232035.060008:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/ChromeForTesting/Crashpad/settings.dat: No such file or directory (2)",
+        "[66764:96480281:1111/232035.060016:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /Users/bluephoenix/Library/Application Support/Google/Chrome-headless/Crashpad/settings.dat: No such file or directory (2)",
+        "[66764:96480281:1111/232035.060184:VERBOSE1:chrome/updater/ipc/update_service_internal_proxy_mojo.cc:61] Run"
+      ],
+      "browserProcessCount": 14,
+      "processesStartedByClick": [],
+      "profileRemoved": true,
+      "hostLogNewLines": [],
+      "noteCountBefore": 1,
+      "noteCountAfter": 1,
+      "newNotes": [],
+      "newNoteUrlIsOriginAndPathOnly": null,
+      "newNotesContainQueryOrFragment": false
+    }
+  ],
+  "coreUrl": "http://127.0.0.1:<port>",
+  "auditRowsCompanion": [
+    {
+      "id": 1,
+      "ts": "2026-11-11T17:49:41.238Z",
+      "actor": "companion",
+      "action": "companion.page.received",
+      "decision": "info",
+      "details": {
+        "id": "pn_6d4fbaa2c6e95c80d7a4c871",
+        "host": "127.0.0.1:<port>",
+        "selection_chars": 30
+      }
+    }
+  ],
+  "auditStatus": 200,
+  "settingsListApi": {
+    "route": "GET /api/companion/pages",
+    "status": 200,
+    "body": {
+      "pages": [
+        {
+          "id": "pn_6d4fbaa2c6e95c80d7a4c871",
+          "received_at": "2026-11-11T17:49:41.238Z",
+          "url": "http://127.0.0.1:<port>/notes/page1",
+          "title": "Phoenix real-browser test page",
+          "selected_text": "Selected sentence for Phoenix."
+        }
+      ]
+    }
+  },
+  "coreLogTail": [
+    "(node:63527) ExperimentalWarning: SQLite is an experimental feature and might change at any time",
+    "(Use `node --trace-warnings ...` to show where the warning was created)",
+    "{\"url\":\"http://127.0.0.1:60619\",\"env\":\"dev\",\"dataDir\":\"/tmp/p89-core-0C91lz\",\"ts\":\"2026-11-11T17:49:05.291Z\",\"level\":\"info\",\"component\":\"core\",\"msg\":\"Phoenix Core started\"}",
+    ""
+  ],
+  "coreDirRemoved": true,
+  "cleanup": {
+    "preexistingStillRunningUnchanged": true,
+    "preexistingMainProcesses": [
+      {
+        "pid": 44673,
+        "started": "Fri Oct 30 13:13:23 2026"
+      }
+    ],
+    "leftoverProcessesWithOurProfile": 0,
+    "leftoverMainProcessesFromUs": 0
+  }
+}

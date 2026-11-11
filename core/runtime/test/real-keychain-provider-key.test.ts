@@ -382,12 +382,18 @@ describe.runIf(ENABLED)("real macOS Keychain with a provider key (Phase 63)", ()
           { name: "ascii-1000", value: fakeValue(1000), expectStatus: 200 },
           { name: "ascii-1900", value: fakeValue(1900), expectStatus: 200 },
           {
-            name: "quotes-spaces",
-            value: `${fakeValue(12)} "a b" 'c' \\d $e \`f\``,
+            name: "quotes-no-spaces",
+            value: `${fakeValue(12)}"ab"'c'\\d$e\`f\``,
             expectStatus: 200,
           },
-          { name: "unicode", value: `${fakeValue(12)} héllo wörld ✓ 日本語 😀`, expectStatus: 200 },
-          { name: "leading-trailing-space", value: `  ${fakeValue(12)}  `, expectStatus: 200 },
+          // Refused at set time: an HTTP header cannot carry these (AiRuntime.setSecret).
+          {
+            name: "spaces",
+            value: `${fakeValue(12)} "a b" 'c' \\d $e \`f\``,
+            expectStatus: 400,
+          },
+          { name: "unicode", value: `${fakeValue(12)} héllo wörld ✓ 日本語 😀`, expectStatus: 400 },
+          { name: "leading-trailing-space", value: `  ${fakeValue(12)}  `, expectStatus: 400 },
           { name: "newline", value: `${fakeValue(12)}\nsecond`, expectStatus: 400 },
           { name: "carriage-return", value: `${fakeValue(12)}\rsecond`, expectStatus: 400 },
           { name: "nul", value: `${fakeValue(12)}\0x`, expectStatus: 400 },

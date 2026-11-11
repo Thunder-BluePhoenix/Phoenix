@@ -126,7 +126,7 @@ Do not: use a real shop, bank or login page for the assist test, and never type 
 
 ## 11. Browser extension and native host: send a page (Phase 89)
 
-Never loaded in a real browser, never started by a browser as a native host. Details: [companion-clients.md](companion-clients.md#browser-extension-send-page-to-phoenix).
+Driven once in a throwaway Chrome 157 profile with a DevTools trigger (not a person's click; see [the evidence](evidence/phase-89-real-browser-extension-2026-11-11.md)); a real click, Edge and Firefox are still open. Details: [companion-clients.md](companion-clients.md#browser-extension-send-page-to-phoenix).
 
 Prerequisites: Core running (section 0), Chrome (or Chromium or Edge) on this Mac, Node on `PATH`. For the Windows and Firefox parts, a Windows 10 or 11 machine and Firefox 115 or newer.
 

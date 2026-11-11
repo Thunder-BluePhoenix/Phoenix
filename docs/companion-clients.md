@@ -75,8 +75,7 @@ For the watch, through the iPhone: the watch never talks to Core and never holds
 
 ## Browser extension: Send page to Phoenix
 
-One action, built and tested only with fakes. **It has never been loaded in a real browser, never run
-against a real Core, and has had no store review.** The Phase 89 exit criterion is not met.
+One action, built and tested with fakes. On 2026-11-11 it was loaded unpacked into a throwaway Chrome 157 profile and driven once against a real Core process (a DevTools trigger, **not a real click**; see [the evidence](evidence/phase-89-real-browser-extension-2026-11-11.md)). Edge, Brave, Firefox and a real user click were not run; it has had no store review. The Phase 89 exit criterion is not met.
 
 ### Pieces
 
@@ -126,8 +125,8 @@ against a real Core, and has had no store review.** The Phase 89 exit criterion 
   write a note. The token is the trust boundary, as for every session route; the list is labelled as
   coming from websites, and the audit actor is `companion`, not the person.
 - A website cannot message the host: only the allow-listed extension id can (the browser enforces
-  `allowed_origins`), and the extension has no `externally_connectable` or content script. That
-  browser enforcement was not exercised here.
+  `allowed_origins`), and the extension has no `externally_connectable` or content script. Chrome 157 enforced it
+  in a throwaway profile (a manifest for another id gave `Access to the specified native messaging host is forbidden.`); other browsers were not run.
 - The extension id is assigned by the browser when you load it; install the host after you know it.
   **Firefox is unverified:** the Firefox build above was never loaded in Firefox (not via `about:debugging`, not signed), and `chrome.*` callbacks, `scripting.executeScript` and `runtime.sendNativeMessage` there are taken from Mozilla's documentation only.
 

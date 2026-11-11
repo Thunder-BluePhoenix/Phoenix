@@ -59,6 +59,8 @@ export const ANTHROPIC_SECRET_REF = secretRef("anthropic");
 const SETTINGS_KEY = "ai.settings";
 /** Longest key accepted. Real keys are ~110 characters; this is the capability-secret bound. */
 const MAX_SECRET_CHARS = 8192;
+/** A key is sent in an HTTP header, so it must be visible ASCII only (U+0021-U+007E). */
+const PRINTABLE_ASCII_KEY = /^[\x21-\x7e]+$/;
 /** Provider ids a user may create, and the only ids a secret route accepts. */
 const PROVIDER_ID = /^[a-z][a-z0-9-]{1,23}$/;
 const MAX_LABEL_CHARS = 40;
@@ -602,8 +604,17 @@ export class AiRuntime implements AiApi {
   setSecret(providerId: string, value: string): Promise<void> {
     return this.serialize(async () => {
       const secrets = this.requireSecrets(providerId);
-      if (value.length === 0 || value.length > MAX_SECRET_CHARS || /[\r\n\0]/.test(value)) {
-        throw invalid(`The key must be one line of 1-${MAX_SECRET_CHARS} characters`);
+      if (value.length === 0 || value.length > MAX_SECRET_CHARS) {
+        throw invalid(`The key must be 1-${MAX_SECRET_CHARS} characters long`);
+      }
+      // Every adapter puts the key in an HTTP header (Authorization: Bearer, x-api-key,
+      // x-goog-api-key). Visible ASCII is the only safe header value (RFC 9110): fetch throws on a
+      // character above U+00FF and a space, line break or accent is not valid or is altered in
+      // transit. Say so now instead of failing every request later. The message never echoes the key.
+      if (!PRINTABLE_ASCII_KEY.test(value)) {
+        throw invalid(
+          "The key may only contain letters, digits and punctuation from the basic ASCII set (no spaces, line breaks, accents or non-Latin characters). Copy the key again from your provider's page.",
+        );
       }
       try {
         await secrets.set(secretRef(providerId), value);

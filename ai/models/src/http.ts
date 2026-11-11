@@ -242,6 +242,9 @@ export interface SendInit {
   errorDetail?: boolean;
 }
 
+/** Anything but visible ASCII and space: not a safe HTTP header value (RFC 9110). */
+const UNSENDABLE_HEADER_CHARS = /[^\x20-\x7e]/;
+
 /**
  * Sends one request. Any failure becomes a ModelError with a message written here: raw errors
  * from fetch are dropped because they can echo URLs or header values. Redirects are errors: a
@@ -264,6 +267,19 @@ export async function send(
       redirect: "error",
     });
   } catch {
+    // fetch refuses a header value it cannot encode (a character above U+00FF) before any
+    // request is made; say so, naming no value. Never retried: it would fail the same way.
+    if (
+      !scope.callerAborted() &&
+      !scope.timedOut() &&
+      Object.values(init.headers ?? {}).some((v) => UNSENDABLE_HEADER_CHARS.test(v))
+    ) {
+      throw new ModelError(
+        "auth",
+        provider,
+        "The stored key contains characters that cannot be sent in an HTTP header; set the key again",
+      );
+    }
     throw stoppedError(scope, provider);
   }
   if (res.ok) return res;

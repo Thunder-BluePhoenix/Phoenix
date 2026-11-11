@@ -5,7 +5,7 @@
 | Stage | Stage 14 — Phoenix originals |
 | Release target | Post-v2.0 track |
 | Priority | Low |
-| Status | 🟨 Only the `phoenix` CLI is built (tested with fakes and loopback). `phoenix awake` is built too. The browser extension's one action, "Send page to Phoenix", is built (extension, native-messaging host, Core route, review list) and tested only with fakes and an in-process Core; it was never loaded in a real browser. **Not built:** the Apple Watch app, PR-page Fawkes and the Meet record button. No surface performed a real action end to end; the exit criterion is not met |
+| Status | 🟨 Only the `phoenix` CLI is built (tested with fakes and loopback). `phoenix awake` is built too. The browser extension's one action, "Send page to Phoenix", is built (extension, native-messaging host, Core route, review list), tested with fakes and an in-process Core, and on 2026-11-11 driven once in a real Chrome 157 against a real Core process (not a human click; see below). **Not built:** the Apple Watch app, PR-page Fawkes and the Meet record button. No surface performed a real action end to end; the exit criterion is not met |
 | Depends on | [Phase 71 — Phone Link & Mobile Companions](phase-71-phone-link-and-mobile.md) |
 | Unblocks | — |
 
@@ -16,7 +16,7 @@ Phoenix from the wrist, the browser and the terminal.
 ## Tasks
 
 - [ ] Apple Watch app: state, approvals with wrist confirmation (through the iPhone app). **Not built.**
-- [ ] Browser extension: Fawkes on GitHub PR pages, meeting record button on Meet, send page to Phoenix. **Send page to Phoenix is built** (never loaded in a real browser; no store review); the PR-page Fawkes and Meet record button are **not built**. See [companion-clients.md](../companion-clients.md). Unticked.
+- [ ] Browser extension: Fawkes on GitHub PR pages, meeting record button on Meet, send page to Phoenix. **Send page to Phoenix is built** (loaded and driven once in Chrome 157 with a DevTools trigger instead of a real click; Edge, Firefox and store review not done); the PR-page Fawkes and Meet record button are **not built**. See [companion-clients.md](../companion-clients.md). Unticked.
 - [ ] `phoenix status`, `phoenix ask "why did CI fail?"`, `phoenix awake 2h`, `phoenix approve`. `phoenix status`, `phoenix approvals list/approve/deny`, `phoenix events tail [--follow]` and `phoenix awake <duration> | extend | end | status` are built (awake: real Core and real keep-awake capability on a fake machine; the person approves in Phoenix). `phoenix ask "…"` is built as a question about stored memory through `POST /api/memory/ask` (fails closed when Core produced no AI answer; tested against a fake Core and a real Core with AI off, never a real model). It does not diagnose arbitrary CI runs. Simulated. Unticked.
 
 ## Deliverables
@@ -27,7 +27,7 @@ Phoenix from the wrist, the browser and the terminal.
 
 ## Exit criteria
 
-- [ ] Each surface performs one real action end to end. **Unmet.** The watch app does not exist, the extension's one action was never run in a real browser, and the CLI was tested against fakes and loopback servers only.
+- [ ] Each surface performs one real action end to end. **Unmet.** The watch app does not exist, the extension's one action ran once in Chrome 157 but not from a real user click, and the CLI was tested against fakes and loopback servers only.
 
 ## Implementation notes
 
@@ -51,13 +51,17 @@ A static read-only review by tools (not a human audit) found that `--json` outpu
 
 `apps/extension/scripts/install-host.js` now has a Windows branch (per-user manifest folder, `.cmd` launcher, `reg add`/`reg query`/`reg delete` under HKCU for Chrome, Chromium, Edge and Mozilla, spawned with argv and no shell, paths validated first) and `scripts/build-firefox.js` emits `dist/firefox/` with `background.scripts` and `browser_specific_settings.gecko` (id, `strict_min_version` 115.0) and no other change. Registry layouts and Firefox manifest requirements are cited in the script comments (MDN and Chromium/Edge docs). Tests: `test/windows.test.ts` (fake runner, fake fs, path tables, spawn arguments) and `test/firefox.test.ts`. The `browser ?? chrome` shim was not added because Firefox supports `chrome.*` callbacks and nothing proved it necessary. **Never run on Windows; never loaded in Firefox.**
 
+### Follow-up: real Chrome run (2026-11-11)
+
+`apps/extension/scripts/real-browser-check.mjs` (manual, guarded by `PHOENIX_REAL_BROWSER_CHECK=1`, not a vitest test) loaded `apps/extension` unpacked into a throwaway Chrome 157.0.8103.50 profile with the DevTools command `Extensions.loadUnpacked` (`--load-extension` was silently ignored by this Chrome), with a real Core child process and a local test page. Chrome itself started the native-messaging host (host launcher parent = the throwaway browser), the page note reached Core with origin and path only (query `?token=zzz...` and fragment dropped), the audit row `companion.page.received` and the Settings list API showed it, and a host manifest listing another extension id was refused by Chrome with `Access to the specified native messaging host is forbidden.` (no manifest: `Specified native messaging host not found.`). The trigger was `Extensions.triggerAction`, **not a real click**. Details, limits and driving problems: [the real-Chrome evidence](../evidence/phase-89-real-browser-extension-2026-11-11.md).
+
 ### What was not built
 
 The Apple Watch app, the extension's PR-page Fawkes and Meet record button. `phoenix ask` answers only from memory and was never run against a real model.
 
 ### What was not run
 
-Any real watch; the extension was never loaded in a real browser, the host was never started by one, never run against a real Core process (only an in-process test Core), no store review, the Windows registration was never run on Windows (fake runner only), the Firefox build was never loaded in Firefox. Any use of the CLI beyond tests against fakes and loopback servers. Open items are in the [gap register](../gaps.md).
+Any real watch; the extension was never clicked by a person, never loaded in Edge, Brave or Firefox, no store review, the Windows registration was never run on Windows (fake runner only), the Firefox build was never loaded in Firefox. Any use of the CLI beyond tests against fakes and loopback servers. Open items are in the [gap register](../gaps.md).
 
 ## Notes & risks
 

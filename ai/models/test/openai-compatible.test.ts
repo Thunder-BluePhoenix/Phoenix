@@ -109,6 +109,31 @@ describe("locality is derived from the URL, never claimed", () => {
   });
 });
 
+describe("a stored key that cannot be put in a header", () => {
+  it("says so in the error instead of a bare network failure, without echoing the key", async () => {
+    const badKey = ["bad", "\u65e5\u672c", "CANARY"].join("-");
+    // What Node's fetch does with a header value above U+00FF: throws before sending.
+    const refusing: FetchLike = () => {
+      throw new TypeError("Cannot convert argument to a ByteString");
+    };
+    const e = await make(refusing, { getKey: () => Promise.resolve(badKey) })
+      .generate(req)
+      .catch((err: unknown) => err);
+    if (!(e instanceof ModelError)) throw new Error("expected a ModelError");
+    expect(e).toMatchObject({ kind: "auth", retryable: false });
+    expect(e.message).toContain("cannot be sent in an HTTP header");
+    expect(e.message).not.toContain("CANARY");
+  });
+
+  it("a plain network failure with an ASCII key is still a network error", async () => {
+    const down: FetchLike = () => Promise.reject(new TypeError("fetch failed"));
+    const e = await make(down)
+      .generate(req)
+      .catch((err: unknown) => err);
+    expect(e).toMatchObject({ kind: "network" });
+  });
+});
+
 describe("generate", () => {
   it("posts the documented body with the key as a Bearer header and parses text, model and usage", async () => {
     const f = fakeFetch(() => json(completion));
