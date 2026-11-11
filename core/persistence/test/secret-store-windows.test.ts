@@ -85,13 +85,13 @@ describe("KeychainSecretStore on Windows (Credential Manager)", () => {
     expect(calls).toHaveLength(1);
   });
 
-  it("leaves the macOS and Linux commands unchanged", async () => {
+  it("sends the macOS value as hex on stdin of `security -i` and leaves the Linux command unchanged", async () => {
     const mac = fakeRunner({ code: 0 });
     await new KeychainSecretStore("darwin", mac.run).set("r", "v");
     expect(mac.calls[0]).toEqual({
       cmd: "security",
-      args: ["add-generic-password", "-U", "-s", "phoenix", "-a", "r", "-w"],
-      stdin: "v\nv\n",
+      args: ["-i"],
+      stdin: 'add-generic-password -U -s phoenix -a "r" -X 76\n',
     });
     const lin = fakeRunner({ code: 0 });
     await new KeychainSecretStore("linux", lin.run).delete("r");

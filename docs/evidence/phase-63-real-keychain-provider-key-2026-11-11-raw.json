@@ -1,0 +1,484 @@
+{
+  "date": "2026-11-11T09:01:39.609Z",
+  "node": "v22.19.0",
+  "macos": "27.0.1",
+  "provider_ref": "phoenix.ai.kc63-52dec200_api_key",
+  "service": "phoenix",
+  "security_tool": "/usr/bin/security (unsigned Node process, login keychain)",
+  "step2": {
+    "attributes": {
+      "exit": 0,
+      "timed_out": false,
+      "ms": 8,
+      "prompted_or_hung": false,
+      "lines": [
+        "keychain: \"~/Library/Keychains/login.keychain-db\"",
+        "class: \"genp\"",
+        "    \"acct\"<blob>=\"phoenix.ai.kc63-52dec200_api_key\"",
+        "    \"cdat\"<timedate>=\"20261111090139Z\\000\"",
+        "    \"mdat\"<timedate>=\"20261111090139Z\\000\"",
+        "    \"svce\"<blob>=\"phoenix\""
+      ],
+      "password_lines_in_output": 0
+    },
+    "value": {
+      "length": 40,
+      "sha256_prefix": "aa860199e2b9"
+    },
+    "ps_watch_during_set": {
+      "samples": 1,
+      "samples_with_security_process": 0,
+      "samples_with_value_in_argv": 0
+    }
+  },
+  "step3": {
+    "requests_first_ask": [
+      {
+        "method": "GET",
+        "path": "/v1/models",
+        "authorization_present": true,
+        "authorization_equals_bearer_value": true,
+        "header_names": [
+          "accept",
+          "accept-encoding",
+          "accept-language",
+          "authorization",
+          "connection",
+          "content-type",
+          "host",
+          "sec-fetch-mode",
+          "user-agent"
+        ],
+        "body_contains_value": false
+      },
+      {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "authorization_present": true,
+        "authorization_equals_bearer_value": true,
+        "header_names": [
+          "accept",
+          "accept-encoding",
+          "accept-language",
+          "authorization",
+          "connection",
+          "content-length",
+          "content-type",
+          "host",
+          "sec-fetch-mode",
+          "user-agent"
+        ],
+        "body_contains_value": false
+      }
+    ],
+    "key_read_from_keychain_at_request_time": "item rewritten with `security` outside Core; next request carried the new value",
+    "out_of_band_value": {
+      "length": 40,
+      "sha256_prefix": "ac5b408d2ee4"
+    },
+    "host_only_loopback": true
+  },
+  "step4": {
+    "new_value": {
+      "length": 55,
+      "sha256_prefix": "642d0bcfda5c"
+    },
+    "next_request_authorization_matches_new": true
+  },
+  "status_view": {
+    "key_set": true
+  },
+  "step5": {
+    "find_after_delete": {
+      "exit": 44,
+      "stderr_first_line": "security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain."
+    },
+    "next_request": {
+      "answered": true,
+      "error": null,
+      "chat_requests": 1,
+      "authorization_header_present": false
+    }
+  },
+  "step6": [
+    {
+      "name": "ascii-128",
+      "value": {
+        "length": 128,
+        "sha256_prefix": "2cf1f826751a"
+      },
+      "route_status": 200,
+      "route_error": null,
+      "keychain_item_exists": true,
+      "keychain_value": {
+        "length": 128,
+        "sha256_prefix": "2cf1f826751a"
+      },
+      "round_trip_identical": true,
+      "request": {
+        "answered": true,
+        "error": null,
+        "note": "HTTP trims leading/trailing spaces of a header value, so the server cannot see them",
+        "error_leaks_value": false,
+        "authorization_matches_value": true,
+        "chat_requests": 1
+      }
+    },
+    {
+      "name": "ascii-129",
+      "value": {
+        "length": 129,
+        "sha256_prefix": "9d96d48fcc68"
+      },
+      "route_status": 200,
+      "route_error": null,
+      "keychain_item_exists": true,
+      "keychain_value": {
+        "length": 129,
+        "sha256_prefix": "9d96d48fcc68"
+      },
+      "round_trip_identical": true,
+      "request": {
+        "answered": true,
+        "error": null,
+        "note": "HTTP trims leading/trailing spaces of a header value, so the server cannot see them",
+        "error_leaks_value": false,
+        "authorization_matches_value": true,
+        "chat_requests": 1
+      }
+    },
+    {
+      "name": "ascii-200",
+      "value": {
+        "length": 200,
+        "sha256_prefix": "1d5a537667a7"
+      },
+      "route_status": 200,
+      "route_error": null,
+      "keychain_item_exists": true,
+      "keychain_value": {
+        "length": 200,
+        "sha256_prefix": "1d5a537667a7"
+      },
+      "round_trip_identical": true,
+      "request": {
+        "answered": true,
+        "error": null,
+        "note": "HTTP trims leading/trailing spaces of a header value, so the server cannot see them",
+        "error_leaks_value": false,
+        "authorization_matches_value": true,
+        "chat_requests": 1
+      }
+    },
+    {
+      "name": "ascii-1000",
+      "value": {
+        "length": 1000,
+        "sha256_prefix": "87fa9b004fc9"
+      },
+      "route_status": 200,
+      "route_error": null,
+      "keychain_item_exists": true,
+      "keychain_value": {
+        "length": 1000,
+        "sha256_prefix": "87fa9b004fc9"
+      },
+      "round_trip_identical": true,
+      "request": {
+        "answered": true,
+        "error": null,
+        "note": "HTTP trims leading/trailing spaces of a header value, so the server cannot see them",
+        "error_leaks_value": false,
+        "authorization_matches_value": true,
+        "chat_requests": 1
+      }
+    },
+    {
+      "name": "ascii-1900",
+      "value": {
+        "length": 1900,
+        "sha256_prefix": "e785fadc5fce"
+      },
+      "route_status": 200,
+      "route_error": null,
+      "keychain_item_exists": true,
+      "keychain_value": {
+        "length": 1900,
+        "sha256_prefix": "e785fadc5fce"
+      },
+      "round_trip_identical": true,
+      "request": {
+        "answered": true,
+        "error": null,
+        "note": "HTTP trims leading/trailing spaces of a header value, so the server cannot see them",
+        "error_leaks_value": false,
+        "authorization_matches_value": true,
+        "chat_requests": 1
+      }
+    },
+    {
+      "name": "quotes-spaces",
+      "value": {
+        "length": 32,
+        "sha256_prefix": "ecd007d852ed"
+      },
+      "route_status": 200,
+      "route_error": null,
+      "keychain_item_exists": true,
+      "keychain_value": {
+        "length": 32,
+        "sha256_prefix": "ecd007d852ed"
+      },
+      "round_trip_identical": true,
+      "request": {
+        "answered": true,
+        "error": null,
+        "note": "HTTP trims leading/trailing spaces of a header value, so the server cannot see them",
+        "error_leaks_value": false,
+        "authorization_matches_value": true,
+        "chat_requests": 1
+      }
+    },
+    {
+      "name": "unicode",
+      "value": {
+        "length": 33,
+        "sha256_prefix": "b72453151167"
+      },
+      "route_status": 200,
+      "route_error": null,
+      "keychain_item_exists": true,
+      "keychain_value": {
+        "length": 33,
+        "sha256_prefix": "b72453151167"
+      },
+      "round_trip_identical": true,
+      "request": {
+        "answered": false,
+        "error": "NoProviderError: No AI provider is allowed and available for this request",
+        "note": "HTTP trims leading/trailing spaces of a header value, so the server cannot see them",
+        "error_leaks_value": false,
+        "authorization_matches_value": false,
+        "chat_requests": 0
+      }
+    },
+    {
+      "name": "leading-trailing-space",
+      "value": {
+        "length": 16,
+        "sha256_prefix": "74ee570d301f"
+      },
+      "route_status": 200,
+      "route_error": null,
+      "keychain_item_exists": true,
+      "keychain_value": {
+        "length": 16,
+        "sha256_prefix": "74ee570d301f"
+      },
+      "round_trip_identical": true,
+      "request": {
+        "answered": true,
+        "error": null,
+        "note": "HTTP trims leading/trailing spaces of a header value, so the server cannot see them",
+        "error_leaks_value": false,
+        "authorization_matches_value": false,
+        "chat_requests": 1
+      }
+    },
+    {
+      "name": "newline",
+      "value": {
+        "length": 19,
+        "sha256_prefix": "93317d28fa1d"
+      },
+      "route_status": 400,
+      "route_error": "The key must be one line of 1-8192 characters",
+      "keychain_item_exists": false,
+      "keychain_value": null,
+      "round_trip_identical": false
+    },
+    {
+      "name": "carriage-return",
+      "value": {
+        "length": 19,
+        "sha256_prefix": "6bb699eda8a7"
+      },
+      "route_status": 400,
+      "route_error": "The key must be one line of 1-8192 characters",
+      "keychain_item_exists": false,
+      "keychain_value": null,
+      "round_trip_identical": false
+    },
+    {
+      "name": "nul",
+      "value": {
+        "length": 14,
+        "sha256_prefix": "4ec13043ceae"
+      },
+      "route_status": 400,
+      "route_error": "The key must be one line of 1-8192 characters",
+      "keychain_item_exists": false,
+      "keychain_value": null,
+      "round_trip_identical": false
+    },
+    {
+      "name": "ascii-4000",
+      "value": {
+        "length": 4000,
+        "sha256_prefix": "47a7e61a7c91"
+      },
+      "route_status": 400,
+      "route_error": "The macOS Keychain path keeps at most 2009 bytes for this secret",
+      "keychain_item_exists": false,
+      "keychain_value": null,
+      "round_trip_identical": false
+    },
+    {
+      "name": "ascii-8192",
+      "value": {
+        "length": 8192,
+        "sha256_prefix": "2ebf1fd046d4"
+      },
+      "route_status": 400,
+      "route_error": "The macOS Keychain path keeps at most 2009 bytes for this secret",
+      "keychain_item_exists": false,
+      "keychain_value": null,
+      "round_trip_identical": false
+    },
+    {
+      "name": "ascii-8193",
+      "value": {
+        "length": 8193,
+        "sha256_prefix": "93252c5797a8"
+      },
+      "route_status": 400,
+      "route_error": "\"value\" must be a string of 1-8192 characters",
+      "keychain_item_exists": false,
+      "keychain_value": null,
+      "round_trip_identical": false
+    }
+  ],
+  "longest_value_that_fits": {
+    "bytes": 2009,
+    "for_account_length": 32
+  },
+  "old_path_add_generic_password_w": [
+    {
+      "value": {
+        "length": 100,
+        "sha256_prefix": "05fb63ea4083"
+      },
+      "add_exit": 0,
+      "add_timed_out": false,
+      "add_ms": 21,
+      "stored": {
+        "length": 100,
+        "sha256_prefix": "05fb63ea4083"
+      },
+      "silently_truncated": false
+    },
+    {
+      "value": {
+        "length": 128,
+        "sha256_prefix": "bee5d5231e49"
+      },
+      "add_exit": 0,
+      "add_timed_out": false,
+      "add_ms": 25,
+      "stored": {
+        "length": 128,
+        "sha256_prefix": "bee5d5231e49"
+      },
+      "silently_truncated": false
+    },
+    {
+      "value": {
+        "length": 129,
+        "sha256_prefix": "39230a9455b3"
+      },
+      "add_exit": 0,
+      "add_timed_out": false,
+      "add_ms": 24,
+      "stored": {
+        "length": 128,
+        "sha256_prefix": "94e1569c67b7"
+      },
+      "silently_truncated": true
+    },
+    {
+      "value": {
+        "length": 200,
+        "sha256_prefix": "ba969937a051"
+      },
+      "add_exit": 0,
+      "add_timed_out": false,
+      "add_ms": 21,
+      "stored": {
+        "length": 128,
+        "sha256_prefix": "512216e847a4"
+      },
+      "silently_truncated": true
+    },
+    {
+      "value": {
+        "length": 1000,
+        "sha256_prefix": "4afa41560dea"
+      },
+      "add_exit": 0,
+      "add_timed_out": false,
+      "add_ms": 23,
+      "stored": {
+        "length": 128,
+        "sha256_prefix": "c90cffc28e54"
+      },
+      "silently_truncated": true
+    },
+    {
+      "value": {
+        "length": 4000,
+        "sha256_prefix": "187747db4121"
+      },
+      "add_exit": 0,
+      "add_timed_out": false,
+      "add_ms": 20,
+      "stored": {
+        "length": 128,
+        "sha256_prefix": "697d06b71981"
+      },
+      "silently_truncated": true
+    }
+  ],
+  "item_stored_truncated_by_old_path": {
+    "stored_value": {
+      "length": 128,
+      "sha256_prefix": "b86b95c3b83d"
+    },
+    "indistinguishable_from_a_short_key": true
+  },
+  "structural": {
+    "values_checked": 28,
+    "leaks_by_surface_in_plain_hex_base64": {
+      "responses": 0,
+      "audit": 0,
+      "logs": 0,
+      "events": 0,
+      "server_non_authorization": 0
+    },
+    "log_records": 13,
+    "event_bus_events": 0,
+    "audit_secret_entries": 29,
+    "get_statuses": {
+      "/api/ai/status": 200,
+      "/api/ai/providers": 404,
+      "/api/audit?limit=1000": 200,
+      "/api/diagnostics": 200,
+      "/api/privacy": 200,
+      "/api/permissions": 200,
+      "/api/capabilities": 200,
+      "/api/events": 200
+    },
+    "note_ai_providers_route": "GET /api/ai/providers is not a Core route (404); key_set is in GET /api/ai/status",
+    "server_requests_total": 26
+  },
+  "leftover_items_with_marker": 0
+}

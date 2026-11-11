@@ -44,7 +44,7 @@ import {
 } from "@phoenix/ai-models";
 import type { Logger } from "@phoenix/logging";
 import type { PermissionGateway } from "@phoenix/permissions";
-import type { SecretStore, SettingsStore } from "@phoenix/persistence";
+import { SecretTooLongError, type SecretStore, type SettingsStore } from "@phoenix/persistence";
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
 
 /**
@@ -605,7 +605,13 @@ export class AiRuntime implements AiApi {
       if (value.length === 0 || value.length > MAX_SECRET_CHARS || /[\r\n\0]/.test(value)) {
         throw invalid(`The key must be one line of 1-${MAX_SECRET_CHARS} characters`);
       }
-      await secrets.set(secretRef(providerId), value);
+      try {
+        await secrets.set(secretRef(providerId), value);
+      } catch (err) {
+        // Refused, not stored cut short: the key is too long for this OS store.
+        if (err instanceof SecretTooLongError) throw invalid(err.message);
+        throw err;
+      }
       this.service.forgetHealth(providerId);
       this.audit("ai.secret.set", { provider: providerId });
     });

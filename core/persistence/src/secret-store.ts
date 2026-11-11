@@ -31,6 +31,19 @@ export class MemorySecretStore implements SecretStore {
 }
 
 const SERVICE = "phoenix";
+/**
+ * `security -i` reads one command per line and refuses a line of 4096 characters or more (measured
+ * on macOS 27.0.1: a 4094-character line stores, a 4096-character line exits 1).
+ */
+const MACOS_MAX_COMMAND_CHARS = 4094;
+
+/** The value does not fit the OS store; nothing was stored. */
+export class SecretTooLongError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SecretTooLongError";
+  }
+}
 
 /** Runs an OS tool. Injectable so the Windows backend can be tested on any OS. */
 export type ToolRunner = typeof runTool;
@@ -150,20 +163,54 @@ export class KeychainSecretStore implements SecretStore {
       if (w.code !== 0) throw new Error(`Could not store secret: ${w.stderr.trim()}`);
       return;
     }
-    const r =
-      this.platform === "darwin"
-        ? // `security` reads the value twice (entry + confirmation) when -w is last.
-          await this.run(
-            "security",
-            ["add-generic-password", "-U", "-s", SERVICE, "-a", ref, "-w"],
-            `${value}\n${value}\n`,
-          )
-        : await this.run(
-            "secret-tool",
-            ["store", "--label", `Phoenix: ${ref}`, "service", SERVICE, "account", ref],
-            value,
-          );
+    if (this.platform === "darwin") return this.setMacos(ref, value);
+    const r = await this.run(
+      "secret-tool",
+      ["store", "--label", `Phoenix: ${ref}`, "service", SERVICE, "account", ref],
+      value,
+    );
     if (r.code !== 0) throw new Error(`Could not store secret: ${r.stderr.trim()}`);
+  }
+
+  /**
+   * macOS: `security add-generic-password -w` reading the value from a prompt keeps only its first
+   * 128 characters and still exits 0, so a long key was stored cut short without any error. Instead
+   * the command runs inside `security -i` (commands on stdin, so nothing but "security -i" is in
+   * `ps`) and the value is passed as hex (`-X`), which has no length cut and needs no quoting.
+   * `security -i` refuses a command line of 4096 characters or more, so a value that does not fit
+   * (about 2000 bytes) is REFUSED with SecretTooLongError rather than stored cut short.
+   */
+  private async setMacos(ref: string, value: string): Promise<void> {
+    if (/[\u0000-\u001f\u007f]/.test(ref)) throw new Error("Secret references must be printable");
+    const quoted = `"${ref.replace(/[\\"]/g, "\\$&")}"`;
+    const hex = Buffer.from(value, "utf8").toString("hex");
+    const line = `add-generic-password -U -s ${SERVICE} -a ${quoted} -X ${hex}`;
+    if (line.length > MACOS_MAX_COMMAND_CHARS) {
+      throw new SecretTooLongError(
+        `The macOS Keychain path keeps at most ${Math.floor((MACOS_MAX_COMMAND_CHARS - line.length + hex.length) / 2)} bytes for this secret`,
+      );
+    }
+    const r = await this.run("security", ["-i"], `${line}\n`);
+    // No stderr/stdout in the message: `security` echoes the command it could not read.
+    if (r.code !== 0) throw new Error(`Could not store secret (security exit ${r.code})`);
+  }
+
+  /**
+   * macOS: `-w` prints a value as hex when it is not plain printable ASCII (a non-ASCII or
+   * backslash value came back as hex), so the value is read from `-g` instead, which labels the
+   * hex form with `0x`.
+   */
+  private async getMacos(ref: string): Promise<string | undefined> {
+    const r = await this.run("security", ["find-generic-password", "-s", SERVICE, "-a", ref, "-g"]);
+    if (r.code !== 0) return undefined; // 44: not found
+    const line = r.stderr.split("\n").find((l) => l.startsWith("password:"));
+    const shown = line?.slice("password:".length).trim() ?? "";
+    const hex = /^0x([0-9a-fA-F]+)/.exec(shown);
+    if (hex) return Buffer.from(hex[1]!, "hex").toString("utf8") || undefined;
+    if (shown.startsWith('"') && shown.endsWith('"') && shown.length >= 2) {
+      return shown.slice(1, -1) || undefined;
+    }
+    return undefined;
   }
 
   async get(ref: string): Promise<string | undefined> {
@@ -177,11 +224,9 @@ export class KeychainSecretStore implements SecretStore {
       const text = Buffer.from(w.stdout.trim(), "base64").toString("utf8");
       return text || undefined;
     }
-    const r =
-      this.platform === "darwin"
-        ? await this.run("security", ["find-generic-password", "-s", SERVICE, "-a", ref, "-w"])
-        : await this.run("secret-tool", ["lookup", "service", SERVICE, "account", ref]);
-    if (r.code !== 0) return undefined; // 44 on macOS / 1 on Linux: not found
+    if (this.platform === "darwin") return this.getMacos(ref);
+    const r = await this.run("secret-tool", ["lookup", "service", SERVICE, "account", ref]);
+    if (r.code !== 0) return undefined; // 1 on Linux: not found
     return r.stdout.replace(/\n$/, "") || undefined;
   }
 
