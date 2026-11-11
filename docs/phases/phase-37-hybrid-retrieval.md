@@ -97,6 +97,15 @@ Core serves `POST /api/retrieval/rebuild` for an explicitly confirmed, bounded f
 The Phase 33 evaluation harness invokes `evaluateRetrieval` for lexical scenarios; a full hybrid-versus-lexical rerun with a local model and held-out owner corpus remains unverified.
 The benchmark scripts require local Ollama with `nomic-embed-text` and `llama3.2`; repository tests use fakes.
 
+### Real run of the pipeline (2026-11-12, owner's Ollama 0.15.5, `nomic-embed-text`)
+
+`core/runtime/test/real-embed-pipeline.test.ts` (`PHOENIX_REAL_OLLAMA=1`; evidence in `docs/evidence/phase-37-real-embed-pipeline-2026-11-12.md` and `-raw.json`) runs a real in-process Core on a temp on-disk data dir with 36 synthetic notes. Core reaches Ollama through a loopback proxy owned by the test, which can drop connections.
+
+- **Cold load observed:** after `keep_alive: 0` evicted the model, the first embed took 0.6 to 0.9 s (warm: 25 to 90 ms), batches 16/16/4, no timeout or retry, 36 vectors x 768 stored, same-topic cosine above different-topic cosine (0.648 vs 0.549; sanity only).
+- **Outage and restart during the cooldown observed (proxy, not a real Ollama restart):** connections dropped after the first batch; 3 embed requests failed, nothing recorded against items, `degraded: provider_unavailable`, `memory.indexer.cooldown_until` written (30 s) to the real settings table. A new Core on the same data dir started during the cooldown made 0 embed requests (startup maintenance plus three explicit runs); after expiry it embedded exactly the 20 missing notes, cleared the setting, 36 vectors, no duplicates, none lost. No bus event or audit entry is produced for an outage; only `status().last_run.degraded` shows it.
+- **Model switch observed with one model under two names:** the second model identity is `nomic-embed-text-alias256`, which the proxy maps to nomic-embed-text and truncates to 256 values. Two vector spaces coexisted, search embedded the query with the active model only, the store refused cross-width comparison (`VectorDimensionError`), rebuild replaced only the active space (the other byte-identical), switching back needed no embedding.
+- **Still unverified:** a real Ollama restart or crash, and a genuinely different embedding model.
+
 ## Wired into Core
 
 `core/runtime/src/retrieval.ts` (`RetrievalRuntime`), routes in `core/api/src/memory-routes.ts`, tests in `core/runtime/test/retrieval.test.ts`, deletion and viewer tests included.

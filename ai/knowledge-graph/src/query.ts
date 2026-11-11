@@ -380,6 +380,14 @@ export class GraphQuery {
       add(this.graph.findBySuffix(viewer, "Document", `:${token}`, 2));
     }
     text = text.replace(/(?<![\w])[\w.-]+(?:\/[\w.-]+)+(?![\w])/g, " ");
+    // A root-level file with a dot has no slash (`.gitleaksignore`, `README.md`): it names a document
+    // only when a Document key ends in `:<name>`, which a nested path's tail (`:src/a.ts`) never does.
+    // Words without a dot are left to the name lookup below.
+    for (const m of text.matchAll(/(?<![\w/.-])\.?[\w-]+(?:\.[\w-]+)*(?![\w/-])/g)) {
+      const token = m[0];
+      if (!token.includes(".")) continue;
+      add(this.graph.findBySuffix(viewer, "Document", `:${token}`, 2));
+    }
     for (const m of text.matchAll(
       /\b(?:Person|Project|Repository|Commit|Service|Deployment|Meeting|Decision|Feature|Issue|PullRequest|CIRun|Document):[^\s,;?]{1,300}/g,
     )) {

@@ -331,6 +331,33 @@ describe("answerQuestion", () => {
     expect(r.query.seeds(OWNER, "status of #7").map((s) => s.id)).toEqual([`Issue:${repo}#7`]);
   });
 
+  it("seeds a root-level file named without a slash, and invents nothing from dotted words", async () => {
+    const r = rig({ repositoryAliases: { phoenix: repo } });
+    const commit = (sha: string, files: string[]) =>
+      r.ingest.ingestCommit({
+        repository: repo,
+        sha,
+        at: T0,
+        message: "change files",
+        author: "Ada Lovelace",
+        files,
+      });
+    commit(SHA_A, [".gitleaksignore", "README.md", "src/a.ts"]);
+    commit(SHA_B, [".gitleaksignore"]);
+    const ask = (q: string) => answerQuestion(r.query, q, { viewer: OWNER });
+
+    const dot = await ask("Which commits touched .gitleaksignore?");
+    expect(dot.seeds.map((s) => s.id)).toEqual([`Document:${repo}:.gitleaksignore`]);
+    const which = dot.graph.find((a) => a.kind === "which");
+    expect(which?.kind === "which" && which.results.map((x) => x.node.id).sort()).toEqual(
+      [`Commit:${repo}@${SHA_A}`, `Commit:${repo}@${SHA_B}`].sort(),
+    );
+    const readme = await ask("Which commits touched README.md?");
+    expect(readme.seeds.map((s) => s.id)).toEqual([`Document:${repo}:README.md`]);
+    // A dotted word that is no document's file name seeds nothing (nor does a nested path's tail).
+    expect((await ask("Who is J.R. Smith, e.g. in v1.2.3 or a.ts?")).seeds).toEqual([]);
+  });
+
   it("with no matching entity it says so instead of inventing graph facts", async () => {
     const r = seeded();
     const out = await answerQuestion(r.query, "Why is the sky blue?", { viewer: OWNER, retriever });

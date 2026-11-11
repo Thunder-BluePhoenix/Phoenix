@@ -1,0 +1,676 @@
+{
+  "environment": {
+    "date": "2026-11-11T18:35:49.654Z",
+    "ollama_version": "0.15.5",
+    "tags_before": {
+      "local": [
+        "llama3.2:latest@a80c4f17acd5",
+        "nomic-embed-text:latest@0a109f422b47"
+      ],
+      "remote_tagged_count": 2,
+      "list_sha256": "f624c208715bff0f405b5786186fe01021ad86d2578cbab66cf5c35f53dc2ef9"
+    },
+    "ps_before": [
+      "nomic-embed-text:latest"
+    ],
+    "node": "v22.19.0",
+    "corpus_notes": 36
+  },
+  "cold_start": {
+    "evict_status": 200,
+    "ps_after_evict": [],
+    "core_start_ms": 75,
+    "index_wall_ms": 743,
+    "status_after_cold_index": {
+      "enabled": true,
+      "active": true,
+      "inactive_reason": null,
+      "provider": "ollama",
+      "model": "nomic-embed-text",
+      "vector_space": "ollama/nomic-embed-text#prefixed",
+      "embedded": 36,
+      "total": 36,
+      "unembedded": 0,
+      "failures": 0,
+      "other_models": [],
+      "payload_bytes": 110592,
+      "last_run": {
+        "at": "2026-11-11T18:35:50.762Z",
+        "embedded": 36,
+        "failed": 0,
+        "remaining": 0,
+        "capped": false,
+        "degraded": []
+      }
+    },
+    "wire": [
+      {
+        "path": "/api/version",
+        "model": null,
+        "upstream_model": null,
+        "inputs": 0,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 2
+      },
+      {
+        "path": "/api/version",
+        "model": null,
+        "upstream_model": null,
+        "inputs": 0,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 1
+      },
+      {
+        "path": "/api/version",
+        "model": null,
+        "upstream_model": null,
+        "inputs": 0,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 5
+      },
+      {
+        "path": "/api/tags",
+        "model": null,
+        "upstream_model": null,
+        "inputs": 0,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 2
+      },
+      {
+        "path": "/api/embed",
+        "model": "nomic-embed-text",
+        "upstream_model": "nomic-embed-text",
+        "inputs": 16,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 598
+      },
+      {
+        "path": "/api/embed",
+        "model": "nomic-embed-text",
+        "upstream_model": "nomic-embed-text",
+        "inputs": 16,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 89
+      },
+      {
+        "path": "/api/embed",
+        "model": "nomic-embed-text",
+        "upstream_model": "nomic-embed-text",
+        "inputs": 4,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 26
+      }
+    ],
+    "cold_first_embed_ms": 598,
+    "cold_embed_batches": [
+      16,
+      16,
+      4
+    ],
+    "retries_or_failures": 0,
+    "ps_after_index": [
+      "nomic-embed-text:latest"
+    ],
+    "vector_count": 36,
+    "vector_dim": [
+      768
+    ],
+    "warm_rebuild_wall_ms": 195,
+    "warm_embed_ms": [
+      79,
+      79,
+      25
+    ],
+    "warm_batches": [
+      16,
+      16,
+      4
+    ],
+    "mean_cosine_same_topic": 0.6479794943106113,
+    "mean_cosine_different_topic": 0.5492831101965098,
+    "core_stop_ms": 4
+  },
+  "outage_restart": {
+    "outage_run_wall_ms": 1643,
+    "status_a_after_outage": {
+      "enabled": true,
+      "active": true,
+      "inactive_reason": null,
+      "provider": "ollama",
+      "model": "nomic-embed-text",
+      "vector_space": "ollama/nomic-embed-text#prefixed",
+      "embedded": 16,
+      "total": 36,
+      "unembedded": 20,
+      "failures": 0,
+      "other_models": [],
+      "payload_bytes": 49152,
+      "last_run": {
+        "at": "2026-11-11T18:35:52.660Z",
+        "embedded": 16,
+        "failed": 0,
+        "remaining": 20,
+        "capped": false,
+        "degraded": [
+          "provider_unavailable"
+        ]
+      }
+    },
+    "wire_a": [
+      {
+        "path": "/api/version",
+        "model": null,
+        "upstream_model": null,
+        "inputs": 0,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 0
+      },
+      {
+        "path": "/api/version",
+        "model": null,
+        "upstream_model": null,
+        "inputs": 0,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 1
+      },
+      {
+        "path": "/api/version",
+        "model": null,
+        "upstream_model": null,
+        "inputs": 0,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 0
+      },
+      {
+        "path": "/api/tags",
+        "model": null,
+        "upstream_model": null,
+        "inputs": 0,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 1
+      },
+      {
+        "path": "/api/embed",
+        "model": "nomic-embed-text",
+        "upstream_model": "nomic-embed-text",
+        "inputs": 16,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 126
+      },
+      {
+        "path": "/api/embed",
+        "model": "nomic-embed-text",
+        "upstream_model": null,
+        "inputs": 16,
+        "outcome": "reset",
+        "status": null,
+        "ms": 0
+      },
+      {
+        "path": "/api/embed",
+        "model": "nomic-embed-text",
+        "upstream_model": null,
+        "inputs": 16,
+        "outcome": "reset",
+        "status": null,
+        "ms": 1
+      },
+      {
+        "path": "/api/embed",
+        "model": "nomic-embed-text",
+        "upstream_model": null,
+        "inputs": 16,
+        "outcome": "reset",
+        "status": null,
+        "ms": 1
+      }
+    ],
+    "events_a": [],
+    "audit_actions_a": [
+      "retrieval.settings.changed",
+      "ai.settings.changed"
+    ],
+    "ai_status_a": {
+      "enabled": true,
+      "preferred": null,
+      "cloud_opt_in": {
+        "public": false,
+        "internal": false,
+        "sensitive": false
+      },
+      "external_processing_granted": false,
+      "routing": {
+        "chat": null,
+        "summaries": null,
+        "cleanup": null
+      },
+      "endpoints": [],
+      "prices": {},
+      "providers": [
+        {
+          "id": "anthropic",
+          "label": "Anthropic (cloud)",
+          "locality": "cloud",
+          "kind": "builtin",
+          "available": false,
+          "reason": "No API key is set for Anthropic (cloud)",
+          "key_policy": "required",
+          "key_set": false,
+          "default_model": "claude-haiku-4-5",
+          "base_url": null,
+          "models": null,
+          "models_error": null
+        },
+        {
+          "id": "deepseek",
+          "label": "DeepSeek (cloud)",
+          "locality": "cloud",
+          "kind": "preset",
+          "available": false,
+          "reason": "No API key is set for DeepSeek (cloud)",
+          "key_policy": "required",
+          "key_set": false,
+          "default_model": "deepseek-flash",
+          "base_url": "https://api.deepseek.com",
+          "models": null,
+          "models_error": null
+        },
+        {
+          "id": "gemini",
+          "label": "Google Gemini (cloud)",
+          "locality": "cloud",
+          "kind": "builtin",
+          "available": false,
+          "reason": "No API key is set for Google Gemini (cloud)",
+          "key_policy": "required",
+          "key_set": false,
+          "default_model": null,
+          "base_url": null,
+          "models": null,
+          "models_error": null
+        },
+        {
+          "id": "lmstudio",
+          "label": "LM Studio (this device)",
+          "locality": "local",
+          "kind": "preset",
+          "available": false,
+          "reason": "not checked (used only when you choose it)",
+          "key_policy": "optional",
+          "key_set": false,
+          "default_model": null,
+          "base_url": "http://localhost:1234/v1",
+          "models": null,
+          "models_error": null
+        },
+        {
+          "id": "moonshot",
+          "label": "Moonshot Kimi (cloud)",
+          "locality": "cloud",
+          "kind": "preset",
+          "available": false,
+          "reason": "No API key is set for Moonshot Kimi (cloud)",
+          "key_policy": "required",
+          "key_set": false,
+          "default_model": "kimi-k3",
+          "base_url": "https://api.moonshot.ai/v1",
+          "models": null,
+          "models_error": null
+        },
+        {
+          "id": "ollama",
+          "label": "Ollama (this device)",
+          "locality": "local",
+          "kind": "builtin",
+          "available": false,
+          "reason": "Could not reach ollama",
+          "key_policy": "none",
+          "key_set": false,
+          "default_model": "llama3.2",
+          "base_url": null,
+          "models": null,
+          "models_error": null
+        },
+        {
+          "id": "openai",
+          "label": "OpenAI (cloud)",
+          "locality": "cloud",
+          "kind": "preset",
+          "available": false,
+          "reason": "No API key is set for OpenAI (cloud)",
+          "key_policy": "required",
+          "key_set": false,
+          "default_model": null,
+          "base_url": "https://api.openai.com/v1",
+          "models": null,
+          "models_error": null
+        },
+        {
+          "id": "qwen",
+          "label": "Qwen (cloud, Alibaba Model Studio, Singapore)",
+          "locality": "cloud",
+          "kind": "preset",
+          "available": false,
+          "reason": "No API key is set for Qwen (cloud, Alibaba Model Studio, Singapore)",
+          "key_policy": "required",
+          "key_set": false,
+          "default_model": null,
+          "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+          "models": null,
+          "models_error": null
+        }
+      ]
+    },
+    "cooldown_until_a": 1794422182660,
+    "cooldown_remaining_ms_a": 29997,
+    "cooldown_row_in_settings_table": {
+      "key": "memory.indexer.cooldown_until",
+      "value": "1794422182660"
+    },
+    "vectors_before_restart": 16,
+    "failures_recorded_a": 0,
+    "core_a_stop_ms": 2,
+    "core_b_start_ms": 27,
+    "cooldown_at_b_start": 1794422182660,
+    "b_settings_enabled": true,
+    "b_index_during_cooldown": [
+      {
+        "embedded": 0,
+        "degraded": [
+          "provider_unavailable"
+        ]
+      },
+      {
+        "embedded": 0,
+        "degraded": [
+          "provider_unavailable"
+        ]
+      },
+      {
+        "embedded": 0,
+        "degraded": [
+          "provider_unavailable"
+        ]
+      }
+    ],
+    "embed_requests_during_cooldown": 0,
+    "b_cooldown_remaining_ms_when_checked": 29961,
+    "status_b_during_cooldown": {
+      "enabled": true,
+      "active": true,
+      "inactive_reason": null,
+      "provider": "ollama",
+      "model": "nomic-embed-text",
+      "vector_space": "ollama/nomic-embed-text#prefixed",
+      "embedded": 16,
+      "total": 36,
+      "unembedded": 20,
+      "failures": 0,
+      "other_models": [],
+      "payload_bytes": 49152,
+      "last_run": {
+        "at": "2026-11-11T18:35:52.699Z",
+        "embedded": 0,
+        "failed": 0,
+        "remaining": 20,
+        "capped": false,
+        "degraded": [
+          "provider_unavailable"
+        ]
+      }
+    },
+    "resume_wall_ms": 182,
+    "resume_report": {
+      "model": "ollama/nomic-embed-text#prefixed",
+      "embedded": 20,
+      "failed": 0,
+      "remaining": 0,
+      "degraded": [],
+      "capped": false
+    },
+    "resume_batches": [
+      16,
+      4
+    ],
+    "resume_texts_sent": 20,
+    "status_b_after_resume": {
+      "enabled": true,
+      "active": true,
+      "inactive_reason": null,
+      "provider": "ollama",
+      "model": "nomic-embed-text",
+      "vector_space": "ollama/nomic-embed-text#prefixed",
+      "embedded": 36,
+      "total": 36,
+      "unembedded": 0,
+      "failures": 0,
+      "other_models": [],
+      "payload_bytes": 110592,
+      "last_run": {
+        "at": "2026-11-11T18:36:22.938Z",
+        "embedded": 20,
+        "failed": 0,
+        "remaining": 0,
+        "capped": false,
+        "degraded": []
+      }
+    },
+    "cooldown_after_resume": null,
+    "vector_rows": 36,
+    "distinct_memory_ids_with_vector": 36,
+    "live_memories": 36,
+    "lost": 0,
+    "texts_embedded_before_plus_after": 36,
+    "core_b_stop_ms": 2
+  },
+  "model_switch": {
+    "real_space": {
+      "vectors": 36,
+      "dim": 768
+    },
+    "status_after_switch": {
+      "enabled": true,
+      "active": true,
+      "inactive_reason": null,
+      "provider": "ollama",
+      "model": "nomic-embed-text-alias256",
+      "vector_space": "ollama/nomic-embed-text-alias256#prefixed",
+      "embedded": 36,
+      "total": 36,
+      "unembedded": 0,
+      "failures": 0,
+      "other_models": [
+        {
+          "model": "ollama/nomic-embed-text#prefixed",
+          "vectors": 36
+        }
+      ],
+      "payload_bytes": 147456,
+      "last_run": {
+        "at": "2026-11-11T18:36:23.425Z",
+        "embedded": 36,
+        "failed": 0,
+        "remaining": 0,
+        "capped": false,
+        "degraded": []
+      }
+    },
+    "alias_space": {
+      "vectors": 36,
+      "dim": 256
+    },
+    "switch_embed_wire": [
+      {
+        "path": "/api/embed",
+        "model": "nomic-embed-text-alias256",
+        "upstream_model": "nomic-embed-text",
+        "inputs": 16,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 81
+      },
+      {
+        "path": "/api/embed",
+        "model": "nomic-embed-text-alias256",
+        "upstream_model": "nomic-embed-text",
+        "inputs": 16,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 78
+      },
+      {
+        "path": "/api/embed",
+        "model": "nomic-embed-text-alias256",
+        "upstream_model": "nomic-embed-text",
+        "inputs": 4,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 26
+      }
+    ],
+    "search_alias": {
+      "retrieval": {
+        "mode": "hybrid"
+      },
+      "top": [
+        "Jupiter has four large moons that can be seen through a small telescope.",
+        "A lunar eclipse happens when the Earth passes between the Sun and the Moon.",
+        "Telescopes with larger mirrors collect more light from faint distant galaxies.",
+        "Mars has the tallest volcano in the solar system, called Olympus Mons.",
+        "Black holes bend light because their gravity is strong enough to trap it."
+      ]
+    },
+    "search_alias_query_wire": [
+      {
+        "path": "/api/embed",
+        "model": "nomic-embed-text-alias256",
+        "upstream_model": "nomic-embed-text",
+        "inputs": 1,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 12
+      }
+    ],
+    "rebuild_alias_wire": [
+      {
+        "path": "/api/embed",
+        "model": "nomic-embed-text-alias256",
+        "upstream_model": "nomic-embed-text",
+        "inputs": 16,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 80
+      },
+      {
+        "path": "/api/embed",
+        "model": "nomic-embed-text-alias256",
+        "upstream_model": "nomic-embed-text",
+        "inputs": 16,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 90
+      },
+      {
+        "path": "/api/embed",
+        "model": "nomic-embed-text-alias256",
+        "upstream_model": "nomic-embed-text",
+        "inputs": 4,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 27
+      }
+    ],
+    "alias_vectors_identical_after_rebuild": true,
+    "status_after_switch_back": {
+      "enabled": true,
+      "active": true,
+      "inactive_reason": null,
+      "provider": "ollama",
+      "model": "nomic-embed-text",
+      "vector_space": "ollama/nomic-embed-text#prefixed",
+      "embedded": 36,
+      "total": 36,
+      "unembedded": 0,
+      "failures": 0,
+      "other_models": [
+        {
+          "model": "ollama/nomic-embed-text-alias256#prefixed",
+          "vectors": 36
+        }
+      ],
+      "payload_bytes": 147456,
+      "last_run": {
+        "at": "2026-11-11T18:36:23.657Z",
+        "embedded": 0,
+        "failed": 0,
+        "remaining": 0,
+        "capped": false,
+        "degraded": []
+      }
+    },
+    "switch_back_embed_requests": 0,
+    "search_real": {
+      "retrieval": {
+        "mode": "hybrid"
+      },
+      "top": [
+        "Jupiter has four large moons that can be seen through a small telescope.",
+        "A lunar eclipse happens when the Earth passes between the Sun and the Moon.",
+        "Telescopes with larger mirrors collect more light from faint distant galaxies.",
+        "Mars has the tallest volcano in the solar system, called Olympus Mons.",
+        "The Milky Way is a spiral galaxy containing hundreds of billions of stars."
+      ]
+    },
+    "rebuild_real_wire": [
+      {
+        "path": "/api/embed",
+        "model": "nomic-embed-text",
+        "upstream_model": "nomic-embed-text",
+        "inputs": 16,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 85
+      },
+      {
+        "path": "/api/embed",
+        "model": "nomic-embed-text",
+        "upstream_model": "nomic-embed-text",
+        "inputs": 16,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 82
+      },
+      {
+        "path": "/api/embed",
+        "model": "nomic-embed-text",
+        "upstream_model": "nomic-embed-text",
+        "inputs": 4,
+        "outcome": "forwarded",
+        "status": 200,
+        "ms": 27
+      }
+    ],
+    "core_stop_ms": 2
+  },
+  "tags_after": {
+    "local": [
+      "llama3.2:latest@a80c4f17acd5",
+      "nomic-embed-text:latest@0a109f422b47"
+    ],
+    "remote_tagged_count": 2,
+    "list_sha256": "f624c208715bff0f405b5786186fe01021ad86d2578cbab66cf5c35f53dc2ef9"
+  },
+  "proxy_refused": 0
+}
