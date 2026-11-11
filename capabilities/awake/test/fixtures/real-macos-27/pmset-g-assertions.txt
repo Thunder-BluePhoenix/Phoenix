@@ -1,0 +1,26 @@
+<timestamp>
+Assertion status system-wide:
+   BackgroundTask                 0
+   ApplePushServiceTask           0
+   UserIsActive                   1
+   PreventUserIdleDisplaySleep    0
+   SoftwareUpdateTask             0
+   PreventSystemSleep             0
+   PreventSystemSleepSecurityIndicator 0
+   ExternalMedia                  0
+   PreventUserIdleSystemSleep     1
+   NetworkClientActive            0
+Listed by owning process:
+   pid 6111(omp): [0x000fa79400018de5] 00:00:01 PreventUserIdleSystemSleep named: "omp agent session"  
+   pid 6111(omp): [0x000fa77500018de2] 00:00:32 PreventUserIdleSystemSleep named: "omp agent session"  
+   pid 6111(omp): [0x000fa73200018ddb] 00:01:39 PreventUserIdleSystemSleep named: "omp agent session"  
+   pid 553(coreaudiod): [0x000f9524000180ab] 01:18:41 PreventUserIdleSystemSleep named: "com.apple.audio.AVVCAggregateDevice-728-282475249.context.preventuseridlesleep"  
+	Created for PID: 728. 
+	Resources: audio-out BuiltInSpeakerDevice 
+   pid 553(coreaudiod): [0x000f9524000180d9] 01:18:41 PreventUserIdleSystemSleep named: "com.apple.audio.BuiltInSpeakerDevice.context.preventuseridlesleep"  
+	Created for PID: 44724. 
+	Resources: audio-out BuiltInSpeakerDevice 
+   pid 342(powerd): [0x000fa6ca00018dc6] 00:03:23 PreventUserIdleSystemSleep named: "Powerd - Prevent sleep while display is on"  
+   pid 398(WindowServer): [0x000fa6ca00098dc5] 00:00:29 UserIsActive named: "com.apple.iohideventsystem.queue.tickle serviceID:1000cc905 service:AppleMultitouchDevice product:Apple Internal Keyboard / Trackpad eventType:11"  
+	Timeout will fire in 151 secs Action=TimeoutActionRelease
+No kernel assertions.

@@ -1,0 +1,815 @@
+{
+  "node": {
+    "version": "v22.19.0",
+    "subject": "CN=Phoenix Phone Link",
+    "issuer": "CN=Phoenix Phone Link",
+    "validFrom": "Nov 11 06:49:22 2026 GMT",
+    "validTo": "Feb  9 06:54:22 2027 GMT",
+    "validityDays": 90.00347222222223,
+    "serialNumberHex": "665425A6432A31C9C6B8F930FCC4D176",
+    "subjectAltName": "IP Address:127.0.0.1",
+    "keyUsage": [
+      "1.3.6.1.5.5.7.3.1"
+    ],
+    "ca": false,
+    "derBytes": 385
+  },
+  "listener": {
+    "host": "127.0.0.1",
+    "port": 59920,
+    "advertisedFingerprint": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+    "pairingFingerprint": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+    "wrongPin": "A6:00:79:2E:93:0F:DF:34:7C:E2:B6:8E:D5:B7:CE:89:2B:D6:FD:86:80:CF:8D:30:43:50:D1:68:12:C4:F0:36"
+  },
+  "stacks": [
+    {
+      "handshakes": [
+        {
+          "httpStatus": 404,
+          "mode": "pin-fingerprint",
+          "ok": true,
+          "pin": "right",
+          "presented": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+          "tls": "1.2"
+        },
+        {
+          "error": "NSURLErrorDomain -999: cancelled",
+          "mode": "pin-fingerprint",
+          "ok": false,
+          "pin": "wrong",
+          "presented": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+          "tls": "1.2"
+        },
+        {
+          "httpStatus": 404,
+          "mode": "pin-fingerprint",
+          "ok": true,
+          "pin": "right",
+          "presented": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+          "tls": "1.3"
+        },
+        {
+          "error": "NSURLErrorDomain -999: cancelled",
+          "mode": "pin-fingerprint",
+          "ok": false,
+          "pin": "wrong",
+          "presented": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+          "tls": "1.3"
+        },
+        {
+          "httpStatus": 404,
+          "mode": "trust-anchor",
+          "ok": true,
+          "pin": "right",
+          "presented": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+          "tls": "1.2"
+        },
+        {
+          "error": "NSURLErrorDomain -999: cancelled",
+          "mode": "trust-anchor",
+          "ok": false,
+          "pin": "wrong",
+          "presented": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+          "tls": "1.2",
+          "trustError": "\u201cPhoenix Phone Link\u201d certificate is not trusted"
+        },
+        {
+          "httpStatus": 404,
+          "mode": "trust-anchor",
+          "ok": true,
+          "pin": "right",
+          "presented": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+          "tls": "1.3"
+        },
+        {
+          "error": "NSURLErrorDomain -999: cancelled",
+          "mode": "trust-anchor",
+          "ok": false,
+          "pin": "wrong",
+          "presented": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+          "tls": "1.3",
+          "trustError": "\u201cPhoenix Phone Link\u201d certificate is not trusted"
+        }
+      ],
+      "parse": {
+        "fingerprintSha256": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+        "keyIsECSECPrimeRandom": true,
+        "keySizeBits": 256,
+        "keyType": "73",
+        "normalizedSubjectBytes": 31,
+        "serialBytes": 16,
+        "serialTopBitClear": true,
+        "subjectSummary": "Phoenix Phone Link",
+        "values": {
+          "2.5.4.3": {
+            "label": "CN",
+            "type": "array",
+            "value": "(     \"Phoenix Phone Link\" )"
+          },
+          "2.5.29.15": {
+            "label": "Key Usage",
+            "type": "number",
+            "value": "-2147483647"
+          },
+          "2.5.29.17": {
+            "label": "2.5.29.17",
+            "type": "section",
+            "value": "(         {         label = Critical;         \"localized label\" = Critical;         type = string;         value = No;     },         {         label = \"IP Address\";         \"localized label\" = \"IP Address\";         type = string;         value = \"127.0.0.1\";     } )"
+          },
+          "2.5.29.19": {
+            "label": "2.5.29.19",
+            "type": "section",
+            "value": "(         {         label = Critical;         \"localized label\" = Critical;         type = string;         value = Yes;     },         {         label = \"Certificate Authority\";         \"localized label\" = \"Certificate Authority\";         type = string;         value = No;     } )"
+          },
+          "2.5.29.24": {
+            "label": "Expires",
+            "type": "date",
+            "value": "2027-02-09 06:54:22 +0000"
+          },
+          "2.5.29.37": {
+            "label": "Extended Key Usage",
+            "type": "array",
+            "value": "(     {length = 8, bytes = 0x2b06010505070301} )"
+          },
+          "2.16.840.1.113741.2.1.1.1.2": {
+            "label": "Version",
+            "type": "string",
+            "value": "3"
+          },
+          "2.16.840.1.113741.2.1.1.1.3": {
+            "label": "Serial Number",
+            "type": "string",
+            "value": "66 54 25 A6 43 2A 31 C9 C6 B8 F9 30 FC C4 D1 76"
+          },
+          "2.16.840.1.113741.2.1.1.1.5": {
+            "label": "Issuer Name",
+            "type": "section",
+            "value": "(         {         label = \"2.5.4.3\";         \"localized label\" = \"2.5.4.3\";         type = string;         value = \"Phoenix Phone Link\";     } )"
+          },
+          "2.16.840.1.113741.2.1.1.1.6": {
+            "label": "Not Valid Before",
+            "type": "number",
+            "value": "816072562"
+          },
+          "2.16.840.1.113741.2.1.1.1.7": {
+            "label": "Not Valid After",
+            "type": "number",
+            "value": "823848862"
+          },
+          "2.16.840.1.113741.2.1.1.1.8": {
+            "label": "Subject Name",
+            "type": "section",
+            "value": "(         {         label = \"2.5.4.3\";         \"localized label\" = \"2.5.4.3\";         type = string;         value = \"Phoenix Phone Link\";     } )"
+          },
+          "2.16.840.1.113741.2.1.1.1.9": {
+            "label": "Public Key Algorithm",
+            "type": "section",
+            "value": "(         {         label = Algorithm;         \"localized label\" = Algorithm;         type = string;         value = \"1.2.840.10045.2.1\";     },         {         label = \"Unparsed Parameters\";         \"localized label\" = \"Unparsed Parameters\";         type = data;         value = {length = 10, bytes = 0x06082a8648ce3d030107};     } )"
+          },
+          "2.16.840.1.113741.2.1.1.1.10": {
+            "label": "Public Key Data",
+            "type": "data",
+            "value": "{length = 65, bytes = 0x0496c026 a7a08d6e 7902c61a 71558196 ... fe8eb18d 2ee68763 }"
+          },
+          "2.16.840.1.113741.2.1.3.2.1": {
+            "label": "Signature Algorithm",
+            "type": "section",
+            "value": "(         {         label = Algorithm;         \"localized label\" = Algorithm;         type = string;         value = \"1.2.840.10045.4.3.2\";     } )"
+          },
+          "2.16.840.1.113741.2.1.3.2.2": {
+            "label": "Signature",
+            "type": "data",
+            "value": "{length = 70, bytes = 0x30440220 0a5875f8 c4899283 4617d826 ... 436e53c6 ac0bdf15 }"
+          },
+          "Fingerprints": {
+            "label": "Fingerprints",
+            "type": "section",
+            "value": "(         {         label = \"SHA-256\";         \"localized label\" = \"SHA-256\";         type = data;         value = {length = 32, bytes = 0xf6547aa3 255c8777 39478092 1d86aae0 ... bf3f2bd7 a38dfa17 };     },         {         label = \"SHA-1\";         \"localized label\" = \"SHA-1\";         type = data;         value = {length = 20, bytes = 0xbc5b6a313ddffe913bce327df485e472013762be};     } )"
+          },
+          "IPADDRESSES": {
+            "label": "IP",
+            "type": "array",
+            "value": "nil"
+          }
+        }
+      },
+      "secTrust": {
+        "otherCertAsAnchor_sslPolicy_ipHostname": {
+          "error": "\u201cPhoenix Phone Link\u201d certificate is not trusted [-67843]",
+          "result": "[\"TrustEvaluationID\": 17981164-76B5-4AF1-804B-5D93EB820B17, \"TrustEvaluationDate\": 2026-11-11 06:54:22 +0000, \"TrustResultDetails\": <__NSArrayM 0x78a9048b10>( {     AnchorTrusted = 0;     StatusCodes =     (         \"-2147409622\"     ); } ) , \"TrustResultValue\": 5]",
+          "trusted": false
+        },
+        "selfAsAnchor_sslPolicy_ipHostname": {
+          "result": "[\"TrustEvaluationID\": 9C74089D-C8CC-414F-97B0-F4986B97117B, \"TrustEvaluationDate\": 2026-11-11 06:54:22 +0000, \"TrustResultDetails\": <__NSArrayM 0x78a9048540>( { } ) , \"TrustResultValue\": 4]",
+          "trusted": true
+        },
+        "selfAsAnchor_sslPolicy_ipHostname_in_400_days": {
+          "error": "\u201cPhoenix Phone Link\u201d certificate is expired [-67818]",
+          "result": "[\"TrustResultDetails\": <__NSArrayM 0x78a9048540>( {     StatusCodes =     (         \"-2147409654\"     );     TemporalValidity = 0; } ) , \"TrustEvaluationDate\": 2027-12-16 06:54:22 +0000, \"TrustResultValue\": 5, \"TrustEvaluationID\": FAD06B5D-9227-417A-920D-2FB03748B929]",
+          "trusted": false
+        },
+        "selfAsAnchor_sslPolicy_noHostname": {
+          "result": "[\"TrustEvaluationID\": 729140B0-F808-4957-852F-1F6AE0D9DEA5, \"TrustEvaluationDate\": 2026-11-11 06:54:22 +0000, \"TrustResultDetails\": <__NSArrayM 0x78a9048b40>( { } ) , \"TrustResultValue\": 4]",
+          "trusted": true
+        },
+        "selfAsAnchor_sslPolicy_wrongHostname": {
+          "error": "\u201cPhoenix Phone Link\u201d certificate name does not match input [-67602]",
+          "result": "[\"TrustEvaluationID\": AC971280-DCFF-4112-8C93-D17D0BDFBA5F, \"TrustEvaluationDate\": 2026-11-11 06:54:22 +0000, \"TrustResultDetails\": <__NSArrayM 0x78a9048990>( {     SSLHostname = 0;     StatusCodes =     (         \"-2147408896\"     ); } ) , \"TrustResultValue\": 5]",
+          "trusted": false
+        }
+      },
+      "stack": "apple-security-urlsession",
+      "versions": {
+        "macOS": "Version 27.0.1 (Build 26A434)"
+      },
+      "warnings": [],
+      "swiftVersion": "Apple Swift version 6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)"
+    },
+    {
+      "handshakes": [
+        {
+          "error": null,
+          "httpStatus": 404,
+          "mode": "pin-fingerprint",
+          "negotiated": "TLS 1.2",
+          "ok": true,
+          "pin": "right",
+          "tls": "1.2"
+        },
+        {
+          "error": "pin mismatch",
+          "httpStatus": null,
+          "mode": "pin-fingerprint",
+          "negotiated": null,
+          "ok": false,
+          "pin": "wrong",
+          "tls": "1.2"
+        },
+        {
+          "error": null,
+          "httpStatus": 404,
+          "mode": "pin-fingerprint",
+          "negotiated": "TLS 1.3",
+          "ok": true,
+          "pin": "right",
+          "tls": "1.3"
+        },
+        {
+          "error": "pin mismatch",
+          "httpStatus": null,
+          "mode": "pin-fingerprint",
+          "negotiated": null,
+          "ok": false,
+          "pin": "wrong",
+          "tls": "1.3"
+        },
+        {
+          "error": null,
+          "httpStatus": 404,
+          "mode": "trust-anchor",
+          "negotiated": "TLS 1.2",
+          "ok": true,
+          "pin": "right",
+          "tls": "1.2"
+        },
+        {
+          "error": "tls: failed to verify certificate: x509: certificate signed by unknown authority (possibly because of \"x509: invalid signature: parent certificate cannot sign this kind of certificate\" while trying to verify candidate authority certificate \"Phoenix Phone Link\")",
+          "httpStatus": null,
+          "mode": "trust-anchor",
+          "negotiated": null,
+          "ok": false,
+          "pin": "wrong",
+          "tls": "1.2"
+        },
+        {
+          "error": null,
+          "httpStatus": 404,
+          "mode": "trust-anchor",
+          "negotiated": "TLS 1.3",
+          "ok": true,
+          "pin": "right",
+          "tls": "1.3"
+        },
+        {
+          "error": "tls: failed to verify certificate: x509: certificate signed by unknown authority (possibly because of \"x509: invalid signature: parent certificate cannot sign this kind of certificate\" while trying to verify candidate authority certificate \"Phoenix Phone Link\")",
+          "httpStatus": null,
+          "mode": "trust-anchor",
+          "negotiated": null,
+          "ok": false,
+          "pin": "wrong",
+          "tls": "1.3"
+        }
+      ],
+      "parse": {
+        "basicConstraintsValid": true,
+        "curve": "P-256",
+        "extKeyUsage": [
+          "serverAuth"
+        ],
+        "extensions": [
+          {
+            "critical": true,
+            "oid": "2.5.29.19"
+          },
+          {
+            "critical": true,
+            "oid": "2.5.29.15"
+          },
+          {
+            "critical": false,
+            "oid": "2.5.29.37"
+          },
+          {
+            "critical": false,
+            "oid": "2.5.29.17"
+          }
+        ],
+        "fingerprintSha256": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+        "isCA": false,
+        "issuer": "CN=Phoenix Phone Link",
+        "keyAlgorithm": "ECDSA",
+        "keyUsage": [
+          "digitalSignature"
+        ],
+        "notAfter": "2027-02-09T06:54:22Z",
+        "notBefore": "2026-11-11T06:49:22Z",
+        "selfSignatureVerifies": "ok (CheckSignature over RawTBSCertificate with its own key)",
+        "serialBits": 127,
+        "serialPositive": true,
+        "signatureAlgorithm": "ECDSA-SHA256",
+        "subject": "CN=Phoenix Phone Link",
+        "subjectAltNameDNS": null,
+        "subjectAltNameIPs": [
+          "127.0.0.1"
+        ],
+        "unhandledCriticalExts": 0,
+        "validityDays": 90.00347222222223,
+        "verifyAsOwnRootForIP": "ok",
+        "version": 3
+      },
+      "sha256": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+      "stack": "go-crypto-x509-tls",
+      "versions": {
+        "go": "go1.25.7"
+      },
+      "warnings": []
+    },
+    {
+      "stack": "java-jsse",
+      "versions": {
+        "java": "27.0.1.0.3",
+        "vendor": "Homebrew"
+      },
+      "parse": {
+        "subject": "CN=Phoenix Phone Link",
+        "issuer": "CN=Phoenix Phone Link",
+        "notBefore": "2026-11-11T06:49:22Z",
+        "notAfter": "2027-02-09T06:54:22Z",
+        "validityDays": 90.00347222222223,
+        "version": 3,
+        "keyAlgorithm": "EC",
+        "curve": "secp256r1 [NIST P-256,X9.62 prime256v1] (1.2.840.10045.3.1.7)",
+        "signatureAlgorithm": "SHA256withECDSA",
+        "serialBits": 127,
+        "serialPositive": true,
+        "basicConstraints_pathLen(-1=not CA)": -1,
+        "keyUsage[digitalSignature,nonRepudiation,keyEncipherment,...]": "[true, false, false, false, false, false, false, false, false]",
+        "extKeyUsage": [
+          "1.3.6.1.5.5.7.3.1"
+        ],
+        "subjectAltNames(type:value; 7=iPAddress)": [
+          "7:127.0.0.1"
+        ],
+        "criticalExtensionOIDs": [
+          "2.5.29.15",
+          "2.5.29.19"
+        ],
+        "nonCriticalExtensionOIDs": [
+          "2.5.29.17",
+          "2.5.29.37"
+        ],
+        "selfSignatureVerifies": "ok",
+        "checkValidityNow": "ok",
+        "pkixSelfAnchored": "ok (the certificate as its own trust anchor)",
+        "fingerprintSha256": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17"
+      },
+      "sha256": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+      "warnings": [],
+      "handshakes": [
+        {
+          "mode": "pin-fingerprint",
+          "tls": "1.2",
+          "pin": "right",
+          "ok": true,
+          "negotiated": "TLSv1.2",
+          "cipher": "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+          "httpStatus": 404
+        },
+        {
+          "mode": "pin-fingerprint",
+          "tls": "1.2",
+          "pin": "wrong",
+          "ok": false,
+          "error": "javax.net.ssl.SSLHandshakeException: (certificate_unknown) pin mismatch"
+        },
+        {
+          "mode": "pin-fingerprint",
+          "tls": "1.3",
+          "pin": "right",
+          "ok": true,
+          "negotiated": "TLSv1.3",
+          "cipher": "TLS_AES_256_GCM_SHA384",
+          "httpStatus": 404
+        },
+        {
+          "mode": "pin-fingerprint",
+          "tls": "1.3",
+          "pin": "wrong",
+          "ok": false,
+          "error": "javax.net.ssl.SSLHandshakeException: (certificate_unknown) pin mismatch"
+        },
+        {
+          "mode": "trust-anchor",
+          "tls": "1.2",
+          "pin": "right",
+          "ok": true,
+          "negotiated": "TLSv1.2",
+          "cipher": "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+          "httpStatus": 404
+        },
+        {
+          "mode": "trust-anchor",
+          "tls": "1.2",
+          "pin": "wrong",
+          "ok": false,
+          "error": "javax.net.ssl.SSLHandshakeException: (bad_certificate) PKIX path validation failed: java.security.cert.CertPathValidatorException: signature check failed"
+        },
+        {
+          "mode": "trust-anchor",
+          "tls": "1.3",
+          "pin": "right",
+          "ok": true,
+          "negotiated": "TLSv1.3",
+          "cipher": "TLS_AES_256_GCM_SHA384",
+          "httpStatus": 404
+        },
+        {
+          "mode": "trust-anchor",
+          "tls": "1.3",
+          "pin": "wrong",
+          "ok": false,
+          "error": "javax.net.ssl.SSLHandshakeException: (bad_certificate) PKIX path validation failed: java.security.cert.CertPathValidatorException: signature check failed"
+        }
+      ]
+    },
+    {
+      "stack": "python-cryptography-ssl",
+      "warnings": [],
+      "versions": {
+        "cryptography": "49.0.0",
+        "openssl": "OpenSSL 3.6.2 7 Apr 2026"
+      },
+      "parse": {
+        "subject": "CN=Phoenix Phone Link",
+        "issuer": "CN=Phoenix Phone Link",
+        "notBefore": "2026-11-11T06:49:22+00:00",
+        "notAfter": "2027-02-09T06:54:22+00:00",
+        "validityDays": 90.00347222222223,
+        "version": "Version.v3",
+        "keyAlgorithm": "ECPublicKey",
+        "curve": "secp256r1",
+        "signatureAlgorithm": "ecdsa-with-SHA256",
+        "signatureHash": "sha256",
+        "serialDecimalLength": 39,
+        "serialBits": 127,
+        "serialPositive": true,
+        "extensions": [
+          {
+            "oid": "2.5.29.19",
+            "name": "basicConstraints",
+            "critical": true,
+            "value": "<BasicConstraints(ca=False, path_length=None)>"
+          },
+          {
+            "oid": "2.5.29.15",
+            "name": "keyUsage",
+            "critical": true,
+            "value": "<KeyUsage(digital_signature=True, content_commitment=False, key_encipherment=False, data_encipherment=False, key_agreement=False, key_cert_sign=False, crl_sign=False, encipher_only=False, decipher_only=False)>"
+          },
+          {
+            "oid": "2.5.29.37",
+            "name": "extendedKeyUsage",
+            "critical": false,
+            "value": "<ExtendedKeyUsage([<ObjectIdentifier(oid=1.3.6.1.5.5.7.3.1, name=serverAuth)>])>"
+          },
+          {
+            "oid": "2.5.29.17",
+            "name": "subjectAltName",
+            "critical": false,
+            "value": "<SubjectAlternativeName(<GeneralNames([<IPAddress(value=127.0.0.1)>])>)>"
+          }
+        ],
+        "subjectAltName": [
+          "<IPAddress(value=127.0.0.1)>"
+        ],
+        "selfSignatureVerifies": true,
+        "fingerprintSha256": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17"
+      },
+      "sha256": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+      "handshakes": [
+        {
+          "mode": "pin-fingerprint",
+          "tls": "1.2",
+          "pin": "right",
+          "ok": true,
+          "negotiated": "TLSv1.2",
+          "httpStatus": 404,
+          "error": null
+        },
+        {
+          "mode": "pin-fingerprint",
+          "tls": "1.2",
+          "pin": "wrong",
+          "ok": false,
+          "negotiated": "TLSv1.2",
+          "httpStatus": null,
+          "error": "pin mismatch: presented F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17"
+        },
+        {
+          "mode": "pin-fingerprint",
+          "tls": "1.3",
+          "pin": "right",
+          "ok": true,
+          "negotiated": "TLSv1.3",
+          "httpStatus": 404,
+          "error": null
+        },
+        {
+          "mode": "pin-fingerprint",
+          "tls": "1.3",
+          "pin": "wrong",
+          "ok": false,
+          "negotiated": "TLSv1.3",
+          "httpStatus": null,
+          "error": "pin mismatch: presented F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17"
+        },
+        {
+          "mode": "trust-anchor",
+          "tls": "1.2",
+          "pin": "right",
+          "ok": true,
+          "negotiated": "TLSv1.2",
+          "httpStatus": 404,
+          "error": null
+        },
+        {
+          "mode": "trust-anchor",
+          "tls": "1.2",
+          "pin": "wrong",
+          "ok": false,
+          "negotiated": null,
+          "httpStatus": null,
+          "error": "SSLCertVerificationError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate (_ssl.c:1006)"
+        },
+        {
+          "mode": "trust-anchor",
+          "tls": "1.3",
+          "pin": "right",
+          "ok": true,
+          "negotiated": "TLSv1.3",
+          "httpStatus": 404,
+          "error": null
+        },
+        {
+          "mode": "trust-anchor",
+          "tls": "1.3",
+          "pin": "wrong",
+          "ok": false,
+          "negotiated": null,
+          "httpStatus": null,
+          "error": "SSLCertVerificationError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate (_ssl.c:1006)"
+        }
+      ]
+    },
+    {
+      "stack": "libressl-cli",
+      "versions": {
+        "binary": "/usr/bin/openssl",
+        "version": "LibreSSL 3.3.6"
+      },
+      "sha256": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+      "x509Text": "Certificate:\n    Data:\n        Version: 3 (0x2)\n        Serial Number:\n            66:54:25:a6:43:2a:31:c9:c6:b8:f9:30:fc:c4:d1:76\n    Signature Algorithm: ecdsa-with-SHA256\n        Issuer: CN=Phoenix Phone Link\n        Validity\n            Not Before: Nov 11 06:49:22 2026 GMT\n            Not After : Feb  9 06:54:22 2027 GMT\n        Subject: CN=Phoenix Phone Link\n        Subject Public Key Info:\n            Public Key Algorithm: id-ecPublicKey\n                Public-Key: (256 bit)\n                pub: \n                    04:96:c0:26:a7:a0:8d:6e:79:02:c6:1a:71:55:81:\n                    96:2a:2a:f4:82:33:7e:d6:23:0f:d4:6f:16:1b:e7:\n                    e4:05:71:02:97:f3:a3:e4:b4:c4:22:cb:cd:db:b3:\n                    5e:7a:7f:cd:83:79:63:a0:6b:00:9a:b6:fe:8e:b1:\n                    8d:2e:e6:87:63\n                ASN1 OID: prime256v1\n                NIST CURVE: P-256\n        X509v3 extensions:\n            X509v3 Basic Constraints: critical\n                CA:FALSE\n            X509v3 Key Usage: critical\n                Digital Signature\n            X509v3 Extended Key Usage: \n                TLS Web Server Authentication\n            X509v3 Subject Alternative Name: \n                IP Address:127.0.0.1\n    Signature Algorithm: ecdsa-with-SHA256\n         30:44:02:20:0a:58:75:f8:c4:89:92:83:46:17:d8:26:28:0a:\n         ec:70:b9:e3:14:fc:91:32:f2:5f:b6:0a:d1:58:9e:c1:4c:53:\n         02:20:41:16:01:27:10:ea:1c:cb:18:77:cc:5b:a3:64:6c:75:\n         75:d6:5f:e6:0d:91:8a:8b:43:6e:53:c6:ac:0b:df:15\n",
+      "x509TextExit": 0,
+      "checkip": "unknown option -checkip\nusage: x509 [-C] [-addreject arg] [-addtrust arg] [-alias] [-CA file]\n    [-CAcreateserial] [-CAform der | pem] [-CAkey file]\n    [-CAkeyform der | pem] [-CAserial file] [-certopt option]\n    [-checkend arg] [-clrext] [-clrreject] [-clrtrust] [-dates]\n    [-days arg] [-email] [-enddate] [-extensions section]\n    [-extfile file] [-fingerprint] [-hash] [-in file]\n    [-inform der | net | pem] [-issuer] [-issuer_hash]\n    [-issuer_hash_old] [-keyform der | pem] [-md5 | -sha1]\n    [-modulus] [-nameopt option] [-next_serial] [-noout]\n    [-ocsp_uri] [-ocspid] [-out file]\n    [-outform der | net | pem] [-passin arg] [-pubkey]\n    [-purpose] [-req] [-serial] [-set_serial n] [-setalias arg]\n    [-signkey file] [-sigopt nm:v] [-startdate] [-subject]\n    [-subject_hash] [-subject_hash_old] [-text] [-trustout]\n    [-x509toreq]\n\n -C                 Convert the certificate into C code\n -addreject arg     Reject certificate for a given purpose\n -addtrust arg      Trust certificate for a given purpose\n -alias             Output certificate alias\n -CA file           CA certificate in PEM format unless -CAform is specified\n -CAcreateserial    Create serial number file if it does not exist\n -CAform fmt        CA format - default PEM\n -CAkey file        CA key in PEM format unless -CAkeyform is specified\n                    if omitted, the key is assumed to be in the CA file\n -CAkeyform fmt     CA key format - default PEM\n -CAserial file     Serial file\n -certopt option    Various certificate text options\n -checkend arg      Check whether the cert expires in the next arg seconds\n                    exit 1 if so, 0 if not\n -clrext            Clear all extensions\n -clrreject         Clear all rejected purposes\n -clrtrust          Clear all trusted purposes\n -dates             Both Before and After dates\n -days arg          How long till expiry of a signed certificate - def 30 days\n -email             Print email address(es)\n -enddate           Print notAfter field\n -extensions section\n                    Section from config file with X509V3 extensions to add\n -extfile file      Configuration file with X509V3 extensions to add\n -fingerprint       Print the certificate fingerprint\n -hash              Synonym for -subject_hash\n -in file           Input file - default stdin\n -inform fmt        Input format - default PEM (one of DER, NET or PEM)\n -issuer            Print issuer name\n -issuer_hash       Print issuer hash value\n -issuer_hash_old   Print old-style (MD5) issuer hash value\n -keyform fmt       Private key format - default PEM\n -modulus           Print the RSA key modulus\n -nameopt option    Various certificate name options\n -next_serial       Print the next serial number\n -noout             No certificate output\n -ocsp_uri          Print OCSP Responder URL(s)\n -ocspid            Print OCSP hash values for the subject name and public key\n -out file          Output file - default stdout\n -outform fmt       Output format - default PEM (one of DER, NET or PEM)\n -passin src        Private key password source\n -pubkey            Output the public key\n -purpose           Print out certificate purposes\n -req               Input is a certificate request, sign and output\n -serial            Print serial number value\n -set_serial n      Serial number to use\n -setalias arg      Set certificate alias\n -signkey file      Self sign cert with arg\n -sigopt nm:v       Various signature algorithm options\n -startdate         Print notBefore field\n -subject           Print subject name\n -subject_hash      Print subject hash value\n -subject_hash_old  Print old-style (MD5) subject hash value\n -text              Print the certificate in text form\n -trustout          Output a trusted certificate\n -x509toreq         Output a certification request object",
+      "dates": "notBefore=Nov 11 06:49:22 2026 GMT\nnotAfter=Feb  9 06:54:22 2027 GMT",
+      "verify": {
+        "plain": {
+          "status": 2,
+          "output": "CN = Phoenix Phone Link\nerror 20 at 0 depth lookup:unable to get local issuer certificate\n/var/folders/cr/kqvq6m_11tdc48k112d7xdsw0000gn/T/phoenix-cert-stacks-1lEkdp/served.crt: verification failed: 20 (unable to get local issuer certificate)"
+        },
+        "purposeSslServer": {
+          "status": 2,
+          "output": "CN = Phoenix Phone Link\nerror 20 at 0 depth lookup:unable to get local issuer certificate\n/var/folders/cr/kqvq6m_11tdc48k112d7xdsw0000gn/T/phoenix-cert-stacks-1lEkdp/served.crt: verification failed: 20 (unable to get local issuer certificate)"
+        },
+        "purposeSslServerIp": {
+          "status": 1,
+          "output": "usage: verify [-CAfile file] [-CApath directory] [-check_ss_sig]\n    [-CRLfile file] [-crl_check] [-crl_check_all]\n    [-explicit_policy] [-extended_crl]\n    [-ignore_critical] [-inhibit_any] [-inhibit_map]\n    [-issuer_checks] [-policy_check] [-purpose purpose]\n    [-trusted file] [-untrusted file] [-verbose]\n    [-x509_strict] [certificates]\n\n -CAfile file       Certificate Authority file\n -CApath path       Certificate Authority path\n -CRLfile file      Certificate Revocation List file\n -trusted file      Trusted certificates file\n -untrusted file    Untrusted certificates file\n -verbose           Verbose\n\nVerification options:\n\n -attime epoch      Use epoch as the verification time\n -check_ss_sig      Check the root CA self-signed certificate signature\n -crl_check         Enable CRL checking for the leaf certificate\n -crl_check_all     Enable CRL checking for the entire certificate chain\n -explicit_policy   Require explicit policy (per RFC 3280)\n -extended_crl      Enable extended CRL support\n -ignore_critical   Disable critical extension checking\n -inhibit_any       Inhibit any policy (per RFC 3280)\n -inhibit_map       Inhibit policy mapping (per RFC 3280)\n -issuer_checks     Enable debugging of certificate issuer checks\n -legacy_verify     Use legacy certificate chain verification\n -policy name       Add given policy to the acceptable set\n -policy_check      Enable certificate policy checking\n -policy_print      Print policy\n -purpose name      Verify for the given purpose\n -use_deltas        Use delta CRLS (if present)\n -verify_depth num  Limit verification to the given depth\n -x509_strict       Use strict X.509 rules (disables workarounds)\n\nValid purposes:\n\n  sslclient         SSL client\n  sslserver         SSL server\n  nssslserver       Netscape SSL server\n  smimesign         S/MIME signing\n  smimeencrypt      S/MIME encryption\n  crlsign           CRL signing\n  any               Any Purpose\n  ocsphelper        OCSP helper\n  timestampsign     Time Stamp signing"
+        },
+        "x509Strict": {
+          "status": 2,
+          "output": "CN = Phoenix Phone Link\nerror 20 at 0 depth lookup:unable to get local issuer certificate\n/var/folders/cr/kqvq6m_11tdc48k112d7xdsw0000gn/T/phoenix-cert-stacks-1lEkdp/served.crt: verification failed: 20 (unable to get local issuer certificate)"
+        }
+      },
+      "handshakes": [
+        {
+          "mode": "pin-fingerprint",
+          "tls": "1.2",
+          "pin": "right",
+          "ok": true,
+          "negotiated": "TLSv1/SSLv3",
+          "httpStatus": 404,
+          "presented": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17"
+        },
+        {
+          "mode": "pin-fingerprint",
+          "tls": "1.2",
+          "pin": "wrong",
+          "ok": false,
+          "negotiated": "TLSv1/SSLv3",
+          "httpStatus": 404,
+          "presented": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+          "error": "pin mismatch"
+        },
+        {
+          "mode": "pin-fingerprint",
+          "tls": "1.3",
+          "pin": "right",
+          "ok": true,
+          "negotiated": "TLSv1/SSLv3",
+          "httpStatus": 404,
+          "presented": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17"
+        },
+        {
+          "mode": "pin-fingerprint",
+          "tls": "1.3",
+          "pin": "wrong",
+          "ok": false,
+          "negotiated": "TLSv1/SSLv3",
+          "httpStatus": 404,
+          "presented": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+          "error": "pin mismatch"
+        },
+        {
+          "mode": "trust-anchor",
+          "tls": "1.2",
+          "pin": "right",
+          "ok": false,
+          "negotiated": "TLSv1/SSLv3",
+          "httpStatus": 404,
+          "error": "verify error:num=20:unable to get local issuer certificate"
+        },
+        {
+          "mode": "trust-anchor",
+          "tls": "1.2",
+          "pin": "wrong",
+          "ok": false,
+          "negotiated": "TLSv1/SSLv3",
+          "httpStatus": 404,
+          "error": "verify error:num=20:unable to get local issuer certificate"
+        },
+        {
+          "mode": "trust-anchor",
+          "tls": "1.3",
+          "pin": "right",
+          "ok": false,
+          "negotiated": "TLSv1/SSLv3",
+          "httpStatus": 404,
+          "error": "verify error:num=20:unable to get local issuer certificate"
+        },
+        {
+          "mode": "trust-anchor",
+          "tls": "1.3",
+          "pin": "wrong",
+          "ok": false,
+          "negotiated": "TLSv1/SSLv3",
+          "httpStatus": 404,
+          "error": "verify error:num=20:unable to get local issuer certificate"
+        }
+      ]
+    },
+    {
+      "stack": "openssl-4-cli",
+      "versions": {
+        "binary": "/opt/homebrew/bin/openssl",
+        "version": "OpenSSL 4.1.0 23 Oct 2026 (Library: OpenSSL 4.1.0 23 Oct 2026)"
+      },
+      "sha256": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+      "x509Text": "Certificate:\n    Data:\n        Version: 3 (0x2)\n        Serial Number:\n            66:54:25:a6:43:2a:31:c9:c6:b8:f9:30:fc:c4:d1:76\n        Signature Algorithm: ecdsa-with-SHA256\n        Issuer: CN=Phoenix Phone Link\n        Validity\n            Not Before: Nov 11 06:49:22 2026 GMT\n            Not After : Feb  9 06:54:22 2027 GMT\n        Subject: CN=Phoenix Phone Link\n        Subject Public Key Info:\n            Public Key Algorithm: id-ecPublicKey\n                Public-Key: (256 bit field, 128 bit security level)\n                pub:\n                    04:96:c0:26:a7:a0:8d:6e:79:02:c6:1a:71:55:81:96:\n                    2a:2a:f4:82:33:7e:d6:23:0f:d4:6f:16:1b:e7:e4:05:\n                    71:02:97:f3:a3:e4:b4:c4:22:cb:cd:db:b3:5e:7a:7f:\n                    cd:83:79:63:a0:6b:00:9a:b6:fe:8e:b1:8d:2e:e6:87:\n                    63\n                ASN1 OID: prime256v1\n                NIST CURVE: P-256\n        X509v3 extensions:\n            X509v3 Basic Constraints: critical\n                CA:FALSE\n            X509v3 Key Usage: critical\n                Digital Signature\n            X509v3 Extended Key Usage: \n                TLS Web Server Authentication\n            X509v3 Subject Alternative Name: \n                IP Address:127.0.0.1\n    Signature Algorithm: ecdsa-with-SHA256\n    Signature Value:\n        30:44:02:20:0a:58:75:f8:c4:89:92:83:46:17:d8:26:28:0a:ec:70:b9:e3:14:fc:\n        91:32:f2:5f:b6:0a:d1:58:9e:c1:4c:53:02:20:41:16:01:27:10:ea:1c:cb:18:77:\n        cc:5b:a3:64:6c:75:75:d6:5f:e6:0d:91:8a:8b:43:6e:53:c6:ac:0b:df:15\n",
+      "x509TextExit": 0,
+      "checkip": "IP 127.0.0.1 does match certificate",
+      "dates": "notBefore=Nov 11 06:49:22 2026 GMT\nnotAfter=Feb  9 06:54:22 2027 GMT",
+      "verify": {
+        "plain": {
+          "status": 0,
+          "output": "/var/folders/cr/kqvq6m_11tdc48k112d7xdsw0000gn/T/phoenix-cert-stacks-1lEkdp/served.crt: OK"
+        },
+        "purposeSslServer": {
+          "status": 0,
+          "output": "/var/folders/cr/kqvq6m_11tdc48k112d7xdsw0000gn/T/phoenix-cert-stacks-1lEkdp/served.crt: OK"
+        },
+        "purposeSslServerIp": {
+          "status": 0,
+          "output": "/var/folders/cr/kqvq6m_11tdc48k112d7xdsw0000gn/T/phoenix-cert-stacks-1lEkdp/served.crt: OK"
+        },
+        "x509Strict": {
+          "status": 0,
+          "output": "/var/folders/cr/kqvq6m_11tdc48k112d7xdsw0000gn/T/phoenix-cert-stacks-1lEkdp/served.crt: OK"
+        }
+      },
+      "handshakes": [
+        {
+          "mode": "pin-fingerprint",
+          "tls": "1.2",
+          "pin": "right",
+          "ok": true,
+          "negotiated": "TLSv1.2",
+          "httpStatus": 404,
+          "presented": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17"
+        },
+        {
+          "mode": "pin-fingerprint",
+          "tls": "1.2",
+          "pin": "wrong",
+          "ok": false,
+          "negotiated": "TLSv1.2",
+          "httpStatus": 404,
+          "presented": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+          "error": "pin mismatch"
+        },
+        {
+          "mode": "pin-fingerprint",
+          "tls": "1.3",
+          "pin": "right",
+          "ok": true,
+          "negotiated": "TLSv1.3",
+          "httpStatus": 404,
+          "presented": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17"
+        },
+        {
+          "mode": "pin-fingerprint",
+          "tls": "1.3",
+          "pin": "wrong",
+          "ok": false,
+          "negotiated": "TLSv1.3",
+          "httpStatus": 404,
+          "presented": "F6:54:7A:A3:25:5C:87:77:39:47:80:92:1D:86:AA:E0:B4:46:6B:83:62:42:7B:48:BF:3F:2B:D7:A3:8D:FA:17",
+          "error": "pin mismatch"
+        },
+        {
+          "mode": "trust-anchor",
+          "tls": "1.2",
+          "pin": "right",
+          "ok": true,
+          "negotiated": "TLSv1.2",
+          "httpStatus": 404
+        },
+        {
+          "mode": "trust-anchor",
+          "tls": "1.2",
+          "pin": "wrong",
+          "ok": false,
+          "negotiated": "(NONE)",
+          "httpStatus": null,
+          "error": "verify error:num=18:self-signed certificate"
+        },
+        {
+          "mode": "trust-anchor",
+          "tls": "1.3",
+          "pin": "right",
+          "ok": true,
+          "negotiated": "TLSv1.3",
+          "httpStatus": 404
+        },
+        {
+          "mode": "trust-anchor",
+          "tls": "1.3",
+          "pin": "wrong",
+          "ok": false,
+          "negotiated": "TLSv1.3",
+          "httpStatus": null,
+          "error": "verify error:num=18:self-signed certificate"
+        }
+      ]
+    }
+  ],
+  "manualControls": {
+    "note": "Run by hand after the gated test, not part of it. Same profile as Phoenix's certificate made by OpenSSL 4.1.0 (`openssl req -x509 -key <P-256 key> -days 90`), then verified as its own trust anchor with `/usr/bin/openssl verify -CAfile X X` (LibreSSL 3.3.6). Temp files deleted.",
+    "libressl3.3.6_verify_self_anchored": {
+      "CA:FALSE critical + keyUsage digitalSignature critical + EKU serverAuth + IP SAN (Phoenix profile)": "FAIL error 20 unable to get local issuer certificate",
+      "same + keyUsage digitalSignature,keyCertSign": "OK",
+      "CA:FALSE, no keyUsage, IP SAN": "OK",
+      "CA:TRUE + keyCertSign": "OK"
+    },
+    "openssl4.1.0_verify_self_anchored_phoenix_profile": "OK"
+  }
+}

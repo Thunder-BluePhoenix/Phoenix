@@ -1,0 +1,3 @@
+/sbin/launchd
+/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/156.0.8078.76/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer) --type=renderer --origin-trial-disabled-features=<v> --lang=<v> --num-raster-threads=<v> --enable-zero-copy --enable-gpu-memory-buffer-compositor-resources --enable-main-frame-before-activation --renderer-client-id=<v> --launch-time-ticks=<v> --shared-files --metrics-shmem-handle=<v> --field-trial-handle=<v> --variations-seed-version=<v> --pseudonymization-salt-handle=<v> --trace-process-track-uuid=<v> --seatbelt-client=<v>

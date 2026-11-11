@@ -1,0 +1,3 @@
+    1     0     0 Ss   Thu Oct 15 14:16:55 2026     /sbin/launchd
+  244 44673   501 S    Wed Nov 11 05:30:08 2026     /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/156.0.8078.76/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)
+44673     1   501 S    Fri Oct 30 07:43:23 2026     /Applications/Google Chrome.app/Contents/MacOS/Google Chrome

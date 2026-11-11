@@ -105,6 +105,10 @@ stand-in for Core: the real Core, the app, a real quit, an idle Mac, the lid clo
 Windows are not covered. Run it with `PHOENIX_REAL_AWAKE=1` and, optionally,
 `PHOENIX_REAL_AWAKE_EVIDENCE=<file>` for the raw JSON.
 
+## Real macOS probes
+
+`test/real-macos-fixtures.test.ts` (ungated) runs the production parsers over redacted real outputs from macOS 27.0.1 under `test/fixtures/real-macos-27/` (lid open, Wi-Fi not joined, read-only commands only). `test/real-macos-probes.test.ts` runs the same read-only commands live and asserts only that each parser returns a defined result; it is skipped unless `PHOENIX_REAL_MACOS_PROBES=1` on macOS. Observed: `AppleClamshellState = No` (lid closed never observed); `pmset -g` lists no `SleepDisabled` line while sleep is allowed, so `sleep_disabled_unjournaled` is `null` there; `defaults read` of an unset key says `Could not find key ...` / `Domain ... not found` (App Nap's reader was fixed for that); `networksetup -getairportnetwork` says `You are not associated with an AirPort network.` with no Wi-Fi; real Chrome runs with no throttling flags, so it is reported throttled; `brightness` is not installed. Details: `docs/evidence/phase-73-74-75-real-macos-probes-2026-11-11.md`.
+
 ## Known limits
 
 - Closing the lid still sleeps the machine (that needs Phase 73).

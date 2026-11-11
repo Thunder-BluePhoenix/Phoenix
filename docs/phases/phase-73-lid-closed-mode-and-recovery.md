@@ -75,6 +75,10 @@ Core's own shutdown path (a signal to the Core process) does not consult the vet
 
 The installer and uninstaller as root (so no real `launchd` install, and the backstop never read the journal path at its new place), `sudo -n -l` probe behaviour, the sudoers rule, `launchd` loading, `pmset -a disablesleep` and `lowpowermode`, `ioreg` with the lid closed, a real crash and the one-minute restore, and uninstalling. Open items are in the [gap register](../gaps.md).
 
+### Real macOS probes (2026-11-11, lid open, read-only)
+
+Evidence: `docs/evidence/phase-73-74-75-real-macos-probes-2026-11-11.md`; fixtures `capabilities/awake/test/fixtures/real-macos-27/`; pinned by `real-macos-fixtures.test.ts`. On macOS 27.0.1 `ioreg -r -k AppleClamshellState -d 4` prints `"AppleClamshellState" = No` with the lid open and `parseClamshell` reads `open`; the lid-CLOSED value (`Yes`) was not observed. `pmset -g` does NOT list a `SleepDisabled` (or `lowpowermode`) line while sleep is allowed, so `sleep_disabled_unjournaled` reads `null` and `verifyNotApplied` stays false (fail-closed) on this Mac; whether `SleepDisabled 1` appears while disabled needs root and was not observed. `SleepDisabled` is a real `IOPMrootDomain` property in `ioreg` (`No`). No exit criterion is met.
+
 ## Notes & risks
 
 - Phoenix uses its own assets; nothing from Coucou's asset list (names, Mochi, sounds, icons, media).

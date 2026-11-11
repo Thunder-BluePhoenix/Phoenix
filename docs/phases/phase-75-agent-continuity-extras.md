@@ -57,6 +57,10 @@ Nudging Phoenix-tracked agent sessions: a design decision, not an omission (see 
 
 Everything against the real thing: a real network drop, `networksetup`, joining a hotspot, tmux, a Chromium-family browser, `ps` output on a real machine. Open items are in the [gap register](../gaps.md).
 
+### Real macOS probes (2026-11-11, read-only)
+
+Evidence: `docs/evidence/phase-73-74-75-real-macos-probes-2026-11-11.md`; fixtures `capabilities/awake/test/fixtures/real-macos-27/`; pinned by `real-macos-fixtures.test.ts`. On macOS 27.0.1: `networksetup -listallhardwareports` gives the Wi-Fi port `en0` (`parseWifiDevice` matches); `-getairportnetwork en0` with no Wi-Fi joined prints `You are not associated with an AirPort network.` (`parseCurrentNetwork` returns null; the connected wording was not observed); the join was never run. The real Google Chrome main process runs with no flags, so `parseBrowserStatus` says `running`, `throttled` (correct; neither `--disable-background-timer-throttling` nor `--disable-renderer-backgrounding` is on any process). Bundle ids and executables for Chrome (`com.google.Chrome`), Comet (`ai.perplexity.comet`) and Brave (`com.brave.Browser`) match their `Info.plist`; Arc and Edge are not installed; the relaunch was never run. No exit criterion is met.
+
 ## Notes & risks
 
 - Phoenix uses its own assets; nothing from Coucou's asset list (names, Mochi, sounds, icons, media).

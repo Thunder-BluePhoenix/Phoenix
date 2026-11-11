@@ -17,6 +17,7 @@ export const APP_NAP_KIND = "lid.app_nap";
 const DEFAULTS = "/usr/bin/defaults";
 const KEY = "NSAppSleepDisabled";
 const TIMEOUT = { timeoutMs: 8_000 };
+const ABSENT = /does not exist|Could not find key|Domain .* not found/i;
 
 export type PriorValue = "absent" | "yes" | "no";
 
@@ -33,8 +34,10 @@ async function readPrior(seams: LidSeams, bundle: string): Promise<PriorValue | 
     if (text === "0") return "no";
     return null;
   }
-  // `defaults read` says exactly this when the key (or the whole domain) is not set.
-  if (result.code === 1 && /does not exist/i.test(result.stderr)) return "absent";
+  // `defaults read` says this when the key (or the whole domain) is not set. Observed on macOS 27:
+  // "Could not find key '<key>' in domain '<id>'." and "Domain '<id>' not found."; older releases
+  // said "The domain/default pair of (<id>, <key>) does not exist".
+  if (result.code === 1 && ABSENT.test(result.stderr)) return "absent";
   return null;
 }
 

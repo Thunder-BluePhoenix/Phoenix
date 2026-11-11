@@ -1,0 +1,37 @@
++-o IOPMrootDomain  <class IOPMrootDomain, id 0x1000002d5, registered, matched, active, busy 0 (29396 ms), retain 187>
+  | {
+  |   "Wake Reason" = "smc.sysState.Wake(0x70070000) lid SMC.OutboxNotEmpty RTP.multi-touch"
+  |   "IOPMSystemSleepParameters" = <hex>
+  |   "IOPMUserTriggeredFullWake" = Yes
+  |   "IOSleepSupported" = Yes
+  |   "IOUserClientClass" = "RootDomainUserClient"
+  |   "DriverPMAssertions" = 0
+  |   "SleepRequestedByPID" = 342
+  |   "AppleClamshellCausesSleep" = Yes
+  |   "Last Sleep Reason" = "Maintenance Sleep"
+  |   "Hibernate File Min" = 2147483648
+  |   "BootSessionUUID" = "<uuid>"
+  |   "IOPowerManagement" = {"ChildrenPowerState"=0,"DevicePowerState"=4,"CurrentPowerState"=4,"CapabilityFlags"=2,"MaxPowerState"=4}
+  |   "Wake Type" = "UserActivity Assertion"
+  |   "IOPriorityPowerStateInterest" = "IOCommand is not serializable"
+  |   "AppleClamshellState" = No
+  |   "SystemPowerProfileOverrideDict" = {}
+  |   "IOPMSystemSleepType" = 7
+  |   "DriverPMAssertionsDetailed" = <elided: long property>
+  |   "System Capabilities" = 15
+  |   "SleepDisabled" = No
+  |   "Standby Enabled" = Yes
+  |   "Hibernate Mode" = 3
+  |   "DestroyFVKeyOnStandby" = No
+  |   "Hibernate File" = "/var/vm/sleepimage"
+  |   "IOHibernateState" = <00000000>
+  |   "IOPreviewBuffer" = ({"address"=0,"length"=23855104})
+  |   "IOPMUserIsActive" = Yes
+  |   "Supported Features" = <elided: long property>
+  |   "IOGeneralInterest" = "IOCommand is not serializable"
+  |   "IOAppPowerStateInterest" = "IOCommand is not serializable"
+  |   "SleepStatistics" = <hex>
+  |   "Last Sleep Options" = {"Sleep Reason"="Notification Wake Back to Sleep"}
+  |   "SleepWakeUUID" = "<uuid>"
+  | }
+  | 

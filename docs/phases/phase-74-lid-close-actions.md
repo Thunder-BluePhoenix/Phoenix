@@ -55,6 +55,10 @@ Keyboard backlight (needs private APIs or another third-party tool); the Docker 
 
 Any action for real: no lid was closed, and no signal, volume, brightness, `defaults`, `pmset` or `sudo` call ran. Agent pids may not arrive from agent events; app paths, the `ps` output format and the `brightness -l` output are unverified. Open items are in the [gap register](../gaps.md).
 
+### Real macOS probes (2026-11-11, lid open, read-only)
+
+Evidence: `docs/evidence/phase-73-74-75-real-macos-probes-2026-11-11.md`; fixtures `capabilities/awake/test/fixtures/real-macos-27/`; pinned by `real-macos-fixtures.test.ts`. Observed on macOS 27.0.1 and parsed by the production code: `ps -axo pid=,ppid=,uid=,state=,lstart=,comm=` (matches), `pmset -g assertions` (matches; `powerd` and `coreaudiod` always hold assertions), `osascript ... output muted of (get volume settings)` (`false`, matches). **Defect found and fixed:** `defaults read <id> NSAppSleepDisabled` for an unset key prints `Could not find key '...' in domain '...'.` (unknown domain: `Domain '...' not found.`), not `does not exist`, so every app with no key read as unknown and App Nap planned nothing; `readPrior` now accepts all three wordings (failing-first fixture test). `SwitchAudioSource` is not called by any code. `brightness` is not installed: its format stays unverified. The lid-closed actions themselves were never run. No exit criterion is met.
+
 ## Notes & risks
 
 - Phoenix uses its own assets; nothing from Coucou's asset list (names, Mochi, sounds, icons, media).

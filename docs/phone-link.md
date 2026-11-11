@@ -52,7 +52,18 @@ X.509 v3 DER builder (one fixed profile) signed with `node:crypto`, no new depen
 The builder is checked by tests with `X509Certificate` (parse, signature verification against the
 public key, SAN, validity, key match), a real TLS handshake that trusts only that certificate, and
 `openssl x509 -text` / `openssl verify` when `openssl` is installed (tests skip those when it is not).
-It is **not** verified against iOS/Android TLS stacks (GAPS).
+It is **not** verified against iOS/Android devices (GAPS). It was run against six independent desktop
+stacks on macOS 27.0.1 (Apple Security/`URLSession`, Go `crypto/tls`, Java JSSE, Python `ssl`/`cryptography`,
+OpenSSL 4.1.0, LibreSSL 3.3.6) by the gated `core/runtime/test/real-phone-cert-stacks.test.ts`
+(`PHOENIX_REAL_CERT_STACKS=1`; evidence `docs/evidence/phase-71-real-cert-stacks-2026-11-11.md`). Every one parsed
+it without warning and agreed on the SHA-256 fingerprint; Apple, Go, Java, Python and OpenSSL 4.1.0 completed TLS 1.2 and
+1.3 handshakes to the real listener pinning that fingerprint (and refused a wrong pin), and also accepted the certificate
+as its own trust anchor for its IP SAN; LibreSSL 3.3.6 completed a pin handshake at its TLS 1.2 level (it has no TLS 1.3). Only
+127.0.0.1 was tested, not a LAN address. LibreSSL 3.3.6's `verify`/`s_client -CAfile` refuses it as its own anchor
+(`unable to get local issuer certificate`, because the keyUsage lacks `keyCertSign`); that does not affect the pin model,
+which builds no chain, and the builder was left unchanged. Android's BoringSSL/Conscrypt and iOS's Network.framework policies were not exercised. The
+validity is 90 days (under Apple's 398-day limit for trusted roots; whether iOS applies any limit to a pinned self-signed
+certificate was not tested).
 
 **Pinning:** the desktop shows the certificate's SHA-256 fingerprint (uppercase hex pairs joined by
 `:`, the form `X509Certificate.fingerprint256` gives) next to the pairing code and in the pairing URI
@@ -279,7 +290,7 @@ toolchain was verified; push notifications need APNs/FCM accounts), Live Activit
 widgets, Control Center, Siri and Shortcuts, Face ID / fingerprint prompts (phone side), Spotlight,
 Focus filter, PWA support. **The exit criterion “a permission request is approved from a
 real phone with biometric confirmation” is UNMET.** Verified only with a Node test client acting as the
-phone.
+phone (the certificate itself was additionally checked on desktop stacks, see [Certificate and the pin](#certificate-and-the-pin)).
 
 The pairing code is bound to the listener's certificate by an HMAC ([Channel binding](#channel-binding)),
 verified only against the Node fake phone: no phone client implements it yet and no real LAN
