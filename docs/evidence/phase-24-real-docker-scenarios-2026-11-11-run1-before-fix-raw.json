@@ -1,0 +1,1723 @@
+{
+  "versions": {
+    "docker_server": "29.5.2",
+    "docker_cli": "29.6.1",
+    "os": "Ubuntu 24.04.4 LTS | kernel 6.8.0-117-generic | aarch64 | cgroup v2"
+  },
+  "counts": {
+    "removedLeftoversAtStartup": 0,
+    "totalBefore": 7,
+    "removedBySweepAtEnd": 0,
+    "labelledRemainingAtEnd": 0,
+    "totalAfter": 7
+  },
+  "pollMs": 250,
+  "maxEventsPerPoll": 100,
+  "requests": {
+    "GET /containers/json?all=true": 234,
+    "GET /containers/<id>/json": 11
+  },
+  "observations": [
+    {
+      "scenario": "1a-healthy",
+      "description": "health-cmd true, 1 s interval: starting -> healthy",
+      "dockerRunArgs": [
+        "run",
+        "-d",
+        "--pull",
+        "never",
+        "--name",
+        "--label",
+        "phoenix-real-test=1",
+        "--health-cmd",
+        "true",
+        "--health-interval",
+        "1s",
+        "ubuntu:24.04",
+        "sleep",
+        "600"
+      ],
+      "timeline": [
+        {
+          "t": 1,
+          "marker": "docker run"
+        },
+        {
+          "t": 129,
+          "marker": "docker run returned"
+        },
+        {
+          "t": 1152,
+          "marker": "docker inspect says healthy"
+        },
+        {
+          "t": 4167,
+          "marker": "final state read"
+        }
+      ],
+      "events": [
+        {
+          "t": 181,
+          "event": {
+            "event_type": "docker.container.started",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-health-ok",
+            "correlation_id": "docker-0707249ac8b0",
+            "payload": {
+              "container_id": "0707249ac8b0",
+              "name": "phoenix-real-a0259a8a-health-ok",
+              "image": "ubuntu:24.04"
+            },
+            "source": "docker",
+            "event_id": "evt_6d21ae234eb04558aaa986effbe873f3",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:00.769Z"
+          }
+        },
+        {
+          "t": 1250,
+          "event": {
+            "event_type": "docker.container.healthy",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-health-ok",
+            "correlation_id": "docker-0707249ac8b0",
+            "payload": {
+              "container_id": "0707249ac8b0",
+              "name": "phoenix-real-a0259a8a-health-ok",
+              "image": "ubuntu:24.04"
+            },
+            "source": "docker",
+            "event_id": "evt_30aefdbbbb0c42d19710938402141a59",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:01.838Z"
+          }
+        }
+      ],
+      "fawkes": [],
+      "dockerStatus": [
+        {
+          "t": 308,
+          "state": "running",
+          "status": "Up Less than a second (health: starting)"
+        },
+        {
+          "t": 1390,
+          "state": "running",
+          "status": "Up 1 second (healthy)"
+        }
+      ],
+      "dockerInspect": [
+        {
+          "t": 1122,
+          "state": {
+            "Status": "running",
+            "Running": true,
+            "Restarting": false,
+            "OOMKilled": false,
+            "ExitCode": 0,
+            "RestartCount": 0,
+            "Health": "starting"
+          }
+        },
+        {
+          "t": 2200,
+          "state": {
+            "Status": "running",
+            "Running": true,
+            "Restarting": false,
+            "OOMKilled": false,
+            "ExitCode": 0,
+            "RestartCount": 0,
+            "Health": "healthy"
+          }
+        }
+      ],
+      "distinctStatuses": [
+        "Up Less than a second (health: starting)",
+        "Up N second (health: starting)",
+        "Up N second (healthy)",
+        "Up N seconds (healthy)"
+      ],
+      "finalInspect": {
+        "Status": "running",
+        "Running": true,
+        "Restarting": false,
+        "OOMKilled": false,
+        "ExitCode": 0,
+        "RestartCount": 0,
+        "Health": "healthy"
+      },
+      "finalFawkes": {
+        "state": "IDLE",
+        "explanation": "All quiet",
+        "conditions": 0
+      },
+      "eventTypeCounts": {
+        "docker.container.started": 1,
+        "docker.container.healthy": 1
+      },
+      "maxEventsInOneSecond": 1,
+      "eventsFromOtherContainers": 0
+    },
+    {
+      "scenario": "1b-unhealthy",
+      "description": "health-cmd false, retries 1, 1 s interval: starting -> unhealthy, then docker rm -f",
+      "dockerRunArgs": [
+        "run",
+        "-d",
+        "--pull",
+        "never",
+        "--name",
+        "--label",
+        "phoenix-real-test=1",
+        "--health-cmd",
+        "false",
+        "--health-retries",
+        "1",
+        "--health-interval",
+        "1s",
+        "ubuntu:24.04",
+        "sleep",
+        "600"
+      ],
+      "timeline": [
+        {
+          "t": 1,
+          "marker": "docker run"
+        },
+        {
+          "t": 92,
+          "marker": "docker run returned"
+        },
+        {
+          "t": 1119,
+          "marker": "docker inspect says unhealthy"
+        },
+        {
+          "t": 3120,
+          "marker": "docker rm -f"
+        },
+        {
+          "t": 4694,
+          "marker": "1.5 s after rm -f"
+        },
+        {
+          "t": 5718,
+          "marker": "final state read"
+        }
+      ],
+      "events": [
+        {
+          "t": 174,
+          "event": {
+            "event_type": "docker.container.started",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-health-bad",
+            "correlation_id": "docker-d8374378ca9c",
+            "payload": {
+              "container_id": "d8374378ca9c",
+              "name": "phoenix-real-a0259a8a-health-bad",
+              "image": "ubuntu:24.04"
+            },
+            "source": "docker",
+            "event_id": "evt_ec59bd25f42e4f689de251e2880f268a",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:05.299Z"
+          }
+        },
+        {
+          "t": 1239,
+          "event": {
+            "event_type": "docker.container.unhealthy",
+            "severity": "warning",
+            "subject": "phoenix-real-a0259a8a-health-bad",
+            "correlation_id": "docker-d8374378ca9c",
+            "payload": {
+              "container_id": "d8374378ca9c",
+              "name": "phoenix-real-a0259a8a-health-bad",
+              "image": "ubuntu:24.04"
+            },
+            "source": "docker",
+            "event_id": "evt_f8d75e6619024f5ba1f82f064fa972b1",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:06.363Z"
+          }
+        },
+        {
+          "t": 3371,
+          "event": {
+            "event_type": "docker.container.stopped",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-health-bad",
+            "correlation_id": "docker-d8374378ca9c",
+            "payload": {
+              "container_id": "d8374378ca9c",
+              "name": "phoenix-real-a0259a8a-health-bad",
+              "image": "ubuntu:24.04",
+              "removed": true
+            },
+            "source": "docker",
+            "event_id": "evt_55a603ae776a48b9a39486258f55ba2a",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:08.496Z"
+          }
+        }
+      ],
+      "fawkes": [
+        {
+          "t": 1238,
+          "state": "WARNING",
+          "explanation": "Container phoenix-real-a0259a8a-health-bad is unhealthy",
+          "conditions": 1
+        },
+        {
+          "t": 3371,
+          "state": "IDLE",
+          "explanation": "All quiet",
+          "conditions": 0
+        }
+      ],
+      "dockerStatus": [
+        {
+          "t": 307,
+          "state": "running",
+          "status": "Up Less than a second (health: starting)"
+        },
+        {
+          "t": 1383,
+          "state": "running",
+          "status": "Up 1 second (unhealthy)"
+        }
+      ],
+      "dockerInspect": [
+        {
+          "t": 1114,
+          "state": {
+            "Status": "running",
+            "Running": true,
+            "Restarting": false,
+            "OOMKilled": false,
+            "ExitCode": 0,
+            "RestartCount": 0,
+            "Health": "unhealthy"
+          }
+        }
+      ],
+      "distinctStatuses": [
+        "Up Less than a second (health: starting)",
+        "Up N second (health: starting)",
+        "Up N second (unhealthy)",
+        "Up N seconds (unhealthy)"
+      ],
+      "finalInspect": null,
+      "finalFawkes": {
+        "state": "IDLE",
+        "explanation": "All quiet",
+        "conditions": 0
+      },
+      "eventTypeCounts": {
+        "docker.container.started": 1,
+        "docker.container.unhealthy": 1,
+        "docker.container.stopped": 1
+      },
+      "maxEventsInOneSecond": 1,
+      "eventsFromOtherContainers": 0
+    },
+    {
+      "scenario": "2a-stop-137",
+      "description": "healthy container whose PID 1 ignores SIGTERM; docker stop -t 2 ends in SIGKILL",
+      "dockerRunArgs": [
+        "run",
+        "-d",
+        "--pull",
+        "never",
+        "--name",
+        "--label",
+        "phoenix-real-test=1",
+        "--health-cmd",
+        "true",
+        "--health-interval",
+        "1s",
+        "ubuntu:24.04",
+        "sleep",
+        "600"
+      ],
+      "timeline": [
+        {
+          "t": 0,
+          "marker": "docker run"
+        },
+        {
+          "t": 88,
+          "marker": "docker run returned"
+        },
+        {
+          "t": 2618,
+          "marker": "docker stop -t 2"
+        },
+        {
+          "t": 4693,
+          "marker": "docker stop returned"
+        },
+        {
+          "t": 7760,
+          "marker": "final state read"
+        }
+      ],
+      "events": [
+        {
+          "t": 179,
+          "event": {
+            "event_type": "docker.container.started",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-stop-kill",
+            "correlation_id": "docker-e9e4bafafb5d",
+            "payload": {
+              "container_id": "e9e4bafafb5d",
+              "name": "phoenix-real-a0259a8a-stop-kill",
+              "image": "ubuntu:24.04"
+            },
+            "source": "docker",
+            "event_id": "evt_dc04c0439d2245158c00831ac58347a3",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:11.409Z"
+          }
+        },
+        {
+          "t": 1250,
+          "event": {
+            "event_type": "docker.container.healthy",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-stop-kill",
+            "correlation_id": "docker-e9e4bafafb5d",
+            "payload": {
+              "container_id": "e9e4bafafb5d",
+              "name": "phoenix-real-a0259a8a-stop-kill",
+              "image": "ubuntu:24.04"
+            },
+            "source": "docker",
+            "event_id": "evt_0da81d8ea91849a69570672baf628cea",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:12.479Z"
+          }
+        },
+        {
+          "t": 4715,
+          "event": {
+            "event_type": "docker.container.stopped",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-stop-kill",
+            "correlation_id": "docker-e9e4bafafb5d",
+            "payload": {
+              "container_id": "e9e4bafafb5d",
+              "name": "phoenix-real-a0259a8a-stop-kill",
+              "image": "ubuntu:24.04",
+              "exit_code": 137
+            },
+            "source": "docker",
+            "event_id": "evt_ebde5b0c37f04891ac8b6a857c02ed55",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:15.945Z"
+          }
+        }
+      ],
+      "fawkes": [],
+      "dockerStatus": [
+        {
+          "t": 308,
+          "state": "running",
+          "status": "Up Less than a second (health: starting)"
+        },
+        {
+          "t": 1386,
+          "state": "running",
+          "status": "Up 1 second (healthy)"
+        },
+        {
+          "t": 4923,
+          "state": "exited",
+          "status": "Exited (137) Less than a second ago"
+        }
+      ],
+      "dockerInspect": [
+        {
+          "t": 1119,
+          "state": {
+            "Status": "running",
+            "Running": true,
+            "Restarting": false,
+            "OOMKilled": false,
+            "ExitCode": 0,
+            "RestartCount": 0,
+            "Health": "healthy"
+          }
+        },
+        {
+          "t": 5480,
+          "state": {
+            "Status": "exited",
+            "Running": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "ExitCode": 137,
+            "RestartCount": 0,
+            "Health": "unhealthy"
+          }
+        }
+      ],
+      "distinctStatuses": [
+        "Exited (N) Less than a second ago",
+        "Exited (N) N second ago",
+        "Exited (N) N seconds ago",
+        "Up Less than a second (health: starting)",
+        "Up N second (health: starting)",
+        "Up N second (healthy)",
+        "Up N seconds (healthy)"
+      ],
+      "finalInspect": {
+        "Status": "exited",
+        "Running": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "ExitCode": 137,
+        "RestartCount": 0,
+        "Health": "unhealthy"
+      },
+      "finalFawkes": {
+        "state": "IDLE",
+        "explanation": "All quiet",
+        "conditions": 0
+      },
+      "eventTypeCounts": {
+        "docker.container.started": 1,
+        "docker.container.healthy": 1,
+        "docker.container.stopped": 1
+      },
+      "maxEventsInOneSecond": 1,
+      "eventsFromOtherContainers": 0
+    },
+    {
+      "scenario": "2b-stop-143",
+      "description": "healthy container whose shell traps SIGTERM and exits 143; docker stop -t 5",
+      "dockerRunArgs": [
+        "run",
+        "-d",
+        "--pull",
+        "never",
+        "--name",
+        "--label",
+        "phoenix-real-test=1",
+        "--health-cmd",
+        "true",
+        "--health-interval",
+        "1s",
+        "ubuntu:24.04",
+        "sh",
+        "-c",
+        "trap \"exit 143\" TERM; sleep 600 & wait"
+      ],
+      "timeline": [
+        {
+          "t": 0,
+          "marker": "docker run"
+        },
+        {
+          "t": 108,
+          "marker": "docker run returned"
+        },
+        {
+          "t": 2633,
+          "marker": "docker stop -t 5"
+        },
+        {
+          "t": 2700,
+          "marker": "docker stop returned"
+        },
+        {
+          "t": 5733,
+          "marker": "final state read"
+        }
+      ],
+      "events": [
+        {
+          "t": 175,
+          "event": {
+            "event_type": "docker.container.started",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-stop-term",
+            "correlation_id": "docker-d9764d7f2222",
+            "payload": {
+              "container_id": "d9764d7f2222",
+              "name": "phoenix-real-a0259a8a-stop-term",
+              "image": "ubuntu:24.04"
+            },
+            "source": "docker",
+            "event_id": "evt_5fb89f1a56b14100be3847116b9f1096",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:19.545Z"
+          }
+        },
+        {
+          "t": 1239,
+          "event": {
+            "event_type": "docker.container.healthy",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-stop-term",
+            "correlation_id": "docker-d9764d7f2222",
+            "payload": {
+              "container_id": "d9764d7f2222",
+              "name": "phoenix-real-a0259a8a-stop-term",
+              "image": "ubuntu:24.04"
+            },
+            "source": "docker",
+            "event_id": "evt_39b39ff9fdc94e5189cfff7f6682c14c",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:20.608Z"
+          }
+        },
+        {
+          "t": 2842,
+          "event": {
+            "event_type": "docker.container.stopped",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-stop-term",
+            "correlation_id": "docker-d9764d7f2222",
+            "payload": {
+              "container_id": "d9764d7f2222",
+              "name": "phoenix-real-a0259a8a-stop-term",
+              "image": "ubuntu:24.04",
+              "exit_code": 143
+            },
+            "source": "docker",
+            "event_id": "evt_2709d3fd6e894b9f85cc8b80de6a09bd",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:22.212Z"
+          }
+        }
+      ],
+      "fawkes": [],
+      "dockerStatus": [
+        {
+          "t": 309,
+          "state": "running",
+          "status": "Up Less than a second (health: starting)"
+        },
+        {
+          "t": 1395,
+          "state": "running",
+          "status": "Up 1 second (healthy)"
+        },
+        {
+          "t": 2744,
+          "state": "exited",
+          "status": "Exited (143) Less than a second ago"
+        }
+      ],
+      "dockerInspect": [
+        {
+          "t": 1130,
+          "state": {
+            "Status": "running",
+            "Running": true,
+            "Restarting": false,
+            "OOMKilled": false,
+            "ExitCode": 0,
+            "RestartCount": 0,
+            "Health": "healthy"
+          }
+        },
+        {
+          "t": 3297,
+          "state": {
+            "Status": "exited",
+            "Running": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "ExitCode": 143,
+            "RestartCount": 0,
+            "Health": "unhealthy"
+          }
+        }
+      ],
+      "distinctStatuses": [
+        "Exited (N) Less than a second ago",
+        "Exited (N) N second ago",
+        "Exited (N) N seconds ago",
+        "Up Less than a second (health: starting)",
+        "Up N second (health: starting)",
+        "Up N second (healthy)",
+        "Up N seconds (healthy)"
+      ],
+      "finalInspect": {
+        "Status": "exited",
+        "Running": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "ExitCode": 143,
+        "RestartCount": 0,
+        "Health": "unhealthy"
+      },
+      "finalFawkes": {
+        "state": "IDLE",
+        "explanation": "All quiet",
+        "conditions": 0
+      },
+      "eventTypeCounts": {
+        "docker.container.started": 1,
+        "docker.container.healthy": 1,
+        "docker.container.stopped": 1
+      },
+      "maxEventsInOneSecond": 1,
+      "eventsFromOtherContainers": 0
+    },
+    {
+      "scenario": "3a-exit3-instant",
+      "description": "sh -c 'exit 3', created and exited within ~100 ms",
+      "dockerRunArgs": [
+        "run",
+        "-d",
+        "--pull",
+        "never",
+        "--name",
+        "--label",
+        "phoenix-real-test=1",
+        "ubuntu:24.04",
+        "sh",
+        "-c",
+        "exit 3"
+      ],
+      "timeline": [
+        {
+          "t": 0,
+          "marker": "docker run"
+        },
+        {
+          "t": 89,
+          "marker": "docker run returned"
+        },
+        {
+          "t": 3162,
+          "marker": "final state read"
+        }
+      ],
+      "events": [],
+      "fawkes": [],
+      "dockerStatus": [
+        {
+          "t": 318,
+          "state": "exited",
+          "status": "Exited (3) Less than a second ago"
+        }
+      ],
+      "dockerInspect": [
+        {
+          "t": 1143,
+          "state": {
+            "Status": "exited",
+            "Running": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "ExitCode": 3,
+            "RestartCount": 0
+          }
+        }
+      ],
+      "distinctStatuses": [
+        "Exited (N) Less than a second ago",
+        "Exited (N) N second ago",
+        "Exited (N) N seconds ago"
+      ],
+      "finalInspect": {
+        "Status": "exited",
+        "Running": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "ExitCode": 3,
+        "RestartCount": 0
+      },
+      "finalFawkes": {
+        "state": "IDLE",
+        "explanation": "All quiet",
+        "conditions": 0
+      },
+      "eventTypeCounts": {},
+      "maxEventsInOneSecond": 0,
+      "eventsFromOtherContainers": 0
+    },
+    {
+      "scenario": "3b-exit3-after-sleep",
+      "description": "sh -c 'sleep 2; exit 3'",
+      "dockerRunArgs": [
+        "run",
+        "-d",
+        "--pull",
+        "never",
+        "--name",
+        "--label",
+        "phoenix-real-test=1",
+        "ubuntu:24.04",
+        "sh",
+        "-c",
+        "sleep 2; exit 3"
+      ],
+      "timeline": [
+        {
+          "t": 0,
+          "marker": "docker run"
+        },
+        {
+          "t": 87,
+          "marker": "docker run returned"
+        },
+        {
+          "t": 5145,
+          "marker": "final state read"
+        }
+      ],
+      "events": [
+        {
+          "t": 178,
+          "event": {
+            "event_type": "docker.container.started",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-exit3-slow",
+            "correlation_id": "docker-64271e7f40cd",
+            "payload": {
+              "container_id": "64271e7f40cd",
+              "name": "phoenix-real-a0259a8a-exit3-slow",
+              "image": "ubuntu:24.04"
+            },
+            "source": "docker",
+            "event_id": "evt_729faf95d89448c0b57770aa1cab7fcc",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:29.072Z"
+          }
+        },
+        {
+          "t": 2300,
+          "event": {
+            "event_type": "docker.container.died",
+            "severity": "error",
+            "subject": "phoenix-real-a0259a8a-exit3-slow",
+            "correlation_id": "docker-64271e7f40cd",
+            "payload": {
+              "container_id": "64271e7f40cd",
+              "name": "phoenix-real-a0259a8a-exit3-slow",
+              "image": "ubuntu:24.04",
+              "exit_code": 3,
+              "oom_killed": false
+            },
+            "source": "docker",
+            "event_id": "evt_5ee90f5305cd48d68eb7f107a1e11e34",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:31.194Z"
+          }
+        }
+      ],
+      "fawkes": [
+        {
+          "t": 2300,
+          "state": "ERROR",
+          "explanation": "Container phoenix-real-a0259a8a-exit3-slow exited with code 3",
+          "conditions": 1
+        }
+      ],
+      "dockerStatus": [
+        {
+          "t": 307,
+          "state": "running",
+          "status": "Up Less than a second"
+        },
+        {
+          "t": 2173,
+          "state": "exited",
+          "status": "Exited (3) Less than a second ago"
+        }
+      ],
+      "dockerInspect": [
+        {
+          "t": 1113,
+          "state": {
+            "Status": "running",
+            "Running": true,
+            "Restarting": false,
+            "OOMKilled": false,
+            "ExitCode": 0,
+            "RestartCount": 0
+          }
+        },
+        {
+          "t": 2186,
+          "state": {
+            "Status": "exited",
+            "Running": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "ExitCode": 3,
+            "RestartCount": 0
+          }
+        }
+      ],
+      "distinctStatuses": [
+        "Exited (N) Less than a second ago",
+        "Exited (N) N second ago",
+        "Exited (N) N seconds ago",
+        "Up Less than a second",
+        "Up N second"
+      ],
+      "finalInspect": {
+        "Status": "exited",
+        "Running": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "ExitCode": 3,
+        "RestartCount": 0
+      },
+      "finalFawkes": {
+        "state": "ERROR",
+        "explanation": "Container phoenix-real-a0259a8a-exit3-slow exited with code 3",
+        "conditions": 1
+      },
+      "eventTypeCounts": {
+        "docker.container.started": 1,
+        "docker.container.died": 1
+      },
+      "maxEventsInOneSecond": 1,
+      "eventsFromOtherContainers": 0
+    },
+    {
+      "scenario": "4a-crashloop-instant",
+      "description": "--restart on-failure, sh -c 'exit 1', watched 10 s",
+      "dockerRunArgs": [
+        "run",
+        "-d",
+        "--pull",
+        "never",
+        "--name",
+        "--label",
+        "phoenix-real-test=1",
+        "--restart",
+        "on-failure",
+        "ubuntu:24.04",
+        "sh",
+        "-c",
+        "exit 1"
+      ],
+      "timeline": [
+        {
+          "t": 0,
+          "marker": "docker run"
+        },
+        {
+          "t": 92,
+          "marker": "docker run returned"
+        },
+        {
+          "t": 10093,
+          "marker": "10 s elapsed"
+        },
+        {
+          "t": 11108,
+          "marker": "final state read"
+        }
+      ],
+      "events": [
+        {
+          "t": 976,
+          "event": {
+            "event_type": "docker.container.started",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-loop-fast",
+            "correlation_id": "docker-a88aaba20233",
+            "payload": {
+              "container_id": "a88aaba20233",
+              "name": "phoenix-real-a0259a8a-loop-fast",
+              "image": "ubuntu:24.04"
+            },
+            "source": "docker",
+            "event_id": "evt_c9334cdb767047ae8c7e8342336de760",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:35.146Z"
+          }
+        },
+        {
+          "t": 1247,
+          "event": {
+            "event_type": "docker.container.died",
+            "severity": "error",
+            "subject": "phoenix-real-a0259a8a-loop-fast",
+            "correlation_id": "docker-a88aaba20233",
+            "payload": {
+              "container_id": "a88aaba20233",
+              "name": "phoenix-real-a0259a8a-loop-fast",
+              "image": "ubuntu:24.04",
+              "exit_code": 1,
+              "oom_killed": false
+            },
+            "source": "docker",
+            "event_id": "evt_25f7c6cf5240460db712d910279702bf",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:35.418Z"
+          }
+        }
+      ],
+      "fawkes": [
+        {
+          "t": 1247,
+          "state": "ERROR",
+          "explanation": "Container phoenix-real-a0259a8a-loop-fast exited with code 1",
+          "conditions": 1
+        }
+      ],
+      "dockerStatus": [
+        {
+          "t": 309,
+          "state": "restarting",
+          "status": "Restarting (1) Less than a second ago"
+        },
+        {
+          "t": 1910,
+          "state": "running",
+          "status": "Up Less than a second"
+        },
+        {
+          "t": 2177,
+          "state": "restarting",
+          "status": "Restarting (1) Less than a second ago"
+        },
+        {
+          "t": 3529,
+          "state": "running",
+          "status": "Up Less than a second"
+        },
+        {
+          "t": 3797,
+          "state": "restarting",
+          "status": "Restarting (1) Less than a second ago"
+        }
+      ],
+      "dockerInspect": [
+        {
+          "t": 1117,
+          "state": {
+            "Status": "restarting",
+            "Running": true,
+            "Restarting": true,
+            "OOMKilled": false,
+            "ExitCode": 1,
+            "RestartCount": 4
+          }
+        },
+        {
+          "t": 2188,
+          "state": {
+            "Status": "restarting",
+            "Running": true,
+            "Restarting": true,
+            "OOMKilled": false,
+            "ExitCode": 1,
+            "RestartCount": 5
+          }
+        },
+        {
+          "t": 4337,
+          "state": {
+            "Status": "restarting",
+            "Running": true,
+            "Restarting": true,
+            "OOMKilled": false,
+            "ExitCode": 1,
+            "RestartCount": 6
+          }
+        },
+        {
+          "t": 7603,
+          "state": {
+            "Status": "restarting",
+            "Running": true,
+            "Restarting": true,
+            "OOMKilled": false,
+            "ExitCode": 1,
+            "RestartCount": 7
+          }
+        }
+      ],
+      "distinctStatuses": [
+        "Restarting (N) Less than a second ago",
+        "Restarting (N) N second ago",
+        "Restarting (N) N seconds ago",
+        "Up Less than a second"
+      ],
+      "finalInspect": {
+        "Status": "restarting",
+        "Running": true,
+        "Restarting": true,
+        "OOMKilled": false,
+        "ExitCode": 1,
+        "RestartCount": 7
+      },
+      "finalFawkes": {
+        "state": "ERROR",
+        "explanation": "Container phoenix-real-a0259a8a-loop-fast exited with code 1",
+        "conditions": 1
+      },
+      "eventTypeCounts": {
+        "docker.container.started": 1,
+        "docker.container.died": 1
+      },
+      "maxEventsInOneSecond": 2,
+      "eventsFromOtherContainers": 0
+    },
+    {
+      "scenario": "4b-crashloop-1s",
+      "description": "--restart on-failure, sh -c 'sleep 1; exit 1', watched 10 s",
+      "dockerRunArgs": [
+        "run",
+        "-d",
+        "--pull",
+        "never",
+        "--name",
+        "--label",
+        "phoenix-real-test=1",
+        "--restart",
+        "on-failure",
+        "ubuntu:24.04",
+        "sh",
+        "-c",
+        "sleep 1; exit 1"
+      ],
+      "timeline": [
+        {
+          "t": 0,
+          "marker": "docker run"
+        },
+        {
+          "t": 96,
+          "marker": "docker run returned"
+        },
+        {
+          "t": 10096,
+          "marker": "10 s elapsed"
+        },
+        {
+          "t": 11108,
+          "marker": "final state read"
+        }
+      ],
+      "events": [
+        {
+          "t": 174,
+          "event": {
+            "event_type": "docker.container.started",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-loop-slow",
+            "correlation_id": "docker-79cd35e348a7",
+            "payload": {
+              "container_id": "79cd35e348a7",
+              "name": "phoenix-real-a0259a8a-loop-slow",
+              "image": "ubuntu:24.04"
+            },
+            "source": "docker",
+            "event_id": "evt_519690bd17944869aa5d12b17a9f204e",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:45.842Z"
+          }
+        },
+        {
+          "t": 1268,
+          "event": {
+            "event_type": "docker.container.stopped",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-loop-slow",
+            "correlation_id": "docker-79cd35e348a7",
+            "payload": {
+              "container_id": "79cd35e348a7",
+              "name": "phoenix-real-a0259a8a-loop-slow",
+              "image": "ubuntu:24.04",
+              "exit_code": 0
+            },
+            "source": "docker",
+            "event_id": "evt_ffacda0c4d4441b990e3b533ec627b71",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:46.936Z"
+          }
+        },
+        {
+          "t": 1534,
+          "event": {
+            "event_type": "docker.container.started",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-loop-slow",
+            "correlation_id": "docker-79cd35e348a7",
+            "payload": {
+              "container_id": "79cd35e348a7",
+              "name": "phoenix-real-a0259a8a-loop-slow",
+              "image": "ubuntu:24.04"
+            },
+            "source": "docker",
+            "event_id": "evt_9605e7f7f1764c3aa3e47388033ebea1",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:47.201Z"
+          }
+        },
+        {
+          "t": 2335,
+          "event": {
+            "event_type": "docker.container.died",
+            "severity": "error",
+            "subject": "phoenix-real-a0259a8a-loop-slow",
+            "correlation_id": "docker-79cd35e348a7",
+            "payload": {
+              "container_id": "79cd35e348a7",
+              "name": "phoenix-real-a0259a8a-loop-slow",
+              "image": "ubuntu:24.04",
+              "exit_code": 1,
+              "oom_killed": false
+            },
+            "source": "docker",
+            "event_id": "evt_30e7ff2599b14b8bb8e3691b078f7f54",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:48.003Z"
+          }
+        },
+        {
+          "t": 2602,
+          "event": {
+            "event_type": "docker.container.started",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-loop-slow",
+            "correlation_id": "docker-79cd35e348a7",
+            "payload": {
+              "container_id": "79cd35e348a7",
+              "name": "phoenix-real-a0259a8a-loop-slow",
+              "image": "ubuntu:24.04"
+            },
+            "source": "docker",
+            "event_id": "evt_345fb71b3b41450a8e3b3789bac8435e",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:48.270Z"
+          }
+        },
+        {
+          "t": 3669,
+          "event": {
+            "event_type": "docker.container.died",
+            "severity": "error",
+            "subject": "phoenix-real-a0259a8a-loop-slow",
+            "correlation_id": "docker-79cd35e348a7",
+            "payload": {
+              "container_id": "79cd35e348a7",
+              "name": "phoenix-real-a0259a8a-loop-slow",
+              "image": "ubuntu:24.04",
+              "exit_code": 1,
+              "oom_killed": false
+            },
+            "source": "docker",
+            "event_id": "evt_577ea194f0484dedb275a365eaf5dea3",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:49.337Z"
+          }
+        },
+        {
+          "t": 4208,
+          "event": {
+            "event_type": "docker.container.started",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-loop-slow",
+            "correlation_id": "docker-79cd35e348a7",
+            "payload": {
+              "container_id": "79cd35e348a7",
+              "name": "phoenix-real-a0259a8a-loop-slow",
+              "image": "ubuntu:24.04"
+            },
+            "source": "docker",
+            "event_id": "evt_fa84f020a6c0453bae5211d3029311a8",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:49.875Z"
+          }
+        },
+        {
+          "t": 5273,
+          "event": {
+            "event_type": "docker.container.died",
+            "severity": "error",
+            "subject": "phoenix-real-a0259a8a-loop-slow",
+            "correlation_id": "docker-79cd35e348a7",
+            "payload": {
+              "container_id": "79cd35e348a7",
+              "name": "phoenix-real-a0259a8a-loop-slow",
+              "image": "ubuntu:24.04",
+              "exit_code": 1,
+              "oom_killed": false
+            },
+            "source": "docker",
+            "event_id": "evt_43dd743b90b84f8db79dc682ea8f5819",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:50.941Z"
+          }
+        },
+        {
+          "t": 6070,
+          "event": {
+            "event_type": "docker.container.started",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-loop-slow",
+            "correlation_id": "docker-79cd35e348a7",
+            "payload": {
+              "container_id": "79cd35e348a7",
+              "name": "phoenix-real-a0259a8a-loop-slow",
+              "image": "ubuntu:24.04"
+            },
+            "source": "docker",
+            "event_id": "evt_edacfe9b06ac4980aea13caee244f06e",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:51.738Z"
+          }
+        },
+        {
+          "t": 7134,
+          "event": {
+            "event_type": "docker.container.died",
+            "severity": "error",
+            "subject": "phoenix-real-a0259a8a-loop-slow",
+            "correlation_id": "docker-79cd35e348a7",
+            "payload": {
+              "container_id": "79cd35e348a7",
+              "name": "phoenix-real-a0259a8a-loop-slow",
+              "image": "ubuntu:24.04",
+              "exit_code": 1,
+              "oom_killed": false
+            },
+            "source": "docker",
+            "event_id": "evt_d0d74919ec38479d91d0ab2a019c9447",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:52.802Z"
+          }
+        },
+        {
+          "t": 8725,
+          "event": {
+            "event_type": "docker.container.started",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-loop-slow",
+            "correlation_id": "docker-79cd35e348a7",
+            "payload": {
+              "container_id": "79cd35e348a7",
+              "name": "phoenix-real-a0259a8a-loop-slow",
+              "image": "ubuntu:24.04"
+            },
+            "source": "docker",
+            "event_id": "evt_6c943f4575ff4cdeaa72c6b4365044db",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:54.393Z"
+          }
+        },
+        {
+          "t": 9818,
+          "event": {
+            "event_type": "docker.container.died",
+            "severity": "error",
+            "subject": "phoenix-real-a0259a8a-loop-slow",
+            "correlation_id": "docker-79cd35e348a7",
+            "payload": {
+              "container_id": "79cd35e348a7",
+              "name": "phoenix-real-a0259a8a-loop-slow",
+              "image": "ubuntu:24.04",
+              "exit_code": 1,
+              "oom_killed": false
+            },
+            "source": "docker",
+            "event_id": "evt_419dec6cf9724c2dbbb0a30ffff2893e",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:55.486Z"
+          }
+        }
+      ],
+      "fawkes": [
+        {
+          "t": 2335,
+          "state": "ERROR",
+          "explanation": "Container phoenix-real-a0259a8a-loop-slow exited with code 1",
+          "conditions": 1
+        },
+        {
+          "t": 2602,
+          "state": "IDLE",
+          "explanation": "All quiet",
+          "conditions": 0
+        },
+        {
+          "t": 3669,
+          "state": "ERROR",
+          "explanation": "Container phoenix-real-a0259a8a-loop-slow exited with code 1",
+          "conditions": 1
+        },
+        {
+          "t": 4208,
+          "state": "IDLE",
+          "explanation": "All quiet",
+          "conditions": 0
+        },
+        {
+          "t": 5273,
+          "state": "ERROR",
+          "explanation": "Container phoenix-real-a0259a8a-loop-slow exited with code 1",
+          "conditions": 1
+        },
+        {
+          "t": 6070,
+          "state": "IDLE",
+          "explanation": "All quiet",
+          "conditions": 0
+        },
+        {
+          "t": 7134,
+          "state": "ERROR",
+          "explanation": "Container phoenix-real-a0259a8a-loop-slow exited with code 1",
+          "conditions": 1
+        },
+        {
+          "t": 8725,
+          "state": "IDLE",
+          "explanation": "All quiet",
+          "conditions": 0
+        },
+        {
+          "t": 9818,
+          "state": "ERROR",
+          "explanation": "Container phoenix-real-a0259a8a-loop-slow exited with code 1",
+          "conditions": 1
+        }
+      ],
+      "dockerStatus": [
+        {
+          "t": 302,
+          "state": "running",
+          "status": "Up Less than a second"
+        },
+        {
+          "t": 2507,
+          "state": "restarting",
+          "status": "Restarting (1) Less than a second ago"
+        },
+        {
+          "t": 2777,
+          "state": "running",
+          "status": "Up Less than a second"
+        },
+        {
+          "t": 3865,
+          "state": "restarting",
+          "status": "Restarting (1) Less than a second ago"
+        },
+        {
+          "t": 4132,
+          "state": "running",
+          "status": "Up Less than a second"
+        },
+        {
+          "t": 5208,
+          "state": "restarting",
+          "status": "Restarting (1) Less than a second ago"
+        },
+        {
+          "t": 6022,
+          "state": "running",
+          "status": "Up Less than a second"
+        },
+        {
+          "t": 7103,
+          "state": "restarting",
+          "status": "Restarting (1) Less than a second ago"
+        },
+        {
+          "t": 8706,
+          "state": "running",
+          "status": "Up Less than a second"
+        },
+        {
+          "t": 9816,
+          "state": "restarting",
+          "status": "Restarting (1) Less than a second ago"
+        }
+      ],
+      "dockerInspect": [
+        {
+          "t": 1148,
+          "state": {
+            "Status": "restarting",
+            "Running": true,
+            "Restarting": true,
+            "OOMKilled": false,
+            "ExitCode": 1,
+            "RestartCount": 1
+          }
+        },
+        {
+          "t": 2232,
+          "state": {
+            "Status": "running",
+            "Running": true,
+            "Restarting": false,
+            "OOMKilled": false,
+            "ExitCode": 0,
+            "RestartCount": 1
+          }
+        },
+        {
+          "t": 3321,
+          "state": {
+            "Status": "running",
+            "Running": true,
+            "Restarting": false,
+            "OOMKilled": false,
+            "ExitCode": 0,
+            "RestartCount": 2
+          }
+        },
+        {
+          "t": 4410,
+          "state": {
+            "Status": "running",
+            "Running": true,
+            "Restarting": false,
+            "OOMKilled": false,
+            "ExitCode": 0,
+            "RestartCount": 3
+          }
+        },
+        {
+          "t": 5487,
+          "state": {
+            "Status": "restarting",
+            "Running": true,
+            "Restarting": true,
+            "OOMKilled": false,
+            "ExitCode": 1,
+            "RestartCount": 4
+          }
+        },
+        {
+          "t": 6569,
+          "state": {
+            "Status": "running",
+            "Running": true,
+            "Restarting": false,
+            "OOMKilled": false,
+            "ExitCode": 0,
+            "RestartCount": 4
+          }
+        },
+        {
+          "t": 7644,
+          "state": {
+            "Status": "restarting",
+            "Running": true,
+            "Restarting": true,
+            "OOMKilled": false,
+            "ExitCode": 1,
+            "RestartCount": 5
+          }
+        },
+        {
+          "t": 8717,
+          "state": {
+            "Status": "running",
+            "Running": true,
+            "Restarting": false,
+            "OOMKilled": false,
+            "ExitCode": 0,
+            "RestartCount": 5
+          }
+        },
+        {
+          "t": 9827,
+          "state": {
+            "Status": "restarting",
+            "Running": true,
+            "Restarting": true,
+            "OOMKilled": false,
+            "ExitCode": 1,
+            "RestartCount": 6
+          }
+        }
+      ],
+      "distinctStatuses": [
+        "Restarting (N) Less than a second ago",
+        "Restarting (N) N second ago",
+        "Up Less than a second",
+        "Up N second"
+      ],
+      "finalInspect": {
+        "Status": "restarting",
+        "Running": true,
+        "Restarting": true,
+        "OOMKilled": false,
+        "ExitCode": 1,
+        "RestartCount": 6
+      },
+      "finalFawkes": {
+        "state": "ERROR",
+        "explanation": "Container phoenix-real-a0259a8a-loop-slow exited with code 1",
+        "conditions": 1
+      },
+      "eventTypeCounts": {
+        "docker.container.started": 6,
+        "docker.container.stopped": 1,
+        "docker.container.died": 5
+      },
+      "maxEventsInOneSecond": 2,
+      "eventsFromOtherContainers": 0
+    },
+    {
+      "scenario": "5-oom",
+      "description": "python allocates 1 MiB steps under --memory 32m --memory-swap 32m",
+      "dockerRunArgs": [
+        "run",
+        "-d",
+        "--pull",
+        "never",
+        "--name",
+        "--label",
+        "phoenix-real-test=1",
+        "--memory",
+        "32m",
+        "--memory-swap",
+        "32m",
+        "python:3.12-slim-bookworm",
+        "python",
+        "-c",
+        "import time\nb=[]\ntime.sleep(1.5)\nwhile True:\n    b.append(bytearray(b\"x\")*(1024*1024))\n    time.sleep(0.02)"
+      ],
+      "timeline": [
+        {
+          "t": 0,
+          "marker": "docker run"
+        },
+        {
+          "t": 86,
+          "marker": "docker run returned"
+        },
+        {
+          "t": 2232,
+          "marker": "docker inspect says not running"
+        },
+        {
+          "t": 5250,
+          "marker": "final state read"
+        }
+      ],
+      "events": [
+        {
+          "t": 175,
+          "event": {
+            "event_type": "docker.container.started",
+            "severity": "info",
+            "subject": "phoenix-real-a0259a8a-oom",
+            "correlation_id": "docker-21e5a12754c4",
+            "payload": {
+              "container_id": "21e5a12754c4",
+              "name": "phoenix-real-a0259a8a-oom",
+              "image": "python:3.12-slim-bookworm"
+            },
+            "source": "docker",
+            "event_id": "evt_1c4c550eb77443af83af3de5c03a6211",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:57.151Z"
+          }
+        },
+        {
+          "t": 2331,
+          "event": {
+            "event_type": "docker.container.died",
+            "severity": "error",
+            "subject": "phoenix-real-a0259a8a-oom",
+            "correlation_id": "docker-21e5a12754c4",
+            "payload": {
+              "container_id": "21e5a12754c4",
+              "name": "phoenix-real-a0259a8a-oom",
+              "image": "python:3.12-slim-bookworm",
+              "exit_code": 137,
+              "oom_killed": true
+            },
+            "source": "docker",
+            "event_id": "evt_e4ac987f32234d0ca5820f93f1dc577e",
+            "version": "1.1",
+            "timestamp": "2026-11-11T05:53:59.307Z"
+          }
+        }
+      ],
+      "fawkes": [
+        {
+          "t": 2331,
+          "state": "ERROR",
+          "explanation": "Container phoenix-real-a0259a8a-oom exited with code 137",
+          "conditions": 1
+        }
+      ],
+      "dockerStatus": [
+        {
+          "t": 304,
+          "state": "running",
+          "status": "Up Less than a second"
+        },
+        {
+          "t": 2502,
+          "state": "exited",
+          "status": "Exited (137) Less than a second ago"
+        }
+      ],
+      "dockerInspect": [
+        {
+          "t": 1113,
+          "state": {
+            "Status": "running",
+            "Running": true,
+            "Restarting": false,
+            "OOMKilled": false,
+            "ExitCode": 0,
+            "RestartCount": 0
+          }
+        },
+        {
+          "t": 2232,
+          "state": {
+            "Status": "exited",
+            "Running": false,
+            "Restarting": false,
+            "OOMKilled": true,
+            "ExitCode": 137,
+            "RestartCount": 0
+          }
+        }
+      ],
+      "distinctStatuses": [
+        "Exited (N) Less than a second ago",
+        "Exited (N) N second ago",
+        "Exited (N) N seconds ago",
+        "Up Less than a second",
+        "Up N second",
+        "Up N seconds"
+      ],
+      "finalInspect": {
+        "Status": "exited",
+        "Running": false,
+        "Restarting": false,
+        "OOMKilled": true,
+        "ExitCode": 137,
+        "RestartCount": 0
+      },
+      "finalFawkes": {
+        "state": "ERROR",
+        "explanation": "Container phoenix-real-a0259a8a-oom exited with code 137",
+        "conditions": 1
+      },
+      "eventTypeCounts": {
+        "docker.container.started": 1,
+        "docker.container.died": 1
+      },
+      "maxEventsInOneSecond": 1,
+      "eventsFromOtherContainers": 0
+    }
+  ]
+}

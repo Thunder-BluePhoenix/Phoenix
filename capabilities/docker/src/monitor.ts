@@ -169,7 +169,9 @@ function event(
  * "died". An unknown exit code is never turned into an alarm.
  */
 export function exitEvent(c: ContainerSnapshot, details: ExitDetails | undefined): DockerEvent {
-  const code = details?.exitCode ?? c.exitCode;
+  // The Status text comes from the same list reply that showed the exit; the inspect happens
+  // later, and under a restart policy it can already describe the NEXT run (ExitCode 0, running).
+  const code = c.exitCode ?? details?.exitCode ?? null;
   const oom = details?.oomKilled === true;
   if (code === null || code === 0 || (SIGNAL_EXITS[code] === true && !oom)) {
     return event("docker.container.stopped", c, "info", code === null ? {} : { exit_code: code });

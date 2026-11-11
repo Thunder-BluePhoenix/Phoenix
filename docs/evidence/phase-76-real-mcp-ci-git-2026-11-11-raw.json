@@ -1,0 +1,340 @@
+{
+  "environment": {
+    "date": "2026-11-11T05:53:33.348Z",
+    "node": "v22.19.0"
+  },
+  "caller": "in-repo JSON-RPC client over real loopback HTTP; not a real MCP client with a model",
+  "tool_result": {
+    "git": {
+      "available": true,
+      "data": {
+        "repositories": [
+          {
+            "branch": "feature/x",
+            "head": "9b3beeb13efec2e7b806a47629a9e2345696eed9",
+            "changed": 2,
+            "name": "demo-repo",
+            "conflicts": []
+          }
+        ]
+      }
+    },
+    "github": {
+      "available": true,
+      "data": {
+        "authenticated": false,
+        "repositories": [
+          {
+            "repository": "Thunder-BluePhoenix/Phoenix",
+            "latest_run": {
+              "run_id": 42968069913,
+              "workflow": "CI",
+              "status": "in_progress",
+              "conclusion": null,
+              "branch": "main",
+              "url": "https://github.com/Thunder-BluePhoenix/Phoenix/actions/runs/42968069913"
+            },
+            "open_pull_requests": 0,
+            "pull_requests_truncated": false,
+            "checked_at": "2026-11-11T05:53:33.339Z"
+          }
+        ]
+      }
+    }
+  },
+  "git_status_summary": {
+    "available": true,
+    "repositories": 1,
+    "name": "demo-repo",
+    "branch": "feature/x",
+    "changed": 2,
+    "conflicts": [],
+    "keys": [
+      "branch",
+      "head",
+      "changed",
+      "name",
+      "conflicts"
+    ]
+  },
+  "github_status_summary": {
+    "available": true,
+    "reason": null,
+    "authenticated": false,
+    "repository": "Thunder-BluePhoenix/Phoenix",
+    "open_pull_requests": 0,
+    "latest_run": {
+      "run_id": 42968069913,
+      "workflow": "CI",
+      "status": "in_progress",
+      "conclusion": null,
+      "branch": "main",
+      "url": "https://github.com/Thunder-BluePhoenix/Phoenix/actions/runs/42968069913"
+    },
+    "error": null,
+    "keys": [
+      "repository",
+      "latest_run",
+      "open_pull_requests",
+      "pull_requests_truncated",
+      "checked_at"
+    ]
+  },
+  "leaks": {
+    "temp_repo_path": false,
+    "real_repo_path": false,
+    "tmpdir_prefix": false,
+    "commit_subject_path": false,
+    "commit_subject_text": false,
+    "users_prefix": false,
+    "path_key": false,
+    "title_key": false,
+    "mcp_client_token": false,
+    "bearer_text": false,
+    "github_token_shape": false
+  },
+  "github_requests": {
+    "count": 3,
+    "count_after_the_call": 3,
+    "requests": [
+      {
+        "method": "GET",
+        "url": "https://api.github.com/repos/Thunder-BluePhoenix/Phoenix/actions/runs?per_page=30",
+        "status": 200,
+        "ratelimit_remaining": "56",
+        "authorization_header_sent": false
+      },
+      {
+        "method": "GET",
+        "url": "https://api.github.com/repos/Thunder-BluePhoenix/Phoenix/pulls?state=all&sort=updated&direction=desc&per_page=50",
+        "status": 200,
+        "ratelimit_remaining": "55",
+        "authorization_header_sent": false
+      },
+      {
+        "method": "GET",
+        "url": "https://api.github.com/repos/Thunder-BluePhoenix/Phoenix/deployments?per_page=10",
+        "status": 200,
+        "ratelimit_remaining": "54",
+        "authorization_header_sent": false
+      }
+    ],
+    "refused": [],
+    "loopback_requests": 10
+  },
+  "tools_list": [
+    "phoenix_ci_git_state"
+  ],
+  "audit_rows": [
+    {
+      "id": 18,
+      "ts": "2026-11-11T05:53:33.347Z",
+      "actor": "mcp:mcp_0b1049fc5dc3",
+      "action": "mcp.call.denied",
+      "decision": "denied",
+      "details": {
+        "client": "mcp_0b1049fc5dc3",
+        "reason": "not_granted",
+        "tool": "phoenix_ci_git_state"
+      }
+    },
+    {
+      "id": 17,
+      "ts": "2026-11-11T05:53:33.346Z",
+      "actor": "user",
+      "action": "mcp.client.grants_changed",
+      "decision": "info",
+      "details": {
+        "client": "mcp_0b1049fc5dc3",
+        "tools": [
+          "phoenix_activity"
+        ],
+        "memory_scopes": 0,
+        "request_approval": false,
+        "notify": false
+      }
+    },
+    {
+      "id": 16,
+      "ts": "2026-11-11T05:53:33.344Z",
+      "actor": "user",
+      "action": "mcp.client.created",
+      "decision": "info",
+      "details": {
+        "client": "mcp_0b1049fc5dc3"
+      }
+    },
+    {
+      "id": 15,
+      "ts": "2026-11-11T05:53:33.342Z",
+      "actor": "mcp:mcp_441c352d042a",
+      "action": "mcp.call",
+      "decision": "allowed",
+      "details": {
+        "client": "mcp_441c352d042a",
+        "tool": "phoenix_ci_git_state",
+        "ok": true,
+        "ms": 2252
+      }
+    },
+    {
+      "id": 14,
+      "ts": "2026-11-11T05:53:33.342Z",
+      "actor": "agent:mcp:mcp_441c352d042a",
+      "action": "tool.succeeded",
+      "capabilityId": "github",
+      "decision": "info",
+      "details": {
+        "tool": "github.status",
+        "decisionAuditId": 11,
+        "capabilityName": "GitHub",
+        "capabilityVersion": "0.1.0",
+        "dataCategories": [
+          "repository names",
+          "pull request titles and authors",
+          "CI run names and results",
+          "CI job and step names and results",
+          "CI log excerpts (secret-redacted)",
+          "deployment environments"
+        ],
+        "operationId": "op_mwbpdvxs13a039839"
+      }
+    },
+    {
+      "id": 11,
+      "ts": "2026-11-11T05:53:31.120Z",
+      "actor": "agent:mcp:mcp_441c352d042a",
+      "action": "policy.decision",
+      "capabilityId": "github",
+      "decision": "allowed",
+      "details": {
+        "attempt": 1,
+        "origin": "tool-gateway",
+        "effect": "allow",
+        "risk": "low",
+        "tool": "github.status",
+        "sideEffect": "read",
+        "permissions": [
+          "network",
+          "external_api"
+        ],
+        "environment": "local",
+        "trustedByUser": false,
+        "reasons": [
+          "low risk is allowed by default",
+          "side effect \"read\" is low risk"
+        ],
+        "matched": [
+          "builtin:baseline"
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "ts": "2026-11-11T05:53:31.111Z",
+      "actor": "agent:mcp:mcp_441c352d042a",
+      "action": "tool.succeeded",
+      "capabilityId": "git",
+      "decision": "info",
+      "details": {
+        "tool": "git.status",
+        "decisionAuditId": 7,
+        "capabilityName": "Git",
+        "capabilityVersion": "0.1.0",
+        "dataCategories": [
+          "repository metadata",
+          "commit messages",
+          "changed file paths"
+        ],
+        "operationId": "op_mwbpdvx606e6c5dbb"
+      }
+    },
+    {
+      "id": 7,
+      "ts": "2026-11-11T05:53:31.098Z",
+      "actor": "agent:mcp:mcp_441c352d042a",
+      "action": "policy.decision",
+      "capabilityId": "git",
+      "decision": "allowed",
+      "details": {
+        "attempt": 1,
+        "origin": "tool-gateway",
+        "effect": "allow",
+        "risk": "low",
+        "tool": "git.status",
+        "sideEffect": "read",
+        "permissions": [
+          "repository_access"
+        ],
+        "environment": "local",
+        "trustedByUser": false,
+        "reasons": [
+          "low risk is allowed by default",
+          "side effect \"read\" is low risk"
+        ],
+        "matched": [
+          "builtin:baseline"
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "ts": "2026-11-11T05:53:31.088Z",
+      "actor": "mcp:mcp_441c352d042a",
+      "action": "mcp.session.started",
+      "decision": "info",
+      "details": {
+        "client": "mcp_441c352d042a",
+        "protocol": "2025-06-18"
+      }
+    },
+    {
+      "id": 5,
+      "ts": "2026-11-11T05:53:31.087Z",
+      "actor": "user",
+      "action": "mcp.client.grants_changed",
+      "decision": "info",
+      "details": {
+        "client": "mcp_441c352d042a",
+        "tools": [
+          "phoenix_ci_git_state"
+        ],
+        "memory_scopes": 0,
+        "request_approval": false,
+        "notify": false
+      }
+    },
+    {
+      "id": 4,
+      "ts": "2026-11-11T05:53:31.086Z",
+      "actor": "user",
+      "action": "mcp.client.created",
+      "decision": "info",
+      "details": {
+        "client": "mcp_441c352d042a"
+      }
+    },
+    {
+      "id": 3,
+      "ts": "2026-11-11T05:53:31.083Z",
+      "actor": "user",
+      "action": "mcp.listener.enabled",
+      "decision": "info",
+      "details": {
+        "port": 53853
+      }
+    }
+  ],
+  "second_client_without_grant": {
+    "tools_list": [
+      "phoenix_activity"
+    ],
+    "call_status": 200,
+    "call_error": {
+      "code": -32602,
+      "message": "Unknown tool"
+    },
+    "call_result": null,
+    "github_requests_after_refusal": 3
+  }
+}

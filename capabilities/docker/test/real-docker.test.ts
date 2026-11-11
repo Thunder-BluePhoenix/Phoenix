@@ -8,8 +8,8 @@
 // It discovers the socket exactly as the capability does ($DOCKER_HOST unix://, /var/run,
 // Docker Desktop, Colima, OrbStack), then only lists containers (GET /containers/json). It
 // creates, starts and stops nothing, and it prints only counts, never names, images or ids.
-// Start a daemon first, e.g. `colima start`. (Not run when this file was written: no Docker
-// daemon was available on the development machine.)
+// Start a daemon first, e.g. `colima start`. Run against Colima (Docker 29.5.2) on 2026-11-11.
+// Scenarios that create containers live in real-docker-scenarios.test.ts (opt-in, writes).
 import { homedir } from "node:os";
 import { createHarness } from "@phoenix/sdk-testing";
 import { describe, expect, it } from "vitest";

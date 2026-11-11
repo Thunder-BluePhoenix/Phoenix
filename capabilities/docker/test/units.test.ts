@@ -128,6 +128,18 @@ describe("exitEvent", () => {
   it("uses the Status text's code when inspect gave none", () => {
     expect(exitEvent(snap({ exitCode: 2 }), undefined).event_type).toBe("docker.container.died");
   });
+  it("prefers the code in the Status text over a later inspect (restart policy already began the next run)", () => {
+    // Observed on a real daemon: `--restart on-failure`, exit 1. By the time the capability
+    // inspected, the next run was up and State.ExitCode was 0 again, which hid the crash.
+    const e = exitEvent(snap({ state: "restarting", exitCode: 1 }), {
+      exitCode: 0,
+      oomKilled: false,
+    });
+    expect(e).toMatchObject({
+      event_type: "docker.container.died",
+      payload: { exit_code: 1, oom_killed: false },
+    });
+  });
 });
 
 describe("diffContainers", () => {
