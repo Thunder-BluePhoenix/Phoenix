@@ -36,6 +36,12 @@ const SERVICE = "phoenix";
  * on macOS 27.0.1: a 4094-character line stores, a 4096-character line exits 1).
  */
 const MACOS_MAX_COMMAND_CHARS = 4094;
+/**
+ * `secret-tool store` (libsecret 0.21.4, gnome-keyring 46) reads at most 8192 bytes of stdin: for a
+ * longer value it prints "password is too long", keeps the first 8192 bytes and STILL exits 0
+ * (measured in Ubuntu 24.04: 8192 bytes round-trip whole, 8193 and 16384 come back as 8192).
+ */
+const LINUX_MAX_SECRET_BYTES = 8192;
 
 /** The value does not fit the OS store; nothing was stored. */
 export class SecretTooLongError extends Error {
@@ -164,6 +170,11 @@ export class KeychainSecretStore implements SecretStore {
       return;
     }
     if (this.platform === "darwin") return this.setMacos(ref, value);
+    if (Buffer.byteLength(value, "utf8") > LINUX_MAX_SECRET_BYTES) {
+      throw new SecretTooLongError(
+        `The Linux Secret Service path keeps at most ${LINUX_MAX_SECRET_BYTES} bytes for a secret`,
+      );
+    }
     const r = await this.run(
       "secret-tool",
       ["store", "--label", `Phoenix: ${ref}`, "service", SERVICE, "account", ref],
