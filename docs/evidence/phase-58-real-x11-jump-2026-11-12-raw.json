@@ -1,0 +1,3281 @@
+{
+  "date": "2026-11-12",
+  "versions": [
+    "os: Ubuntu 24.04.5 LTS aarch64",
+    "node: v22.19.0",
+    "xvfb: 2:21.1.12-1ubuntu1.9",
+    "wmctrl: 1.07-7ubuntu3",
+    "xdotool: 1:3.20160805.1-5build1",
+    "openbox: 3.6.1-12build5",
+    "xterm: 390-1ubuntu3",
+    "x11-utils: 7.7+6build2"
+  ],
+  "note": "runs.afterFix is the final harness run (execFocus forwards DISPLAY, xdotool title escaped); runs.beforeFix is the first run, where the production execFocus dropped DISPLAY and every jump failed",
+  "runs": {
+    "afterFix": [
+      {
+        "label": "both/title A",
+        "project": "/work/phoenix-test-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "phoenix-test-A",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0xc0000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-A",
+          "ok": true,
+          "method": "wmctrl",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-A"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/title B",
+        "project": "/work/phoenix-test-B",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "phoenix-test-B",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0xe0000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-B",
+          "ok": true,
+          "method": "wmctrl",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-B"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/title C",
+        "project": "/work/phoenix-test-C",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "phoenix-test-C",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x100000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-C",
+          "ok": true,
+          "method": "wmctrl",
+          "ms": 10,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-C"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/title A again",
+        "project": "/work/phoenix-test-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "phoenix-test-A",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0xc0000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-A",
+          "ok": true,
+          "method": "wmctrl",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-A"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/no match",
+        "project": "/work/nomatch-zzz",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x60000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "nomatch-zzz",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 36,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "nomatch-zzz"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "nomatch-zzz"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/substring 'phoenix-test' (3 windows)",
+        "project": "/work/phoenix-test",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "phoenix-test-A",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0xc0000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test",
+          "ok": true,
+          "method": "wmctrl",
+          "ms": 3,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/substring 'dup-' (2 windows)",
+        "project": "/work/dup-",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "dup-one",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0xa0000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "dup-",
+          "ok": true,
+          "method": "wmctrl",
+          "ms": 7,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "dup-"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/'proj' vs 'proj-extra' created first",
+        "project": "/work/proj",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "proj-extra",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x40000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "proj",
+          "ok": true,
+          "method": "wmctrl",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "proj"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/upper-case title",
+        "project": "/work/PHOENIX-TEST-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "phoenix-test-A",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0xc0000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "PHOENIX-TEST-A",
+          "ok": true,
+          "method": "wmctrl",
+          "ms": 5,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "PHOENIX-TEST-A"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/title with space",
+        "project": "/work/my project",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "my project",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x160000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "my project",
+          "ok": true,
+          "method": "wmctrl",
+          "ms": 6,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "my project"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/leading dash",
+        "project": "/work/-dash",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "-dash",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x120000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "-dash",
+          "ok": true,
+          "method": "wmctrl",
+          "ms": 3,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "-dash"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/leading double dash, no such window",
+        "project": "/work/--help",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x60000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "--help",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 39,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "--help"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "--help"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/regex 'a.*b', only decoy aXXb exists",
+        "project": "/work/a.*b",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x60000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "a.*b",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 39,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "a.*b"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "a\\.\\*b"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/regex 'c.*d', decoy cXXd and literal c.*d",
+        "project": "/work/c.*d",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "c.*d",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x180000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "c.*d",
+          "ok": true,
+          "method": "wmctrl",
+          "ms": 5,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "c.*d"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/regex 'x+y', literal window x+y exists",
+        "project": "/work/x+y",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "x+y",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x200000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "x+y",
+          "ok": true,
+          "method": "wmctrl",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "x+y"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/invalid regex 'foo(', literal window exists",
+        "project": "/work/foo(",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "foo(",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x220000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "foo(",
+          "ok": true,
+          "method": "wmctrl",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "foo("
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/command substitution title",
+        "project": "/work/$(id>pwned)",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "$(id>pwned)",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x240000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "$(id>pwned)",
+          "ok": true,
+          "method": "wmctrl",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "$(id>pwned)"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/semicolon title",
+        "project": "/work/;id>pwned2",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": ";id>pwned2",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x260000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": ";id>pwned2",
+          "ok": true,
+          "method": "wmctrl",
+          "ms": 10,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                ";id>pwned2"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/minimised window",
+        "project": "/work/phoenix-min",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "phoenix-min",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x280000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-min",
+          "ok": true,
+          "method": "wmctrl",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-min"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/window on another desktop",
+        "project": "/work/phoenix-desk",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "phoenix-desk",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x2a0000c",
+        "currentDesktop": "1",
+        "result": {
+          "title": "phoenix-desk",
+          "ok": true,
+          "method": "wmctrl",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-desk"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "env/DISPLAY unset",
+        "project": "/work/phoenix-test-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x60000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-A",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "env/wayland-style (WAYLAND_DISPLAY set, no DISPLAY)",
+        "project": "/work/phoenix-test-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x60000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-A",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 5,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "env/DISPLAY=:98 (no server)",
+        "project": "/work/phoenix-test-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x60000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-A",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 10,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/title A",
+        "project": "/work/phoenix-test-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "phoenix-test-A",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0xc0000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-A",
+          "ok": true,
+          "method": "xdotool",
+          "ms": 36,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-A"
+              ],
+              "code": 0,
+              "stdout": "12582924\n"
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "windowactivate",
+                "12582924"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/title B",
+        "project": "/work/phoenix-test-B",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "phoenix-test-B",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0xe0000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-B",
+          "ok": true,
+          "method": "xdotool",
+          "ms": 36,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-B"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-B"
+              ],
+              "code": 0,
+              "stdout": "14680076\n"
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "windowactivate",
+                "14680076"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/title C",
+        "project": "/work/phoenix-test-C",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "phoenix-test-C",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x100000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-C",
+          "ok": true,
+          "method": "xdotool",
+          "ms": 36,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-C"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-C"
+              ],
+              "code": 0,
+              "stdout": "16777228\n"
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "windowactivate",
+                "16777228"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/title A again",
+        "project": "/work/phoenix-test-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "phoenix-test-A",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0xc0000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-A",
+          "ok": true,
+          "method": "xdotool",
+          "ms": 38,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-A"
+              ],
+              "code": 0,
+              "stdout": "12582924\n"
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "windowactivate",
+                "12582924"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/no match",
+        "project": "/work/nomatch-zzz",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x60000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "nomatch-zzz",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 34,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "nomatch-zzz"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "nomatch-zzz"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/substring 'phoenix-test' (3 windows)",
+        "project": "/work/phoenix-test",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "phoenix-test-B",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0xe0000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test",
+          "ok": true,
+          "method": "xdotool",
+          "ms": 33,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test"
+              ],
+              "code": 0,
+              "stdout": "14680076\n16777228\n12582924\n"
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "windowactivate",
+                "14680076"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/substring 'dup-' (2 windows)",
+        "project": "/work/dup-",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "dup-two",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x140000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "dup-",
+          "ok": true,
+          "method": "xdotool",
+          "ms": 32,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "dup-"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "dup-"
+              ],
+              "code": 0,
+              "stdout": "20971532\n10485772\n"
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "windowactivate",
+                "20971532"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/'proj' vs 'proj-extra' created first",
+        "project": "/work/proj",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "proj",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x80000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "proj",
+          "ok": true,
+          "method": "xdotool",
+          "ms": 36,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "proj"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "proj"
+              ],
+              "code": 0,
+              "stdout": "8388620\n4194316\n23068684\n"
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "windowactivate",
+                "8388620"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/upper-case title",
+        "project": "/work/PHOENIX-TEST-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "phoenix-test-A",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0xc0000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "PHOENIX-TEST-A",
+          "ok": true,
+          "method": "xdotool",
+          "ms": 36,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "PHOENIX-TEST-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "PHOENIX-TEST-A"
+              ],
+              "code": 0,
+              "stdout": "12582924\n"
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "windowactivate",
+                "12582924"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/title with space",
+        "project": "/work/my project",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "my project",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x160000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "my project",
+          "ok": true,
+          "method": "xdotool",
+          "ms": 37,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "my project"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "my project"
+              ],
+              "code": 0,
+              "stdout": "23068684\n"
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "windowactivate",
+                "23068684"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/leading dash",
+        "project": "/work/-dash",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "-dash",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x120000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "-dash",
+          "ok": true,
+          "method": "xdotool",
+          "ms": 37,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "-dash"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "-dash"
+              ],
+              "code": 0,
+              "stdout": "18874380\n"
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "windowactivate",
+                "18874380"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/leading double dash, no such window",
+        "project": "/work/--help",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x60000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "--help",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 30,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "--help"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "--help"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/regex 'a.*b', only decoy aXXb exists",
+        "project": "/work/a.*b",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x60000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "a.*b",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 30,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "a.*b"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "a\\.\\*b"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/regex 'c.*d', decoy cXXd and literal c.*d",
+        "project": "/work/c.*d",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "c.*d",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x180000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "c.*d",
+          "ok": true,
+          "method": "xdotool",
+          "ms": 32,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "c.*d"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "c\\.\\*d"
+              ],
+              "code": 0,
+              "stdout": "25165836\n"
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "windowactivate",
+                "25165836"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/regex 'x+y', literal window x+y exists",
+        "project": "/work/x+y",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "x+y",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x200000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "x+y",
+          "ok": true,
+          "method": "xdotool",
+          "ms": 37,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "x+y"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "x\\+y"
+              ],
+              "code": 0,
+              "stdout": "33554444\n"
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "windowactivate",
+                "33554444"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/invalid regex 'foo(', literal window exists",
+        "project": "/work/foo(",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "foo(",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x220000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "foo(",
+          "ok": true,
+          "method": "xdotool",
+          "ms": 33,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "foo("
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "foo\\("
+              ],
+              "code": 0,
+              "stdout": "35651596\n"
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "windowactivate",
+                "35651596"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/command substitution title",
+        "project": "/work/$(id>pwned)",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "$(id>pwned)",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x240000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "$(id>pwned)",
+          "ok": true,
+          "method": "xdotool",
+          "ms": 33,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "$(id>pwned)"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "\\$\\(id>pwned\\)"
+              ],
+              "code": 0,
+              "stdout": "37748748\n"
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "windowactivate",
+                "37748748"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/semicolon title",
+        "project": "/work/;id>pwned2",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": ";id>pwned2",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x260000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": ";id>pwned2",
+          "ok": true,
+          "method": "xdotool",
+          "ms": 36,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                ";id>pwned2"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                ";id>pwned2"
+              ],
+              "code": 0,
+              "stdout": "39845900\n"
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "windowactivate",
+                "39845900"
+              ],
+              "code": 0,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/minimised window",
+        "project": "/work/phoenix-min",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x60000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-min",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 32,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-min"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-min"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/window on another desktop",
+        "project": "/work/phoenix-desk",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x60000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-desk",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 105,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-desk"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-desk"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "none/title A",
+        "project": "/work/phoenix-test-A",
+        "activeBefore": "(none)",
+        "activeAfter": "(none)",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x60000c",
+        "currentDesktop": "",
+        "result": {
+          "title": "phoenix-test-A",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 5,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "none/no match",
+        "project": "/work/nomatch-zzz",
+        "activeBefore": "(none)",
+        "activeAfter": "(none)",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x60000c",
+        "currentDesktop": "",
+        "result": {
+          "title": "nomatch-zzz",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 3,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "nomatch-zzz"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "nomatch-zzz"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      }
+    ],
+    "beforeFix": [
+      {
+        "label": "both/title A",
+        "project": "/work/phoenix-test-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-A",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 7,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/title B",
+        "project": "/work/phoenix-test-B",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-B",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 8,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-B"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-B"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/title C",
+        "project": "/work/phoenix-test-C",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-C",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-C"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-C"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/title A again",
+        "project": "/work/phoenix-test-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-A",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 8,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/no match",
+        "project": "/work/nomatch-zzz",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "nomatch-zzz",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 10,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "nomatch-zzz"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "nomatch-zzz"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/substring 'phoenix-test' (3 windows)",
+        "project": "/work/phoenix-test",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/substring 'dup-' (2 windows)",
+        "project": "/work/dup-",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "dup-",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 5,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "dup-"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "dup-"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/'proj' vs 'proj-extra' created first",
+        "project": "/work/proj",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "proj",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "proj"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "proj"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/upper-case title",
+        "project": "/work/PHOENIX-TEST-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "PHOENIX-TEST-A",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 6,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "PHOENIX-TEST-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "PHOENIX-TEST-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/title with space",
+        "project": "/work/my project",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "my project",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 11,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "my project"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "my project"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/leading dash",
+        "project": "/work/-dash",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "-dash",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 5,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "-dash"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "-dash"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/leading double dash, no such window",
+        "project": "/work/--help",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "--help",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 9,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "--help"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "--help"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/regex 'a.*b', only decoy aXXb exists",
+        "project": "/work/a.*b",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "a.*b",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 14,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "a.*b"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "a.*b"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/regex 'c.*d', decoy cXXd and literal c.*d",
+        "project": "/work/c.*d",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "c.*d",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 6,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "c.*d"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "c.*d"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/regex 'x+y', literal window x+y exists",
+        "project": "/work/x+y",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "x+y",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 9,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "x+y"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "x+y"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/invalid regex 'foo(', literal window exists",
+        "project": "/work/foo(",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "foo(",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 5,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "foo("
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "foo("
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/command substitution title",
+        "project": "/work/$(id>pwned)",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "$(id>pwned)",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 20,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "$(id>pwned)"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "$(id>pwned)"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/semicolon title",
+        "project": "/work/;id>pwned2",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": ";id>pwned2",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                ";id>pwned2"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                ";id>pwned2"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/minimised window",
+        "project": "/work/phoenix-min",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-min",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-min"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-min"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "both/window on another desktop",
+        "project": "/work/phoenix-desk",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-desk",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 5,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-desk"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-desk"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "env/DISPLAY unset",
+        "project": "/work/phoenix-test-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-A",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 5,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "env/wayland-style (WAYLAND_DISPLAY set, no DISPLAY)",
+        "project": "/work/phoenix-test-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-A",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 5,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "env/DISPLAY=:98 (no server)",
+        "project": "/work/phoenix-test-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-A",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/title A",
+        "project": "/work/phoenix-test-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-A",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 5,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/title B",
+        "project": "/work/phoenix-test-B",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-B",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 5,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-B"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-B"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/title C",
+        "project": "/work/phoenix-test-C",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-C",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 5,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-C"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-C"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/title A again",
+        "project": "/work/phoenix-test-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test-A",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 13,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/no match",
+        "project": "/work/nomatch-zzz",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "nomatch-zzz",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "nomatch-zzz"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "nomatch-zzz"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/substring 'phoenix-test' (3 windows)",
+        "project": "/work/phoenix-test",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-test",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 5,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/substring 'dup-' (2 windows)",
+        "project": "/work/dup-",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "dup-",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 18,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "dup-"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "dup-"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/'proj' vs 'proj-extra' created first",
+        "project": "/work/proj",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "proj",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 7,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "proj"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "proj"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/upper-case title",
+        "project": "/work/PHOENIX-TEST-A",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "PHOENIX-TEST-A",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 6,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "PHOENIX-TEST-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "PHOENIX-TEST-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/title with space",
+        "project": "/work/my project",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "my project",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "my project"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "my project"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/leading dash",
+        "project": "/work/-dash",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "-dash",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 5,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "-dash"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "-dash"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/leading double dash, no such window",
+        "project": "/work/--help",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "--help",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 5,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "--help"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "--help"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/regex 'a.*b', only decoy aXXb exists",
+        "project": "/work/a.*b",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "a.*b",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "a.*b"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "a.*b"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/regex 'c.*d', decoy cXXd and literal c.*d",
+        "project": "/work/c.*d",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "c.*d",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 6,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "c.*d"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "c.*d"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/regex 'x+y', literal window x+y exists",
+        "project": "/work/x+y",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "x+y",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 7,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "x+y"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "x+y"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/invalid regex 'foo(', literal window exists",
+        "project": "/work/foo(",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "foo(",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "foo("
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "foo("
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/command substitution title",
+        "project": "/work/$(id>pwned)",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "$(id>pwned)",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 4,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "$(id>pwned)"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "$(id>pwned)"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/semicolon title",
+        "project": "/work/;id>pwned2",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": ";id>pwned2",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 6,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                ";id>pwned2"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                ";id>pwned2"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/minimised window",
+        "project": "/work/phoenix-min",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-min",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 9,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-min"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-min"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "xdotool/window on another desktop",
+        "project": "/work/phoenix-desk",
+        "activeBefore": "baseline-xterm",
+        "activeAfter": "baseline-xterm",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "0",
+        "result": {
+          "title": "phoenix-desk",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 5,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-desk"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-desk"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "none/title A",
+        "project": "/work/phoenix-test-A",
+        "activeBefore": "(none)",
+        "activeAfter": "(none)",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "",
+        "result": {
+          "title": "phoenix-test-A",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 3,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "phoenix-test-A"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      },
+      {
+        "label": "none/no match",
+        "project": "/work/nomatch-zzz",
+        "activeBefore": "(none)",
+        "activeAfter": "(none)",
+        "rootActive": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x20000c",
+        "currentDesktop": "",
+        "result": {
+          "title": "nomatch-zzz",
+          "ok": false,
+          "error": "Could not focus a window: needs wmctrl or xdotool on an X11 desktop (Wayland does not allow it)",
+          "ms": 6,
+          "calls": [
+            {
+              "file": "wmctrl",
+              "argv": [
+                "-a",
+                "nomatch-zzz"
+              ],
+              "code": 1,
+              "stdout": ""
+            },
+            {
+              "file": "xdotool",
+              "argv": [
+                "search",
+                "--onlyvisible",
+                "--name",
+                "--",
+                "nomatch-zzz"
+              ],
+              "code": 1,
+              "stdout": ""
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

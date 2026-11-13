@@ -1,0 +1,19 @@
+# Throwaway crate for the real-X11 dictation harness. NOT part of the Phoenix workspace: the
+# harness copies the REAL dictation_keys.rs, dictation_hotkey.rs and dictation_paste.rs next to
+# harness-main.rs.in and builds them standalone (versions pinned by the copied Cargo.lock).
+[package]
+name = "dictation-x11-harness"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+
+[[bin]]
+name = "harness"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+gtk = "0.18"
+x11-dl = "2.21"
+libc = "0.2"

@@ -7,7 +7,9 @@
 // are validated first, so none of them can become code. Core asks the user to confirm before
 // calling `focus` at all, because it starts a process.
 //
-// NOT verified against real terminal windows: tests drive these with a fake `exec`.
+// Linux (wmctrl / xdotool, X11) was run against real xterm windows under Xvfb + openbox, see
+// docs/evidence/phase-58-real-x11-jump-*.md. macOS Terminal/iTerm2 and Windows were never run
+// on a real window: tests drive those with a fake `exec`.
 import { execFile } from "node:child_process";
 import { basename } from "node:path";
 import { ErrorCode, PhoenixError } from "@phoenix/protocol";
@@ -45,8 +47,18 @@ export type FocusExec = (
   env?: Readonly<Record<string, string>>,
 ) => Promise<FocusExecResult>;
 
-/** The real exec: a short deadline, minimal environment plus the given values. */
+/**
+ * The real exec: a short deadline, minimal environment plus the given values. `DISPLAY` and
+ * `XAUTHORITY` are forwarded when set: without them wmctrl/xdotool cannot reach the X server
+ * ("Cannot open display") and the Linux jump never works (found on a real Xvfb, Phase 58).
+ */
 export const execFocus: FocusExec = (file, argv, env = {}) => {
+  const x11 = Object.fromEntries(
+    (["DISPLAY", "XAUTHORITY"] as const).flatMap((k) => {
+      const v = process.env[k];
+      return v ? [[k, v]] : [];
+    }),
+  );
   const done = Promise.withResolvers<FocusExecResult>();
   execFile(
     file,
@@ -55,7 +67,7 @@ export const execFocus: FocusExec = (file, argv, env = {}) => {
       timeout: 5_000,
       maxBuffer: 100_000,
       windowsHide: true,
-      env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", ...env },
+      env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", ...x11, ...env },
     },
     (err, stdout) => {
       done.resolve({ code: err ? (typeof err.code === "number" ? err.code : 1) : 0, stdout });
@@ -216,7 +228,9 @@ export class LinuxTerminalFocuser implements TerminalFocuser {
     const title = windowTitle(target.project);
     const wmctrl = await this.exec("wmctrl", ["-a", title]);
     if (wmctrl.code === 0) return { focused: true, method: "wmctrl" };
-    const found = await this.exec("xdotool", ["search", "--onlyvisible", "--name", "--", title]);
+    // xdotool matches `--name` as an extended regular expression; `wmctrl -a` is a plain substring.
+    const pattern = title.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+    const found = await this.exec("xdotool", ["search", "--onlyvisible", "--name", "--", pattern]);
     const id = found.stdout
       .split("\n")
       .find((line) => /^[0-9]{1,12}$/.test(line.trim()))

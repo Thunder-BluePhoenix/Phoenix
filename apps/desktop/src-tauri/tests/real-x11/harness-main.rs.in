@@ -1,0 +1,387 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Phoenix contributors
+
+//! Driver for the real-X11 dictation harness (throwaway crate, see run-in-container.sh).
+//! It calls the PRODUCTION `dictation_hotkey::spawn_listener`, `is_supported`,
+//! `dictation_keys::DictationKeys` and `dictation_paste::paste`/`paste_with`. The only code
+//! that is not production is this file (event logging, an XTest injector used for latency
+//! timing, and the `Override` wrapper that answers "not a protected field" for the secure
+//! input probe so the rest of the real Linux paste path can be observed).
+#![allow(dead_code)]
+
+mod dictation_hotkey;
+mod dictation_keys;
+mod dictation_paste;
+
+use dictation_keys::{DictationKey, DictationKeys, Event, Key, PasteChord};
+use dictation_paste::{ClipboardContent, ClipboardPlatform, HarnessSystemPlatform, PasteError};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+fn threads() -> usize {
+    std::fs::read_dir("/proc/self/task").map_or(0, |d| d.count())
+}
+
+fn ms(since: Instant) -> f64 {
+    since.elapsed().as_secs_f64() * 1000.0
+}
+
+/// A listener driving the production state machine, like pill.rs does (25 ms tick).
+fn start_machine(
+    label: &'static str,
+    began: Instant,
+) -> (
+    Result<dictation_hotkey::HotkeyListener, String>,
+    Arc<AtomicBool>,
+) {
+    let machine = Arc::new(Mutex::new(DictationKeys::new()));
+    let tick_stop = Arc::new(AtomicBool::new(false));
+    let m = Arc::clone(&machine);
+    let listener = dictation_hotkey::spawn_listener(
+        DictationKey::RightControl,
+        PasteChord::default(),
+        move |event| {
+            let at = ms(began);
+            let out = m.lock().unwrap().handle(event, at as u64);
+            println!(
+                "[{label}] t={at:9.1}ms event={event:?} consume={} action={:?}",
+                out.consume, out.action
+            );
+            out.consume
+        },
+    );
+    let m = Arc::clone(&machine);
+    let stop = Arc::clone(&tick_stop);
+    std::thread::spawn(move || {
+        while !stop.load(Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_millis(25));
+            let at = ms(began);
+            if let Some(action) = m.lock().unwrap().tick(at as u64) {
+                println!("[{label}] t={at:9.1}ms tick action={action:?}");
+            }
+        }
+    });
+    (listener, tick_stop)
+}
+
+fn listen(secs: u64, count: usize) {
+    let began = Instant::now();
+    let labels = ["A", "B", "C"];
+    let before = threads();
+    let mut listeners = Vec::new();
+    for label in labels.iter().take(count) {
+        let started = Instant::now();
+        let (listener, stop) = start_machine(label, began);
+        match listener {
+            Ok(l) => {
+                println!("[{label}] spawn_listener OK in {:.1}ms", ms(started));
+                listeners.push((l, stop));
+            }
+            Err(e) => println!("[{label}] spawn_listener ERR: {e}"),
+        }
+    }
+    println!("READY threads_before={before} threads_after_spawn={}", threads());
+    std::thread::sleep(Duration::from_secs(secs));
+    for (listener, stop) in listeners {
+        stop.store(true, Ordering::SeqCst);
+        let started = Instant::now();
+        drop(listener);
+        println!("drop took {:.1}ms", ms(started));
+    }
+    std::thread::sleep(Duration::from_millis(100));
+    println!("threads_after_drop={}", threads());
+}
+
+fn supported() {
+    for name in ["DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE"] {
+        println!("env {name}={:?}", std::env::var(name).ok());
+    }
+    println!("is_supported={}", dictation_hotkey::is_supported());
+    println!("listen_permission={:?}", dictation_hotkey::listen_permission());
+    match dictation_hotkey::spawn_listener(DictationKey::RightControl, PasteChord::default(), |_| {
+        false
+    }) {
+        Ok(l) => {
+            println!("spawn_listener=Ok");
+            drop(l);
+        }
+        Err(e) => println!("spawn_listener=Err({e:?})"),
+    }
+    for key in [
+        DictationKey::RightOption,
+        DictationKey::Fn,
+        DictationKey::RightCommand,
+    ] {
+        let r = dictation_hotkey::spawn_listener(key, PasteChord::default(), |_| false);
+        println!("spawn_listener({key:?})={:?}", r.map(drop));
+    }
+    match x11_dl::xrecord::Xf86vmode::open() {
+        Ok(_) => println!("x11_dl XRecord open: Ok"),
+        Err(e) => println!("x11_dl XRecord open: Err({e})"),
+    }
+    match x11_dl::xtest::Xf86vmode::open() {
+        Ok(_) => println!("x11_dl XTest open: Ok"),
+        Err(e) => println!("x11_dl XTest open: Err({e})"),
+    }
+}
+
+/// Injection through a second X connection (harness code, not production).
+struct Injector {
+    lib: x11_dl::xlib::Xlib,
+    test: x11_dl::xtest::Xf86vmode,
+    dpy: *mut x11_dl::xlib::Display,
+}
+
+impl Injector {
+    fn open() -> Self {
+        let lib = x11_dl::xlib::Xlib::open().expect("xlib");
+        let test = x11_dl::xtest::Xf86vmode::open().expect("xtest");
+        let dpy = unsafe { (lib.XOpenDisplay)(std::ptr::null()) };
+        assert!(!dpy.is_null(), "no display");
+        Self { lib, test, dpy }
+    }
+    fn key(&self, sym: u32, down: bool) {
+        let sync = std::env::var_os("HARNESS_XSYNC").is_some();
+        unsafe {
+            let code = (self.lib.XKeysymToKeycode)(self.dpy, sym.into());
+            (self.test.XTestFakeKeyEvent)(self.dpy, u32::from(code), i32::from(down), 0);
+            if sync {
+                (self.lib.XSync)(self.dpy, 0);
+            } else {
+                (self.lib.XFlush)(self.dpy);
+            }
+        }
+    }
+}
+
+/// `d:<keysym>` / `u:<keysym>` press or release exactly that key's keycode through XTest (one
+/// key, unlike `xdotool keydown Control_R`, which also presses Control_L); `w:<ms>` waits.
+fn inject(steps: &[String]) {
+    let inj = Injector::open();
+    for step in steps {
+        let (kind, rest) = step.split_once(':').expect("step kind:value");
+        match kind {
+            "w" => std::thread::sleep(Duration::from_millis(rest.parse().expect("ms"))),
+            "d" | "u" => {
+                let name = std::ffi::CString::new(rest).unwrap();
+                let sym = unsafe { (inj.lib.XStringToKeysym)(name.as_ptr()) };
+                assert!(sym != 0, "unknown keysym {rest}");
+                inj.key(sym as u32, kind == "d");
+            }
+            other => panic!("bad step kind {other}"),
+        }
+    }
+}
+
+fn percentile(sorted: &[f64], p: f64) -> f64 {
+    sorted[(((sorted.len() - 1) as f64) * p).round() as usize]
+}
+
+fn latency(n: usize) {
+    let log: Arc<Mutex<Vec<(Event, Instant)>>> = Arc::new(Mutex::new(Vec::new()));
+    let l = Arc::clone(&log);
+    let listener = dictation_hotkey::spawn_listener(
+        DictationKey::RightControl,
+        PasteChord::default(),
+        move |event| {
+            l.lock().unwrap().push((event, Instant::now()));
+            false
+        },
+    )
+    .expect("listener");
+    let inj = Injector::open();
+    let sym = x11_dl::keysym::XK_Control_R;
+    let mut downs = Vec::new();
+    let mut ups = Vec::new();
+    let mut missed = 0;
+    for _ in 0..n {
+        for (down, want, out) in [
+            (true, Event::KeyDown(Key::Dictation), &mut downs),
+            (false, Event::KeyUp(Key::Dictation), &mut ups),
+        ] {
+            log.lock().unwrap().clear();
+            let t0 = Instant::now();
+            inj.key(sym, down);
+            let deadline = t0 + Duration::from_millis(500);
+            loop {
+                let hit = log
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .find(|(e, _)| *e == want)
+                    .map(|(_, t)| *t);
+                if let Some(t) = hit {
+                    out.push(t.duration_since(t0).as_secs_f64() * 1000.0);
+                    break;
+                }
+                if Instant::now() > deadline {
+                    missed += 1;
+                    break;
+                }
+                std::thread::sleep(Duration::from_micros(200));
+            }
+            std::thread::sleep(Duration::from_millis(30));
+        }
+    }
+    for (name, v) in [("press", &mut downs), ("release", &mut ups)] {
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        if v.is_empty() {
+            println!("{name}: no samples");
+            continue;
+        }
+        println!(
+            "{name}: n={} min={:.2}ms p50={:.2}ms p95={:.2}ms max={:.2}ms",
+            v.len(),
+            v[0],
+            percentile(v, 0.5),
+            percentile(v, 0.95),
+            v[v.len() - 1]
+        );
+    }
+    println!("missed_events={missed}");
+    let started = Instant::now();
+    drop(listener);
+    println!("drop took {:.1}ms", ms(started));
+}
+
+fn dropcycle(n: usize) {
+    let base = threads();
+    let mut worst = 0.0f64;
+    for i in 0..n {
+        let l = dictation_hotkey::spawn_listener(
+            DictationKey::RightControl,
+            PasteChord::default(),
+            |_| false,
+        )
+        .expect("listener");
+        std::thread::sleep(Duration::from_millis(40));
+        let mid = threads();
+        let started = Instant::now();
+        drop(l);
+        let took = ms(started);
+        worst = worst.max(took);
+        println!(
+            "cycle {i}: threads base={base} running={mid} after_drop={} drop={took:.1}ms",
+            threads()
+        );
+    }
+    println!("worst_drop_ms={worst:.1}");
+}
+
+/// Wraps the REAL Linux platform. Differences from production, all deliberate and logged:
+/// `secure_input` answers `Ok(false)` (production always refuses on Linux); with `meanwhile`
+/// a foreign process copies something during the restore wait.
+struct Override {
+    inner: HarnessSystemPlatform,
+    meanwhile: bool,
+    began: Instant,
+}
+
+impl Override {
+    fn log(&self, what: &str) {
+        println!("  call t={:8.1}ms {what}", ms(self.began));
+    }
+}
+
+impl ClipboardPlatform for Override {
+    type Receipt = <HarnessSystemPlatform as ClipboardPlatform>::Receipt;
+    fn secure_input(&mut self) -> Result<bool, PasteError> {
+        let real = self.inner.secure_input();
+        self.log(&format!(
+            "secure_input (production says {real:?}; wrapper answers Ok(false))"
+        ));
+        Ok(false)
+    }
+    fn can_send_keys(&mut self) -> Result<(), PasteError> {
+        let r = self.inner.can_send_keys();
+        self.log(&format!("can_send_keys -> {r:?}"));
+        r
+    }
+    fn read_clipboard(&mut self) -> ClipboardContent {
+        let r = self.inner.read_clipboard();
+        self.log(&format!("read_clipboard -> {r:?}"));
+        r
+    }
+    fn write_text(&mut self, text: &str, original: Option<&str>) -> Result<Self::Receipt, PasteError> {
+        let r = self.inner.write_text(text, original);
+        self.log(&format!("write_text -> ok={}", r.is_ok()));
+        r
+    }
+    fn send_paste(&mut self) -> Result<(), PasteError> {
+        let r = self.inner.send_paste();
+        self.log(&format!("send_paste -> {r:?}"));
+        r
+    }
+    fn type_text(&mut self, text: &str) -> Result<(), PasteError> {
+        let r = self.inner.type_text(text);
+        self.log(&format!("type_text -> {r:?}"));
+        r
+    }
+    fn wait(&mut self, duration: Duration) {
+        if self.meanwhile {
+            let status = std::process::Command::new("sh")
+                .arg("-c")
+                .arg("printf %s FOREIGN-COPY | xclip -selection clipboard -i")
+                .status();
+            self.log(&format!("foreign xclip copy during wait: {status:?}"));
+        }
+        self.inner.wait(duration);
+        self.log("wait done");
+    }
+    fn unchanged(&mut self, receipt: &Self::Receipt) -> bool {
+        let r = self.inner.unchanged(receipt);
+        self.log(&format!("unchanged -> {r}"));
+        r
+    }
+    fn restore_text(&mut self, original: Option<&str>) -> Result<(), PasteError> {
+        let r = self.inner.restore_text(original);
+        self.log(&format!("restore_text({original:?}) -> {r:?}"));
+        r
+    }
+}
+
+fn paste(mode: &str, text: &str, hold_secs: u64) {
+    gtk::init().expect("gtk init");
+    let began = Instant::now();
+    let result = match mode {
+        "prod" => dictation_paste::paste(text),
+        "override" | "override-meanwhile" => dictation_paste::paste_with(
+            &mut Override {
+                inner: HarnessSystemPlatform,
+                meanwhile: mode == "override-meanwhile",
+                began,
+            },
+            text,
+        ),
+        other => panic!("unknown paste mode {other}"),
+    };
+    println!("paste_result={result:?} after {:.1}ms", ms(began));
+    let clipboard = gtk::Clipboard::get(&gtk::gdk::SELECTION_CLIPBOARD);
+    println!(
+        "in_process_clipboard_after={:?}",
+        clipboard.wait_for_text().map(|t| t.to_string())
+    );
+    println!("READY_HOLD");
+    let deadline = Instant::now() + Duration::from_secs(hold_secs);
+    while Instant::now() < deadline {
+        while gtk::events_pending() {
+            gtk::main_iteration_do(false);
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let arg = |i: usize| args.get(i).map(String::as_str).unwrap_or("");
+    match arg(1) {
+        "listen" => listen(arg(2).parse().unwrap_or(5), arg(3).parse().unwrap_or(1)),
+        "supported" => supported(),
+        "latency" => latency(arg(2).parse().unwrap_or(100)),
+        "dropcycle" => dropcycle(arg(2).parse().unwrap_or(10)),
+        "inject" => inject(&args[2..]),
+        "paste" => paste(arg(2), arg(3), arg(4).parse().unwrap_or(1)),
+        other => eprintln!("unknown mode {other:?}"),
+    }
+}

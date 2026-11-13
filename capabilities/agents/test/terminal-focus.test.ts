@@ -8,6 +8,7 @@ import {
   LinuxTerminalFocuser,
   MacTerminalFocuser,
   WindowsTerminalFocuser,
+  execFocus,
   focuserFor,
   windowTitle,
   type FocusExec,
@@ -139,6 +140,19 @@ describe("Linux (wmctrl / xdotool)", () => {
     await expect(new LinuxTerminalFocuser(exec).focus(target)).rejects.toThrow(/wmctrl or xdotool/);
     expect(calls).toHaveLength(2);
   });
+
+  it("xdotool matches --name as a regex, so regex metacharacters in the title are escaped (real X11: `x+y` and `foo(` never matched their own window, `a.*b` matched an unrelated `aXXb`)", async () => {
+    const { exec, calls } = fake([{ code: 1 }, { code: 0, stdout: "12345\n" }, { code: 0 }]);
+    await new LinuxTerminalFocuser(exec).focus({ project: "/work/a.*b+(c)[d]{e}|f^g$h\\i?" });
+    expect(calls[0]!.argv).toEqual(["-a", "a.*b+(c)[d]{e}|f^g$h\\i?"]);
+    expect(calls[1]!.argv).toEqual([
+      "search",
+      "--onlyvisible",
+      "--name",
+      "--",
+      "a\\.\\*b\\+\\(c\\)\\[d\\]\\{e\\}\\|f\\^g\\$h\\\\i\\?",
+    ]);
+  });
 });
 
 describe("Windows (PowerShell AppActivate)", () => {
@@ -193,5 +207,40 @@ describe("validation and selection", () => {
     expect(focuserFor("linux", exec)).toBeInstanceOf(LinuxTerminalFocuser);
     expect(focuserFor("win32", exec)).toBeInstanceOf(WindowsTerminalFocuser);
     expect(() => focuserFor("freebsd", exec)).toThrow(/not supported/);
+  });
+});
+
+describe("execFocus (real child process)", () => {
+  const keep = { DISPLAY: process.env.DISPLAY, XAUTHORITY: process.env.XAUTHORITY };
+  const restore = () => {
+    for (const [k, v] of Object.entries(keep)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  };
+  const printEnv = (name: string) =>
+    execFocus(process.execPath, ["-e", `process.stdout.write(process.env.${name} ?? "<unset>")`]);
+
+  it("passes the X11 display and Xauthority to the child, or wmctrl/xdotool cannot reach the X server", async () => {
+    process.env.DISPLAY = ":77";
+    process.env.XAUTHORITY = "/tmp/xauth-test";
+    try {
+      expect((await printEnv("DISPLAY")).stdout).toBe(":77");
+      expect((await printEnv("XAUTHORITY")).stdout).toBe("/tmp/xauth-test");
+    } finally {
+      restore();
+    }
+  });
+
+  it("does not invent a display when there is none, and still withholds other variables", async () => {
+    delete process.env.DISPLAY;
+    process.env.PHOENIX_NOT_FORWARDED = "x";
+    try {
+      expect((await printEnv("DISPLAY")).stdout).toBe("<unset>");
+      expect((await printEnv("PHOENIX_NOT_FORWARDED")).stdout).toBe("<unset>");
+    } finally {
+      delete process.env.PHOENIX_NOT_FORWARDED;
+      restore();
+    }
   });
 });

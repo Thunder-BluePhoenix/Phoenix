@@ -26,7 +26,7 @@ See what each agent is doing right now: steps, file changes, and how much of its
 - [ ] Diffs link to the commit and CI run they ended up in (knowledge graph, Phase 38). Deviation: diffs list the commits and CI runs that Phoenix's existing session links (`links.ts`, migration 15, `agent_links`) associated with the session while it was active (`diffs.ts` `diffLinks`; tests `diffs.test.ts`, `agent-live.test.ts` "diff"). The knowledge graph is not used, and a link says "appeared while the session was active", not "this file is in that commit".
 - [x] Session timeline export (Markdown) (`timeline-export.ts`, `agent-live.ts` `exportMarkdown`; tests `timeline-export.test.ts` (hostile text from every untrusted field cannot form links, images, HTML, headings, lists or tables), `live.test.ts` routes, `agent-live.test.tsx` download)
 - [x] Plan usage warnings before a limit is hit, not after: one durable warning per window per threshold, default 80 % and 95 %, configurable, restart-safe (`usage.ts` `UsageTracker`; tests `usage.test.ts`, `agent-live.test.ts` "plan usage and warnings", `live.test.ts` "plan usage warnings")
-- [ ] Jump to terminal on Linux and Windows, not only macOS. Built, never run on either OS: Linux through `wmctrl`/`xdotool` (X11 only; Wayland is refused with a message), Windows through PowerShell `AppActivate` (`terminal-focus.ts`; tests `terminal-focus.test.ts` with a fake runner).
+- [ ] Jump to terminal on Linux and Windows, not only macOS. Built: Linux through `wmctrl`/`xdotool` (X11 only; Wayland is refused with a message), Windows through PowerShell `AppActivate` (`terminal-focus.ts`; tests `terminal-focus.test.ts` with a fake runner). **Linux X11 was run for real once** (xterm windows under Xvfb + openbox in ubuntu:24.04; `docs/evidence/phase-58-real-x11-jump-2026-11-12.md`, harness `capabilities/agents/test/real-x11/run-in-container.sh`): it found and fixed two defects (`execFocus` dropped `DISPLAY`, so no jump could work; xdotool matched the title as a regex), then wmctrl and xdotool each raised the right window; wmctrl also raised a minimised window and one on another desktop, the xdotool fallback cannot. Windows and macOS Terminal.app/iTerm2 were never run on a real window.
 
 ## Deliverables
 
@@ -42,7 +42,7 @@ See what each agent is doing right now: steps, file changes, and how much of its
 
 Steps and usage reach Core through the relay (`step` and `usage` ops, `live-send.ts`, falling back to loopback HTTP), are validated and redacted again on arrival, and are held in memory (at most 500 steps per session, 32 usage windows). Steps and usage are pushed to the web as ephemeral `core`-sourced events. The route and relay tests run against a real in-process Core; the agent side is always a recorded-shape payload.
 
-Not verified: a real Claude Code status JSON, any subsecond latency, agreement with the agent's own usage display, any real terminal window on any OS, and the Windows and Linux focus commands. Session detail for Phoenix-started (`ph-…`) sessions matches live sessions by project folder and time and says so.
+Not verified: a real Claude Code status JSON, any subsecond latency, agreement with the agent's own usage display, any real terminal window on macOS or Windows, and the Windows focus command. Linux X11 jump was run once on Xvfb/openbox only (see the evidence file; other window managers, real Wayland, and the Core route were not). Session detail for Phoenix-started (`ph-…`) sessions matches live sessions by project folder and time and says so.
 
 ## Notes & risks
 
